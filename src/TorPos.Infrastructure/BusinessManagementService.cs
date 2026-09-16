@@ -627,7 +627,7 @@ public async Task<ReportDocument> BuildCashJournalAsync(CancellationToken ct = d
             "Artikel | EAN | Bestand | Min. | VK | EK | Warenwert EK | Gruppe / Warengruppe"
         };
         lines.AddRange(rows.Select(x =>
-            $"{(x.IsLowStock ? "! " : "")}{x.Name} | {x.Barcode} | {x.StockQuantity:0.###} {x.Unit} | {x.MinStockQuantity:0.###} | {Money(x.PriceCents)} | {Money(x.PurchasePriceCents)} | {Money(x.PurchaseStockValueCents)} | {x.GroupName} / {x.CategoryName}"));
+            GermanFormat.Line($"{(x.IsLowStock ? "! " : "")}{x.Name} | {x.Barcode} | {x.StockQuantity:0.###} {x.Unit} | {x.MinStockQuantity:0.###} | {Money(x.PriceCents)} | {Money(x.PurchasePriceCents)} | {Money(x.PurchaseStockValueCents)} | {x.GroupName} / {x.CategoryName}")));
         return new ReportDocument("WARENBESTAND", lines, DateTimeOffset.Now);
     });
 }// R91: same bug family as R88/R90, found by auditing sibling report
@@ -730,7 +730,7 @@ public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct
             """;
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
-            lines.Add($"{r.GetString(0)} | {r.GetDouble(1):0.###} | {Money(r.GetInt64(2))}");
+            lines.Add(GermanFormat.Line($"{r.GetString(0)} | {r.GetDouble(1):0.###} | {Money(r.GetInt64(2))}"));
         return new ReportDocument("VERKAUFSSTATISTIK", lines, DateTimeOffset.Now);
     });
 }// R90: previously summed EVERY sales row regardless of transaction_type,
@@ -1536,7 +1536,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             foreach (var tax in period.Taxes)
             {
                 lines.Add(
-                    $"{tax.Rate:0.##} % · Brutto {Money(tax.GrossCents)} · " +
+                    GermanFormat.Number(tax.Rate, "0.##") + $" % · Brutto {Money(tax.GrossCents)} · " +
                     $"Netto {Money(tax.NetCents)} · Steuer {Money(tax.TaxCents)}");
             }
         }
@@ -1793,8 +1793,9 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
     }
 
     // German report amounts must not depend on the Windows account culture.
-    private static string Money(long cents) =>
-        (cents / 100m).ToString("0.00", CultureInfo.GetCultureInfo("de-DE")) + " EUR";
+    // R123: the rule itself now lives in TorPos.Core.GermanFormat, shared with
+    // the printed and digital receipts that had the same defect.
+    private static string Money(long cents) => GermanFormat.Eur(cents);
 
     // Matches the format produced by the generated created_at_utc column
     // (strftime('%Y-%m-%dT%H:%M:%fZ', ...)) exactly, so a plain text WHERE
@@ -1857,7 +1858,7 @@ internal static class SimplePdfWriter
 
                 sb.AppendLine($"0.75 w {F(x)} {F(y)} {F(labelW)} {F(labelH)} re S");
                 AddText(sb, x + 7, y + labelH - 16, 10, Truncate(row.Name, 28));
-                AddText(sb, x + 7, y + labelH - 32, 15, $"{row.PriceCents / 100m:0.00} EUR");
+                AddText(sb, x + 7, y + labelH - 32, 15, GermanFormat.Eur(row.PriceCents));
 
                 if (TryBuildEan13(row.Barcode, out var modules))
                 {

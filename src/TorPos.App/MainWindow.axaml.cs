@@ -2089,7 +2089,7 @@ public partial class MainWindow:Window
                 document,
                 _receiptPrinter,
                 _settings,
-                $"Z-Abschluss gespeichert · {archived.ReceiptCount} Bons · {archived.GrossCents / 100m:0.00} € Umsatz. Drucker und 58/80 mm oder A4 können jetzt gewählt werden.")
+                $"Z-Abschluss gespeichert · {archived.ReceiptCount} Bons · {GermanFormat.Amount(archived.GrossCents)} € Umsatz. Drucker und 58/80 mm oder A4 können jetzt gewählt werden.")
                 .ShowDialog(this);
         }
         catch (Exception ex)
@@ -3394,9 +3394,10 @@ public partial class MainWindow:Window
                 {
                     $"Datum / Zeit: {DateTime.Now:dd.MM.yyyy HH:mm:ss}",
                     $"Bediener: {_currentUser.Username}",
-                    $"Soll-Bargeld: {expected / 100m:0.00} EUR",
-                    $"Ist-Bargeld: {counted.Value / 100m:0.00} EUR",
-                    $"Differenz: {difference / 100m:0.00} EUR"
+                    // R123: printable report - German amounts regardless of Windows culture.
+                    $"Soll-Bargeld: {GermanFormat.Eur(expected)}",
+                    $"Ist-Bargeld: {GermanFormat.Eur(counted.Value)}",
+                    $"Differenz: {GermanFormat.Eur(difference)}"
                 },
                 DateTimeOffset.Now);
 

@@ -191,8 +191,8 @@ public static class DigitalReceiptHtml
             var name = line.ProductName + (string.IsNullOrWhiteSpace(line.VariantName) ? "" : " · " + line.VariantName);
             sb.Append("<tr><td colspan=\"2\">").Append(Html(name)).Append("</td></tr>");
             sb.Append("<tr><td class=\"muted\">")
-              .Append(line.Quantity.ToString("0.###")).Append(" × ").Append(Money(line.UnitPriceCents))
-              .Append(" (").Append(line.VatRate.ToString("0.#")).Append("% MwSt.)</td>")
+              .Append(line.Quantity.ToString("0.###", De)).Append(" × ").Append(Money(line.UnitPriceCents))
+              .Append(" (").Append(line.VatRate.ToString("0.#", De)).Append("% MwSt.)</td>")
               .Append("<td class=\"num\">").Append(Money(line.LineTotalCents)).Append("</td></tr>");
         }
         sb.Append("</table>");
@@ -209,7 +209,7 @@ public static class DigitalReceiptHtml
         foreach (var g in vatGroups)
         {
             var net = g.GrossCents - g.TaxCents;
-            sb.Append("<tr><td>MwSt. ").Append(g.Rate.ToString("0.#"))
+            sb.Append("<tr><td>MwSt. ").Append(g.Rate.ToString("0.#", De))
               .Append("% (netto ").Append(Money(net)).Append(")</td><td class=\"num\">")
               .Append(Money(g.TaxCents)).Append("</td></tr>");
         }

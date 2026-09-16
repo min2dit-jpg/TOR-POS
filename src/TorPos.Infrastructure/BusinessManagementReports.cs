@@ -116,7 +116,7 @@ public sealed partial class BusinessManagementService
             foreach (var tax in monthPeriod.Taxes)
             {
                 monthLines.Add(
-                    $"{tax.Rate:0.##} % · Brutto {Money(tax.GrossCents)} · " +
+                    GermanFormat.Number(tax.Rate, "0.##") + $" % · Brutto {Money(tax.GrossCents)} · " +
                     $"Netto {Money(tax.NetCents)} · Steuer {Money(tax.TaxCents)}");
             }
 
@@ -189,7 +189,7 @@ public sealed partial class BusinessManagementService
                     """;
                 q.Parameters.AddWithValue("$from", fromUtcText); q.Parameters.AddWithValue("$to", toUtcText);
                 await using var r = await q.ExecuteReaderAsync(ct);
-                while (await r.ReadAsync(ct)) salesStats.Add($"{r.GetString(0)} | {r.GetDouble(1):0.###} | {Money(r.GetInt64(2))}");
+                while (await r.ReadAsync(ct)) salesStats.Add(GermanFormat.Line($"{r.GetString(0)} | {r.GetDouble(1):0.###} | {Money(r.GetInt64(2))}"));
             }
             docs.Add(new ReportDocument($"VERKAUFSSTATISTIK {ym}", salesStats, DateTimeOffset.Now));
 
@@ -341,7 +341,7 @@ public sealed partial class BusinessManagementService
                     WHERE p.is_active=1 ORDER BY COALESCE(g.sort_order,0),g.name,c.sort_order,c.name,p.sort_order,p.name;
                     """;
                 await using var r = await q.ExecuteReaderAsync(ct);
-                while (await r.ReadAsync(ct)) inventory.Add($"{r.GetString(0)} | {r.GetString(1)} | {r.GetDouble(2):0.###} {r.GetString(8)} | {r.GetDouble(3):0.###} | {Money(r.GetInt64(4))} | {Money(r.GetInt64(5))} | {r.GetString(6)} / {r.GetString(7)}");
+                while (await r.ReadAsync(ct)) inventory.Add(GermanFormat.Line($"{r.GetString(0)} | {r.GetString(1)} | {r.GetDouble(2):0.###} {r.GetString(8)} | {r.GetDouble(3):0.###} | {Money(r.GetInt64(4))} | {Money(r.GetInt64(5))} | {r.GetString(6)} / {r.GetString(7)}"));
             }
             docs.Add(new ReportDocument($"WARENBESTAND {ym}", inventory, DateTimeOffset.Now));
 

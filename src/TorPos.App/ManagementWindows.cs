@@ -680,8 +680,8 @@ public sealed class InventoryWindow : Window
     private static string InventoryLine(InventoryArticleRow x) =>
         $"{(x.IsLowStock ? "⚠ " : "  ")}{ClipText(x.Name, 20),-20} | {ClipText(x.Barcode, 12),-12} | " +
         $"{($"{x.StockQuantity:0.###}/{x.MinStockQuantity:0.###} {x.Unit}"),-20} | " +
-        $"{(x.PriceCents / 100m):0.00} € | {(x.PurchasePriceCents / 100m):0.00} € | " +
-        $"{(x.PurchaseStockValueCents / 100m):0.00} € | {ClipText(x.CategoryName, 18)}";
+        $"{GermanFormat.Amount(x.PriceCents)} € | {GermanFormat.Amount(x.PurchasePriceCents)} € | " +
+        $"{GermanFormat.Amount(x.PurchaseStockValueCents)} € | {ClipText(x.CategoryName, 18)}";
 
     private static string ClipText(string value, int max)
     {
@@ -766,7 +766,7 @@ public sealed class ZArchiveWindow : Window
         _list.ItemsSource = _rows.Count == 0
             ? new[] { "Noch keine archivierten Z-Berichte vorhanden." }
             : _rows.Select(x =>
-                $"Z {x.ZNumber:000000} | {x.CreatedAt:dd.MM.yyyy HH:mm} | {x.ReceiptCount} Bons | {x.GrossCents / 100m:0.00} € | {x.OperatorName} | {x.FiscalStatus}")
+                $"Z {x.ZNumber:000000} | {x.CreatedAt:dd.MM.yyyy HH:mm} | {x.ReceiptCount} Bons | {GermanFormat.Amount(x.GrossCents)} € | {x.OperatorName} | {x.FiscalStatus}")
                 .ToArray();
         if (_rows.Count > 0)
             _list.SelectedIndex = 0;

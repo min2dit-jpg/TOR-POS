@@ -828,7 +828,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
                 Text(name, bold);
 
-                var qty = item.Quantity.ToString("0.##");
+                // R123: "1,5 x" on a German Beleg, whatever the Windows culture.
+                var qty = GermanFormat.Number(item.Quantity, "0.##");
 
                 if (item.HasPromotion)
                 {
@@ -930,7 +931,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             foreach (var tax in BuildTaxSummary(job))
             {
                 Text(
-                    $"MwSt {tax.Rate:0.##}% · Brutto {Money(tax.GrossCents)} · MwSt {Money(tax.TaxCents)}",
+                    GermanFormat.Line($"MwSt {tax.Rate:0.##}% · Brutto {Money(tax.GrossCents)} · MwSt {Money(tax.TaxCents)}"),
                     small);
             }
 
@@ -988,7 +989,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         // The instruction precedes products so a cancellation cannot look like a new order.
         if(!string.IsNullOrWhiteSpace(job.Note)) entries.Add(("HINWEIS: "+job.Note,true));
         if(!string.IsNullOrWhiteSpace(job.OperatorName)) entries.Add(("Bediener: "+job.OperatorName,false));
-        entries.AddRange(job.Lines.Select(line=>((line.IsComponent?"   + ":"")+$"{line.Quantity:0.##} x {line.Name}",!line.IsComponent)));
+        entries.AddRange(job.Lines.Select(line=>((line.IsComponent?"   + ":"")+GermanFormat.Line($"{line.Quantity:0.##} x {line.Name}"),!line.IsComponent)));
         entries.Add(("KEIN STEUERBELEG",false));
         int index=0,offset=0,page=0;
         document.PrintPage+=(_,e)=>{
@@ -1077,8 +1078,10 @@ private sealed record TaxSummary(
     long GrossCents,
     long TaxCents);
 
-    private static string Money(long cents) =>
-        (cents / 100m).ToString("0.00") + " EUR";
+    // R123: this formatted with the Windows account's culture, so on an
+    // English Windows the Kassenbon printed "5.00 EUR". Same bug PR #1 found
+    // in the STORNO report, on the one document where it matters most.
+    private static string Money(long cents) => GermanFormat.Eur(cents);
 
     public async ValueTask DisposeAsync()
     {
