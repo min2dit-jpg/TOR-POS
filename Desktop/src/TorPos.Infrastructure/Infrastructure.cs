@@ -2787,7 +2787,8 @@ public async Task RecordTseResultAsync(long saleId, SaleTseResult result, Cancel
         // afterwards, matching the immutability the sales row itself has via
         // trg_sales_no_update. A sale recorded as an outage therefore cannot be
         // signed later; see the migration-8 comment in SchemaMigrationService
-        // for why that is a deliberate (and still open) fiscal decision.
+        // for the legal basis (R129: AEAO zu § 146a Nr. 1.14 provides for
+        // documenting and marking an outage, not for signing it afterwards).
         //
         // Nothing in this build calls this twice for the same sale. If a future
         // change ever does, it must not surface as a raw "SQLite Error 19:

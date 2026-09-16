@@ -818,12 +818,20 @@ public sealed class SchemaMigrationService
                         -- Because sale_id is the PRIMARY KEY and the triggers below forbid
                         -- UPDATE and DELETE, that record is FINAL: exactly one per sale,
                         -- signature or outage, and a sale recorded as an outage can never be
-                        -- signed afterwards (Nachsignieren). That is a deliberate
-                        -- immutability choice, not an oversight - but it is a FISCAL choice
-                        -- that has to be confirmed against real TSE/DSFinV-K validation
-                        -- before production, and it is listed as an open decision in
-                        -- ROADMAP.md. Changing it would mean a new append-only table of
-                        -- signing ATTEMPTS, never an UPDATE to this one.
+                        -- signed afterwards (Nachsignieren).
+                        --
+                        -- R129: that open decision is closed by the legal position, not by
+                        -- taste. AEAO zu § 146a Nr. 1.14 (BMF 30.06.2023, unchanged by the
+                        -- 17.03.2026 amendment) sets out what an outage requires: outage
+                        -- times and reason documented (tse_outage_log), the outage visible
+                        -- on the receipt, the till may keep running, the cause is fixed
+                        -- without delay. Nothing there provides for signing the affected
+                        -- sales later, and it could not repair them: § 2 KassenSichV wants
+                        -- the transaction started "unmittelbar", with its times fixed by the
+                        -- security module - a later signature would carry the TSE's later
+                        -- time, not the time of the sale. DSFinV-K records such a sale in
+                        -- TSE_Transaktionen with the explanation in TSE_TA_FEHLER instead.
+                        -- So: one final record per sale stays. See Desktop/R129-CHANGELOG.md.
                         CREATE TABLE IF NOT EXISTS sale_tse_signatures(
                           sale_id INTEGER PRIMARY KEY,
                           client_id TEXT NOT NULL DEFAULT '',

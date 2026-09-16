@@ -85,6 +85,31 @@ Ausfallzeit und Grund müssen dokumentiert werden. Ein TSE-Ausfall darf nicht he
 erfolgreiche Signatur behandelt werden. Für den späteren Produktivbetrieb ist ein
 automatisches Ausfallprotokoll und eine eindeutige Belegkennzeichnung vorzusehen.
 
+Rechtsgrundlage (Stand R129, 16.09.2026): AEAO zu § 146a Nr. 1.14 (BMF-Schreiben vom
+30.06.2023; die Änderung vom 17.03.2026 lässt Nr. 1.14 und 2.7 unverändert):
+- 1.14.1 Ausfallzeiten und Ausfallgrund sind zu dokumentieren (automatisiert möglich).
+- 1.14.2 Der Ausfall muss auf dem Beleg erkennbar sein (fehlende Transaktionsnummer oder
+  eindeutige Kennzeichnung).
+- 1.14.3 Das System darf bis zur Behebung weiter genutzt werden; die Belegausgabepflicht
+  bleibt bestehen.
+- 1.14.4 Die Ursache ist unverzüglich zu beseitigen.
+- Nr. 2.7: Die Belegausgabepflicht entfällt nur bei Ausfall des ganzen Systems oder des
+  Druck-/Übermittlungswegs.
+- DSFinV-K, Datei TSE_Transaktionen: Feld TSE_TA_FEHLER für Erläuterungen von Problemen
+  in der Kommunikation zwischen Aufzeichnungssystem und TSE.
+
+**Kein Nachsignieren.** Eine nachträgliche Signierung der während des Ausfalls erfassten
+Vorgänge ist in AO, KassenSichV, AEAO und DSFinV-K nicht vorgesehen. Sie könnte den Ausfall
+auch nicht heilen: § 2 KassenSichV verlangt, dass die Transaktion unmittelbar gestartet wird
+und das Sicherheitsmodul die Zeitpunkte festlegt; eine spätere Signatur trüge die spätere
+TSE-Zeit. TOR speichert daher je Beleg genau einen endgültigen TSE-Eintrag (Signatur oder
+Ausfall) und signiert nicht nach.
+
+Offizielle Quellen:
+- https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/AO-Anwendungserlass/2023-06-30-AEAO-Par-146-AO.pdf
+- https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/AO-Anwendungserlass/2026-03-17-aenderung-aeao-146a.pdf
+- https://www.gesetze-im-internet.de/kassensichv/__2.html
+
 TOR 0.7.19 enthält ein separates Ausfall-Log und eine Fail-Safe-Schicht. Die
 Produktivfreigabe erfordert dennoch Abnahme mit realer TSE und offiziellem SDK.
 
