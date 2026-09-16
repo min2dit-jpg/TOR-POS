@@ -149,6 +149,7 @@ public partial class MainWindow:Window
         IAppWindowFactory windowFactory)
     {
         InitializeComponent();
+        InitializeResponsiveHeader();
         // R105: run on whatever screen the till actually has (desktop
         // monitor, laptop, or a tablet like the HP L7010t) instead of
         // always opening at a fixed 1440x900 - the mostly-proportional
@@ -210,6 +211,13 @@ public partial class MainWindow:Window
                 await TryRestoreOpenCartAsync();
 
             _cartRecoveryReady = true;
+            // R126: the button states were last computed while recovery was
+            // still pending (CartLocked), and nothing recomputed them once it
+            // finished - C, EXTRA and SCHNELLARTIKEL stayed disabled after every
+            // start until the cashier happened to change the cart. That is why
+            // the same version showed grey keys on one till and live ones on the
+            // other: only the till that had already been used looked right.
+            RefreshSalesActionState();
             PersistOpenCartRecovery();
 
             using (_perf.Measure("startup.fiscal_status"))
@@ -421,10 +429,10 @@ public partial class MainWindow:Window
 
     private string OpenCartRecoveryPath()
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "TOR-POS-Pro");
-        Directory.CreateDirectory(dir);
+        // R126: the same folder as before - AppPaths.DataDirectory is
+        // %APPDATA%\TOR-POS-Pro - but through AppPaths, so the off-screen
+        // snapshot tool can point it at a throwaway folder.
+        var dir = AppPaths.DataDirectory;
         // R116: the middle file now covers every simulation state, not just
         // "unlicensed". Filename deliberately unchanged so a cart left open by
         // a crash under the previous build is still found after the update.
@@ -2968,9 +2976,10 @@ public partial class MainWindow:Window
         {
             var low = await _management.GetLowStockAsync(100);
             StockWarningBadge.IsVisible = low.Count > 0;
-            StockWarningText.Text = low.Count > 0
-                ? $"BESTAND · {low.Count} NIEDRIG"
-                : "BESTAND OK";
+            if (low.Count > 0)
+                SetHeaderLabel(StockWarningText, $"BESTAND · {low.Count} NIEDRIG", $"BESTAND · {low.Count}", $"BESTAND {low.Count}");
+            else
+                SetHeaderLabel(StockWarningText, "BESTAND OK", "BESTAND OK", "BESTAND OK");
             ToolTip.SetTip(StockWarningBadge, low.Count == 0
                 ? "Keine Mindestbestand-Warnung."
                 : string.Join("\n", low.Take(8).Select(x => $"{x.Name}: {x.StockQuantity:0.###} / Min. {x.MinStockQuantity:0.###}")));
@@ -3766,6 +3775,12 @@ public partial class MainWindow:Window
     /// opens and closes outages - a failed probe, a failed signing call, or a
     /// sale that had to be completed with the TSE inactive.
     /// </summary>
+    private void SetFiscalModeLabel(string full, string compact, string minimal)
+    {
+        SetHeaderLabel(FiscalModeText, full, compact, minimal);
+        ToolTip.SetTip(FiscalModeBadge, full);
+    }
+
     private async Task RefreshTseOutageBadgeAsync()
     {
         try
@@ -3777,8 +3792,11 @@ public partial class MainWindow:Window
                 return;
             }
 
-            TseOutageText.Text = $"TSE-AUSFALL · seit {outage.StartedAt.LocalDateTime:dd.MM. HH:mm}";
-            ToolTip.SetTip(TseOutageBadge, outage.Reason);
+            // R126: the outage stays named at every header density - it is a
+            // legal state - only the start time moves into the tooltip.
+            var since = $"TSE-AUSFALL · seit {outage.StartedAt.LocalDateTime:dd.MM. HH:mm}";
+            SetHeaderLabel(TseOutageText, since, "TSE-AUSFALL", "TSE-AUSFALL");
+            ToolTip.SetTip(TseOutageBadge, since + "\n" + outage.Reason);
             TseOutageBadge.IsVisible = true;
         }
         catch (Exception ex)
@@ -3796,7 +3814,7 @@ public partial class MainWindow:Window
 
             if (_currentUser.IsTraining)
             {
-                FiscalModeText.Text = "TRAINING · KEINE ECHTE BUCHUNG";
+                SetFiscalModeLabel("TRAINING · KEINE ECHTE BUCHUNG", "TRAINING", "TRAINING");
                 FiscalModeText.Foreground = AppTheme.WarningAmber;
                 CashButtonText.Text = "BAR · TRAINING";
                 CardButtonText.Text = "KARTE · TRAINING";
@@ -3809,16 +3827,20 @@ public partial class MainWindow:Window
             {
                 // Source-candidate / development builds must remain testable without
                 // a customer license. No real sale is committed in this mode.
-                FiscalModeText.Text = "TESTBETRIEB · KEINE LIZENZ · KEINE ECHTE BUCHUNG";
+                SetFiscalModeLabel("TESTBETRIEB · KEINE LIZENZ · KEINE ECHTE BUCHUNG", "TEST · KEINE LIZENZ", "TEST");
                 FiscalModeText.Foreground = AppTheme.WarningAmber;
                 CashButtonText.Text = "BAR · TEST";
                 CardButtonText.Text = "KARTE · TEST";
                 return;
             }
 
-            FiscalModeText.Text = _fiscalReadiness.ProductionAllowed
-                ? "PRODUKTIV · FISKAL FREIGEGEBEN"
-                : $"TESTBETRIEB · {_fiscalReadiness.BlockingCount} FISKAL-SPERREN";
+            if (_fiscalReadiness.ProductionAllowed)
+                SetFiscalModeLabel("PRODUKTIV · FISKAL FREIGEGEBEN", "PRODUKTIV", "PRODUKTIV");
+            else
+                SetFiscalModeLabel(
+                    $"TESTBETRIEB · {_fiscalReadiness.BlockingCount} FISKAL-SPERREN",
+                    $"TEST · {_fiscalReadiness.BlockingCount} SPERREN",
+                    "TEST");
 
             FiscalModeText.Foreground =
                 _fiscalReadiness.ProductionAllowed ? AppTheme.AccentTeal : AppTheme.WarningAmber;
@@ -3836,7 +3858,7 @@ public partial class MainWindow:Window
         }
         catch (Exception ex)
         {
-            FiscalModeText.Text = "TESTBETRIEB · FISKALSTATUS FEHLER";
+            SetFiscalModeLabel("TESTBETRIEB · FISKALSTATUS FEHLER", "FISKALSTATUS FEHLER", "FISKAL ?");
             ShowOperationalError("FISKALSTATUS", ex);
         }
     }
@@ -3932,11 +3954,15 @@ public partial class MainWindow:Window
             CategoryHeaderText.Text = "WARENGRUPPEN · IMBISS";
             BackToCategoriesButton.Content = "◀ WARENGRUPPEN";
         }
-        UserModeText.Text = _currentUser.IsTraining
+        var userLabel = _currentUser.IsTraining
             ? $"{_currentUser.Username} · TRAINING"
             : _currentUser.IsAdmin
                 ? $"{_currentUser.Username} · Vollzugriff"
                 : _currentUser.Username;
+        // R126: at Minimal density the user badge is hidden entirely; ABMELDEN
+        // next to it still says someone is logged in, and the tooltip says who.
+        SetHeaderLabel(UserModeText, userLabel, _currentUser.Username, _currentUser.Username);
+        ToolTip.SetTip(UserModeBadge, userLabel);
         UserModeText.Foreground = _currentUser.IsTraining ? AppTheme.WarningAmber : AppTheme.AccentBlue;
 
         if (business == "KIOSK")
@@ -4122,13 +4148,16 @@ public partial class MainWindow:Window
         if (!license.IsExpiringSoon || string.IsNullOrWhiteSpace(license.RenewalNotice))
         {
             LicenseWarningBadge.IsVisible = false;
-            LicenseWarningText.Text = "LIZENZ";
+            SetHeaderLabel(LicenseWarningText, "LIZENZ", "LIZENZ", "LIZENZ");
             return;
         }
 
         var days = license.RemainingDays ?? 30;
         LicenseWarningBadge.IsVisible = true;
-        LicenseWarningText.Text = days <= 1 ? "LIZENZ · HEUTE/MORGEN" : $"LIZENZ · {days} TAGE";
+        if (days <= 1)
+            SetHeaderLabel(LicenseWarningText, "LIZENZ · HEUTE/MORGEN", "LIZENZ · 1 T", "LIZENZ!");
+        else
+            SetHeaderLabel(LicenseWarningText, $"LIZENZ · {days} TAGE", $"LIZENZ · {days} T", "LIZENZ");
         LicenseWarningText.Foreground = days <= 3 ? new SolidColorBrush(Color.Parse("#FF8A80")) : days <= 7 ? new SolidColorBrush(Color.Parse("#FFB74D")) : AppTheme.WarningAmber;
         LicenseWarningBadge.Background = new SolidColorBrush(Color.Parse(days <= 3 ? "#5C2525" : "#5A3A10"));
         ToolTip.SetTip(LicenseWarningBadge, license.RenewalNotice + " · Bitte rechtzeitig verlängern.");

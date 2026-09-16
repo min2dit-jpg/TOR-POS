@@ -6,12 +6,22 @@ namespace TorPos.Infrastructure;
 
 public static class AppPaths
 {
+    /// <summary>
+    /// R126: lets tools/TorPos.UiSnapshot render real windows against a
+    /// throwaway folder. On Windows %APPDATA% cannot be redirected through the
+    /// environment (GetFolderPath asks the shell, not the variable), so without
+    /// this a screenshot run on a developer PC that also runs TOR POS would
+    /// read and write that PC's real till data. Internal and only visible to
+    /// that tool - nothing in the shipped application sets it.
+    /// </summary>
+    internal static string? DataDirectoryOverride { get; set; }
+
     public static string DataDirectory
     {
         get
         {
             var basePath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var path = Path.Combine(basePath, "TOR-POS-Pro");
+            var path = DataDirectoryOverride ?? Path.Combine(basePath, "TOR-POS-Pro");
             Directory.CreateDirectory(path);
             Directory.CreateDirectory(Path.Combine(path, "ProductImages"));
             Directory.CreateDirectory(Path.Combine(path, "ReceiptAssets"));

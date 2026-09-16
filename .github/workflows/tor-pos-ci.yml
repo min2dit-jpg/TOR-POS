@@ -83,11 +83,25 @@ jobs:
           $passed.Line | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           'Bu sonuc mevcut otomatik kontrolleri kapsar; donanim veya uretim onayi degildir.' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+      # R126: renders the till screen off-screen at five screen sizes and fails
+      # when a control the cashier needs (ABMELDEN, GEMISCHT, AUSSER HAUS, the
+      # TSE-AUSFALL badge) is off-screen or the numpad keys get too short - the
+      # defects the small HP till showed. The screenshots are uploaded below.
+      - name: Ekran yerlesimini kontrol et (5 ekran boyutu)
+        timeout-minutes: 10
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -- ci-results/ui --check 2>&1 | Tee-Object -FilePath ci-results/ui-layout.log
+          $uiExit = $LASTEXITCODE
+          if ($uiExit -ne 0) { exit $uiExit }
+
       - name: Hata ve test gunluklerini sakla
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: tor-pos-ci-logs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ci-results/*.log
+          path: |
+            ci-results/*.log
+            ci-results/ui/*.png
           if-no-files-found: warn
           retention-days: 7

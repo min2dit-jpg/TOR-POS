@@ -19,8 +19,10 @@
       <Setter Property="BorderBrush" Value="#496985"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Padding" Value="8"/>
-      <Setter Property="Margin" Value="3"/>
+      <!-- R126: 8px of padding left too little room on short screens once the
+           labels shrink to fit (SOFORT STORNO became unreadably small). -->
+      <Setter Property="Padding" Value="4"/>
+      <Setter Property="Margin" Value="2"/>
       <Setter Property="MinWidth" Value="0"/>
       <Setter Property="MinHeight" Value="0"/>
       <Setter Property="FontSize" Value="14"/>
@@ -79,14 +81,27 @@
       <Setter Property="BorderBrush" Value="#53E0C0"/>
     </Style>
 
+    <!-- R126: on a short screen (HP till, 1024x640) the key rows got shorter
+         than a 24pt digit plus 12px of padding, and Avalonia clipped the
+         bottom half of every digit - "0" read as "n", "9" as "q", and the ","
+         key looked empty. The digit now sits in a Viewbox that only ever
+         scales DOWN: full size wherever it fits, smaller instead of cut off
+         where it does not. Padding/margin trimmed for the same reason. -->
     <Style Selector="Button.keypad">
       <Setter Property="Background" Value="#142B42"/>
       <Setter Property="Foreground" Value="#F7FBFF"/>
       <Setter Property="BorderBrush" Value="#3C5F7C"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Padding" Value="6"/>
-      <Setter Property="Margin" Value="3"/>
+      <Setter Property="Padding" Value="2"/>
+      <Setter Property="Margin" Value="2"/>
+      <Setter Property="ContentTemplate">
+        <DataTemplate>
+          <Viewbox StretchDirection="DownOnly">
+            <TextBlock Text="{Binding}"/>
+          </Viewbox>
+        </DataTemplate>
+      </Setter>
       <Setter Property="FontSize" Value="24"/>
       <Setter Property="FontWeight" Value="Bold"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -222,6 +237,18 @@
     </Grid.ColumnDefinitions>
     <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#111B2A" Padding="14,7"
             BoxShadow="0 2 14 0 #4000C2A0">
+      <!-- R126: the header used to be ONE horizontal StackPanel holding the
+           menu, every status badge and the essential buttons. A StackPanel
+           cannot shrink, so on a screen narrower than its content the company
+           name vanished first and then everything past the edge was simply
+           gone - on the HP till AUSSER HAUS, GEMISCHT and ABMELDEN were
+           unreachable, and on a 1366px laptop ABMELDEN was cut in half. The
+           R113 TSE-AUSFALL badge took the last free pixels.
+           Now: the essential buttons have their own column that is laid out
+           first and never clipped; everything else lives in a host that clips
+           as a last resort, and MainWindow.UpdateHeaderDensity shortens the
+           status texts (full -> compact -> minimal) so that last resort is
+           not normally reached. -->
       <Grid ColumnDefinitions="Auto,*,Auto">
         <Border Background="#2CC4A7" CornerRadius="10" Width="44" Height="44"
                 BoxShadow="0 0 14 1 #802CC4A7">
@@ -229,17 +256,19 @@
                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
 
-        <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-          <TextBlock x:Name="CompanyNameText" Text="TOR POS Pro" FontSize="20" FontWeight="Bold"/>
-          <TextBlock x:Name="RegisterInfoText" Text="Kasse 1 · IMBISS" Opacity="0.58" Margin="0,2,0,0"/>
+        <Grid Grid.Column="1" x:Name="HeaderMainHost" ColumnDefinitions="*,Auto,Auto,Auto"
+              Margin="14,0,8,0" ClipToBounds="True">
+        <StackPanel x:Name="CompanyBlock" Margin="0,0,10,0" VerticalAlignment="Center">
+          <TextBlock x:Name="CompanyNameText" Text="TOR POS Pro" FontSize="20" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="RegisterInfoText" Text="Kasse 1 · IMBISS" Opacity="0.58" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Border Background="#173A32" CornerRadius="8" Padding="14,10"
-                  BorderBrush="#2CC4A7" BorderThickness="1" BoxShadow="0 0 10 0 #6653E0C0">
+          <Border Grid.Column="1" x:Name="EditionBadge" Background="#173A32" CornerRadius="8" Padding="14,10"
+                  BorderBrush="#2CC4A7" BorderThickness="1" BoxShadow="0 0 10 0 #6653E0C0"
+                  VerticalAlignment="Center" Margin="0,0,8,0">
             <TextBlock x:Name="EditionText" Text="IMBISS" Foreground="#53E0C0" FontWeight="Bold"/>
           </Border>
-          <Menu Background="Transparent" VerticalAlignment="Center">
+          <Menu Grid.Column="2" x:Name="HeaderMenu" Background="Transparent" VerticalAlignment="Center">
             <MenuItem x:Name="ProductsButton" Header="WAREN">
               <MenuItem Header="ARTIKEL">
                 <MenuItem Header="Artikelverwaltung · Anlegen / Ändern / Scanner" Click="OnProductsClick"/>
@@ -319,6 +348,11 @@
               </MenuItem>
             </MenuItem>
           </Menu>
+          <!-- R126: ordered by importance, because if anything is clipped it is
+               the right end of this panel. The TSE outage (a legal state) and
+               the fiscal mode come first; who is logged in comes last. -->
+          <StackPanel Grid.Column="3" x:Name="HeaderStatusPanel" Orientation="Horizontal" Spacing="8"
+                      Margin="8,0,0,0" VerticalAlignment="Center">
           <!-- R113: an open TSE outage is a legal state the cashier must be
                able to see. The outage repository could always report one, but
                nothing in the running till ever asked it, so an unsigned-sales
@@ -326,21 +360,27 @@
           <Border x:Name="TseOutageBadge" IsVisible="False" Background="#5A1A1A" BorderBrush="#FF8A80" BorderThickness="1" CornerRadius="8" Padding="12,8">
             <TextBlock x:Name="TseOutageText" Text="TSE-AUSFALL" Foreground="#FF8A80" FontWeight="Bold" FontSize="11"/>
           </Border>
-          <Button x:Name="StockWarningBadge" IsVisible="False" Click="OnInventoryClick" Background="#493A12" BorderBrush="#D6A83C" BorderThickness="1" CornerRadius="8" Padding="10,8">
-            <TextBlock x:Name="StockWarningText" Text="BESTAND" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
-          </Button>
+          <Border x:Name="FiscalModeBadge" Background="#493A12" CornerRadius="8" Padding="12,8">
+            <TextBlock x:Name="FiscalModeText" Text="TESTBETRIEB · FISKAL GESPERRT" Foreground="#FFD166" FontWeight="Bold"/>
+          </Border>
           <Border x:Name="LicenseWarningBadge" IsVisible="False" Background="#5A3A10" BorderBrush="#E3A62F" BorderThickness="1" CornerRadius="8" Padding="10,8">
             <TextBlock x:Name="LicenseWarningText" Text="LIZENZ" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
           </Border>
+          <Button x:Name="StockWarningBadge" IsVisible="False" Click="OnInventoryClick" Background="#493A12" BorderBrush="#D6A83C" BorderThickness="1" CornerRadius="8" Padding="10,8">
+            <TextBlock x:Name="StockWarningText" Text="BESTAND" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
+          </Button>
           <Button x:Name="UpdateButton" IsVisible="False" Content="UPDATE" Click="OnUpdateClick"
                   Background="#17466A" Foreground="#DDF7FF" BorderBrush="#3C9ED3" BorderThickness="1"
                   CornerRadius="8" Padding="10,8" FontWeight="Bold" FontSize="11"/>
-          <Border Background="#1A2D46" CornerRadius="8" Padding="12,8">
+          <Border x:Name="UserModeBadge" Background="#1A2D46" CornerRadius="8" Padding="12,8">
             <TextBlock x:Name="UserModeText" Text="ADMIN · Vollzugriff" Foreground="#9CC3FF" FontWeight="Bold"/>
           </Border>
-          <Border Background="#493A12" CornerRadius="8" Padding="12,8">
-            <TextBlock x:Name="FiscalModeText" Text="TESTBETRIEB · FISKAL GESPERRT" Foreground="#FFD166" FontWeight="Bold"/>
-          </Border>
+          </StackPanel>
+        </Grid>
+
+        <!-- R126: never clipped - these three are needed to finish a sale
+             correctly (Im Haus VAT, split payment) and to hand over the till. -->
+        <StackPanel Grid.Column="2" x:Name="HeaderActionsPanel" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Button x:Name="ImHausToggleButton" IsVisible="False" Click="OnImHausToggleClick"
                   Background="#26445E" BorderBrush="#5B879F" BorderThickness="1"
                   CornerRadius="8" Padding="12,8">
@@ -567,7 +607,15 @@
             CornerRadius="14"
             Padding="0"
             BoxShadow="0 0 18 0 #4053E0C0">
-      <Grid RowDefinitions="1.08*,0.92*" RowSpacing="0">
+      <!-- R126: the cart kept a 250px minimum and the numpad got whatever was
+           left, so on a short screen the keys were squeezed until their text
+           was cut. The numpad now has a floor of its own; on a normal desktop
+           both floors are far below the 1.08/0.92 split and nothing changes. -->
+      <Grid RowSpacing="0">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="1.08*" MinHeight="170"/>
+          <RowDefinition Height="0.92*" MinHeight="270"/>
+        </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
                 Background="#0B1B2D"
@@ -575,13 +623,15 @@
                 BorderThickness="1.2"
                 CornerRadius="14,14,0,0"
                 Padding="13"
-                MinHeight="250">
+                MinHeight="170">
           <Grid RowDefinitions="Auto,*,Auto">
-            <Grid ColumnDefinitions="Auto,*,Auto" Margin="2,1,2,10">
+            <Grid x:Name="CartHeaderGrid" ColumnDefinitions="Auto,*,Auto" Margin="2,1,2,10">
               <TextBlock Text="AKTUELLER VERKAUF"
                          FontSize="16"
                          FontWeight="Bold"
-                         Foreground="#F4F8FC"/>
+                         Foreground="#F4F8FC"
+                         VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis"/>
               <Border Grid.Column="1"
                       Margin="12,0"
                       Background="#12283D"
@@ -596,7 +646,9 @@
                            FontWeight="Bold"
                            Foreground="#9CC3FF"/>
               </Border>
-              <Border Grid.Column="2" Background="#142B42" CornerRadius="7" Padding="10,4">
+              <!-- R126: hidden by MainWindow when the cart panel is narrow, so
+                   EINGABE (the quantity being typed) keeps its full width. -->
+              <Border Grid.Column="2" x:Name="LocalRegisterBadge" Background="#142B42" CornerRadius="7" Padding="10,4">
                 <TextBlock Text="LOKALE KASSE"
                            FontSize="10"
                            FontWeight="SemiBold"
@@ -625,12 +677,16 @@
                              FontSize="18"
                              FontWeight="SemiBold"
                              Foreground="#7F98AF"
-                             HorizontalAlignment="Center"/>
+                             HorizontalAlignment="Center"
+                             TextAlignment="Center"
+                             TextWrapping="Wrap"/>
                   <TextBlock x:Name="CheckoutHintText"
                              Text="Danach BAR oder KARTE"
                              FontSize="11"
                              Foreground="#58748D"
-                             HorizontalAlignment="Center"/>
+                             HorizontalAlignment="Center"
+                             TextAlignment="Center"
+                             TextWrapping="Wrap"/>
                 </StackPanel>
               </Grid>
             </Border>
@@ -679,9 +735,20 @@
                 CornerRadius="0,0,14,14"
                 Padding="3"
                 ClipToBounds="True">
-          <Grid RowDefinitions="*,*,*,*,78" ColumnDefinitions="*,*,*,*"
+          <!-- R126: the payment row was a fixed 78px taken off the top of
+               whatever height was left. It now shares the space (capped at the
+               old 78px, so a large screen looks exactly as before) and only
+               shrinks towards 52px when the screen is short. -->
+          <Grid ColumnDefinitions="*,*,*,*"
                        HorizontalAlignment="Stretch"
                        VerticalAlignment="Stretch">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="1.25*" MinHeight="52" MaxHeight="78"/>
+            </Grid.RowDefinitions>
             <!-- Nummernblock -->
             <Button Grid.Row="0" Grid.Column="0" Classes="keypad" Tag="7" Click="OnNumpadDigitClick">7</Button>
             <Button Grid.Row="0" Grid.Column="1" Classes="keypad" Tag="8" Click="OnNumpadDigitClick">8</Button>
@@ -698,46 +765,57 @@
             <Button Grid.Row="2" Grid.Column="2" Classes="keypad" Tag="3" Click="OnNumpadDigitClick">3</Button>
             <Button Grid.Row="2" Grid.Column="3" x:Name="ClearButton" Classes="action" Click="OnClearClick"
                     Background="#C93432" BorderBrush="#F06461">
-              <TextBlock Text="C" FontSize="24" FontWeight="Bold"/>
+              <Viewbox StretchDirection="DownOnly"><TextBlock Text="C" FontSize="24" FontWeight="Bold"/></Viewbox>
             </Button>
 
             <Button Grid.Row="3" Grid.Column="0" Classes="keypad" Tag="0" Click="OnNumpadDigitClick">0</Button>
             <Button Grid.Row="3" Grid.Column="1" x:Name="QtyPlusButton" Classes="action" Click="OnQtyPlusClick">
-              <TextBlock Text="+1" FontSize="20" FontWeight="Bold"/>
+              <Viewbox StretchDirection="DownOnly"><TextBlock Text="+1" FontSize="20" FontWeight="Bold"/></Viewbox>
             </Button>
             <Button Grid.Row="3" Grid.Column="2" x:Name="QtyMinusButton" Classes="action" Click="OnQtyMinusClick">
-              <TextBlock Text="−1" FontSize="20" FontWeight="Bold"/>
+              <Viewbox StretchDirection="DownOnly"><TextBlock Text="−1" FontSize="20" FontWeight="Bold"/></Viewbox>
             </Button>
             <Button Grid.Row="3" Grid.Column="3" x:Name="ImmediateStornoButton" Classes="action" Click="OnRemoveClick">
+              <Viewbox StretchDirection="DownOnly">
               <StackPanel Spacing="1" HorizontalAlignment="Center">
-                <TextBlock Text="SOFORT STORNO" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock Text="SOFORT STORNO" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="90"/>
                 <TextBlock Text="F4 · POSITION" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
               </StackPanel>
+              </Viewbox>
             </Button>
 
             <Button Grid.Row="4" Grid.Column="0" x:Name="EditionActionButton" Classes="action" Click="OnEditionActionClick"
                     Background="#264A5E" BorderBrush="#5B879F">
-              <TextBlock x:Name="EditionActionText" Text="PFAND" FontSize="15" FontWeight="Bold"/>
+              <Viewbox StretchDirection="DownOnly"><TextBlock x:Name="EditionActionText" Text="PFAND" FontSize="15" FontWeight="Bold"/></Viewbox>
             </Button>
             <Button Grid.Row="4" Grid.Column="1" x:Name="ParkButton" Classes="action" Click="OnParkClick">
+              <!-- R126: MaxWidth makes "BESTELLUNG ANNEHMEN" break between the
+                   words; before, a narrow key broke it inside them
+                   ("BESTELLUN / G ANNEHME / N"). -->
+              <Viewbox StretchDirection="DownOnly">
               <StackPanel Spacing="1" HorizontalAlignment="Center">
-                <TextBlock x:Name="ParkButtonText" Text="PARKEN" TextAlignment="Center" TextWrapping="Wrap" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="ParkButtonText" Text="PARKEN" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="100" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
                 <TextBlock x:Name="ParkButtonSubText" Text="F3 · BON" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
               </StackPanel>
+              </Viewbox>
             </Button>
             <Button Grid.Row="4" Grid.Column="2" x:Name="CashButton" Classes="action" Click="OnCashClick"
                     Background="#0E9F47" BorderBrush="#4DDA82">
+              <Viewbox StretchDirection="DownOnly">
               <StackPanel Spacing="1" HorizontalAlignment="Center">
-                <TextBlock x:Name="CashButtonText" Text="BAR · TEST" TextWrapping="Wrap" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="CashButtonText" Text="BAR · TEST" TextWrapping="Wrap" MaxWidth="110" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
                 <TextBlock Text="F1 · BEZAHLEN" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
               </StackPanel>
+              </Viewbox>
             </Button>
             <Button Grid.Row="4" Grid.Column="3" x:Name="CardButton" Classes="action" Click="OnCardClick"
                     Background="#1766D1" BorderBrush="#65A0FF">
+              <Viewbox StretchDirection="DownOnly">
               <StackPanel Spacing="1" HorizontalAlignment="Center">
-                <TextBlock x:Name="CardButtonText" Text="KARTE · TEST" TextWrapping="Wrap" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="CardButtonText" Text="KARTE · TEST" TextWrapping="Wrap" MaxWidth="110" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
                 <TextBlock Text="F2 · BEZAHLEN" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
               </StackPanel>
+              </Viewbox>
             </Button>
           </Grid>
         </Border>

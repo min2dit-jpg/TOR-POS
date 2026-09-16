@@ -1,8 +1,8 @@
 {
   "name": "TOR POS Pro Commercial Core",
   "_note": "R121: only the identity fields below are maintained. Everything after 'static_validation' is a frozen record of the R57-R63 build reviews and is kept for traceability, not as a current description. ReleaseInfo.cs is the authoritative version.",
-  "version": "0.7.33.824",
-  "revision": "R124",
+  "version": "0.7.33.826",
+  "revision": "R126",
   "platforms": [
     "Windows"
   ],
