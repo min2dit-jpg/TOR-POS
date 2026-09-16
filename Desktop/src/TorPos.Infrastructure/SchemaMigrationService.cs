@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 12;
+    public const int TargetSchemaVersion = 13;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -955,6 +955,50 @@ public sealed class SchemaMigrationService
                         -- saying so.
                         ALTER TABLE z_report_archive
                             ADD COLUMN master_data TEXT NOT NULL DEFAULT '';
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                13,
+                "R133_TSE_MASTER_DATA_AND_IM_HAUS",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R133: Stamm_TSE (DSFinV-K 3.2.7) once per TSE, read from the
+                        -- TSE's own TAR export. A TSE's certificate and algorithm never
+                        -- change, so the record is immutable.
+                        CREATE TABLE IF NOT EXISTS tse_master_data(
+                          serial_number TEXT PRIMARY KEY,
+                          signature_algorithm TEXT NOT NULL,
+                          signature_algorithm_oid TEXT NOT NULL,
+                          log_time_format TEXT NOT NULL,
+                          process_data_encoding TEXT NOT NULL,
+                          public_key TEXT NOT NULL,
+                          certificate TEXT NOT NULL,
+                          source TEXT NOT NULL,
+                          recorded_at TEXT NOT NULL);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_tse_master_data_no_update
+                        BEFORE UPDATE ON tse_master_data
+                        BEGIN
+                          SELECT RAISE(ABORT,'TSE master data are immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_tse_master_data_no_delete
+                        BEFORE DELETE ON tse_master_data
+                        BEGIN
+                          SELECT RAISE(ABORT,'TSE master data cannot be deleted');
+                        END;
+
+                        -- R133: Im Haus (1) / Außer Haus (0) of every sale, for
+                        -- DSFinV-K Bonpos.INHAUS. NULL for sales from before R133,
+                        -- where the choice was not stored.
+                        ALTER TABLE sales
+                            ADD COLUMN im_haus INTEGER NULL;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);

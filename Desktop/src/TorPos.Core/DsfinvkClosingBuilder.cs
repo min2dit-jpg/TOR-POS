@@ -54,6 +54,9 @@ public sealed class DsfinvkClosingInput
     public IReadOnlyDictionary<long, string> AllocationGroupBySaleId { get; init; } = new Dictionary<long, string>();
 
     public Func<long, DsfinvkProductInfo?> ProductOf { get; init; } = _ => null;
+
+    /// <summary>R133: Stamm_TSE data by TSE serial number, null if not on record.</summary>
+    public Func<string, TseMasterData?> TseMasterDataOf { get; init; } = _ => null;
 }
 
 /// <summary>The records of one Kassenabschluss, by DSFinV-K table name.</summary>
@@ -187,7 +190,7 @@ public static class DsfinvkClosingBuilder
             if (_input.AllocationGroupBySaleId.TryGetValue(sale.Id, out var group))
                 Add("Bonkopf_AbrKreis", new() { ["BON_ID"] = bonId, ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(group, 50) });
 
-            WritePositions(bonId, sale.Lines, sale.DiscountCents, sign, inHaus: null, beleg: true);
+            WritePositions(bonId, sale.Lines, sale.DiscountCents, sign, inHaus: sale.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null, beleg: true);
 
             if (FiscalProcessData.IsReversal(sale))
             {
@@ -569,11 +572,22 @@ public static class DsfinvkClosingBuilder
 
             foreach (var (serial, id) in _tseIds.OrderBy(x => x.Value))
             {
+                var tse = _input.TseMasterDataOf(serial);
+                var certificate = tse?.CertificateBase64 ?? "";
+                if (certificate.Length > 2000)
+                    throw new InvalidOperationException(
+                        $"TSE {serial}: Zertifikat hat {certificate.Length} Base64-Zeichen; die unveränderte index.xml sieht nur TSE_ZERTIFIKAT_I und _II (2.000 Zeichen) vor.");
+
                 Add("Stamm_TSE", new()
                 {
                     ["TSE_ID"] = id,
                     ["TSE_SERIAL"] = serial,
+                    ["TSE_SIG_ALGO"] = string.IsNullOrEmpty(tse?.SignatureAlgorithm) ? null : tse.SignatureAlgorithm,
+                    ["TSE_ZEITFORMAT"] = string.IsNullOrEmpty(tse?.LogTimeFormat) ? null : tse.LogTimeFormat,
                     ["TSE_PD_ENCODING"] = "UTF-8",
+                    ["TSE_PUBLIC_KEY"] = string.IsNullOrEmpty(tse?.PublicKeyBase64) ? null : tse.PublicKeyBase64,
+                    ["TSE_ZERTIFIKAT_I"] = certificate.Length == 0 ? null : certificate[..Math.Min(1000, certificate.Length)],
+                    ["TSE_ZERTIFIKAT_II"] = certificate.Length > 1000 ? certificate[1000..] : null,
                 });
             }
 

@@ -2090,12 +2090,40 @@ private Control TsePage()
                     .ToString("yyyy-MM-dd") ?? "";
         }
 
+        var masterDataNote = "";
         if (result.Success)
         {
             _text["tse.status"].Text = "AKTIV";
             _text["tse.activation_date"].Text =
                 DateTime.Now.ToString("yyyy-MM-dd");
             _text["tse.last_error"].Text = "";
+
+            // R133: right after activation the TSE export is still small; it
+            // provides certificate, public key, signature algorithm and log
+            // time format for Stamm_TSE. A failure here does not undo the
+            // activation - the data can be taken from any later TSE export.
+            try
+            {
+                Directory.CreateDirectory(AppPaths.TseExportsPath);
+                var activationExport = Path.Combine(AppPaths.TseExportsPath, $"TSE-Aktivierung-{DateTime.Now:yyyyMMdd-HHmmss}.tar");
+                var exported = await _tseProvider.ExportTarAsync(activationExport);
+                if (exported.Success)
+                {
+                    var serials = await new TseMasterDataRepository(new SqliteDatabase(AppPaths.DatabasePath), _audit)
+                        .ImportFromTarAsync(activationExport, _currentUser.Username);
+                    masterDataNote = serials.Count > 0
+                        ? " · TSE-Stammdaten übernommen"
+                        : " · TSE-Stammdaten nicht im Export gefunden - später über TSE-Export übernehmen";
+                }
+                else
+                {
+                    masterDataNote = " · TSE-Stammdaten später über TSE-Export übernehmen: " + exported.Message;
+                }
+            }
+            catch (Exception ex)
+            {
+                masterDataNote = " · TSE-Stammdaten später über TSE-Export übernehmen: " + ex.Message;
+            }
         }
         else
         {
@@ -2125,7 +2153,7 @@ private Control TsePage()
                     _text["tse.expiry_date"].Text ?? ""
             });
 
-        StatusText.Text = result.Message;
+        StatusText.Text = result.Message + masterDataNote;
     };
 
     exportTar.Click += async (_,_) =>
@@ -2144,9 +2172,17 @@ private Control TsePage()
         var result =
             await _tseProvider.ExportTarAsync(target);
 
+        var imported = "";
+        if (result.Success)
+        {
+            var serials = await new TseMasterDataRepository(new SqliteDatabase(AppPaths.DatabasePath), _audit)
+                .ImportFromTarAsync(target, _currentUser.Username);
+            imported = serials.Count > 0 ? " · TSE-Stammdaten übernommen" : "";
+        }
+
         StatusText.Text =
             result.Success
-                ? $"TSE TAR gespeichert: {result.FilePath}"
+                ? $"TSE TAR gespeichert: {result.FilePath}{imported}"
                 : result.Message;
     };
 

@@ -165,11 +165,16 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 CheckMasterData(closing.Master!, issues, $"Z_NR {closing.ZNumber}: ");
 
             var products = await LoadProductsAsync(c, ct);
+            var tseMasterData = await TseMasterDataRepository.LoadAllAsync(c, ct);
+            var tseWithoutMasterData = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var tseWithUnknownAlgorithm = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var salesWithoutImHaus = 0;
+            void NoteTse(string transactionNumber, string serial) =>
+                CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
             var outages = await LoadOutagesAsync(c, ct);
             var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
             var sales = new SaleRepository(_db);
 
-            var anySigned = false;
             var anyUnsignedCash = false;
             var anyOrder = false;
             var anyCancelledOrder = false;
@@ -185,7 +190,9 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     var sale = await sales.GetByIdAsync(id, ct)
                         ?? throw new InvalidOperationException($"Verkauf {id} konnte nicht gelesen werden.");
                     saleList.Add(sale);
-                    anySigned |= sale.TseTransactionNumber.Length > 0;
+                    if (sale.ImHaus is null)
+                        salesWithoutImHaus++;
+                    NoteTse(sale.TseTransactionNumber, sale.TseSerialNumber);
                     if (!sale.TseOutage && sale.TseTransactionNumber.Length == 0)
                         anyWithoutTse.Add(sale.ReceiptNumber);
                 }
@@ -196,7 +203,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 var orders = await LoadOrdersAsync(c, closing, ct);
                 anyOrder |= orders.Count > 0;
                 anyCancelledOrder |= orders.Any(o => o.Cancelled);
-                anySigned |= orders.Any(o => o.Order.TseTransactionNumber.Length > 0);
+                foreach (var loaded in orders)
+                    NoteTse(loaded.Order.TseTransactionNumber, loaded.Order.TseSerialNumber);
 
                 foreach (var sale in saleList)
                     CheckVat(sale.Lines, $"Beleg {sale.ReceiptNumber}", issues);
@@ -214,6 +222,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     OutageReasonAt = at => OutageReasonAt(outages, at),
                     AllocationGroupBySaleId = allocationBySale,
                     ProductOf = productId => products.TryGetValue(productId, out var p) ? p : null,
+                    TseMasterDataOf = serial => tseMasterData.TryGetValue(serial, out var tse) ? tse : null,
                 };
 
                 if (issues.Any(x => x.Blocking))
@@ -245,12 +254,15 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             if (!FiscalRelease.Enabled)
                 issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
             if (withoutSnapshot.Count > 0)
-                issues.Add(new("STAMMDATEN", $"{withoutSnapshot.Count} Kassenabschlüsse stammen aus der Zeit vor R132 und haben keine eigenen Stammdaten; für sie werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
+                issues.Add(new("STAMMDATEN", (withoutSnapshot.Count == 1 ? "1 Kassenabschluss stammt" : $"{withoutSnapshot.Count} Kassenabschlüsse stammen") + $" aus der Zeit vor R132 ohne eigene Stammdaten; dafür werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
             issues.Add(new("BON_START", "Vorgangsbeginn (BON_START) und TSE-Startzeit (TSE_TA_START) werden noch nicht gespeichert; die Felder bleiben leer.", Blocking: false));
-            issues.Add(new("INHAUS", "Im Haus/Außer Haus wird je Verkauf nicht gespeichert; INHAUS bleibt bei Verkäufen leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
+            if (salesWithoutImHaus > 0)
+                issues.Add(new("INHAUS", (salesWithoutImHaus == 1 ? "1 Verkauf stammt" : $"{salesWithoutImHaus} Verkäufe stammen") + " aus der Zeit vor R133, als Im Haus/Außer Haus nicht gespeichert wurde; INHAUS bleibt dort leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
             issues.Add(new("TRAINING", "Trainingsvorgänge werden von TOR nicht aufgezeichnet und fehlen daher als AVTraining.", Blocking: false));
-            if (anySigned)
-                issues.Add(new("TSE_STAMMDATEN", "TSE-Signaturalgorithmus, Zeitformat, öffentlicher Schlüssel und Zertifikat werden noch nicht gespeichert; Stamm_TSE enthält nur Seriennummer und Kodierung.", Blocking: false));
+            if (tseWithoutMasterData.Count > 0)
+                issues.Add(new("TSE_STAMMDATEN", $"Für TSE {string.Join(", ", tseWithoutMasterData)} liegen Zertifikat, öffentlicher Schlüssel, Signaturalgorithmus und Zeitformat nicht vor. Bitte einen TSE-Export (TAR) erstellen - TOR übernimmt die Daten daraus.", Blocking: false));
+            if (tseWithUnknownAlgorithm.Count > 0)
+                issues.Add(new("TSE_ALGORITHMUS", $"Der Signaturalgorithmus von TSE {string.Join(", ", tseWithUnknownAlgorithm)} ist keinem Namen aus DSFinV-K Anhang E zugeordnet; TSE_SIG_ALGO bleibt leer.", Blocking: false));
             if (anyUnsignedCash)
                 issues.Add(new("KASSENBEWEGUNG", "Einlagen/Entnahmen sind nicht TSE-gesichert und nur als allgemeine Einzahlung/Auszahlung klassifiziert (nicht Geldtransit/Privatentnahme usw.).", Blocking: false));
             if (anyOrder)
@@ -273,6 +285,21 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 summaries,
                 csv);
         });
+    }
+
+    private static void CheckTse(
+        string transactionNumber,
+        string serial,
+        IReadOnlyDictionary<string, TseMasterData> known,
+        ISet<string> missing,
+        ISet<string> unknownAlgorithm)
+    {
+        if (transactionNumber.Length == 0 || serial.Length == 0)
+            return;
+        if (!known.TryGetValue(serial, out var tse))
+            missing.Add(serial);
+        else if (tse.SignatureAlgorithm.Length == 0)
+            unknownAlgorithm.Add($"{serial} ({tse.SignatureAlgorithmOid})");
     }
 
     private static void CheckMasterData(DsfinvkMasterData master, List<DsfinvkPreflightIssue> issues, string prefix)

@@ -26,7 +26,7 @@ public static class R132ReviewTests
         {
             using var q = c.CreateCommand();
             q.CommandText = "SELECT COUNT(*) FROM pragma_table_info('z_report_archive') WHERE name='master_data';";
-            assert(Convert.ToInt64(q.ExecuteScalar()) == 1 && SchemaMigrationService.TargetSchemaVersion == 12,
+            assert(Convert.ToInt64(q.ExecuteScalar()) == 1 && SchemaMigrationService.TargetSchemaVersion >= 12,
                 "R132 schema migration V12 adds master_data to z_report_archive");
         }
 

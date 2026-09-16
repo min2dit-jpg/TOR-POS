@@ -37,6 +37,8 @@ public static class AppPaths
     public static string ReceiptAssetsPath => Path.Combine(DataDirectory, "ReceiptAssets");
     public static string BackupsPath => Path.Combine(DataDirectory, "Backups");
     public static string UpdatesPath => Path.Combine(DataDirectory, "Updates");
+    /// <summary>R133: TSE TAR exports TOR creates itself (after activation), kept with the till's data.</summary>
+    public static string TseExportsPath => Path.Combine(DataDirectory, "TseExports");
     public static string EditionLockPath => Path.Combine(DataDirectory, "edition.lock");
     public static string FirstRunAdminPath => Path.Combine(DataDirectory, "first-run-admin.cfg");
     public static string SecurityInitializedPath => Path.Combine(DataDirectory, "security.initialized");
@@ -1967,12 +1969,12 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                     receipt_number,pickup_number,created_at,payment_method,
                     subtotal_cents,discount_cents,total_cents,fiscal_status,
                     list_subtotal_cents,promotion_discount_cents,
-                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents)
+                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus)
                 VALUES(
                     $r,$pickup,$d,$p,
                     $s,$x,$t,'TEST_TSE_NOT_CONNECTED',
                     $list,$promotion,
-                    'SALE',NULL,$cash,$card);
+                    'SALE',NULL,$cash,$card,$imHaus);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$r", receipt);
@@ -1986,6 +1988,7 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Parameters.AddWithValue("$promotion", promotionDiscount);
             q.Parameters.AddWithValue("$cash", snapshot.EffectiveCashPortionCents);
             q.Parameters.AddWithValue("$card", snapshot.EffectiveCardPortionCents);
+            q.Parameters.AddWithValue("$imHaus", snapshot.ImHaus ? 1 : 0);
             saleId = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
         }
 
@@ -2212,7 +2215,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        COALESCE(t.log_time,''),
                        COALESCE(t.outage,0),
                        COALESCE(s.cash_portion_cents,0),
-                       COALESCE(s.card_portion_cents,0)
+                       COALESCE(s.card_portion_cents,0),
+                       s.im_haus
                 FROM sales s
                 LEFT JOIN sale_operators o ON o.sale_id=s.id
                 LEFT JOIN sale_tse_signatures t ON t.sale_id=s.id
@@ -2253,7 +2257,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                 TseLogTime = string.IsNullOrWhiteSpace(r.GetString(18)) ? null : DateTimeOffset.Parse(r.GetString(18)),
                 TseOutage = r.GetInt64(19) != 0,
                 CashPortionCents = r.GetInt64(20),
-                CardPortionCents = r.GetInt64(21)
+                CardPortionCents = r.GetInt64(21),
+                ImHaus = r.IsDBNull(22) ? null : r.GetInt64(22) != 0
             };
         }
 
@@ -2409,12 +2414,12 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                     receipt_number,pickup_number,created_at,payment_method,
                     subtotal_cents,discount_cents,total_cents,fiscal_status,
                     list_subtotal_cents,promotion_discount_cents,
-                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents)
+                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus)
                 VALUES(
                     $r,0,$d,$pm,
                     $subtotal,$discount,$total,'TEST_TSE_NOT_CONNECTED',
                     $list,$promotion,
-                    'STORNO',$original,$cash,$card);
+                    'STORNO',$original,$cash,$card,$imHaus);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$r", receipt);
@@ -2428,6 +2433,7 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
             q.Parameters.AddWithValue("$original", originalSaleId);
             q.Parameters.AddWithValue("$cash", originalCashPortion);
             q.Parameters.AddWithValue("$card", originalCardPortion);
+            q.Parameters.AddWithValue("$imHaus", original.ImHaus is bool stornoImHaus ? (stornoImHaus ? 1 : 0) : DBNull.Value);
             try
             {
                 saleId = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
@@ -2652,11 +2658,11 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 INSERT INTO sales(
                     receipt_number,pickup_number,created_at,payment_method,
                     subtotal_cents,discount_cents,total_cents,fiscal_status,
-                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents)
+                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus)
                 VALUES(
                     $r,0,$d,$pm,
                     $subtotal,$discount,$total,'TEST_TSE_NOT_CONNECTED',
-                    'RETURN',$original,$cash,$card);
+                    'RETURN',$original,$cash,$card,$imHaus);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$r", receipt);
@@ -2668,6 +2674,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
             q.Parameters.AddWithValue("$original", originalSaleId);
             q.Parameters.AddWithValue("$cash", returnCashPortion);
             q.Parameters.AddWithValue("$card", returnCardPortion);
+            q.Parameters.AddWithValue("$imHaus", original.ImHaus is bool returnImHaus ? (returnImHaus ? 1 : 0) : DBNull.Value);
             saleId = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
         }
 

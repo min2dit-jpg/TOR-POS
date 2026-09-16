@@ -266,6 +266,9 @@ public sealed class Sale
     public long PromotionDiscountCents { get; set; }
     public long TotalCents { get; set; }
     public string TransactionType { get; set; } = "SALE";
+
+    /// <summary>R133: Im Haus (true) / Außer Haus (false); null for sales from before R133.</summary>
+    public bool? ImHaus { get; set; }
     public long? OriginalSaleId { get; set; }
     /// <summary>Receipt number of the original sale a STORNO/RETURN references, if any. Never set for TransactionType="SALE".</summary>
     public long? OriginalReceiptNumber { get; set; }

@@ -3785,8 +3785,19 @@ public partial class MainWindow:Window
         try
         {
             var result = await _tseProvider.ExportTarAsync(file.Path.LocalPath);
+            var masterData = "";
+            if (result.Success)
+            {
+                // R133: the export carries the TSE's certificate, public key,
+                // signature algorithm and log time format (Stamm_TSE).
+                var serials = await new TseMasterDataRepository(new SqliteDatabase(AppPaths.DatabasePath), _audit)
+                    .ImportFromTarAsync(file.Path.LocalPath, _currentUser.Username);
+                masterData = serials.Count > 0
+                    ? " · TSE-Stammdaten übernommen"
+                    : " · keine TSE-Stammdaten im Export gefunden";
+            }
             ScannerStatus.Text = result.Success
-                ? $"TSE Export erstellt: {result.FilePath}"
+                ? $"TSE Export erstellt: {result.FilePath}{masterData}"
                 : "TSE Export fehlgeschlagen: " + result.Message;
         }
         catch (Exception ex)
