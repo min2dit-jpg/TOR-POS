@@ -3715,6 +3715,30 @@ public partial class MainWindow:Window
                 return;
             }
 
+            // R131: the export exists now. What TOR does not record yet is
+            // shown before the folder is chosen and also written into the
+            // export's own TOR-EXPORTPROTOKOLL.txt.
+            if (preflight.Issues.Count > 0)
+            {
+                var hints = new ReportDocument(
+                    "DSFINV-K 2.4 EXPORT - HINWEISE",
+                    new[]
+                    {
+                        $"Zeitraum: {from:dd.MM.yyyy} - {to:dd.MM.yyyy}",
+                        "Exportstatus: BEREIT",
+                        "Die folgenden Hinweise werden mit in den Export geschrieben.",
+                        ""
+                    }.Concat(preflight.Issues.Select(x => $"{x.Code}: {x.Message}")).ToArray(),
+                    DateTimeOffset.Now);
+                await new TextReportWindow(
+                    _management,
+                    hints,
+                    _receiptPrinter,
+                    _settings,
+                    "Nach dem Schließen dieses Fensters wird der Zielordner gewählt.")
+                    .ShowDialog(this);
+            }
+
             var folders = await StorageProvider.OpenFolderPickerAsync(
                 new FolderPickerOpenOptions
                 {
@@ -3726,6 +3750,8 @@ public partial class MainWindow:Window
                 return;
 
             var path = await _dsfinvkExport.ExportAsync(from, to, folder.Path.LocalPath);
+            await _audit.WriteAsync(_currentUser.Username, "DSFINVK_EXPORT", "DSFINVK", Path.GetFileName(path),
+                $"from={from:O}; to={to:O}; hints={preflight.Issues.Count}");
             ScannerStatus.Text = $"DSFinV-K Export erstellt: {path}";
         }
         catch (Exception ex)

@@ -10,4 +10,9 @@
     <PackageReference Include="Portalum.Zvt" Version="3.4.0" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- R131: official DSFinV-K 2.4 description files, copied unchanged into every export -->
+    <EmbeddedResource Include="Dsfinvk\index.xml" LogicalName="TorPos.Dsfinvk.index.xml" />
+    <EmbeddedResource Include="Dsfinvk\gdpdu-01-09-2004.dtd" LogicalName="TorPos.Dsfinvk.gdpdu-01-09-2004.dtd" />
+  </ItemGroup>
 </Project>

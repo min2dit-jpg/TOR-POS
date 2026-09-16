@@ -2,7 +2,10 @@
 
 Ziel: standardisierter Prüferexport nach der vom BZSt veröffentlichten DSFinV-K.
 
-Noch nicht als produktiv implementiert.
+Stand R131: implementiert (`DsfinvkExportService`, `DsfinvkClosingBuilder`), siehe
+R131-CHANGELOG.md für die Abbildung der TOR-Daten und die offen genannten Lücken. Nicht
+produktiv freigegeben - die Validierung unten steht noch aus (Punkte 2, 3, 5 sind durch
+R131ReviewTests abgedeckt, 1, 4, 6, 7 benötigen Prüfsoftware bzw. reale TSE).
 
 ## Muss aus TOR exportierbar werden
 - Kasseneinzelbewegungen

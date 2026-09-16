@@ -2,3 +2,6 @@
 # find GOTO/CALL labels in a batch file saved with LF-only line endings.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+# R131: the official DSFinV-K index.xml and GDPdU DTD are shipped byte for byte
+# as the BZSt publishes them; no line-ending conversion.
+Desktop/src/TorPos.Infrastructure/Dsfinvk/** -text

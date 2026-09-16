@@ -44,6 +44,15 @@ die mit der konkret verwendeten Paketversion gelieferte Lizenzdatei.
 - Zertifizierung, Terminalvertrag, Netzbetreiberfreigabe und ZVT-Konfiguration
   des konkreten Zahlungsdienstleisters sind keine Rechte aus der MIT-Lizenz.
 
+### DSFinV-K Beschreibungsdateien (BZSt)
+
+- `src/TorPos.Infrastructure/Dsfinvk/index.xml` und `gdpdu-01-09-2004.dtd` stammen
+  unverändert aus `dsfinv_k_v_2_4.zip`, veröffentlicht vom Bundeszentralamt für
+  Steuern:
+  https://www.bzst.de/DE/Unternehmen/Aussenpruefungen/DigitaleSchnittstelleFinV/digitaleschnittstellefinv_node.html
+- Sie werden unverändert in jeden DSFinV-K-Export geschrieben, wie die DSFinV-K es
+  vorsieht (SHA-256 in `R131ReviewTests`).
+
 ## Release-Nachweis
 
 Für jeden freizugebenden Build archivieren:

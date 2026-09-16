@@ -62,6 +62,13 @@ Für Kassen-Nachschau und Außenprüfung müssen Kassendaten standardisiert bere
 werden. TOR zielt auf DSFinV-K 2.4. Zusätzlich müssen TSE-Daten im vorgeschriebenen
 TSE-Exportformat bereitgestellt werden.
 
+Stand R131: Der Export schreibt je Kassenabschluss alle 20 Dateien mit der unveränderten
+offiziellen index.xml des BZSt und prüft jeden Wert gegen deren Beschreibung. Was TOR
+noch nicht erfasst (Vorgangsbeginn, TSE-Stammdaten, Training, TSE-Absicherung von
+Einlagen/Entnahmen u. a.), wird im Export-Protokoll ausdrücklich genannt. Eine Abnahme mit
+Prüfsoftware und realer TSE steht aus.
+Quelle: https://www.bzst.de/DE/Unternehmen/Aussenpruefungen/DigitaleSchnittstelleFinV/digitaleschnittstellefinv_node.html
+
 ### 5. Geparkte / offene Bons
 Ein geparkter Bon ist nicht automatisch steuerlicher Umsatz. Er darf daher nicht als
 abgeschlossener Verkauf in den Z-Umsatz eingehen.
@@ -154,14 +161,14 @@ Bereits vorbereitet:
 - DSFinV-K Zielversion 2.4
 - TSE-Ausfall-Log und Fail-Safe-Schicht
 - TSE-TAR-Exportpfad über die offizielle Swissbit Runtime
-- DSFinV-K-Vollständigkeitsprüfung (noch kein freigegebener Voll-Export)
+- DSFinV-K-2.4-Export aller 20 Dateien mit Vorabprüfung und Export-Protokoll (R131, Abnahme ausstehend)
 - RSA-signierte kommerzielle Lizenzdatei, getrennt von der Fiskalfreigabe
 
 Noch zwingend offen:
 - offizielles Swissbit SDK / reale TSE
 - Start/Finish/ggf. UpdateTransaction mit realer TSE vollständig abnehmen
 - echte Kassenbeleg-/Bestellung-Verknüpfung
-- DSFinV-K 2.4 Export + Validierung
+- DSFinV-K 2.4 Export mit Prüfsoftware und realer TSE validieren
 - TSE TAR Export mit Realhardware validieren
 - produktiver §6-KassenSichV-Belegtest
 - Pfand-Steuerlogik fachlich finalisieren

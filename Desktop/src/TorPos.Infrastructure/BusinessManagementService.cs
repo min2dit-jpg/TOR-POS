@@ -1464,8 +1464,14 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             immediateStornoCents = r.GetInt64(1);
         }
 
+        // R131: this used to be Math.Max(0, ...). A period in which more was
+        // cancelled or returned than sold - the Storno of a large receipt from
+        // the day before, for instance - printed "Umsatz nach Storno/Retouren:
+        // 0,00" and archived gross_cents 0, while the VAT lines of the same
+        // Z-Bericht correctly showed the negative amounts. The DSFinV-K
+        // Kassenabschluss of that period is negative, so is this figure.
         var afterReversals =
-            Math.Max(0L, salesGross - storno - returns);
+            salesGross - storno - returns;
 
         return new OpenPeriodSummary(
             from,
