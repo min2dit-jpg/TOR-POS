@@ -56,14 +56,23 @@ public static class FiscalProcessData
 
         // Only "Bar" and "Unbar", cash first, zero payments left out. R101's
         // Effective* portions also cover sales from before the split columns.
+        // A training sale lists its (training) payments too - Anhang B allows
+        // payment types for AVTraining.
         var payments = new List<string>(2);
         if (sale.EffectiveCashPortionCents != 0)
             payments.Add($"{Amount(sign * sale.EffectiveCashPortionCents)}:Bar");
         if (sale.EffectiveCardPortionCents != 0)
             payments.Add($"{Amount(sign * sale.EffectiveCardPortionCents)}:Unbar");
 
-        return $"{VorgangstypBeleg}^{gross}^{string.Join("_", payments)}";
+        return $"{Vorgangstyp(sale)}^{gross}^{string.Join("_", payments)}";
     }
+
+    /// <summary>R135: the transaction type of a training sale.</summary>
+    public const string TrainingTransactionType = "TRAINING";
+    public const string VorgangstypTraining = "AVTraining";
+
+    public static string Vorgangstyp(Sale sale) =>
+        sale.TransactionType == TrainingTransactionType ? VorgangstypTraining : VorgangstypBeleg;
 
     /// <summary>
     /// R134: Einlage / Entnahme as Kassenbeleg-V1. They carry no VAT, so the

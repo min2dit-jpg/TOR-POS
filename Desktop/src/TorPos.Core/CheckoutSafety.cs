@@ -40,6 +40,21 @@ public static class SaleModePolicy
         bool fiscalReleaseEnabled,
         bool productionAllowed) =>
         !CanCommitProductionSale(isTraining, licenseActive, fiscalReleaseEnabled, productionAllowed);
+
+    /// <summary>
+    /// R135: AEAO zu § 146a Nr. 1.11.1 counts Trainingsbuchungen among the
+    /// Vorgänge to be secured, and DSFinV-K 4.2.6 / Anhang B wants them
+    /// recorded as AVTraining. That applies to a till that books for real: a
+    /// training sale there is recorded and signed, without any effect on the
+    /// closing. A till that is not released for real bookings records nothing
+    /// fiscal at all, training included.
+    /// </summary>
+    public static bool RecordsTrainingFiscally(
+        bool isTraining,
+        bool licenseActive,
+        bool fiscalReleaseEnabled,
+        bool productionAllowed) =>
+        isTraining && licenseActive && fiscalReleaseEnabled && productionAllowed;
 }
 
 public sealed record CheckoutSnapshot(

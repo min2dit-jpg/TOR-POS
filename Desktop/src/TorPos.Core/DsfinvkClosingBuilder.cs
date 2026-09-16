@@ -32,6 +32,9 @@ public sealed record DsfinvkCashMovement(
     CashBusinessCase? BusinessCase = null,
     DsfinvkTseResult? Tse = null);
 
+/// <summary>R135: a training sale (TransactionType TRAINING) and its TSE record.</summary>
+public sealed record DsfinvkTraining(Sale Receipt, DsfinvkTseResult? Tse);
+
 /// <summary>R134: a stored TSE result (signature or outage with its reason).</summary>
 public sealed record DsfinvkTseResult(
     string SerialNumber,
@@ -53,6 +56,9 @@ public sealed class DsfinvkClosingInput
     public required DsfinvkMasterData Master { get; init; }
     public IReadOnlyList<Sale> Sales { get; init; } = Array.Empty<Sale>();
     public IReadOnlyList<DsfinvkCashMovement> CashMovements { get; init; } = Array.Empty<DsfinvkCashMovement>();
+
+    /// <summary>R135: training sales recorded as AVTraining.</summary>
+    public IReadOnlyList<DsfinvkTraining> Trainings { get; init; } = Array.Empty<DsfinvkTraining>();
 
     /// <summary>Only orders that went through TSE signing (signed or recorded as outage).</summary>
     public IReadOnlyList<ParkedReceipt> Orders { get; init; } = Array.Empty<ParkedReceipt>();
@@ -122,6 +128,7 @@ public static class DsfinvkClosingBuilder
     public static string SaleBonId(long receiptNumber) => receiptNumber.ToString(CultureInfo.InvariantCulture);
     public static string CashMovementBonId(long id) => $"KB-{id.ToString(CultureInfo.InvariantCulture)}";
     public static string OrderBonId(long parkNumber) => $"BE-{parkNumber.ToString(CultureInfo.InvariantCulture)}";
+    public static string TrainingBonId(long trainingNumber) => $"TR-{trainingNumber.ToString(CultureInfo.InvariantCulture)}";
     public static string OrderAllocationGroup(ParkedReceipt order) => $"Bestellung {order.DisplayNumber}";
 
     /// <summary>
@@ -164,6 +171,8 @@ public static class DsfinvkClosingBuilder
                 vorgaenge.Add((movement.CreatedAt, 1, CashMovementBonId(movement.Id), () => WriteCashMovement(movement)));
             foreach (var order in _input.Orders)
                 vorgaenge.Add((order.CreatedAt, 2, OrderBonId(order.ParkNumber), () => WriteOrder(order)));
+            foreach (var training in _input.Trainings)
+                vorgaenge.Add((training.Receipt.CreatedAt, 3, TrainingBonId(training.Receipt.ReceiptNumber), () => WriteTraining(training)));
 
             vorgaenge.Sort((a, b) => a.At != b.At ? a.At.CompareTo(b.At) : a.Order.CompareTo(b.Order));
             foreach (var vorgang in vorgaenge)
@@ -291,6 +300,48 @@ public static class DsfinvkClosingBuilder
                 FiscalProcessData.KassenbelegProcessType,
                 () => FiscalProcessData.CashMovementText(new CashMovement(movement.Id, movement.CreatedAt, movement.Kind, movement.AmountCents, movement.Reason, movement.Actor, CashMovement.ProductionMode, movement.BusinessCase)),
                 movement.CreatedAt,
+                tse?.OutageReason);
+        }
+
+        /// <summary>
+        /// R135: AVTraining (Anhang B) - recorded with its positions and the
+        /// training payments, secured by the TSE, never summed in the closing.
+        /// </summary>
+        private void WriteTraining(DsfinvkTraining training)
+        {
+            var receipt = training.Receipt;
+            var bonId = TrainingBonId(receipt.ReceiptNumber);
+
+            Add("Bonkopf", new()
+            {
+                ["BON_ID"] = bonId,
+                ["BON_NR"] = receipt.ReceiptNumber,
+                ["BON_TYP"] = FiscalProcessData.VorgangstypTraining,
+                ["BON_NAME"] = "Training",
+                ["BON_STORNO"] = "0",
+                ["BON_ENDE"] = DsfinvkCsv.Timestamp(receipt.CreatedAt),
+                ["BEDIENER_ID"] = DsfinvkCsv.Fit(receipt.OperatorName, 50),
+                ["BEDIENER_NAME"] = DsfinvkCsv.Fit(receipt.OperatorName, 50),
+                ["UMS_BRUTTO"] = new DsfinvkMoney(receipt.TotalCents),
+            });
+
+            WriteHeaderVat(bonId, receipt.Lines, receipt.DiscountCents, 1);
+            Payment(bonId, "Bar", "Bar", receipt.EffectiveCashPortionCents, beleg: false);
+            Payment(bonId, "Unbar", "Karte", receipt.EffectiveCardPortionCents, beleg: false);
+            WritePositions(bonId, receipt.Lines, receipt.DiscountCents, 1, inHaus: receipt.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null, beleg: false);
+
+            var tse = training.Tse;
+            WriteTse(
+                bonId,
+                tse?.SerialNumber ?? "",
+                tse?.TransactionNumber ?? "",
+                tse?.SignatureCounter ?? "",
+                tse?.Signature ?? "",
+                tse?.LogTime,
+                tse?.Outage ?? false,
+                FiscalProcessData.KassenbelegProcessType,
+                () => FiscalProcessData.KassenbelegText(receipt),
+                receipt.CreatedAt,
                 tse?.OutageReason);
         }
 

@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 14;
+    public const int TargetSchemaVersion = 15;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1047,6 +1047,81 @@ public sealed class SchemaMigrationService
                         BEGIN
                           SELECT RAISE(ABORT,'cash movement TSE record cannot be deleted');
                         END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                15,
+                "R135_TRAINING_AS_AVTRAINING",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R135: training sales of a till that books for real, recorded
+                        -- and TSE-secured as AVTraining (AEAO zu § 146a Nr. 1.11.1,
+                        -- DSFinV-K 4.2.6). Own tables, never sales: nothing here can
+                        -- reach a report, the stock or a Z total. Append-only.
+                        CREATE TABLE IF NOT EXISTS training_receipts(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          training_number INTEGER NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          created_at_utc TEXT GENERATED ALWAYS AS (strftime('%Y-%m-%dT%H:%M:%fZ', created_at)) VIRTUAL,
+                          operator_name TEXT NOT NULL,
+                          payment_method TEXT NOT NULL,
+                          discount_cents INTEGER NOT NULL,
+                          total_cents INTEGER NOT NULL,
+                          cash_portion_cents INTEGER NOT NULL,
+                          card_portion_cents INTEGER NOT NULL,
+                          im_haus INTEGER NOT NULL);
+
+                        CREATE TABLE IF NOT EXISTS training_receipt_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          training_id INTEGER NOT NULL REFERENCES training_receipts(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL,
+                          barcode TEXT NOT NULL,
+                          quantity REAL NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL,
+                          line_total_cents INTEGER NOT NULL,
+                          list_unit_price_cents INTEGER NOT NULL,
+                          promotion_id INTEGER NOT NULL,
+                          promotion_name TEXT NOT NULL,
+                          promotion_percent INTEGER NOT NULL,
+                          promotion_discount_unit_cents INTEGER NOT NULL);
+
+                        CREATE TABLE IF NOT EXISTS training_tse_signatures(
+                          training_id INTEGER PRIMARY KEY REFERENCES training_receipts(id),
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          signature_counter TEXT NOT NULL DEFAULT '',
+                          serial_number TEXT NOT NULL DEFAULT '',
+                          signature TEXT NOT NULL DEFAULT '',
+                          log_time TEXT NOT NULL DEFAULT '',
+                          outage INTEGER NOT NULL DEFAULT 0,
+                          outage_reason TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_training_receipts_created_utc
+                            ON training_receipts(created_at_utc);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_training_receipts_no_update BEFORE UPDATE ON training_receipts
+                        BEGIN SELECT RAISE(ABORT,'training receipts are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_receipts_no_delete BEFORE DELETE ON training_receipts
+                        BEGIN SELECT RAISE(ABORT,'training receipts cannot be deleted'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_items_no_update BEFORE UPDATE ON training_receipt_items
+                        BEGIN SELECT RAISE(ABORT,'training receipt items are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_items_no_delete BEFORE DELETE ON training_receipt_items
+                        BEGIN SELECT RAISE(ABORT,'training receipt items cannot be deleted'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_tse_no_update BEFORE UPDATE ON training_tse_signatures
+                        BEGIN SELECT RAISE(ABORT,'training TSE record is final'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_tse_no_delete BEFORE DELETE ON training_tse_signatures
+                        BEGIN SELECT RAISE(ABORT,'training TSE record cannot be deleted'); END;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);

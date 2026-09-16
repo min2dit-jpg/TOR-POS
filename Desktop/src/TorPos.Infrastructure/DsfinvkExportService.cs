@@ -205,6 +205,14 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     if (movement.Tse is { Outage: false } signedMovement)
                         NoteTse(signedMovement.TransactionNumber, signedMovement.SerialNumber);
 
+                var trainings = await TrainingReceiptRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                foreach (var training in trainings)
+                {
+                    CheckVat(training.Receipt.Lines, $"Trainingsvorgang {training.Receipt.ReceiptNumber}", issues);
+                    if (training.Tse is { Outage: false } signedTraining)
+                        NoteTse(signedTraining.TransactionNumber, signedTraining.SerialNumber);
+                }
+
                 var orders = await LoadOrdersAsync(c, closing, ct);
                 anyOrder |= orders.Count > 0;
                 anyCancelledOrder |= orders.Any(o => o.Cancelled);
@@ -222,6 +230,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     Master = closing.Master ?? master,
                     Sales = saleList,
                     CashMovements = movements,
+                    Trainings = trainings,
                     Orders = orders.Select(o => o.Order).ToList(),
                     OriginalOf = originalId => FindOriginal(c, closings, originalId),
                     OutageReasonAt = at => OutageReasonAt(outages, at),
@@ -238,7 +247,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     var rows = DsfinvkClosingBuilder.Build(input);
                     foreach (var table in OfficialTables)
                         csv[table.Name].AddRange(rows.For(table.Name).Select(row => DsfinvkCsv.Row(table, row)));
-                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count));
+                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count));
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -263,7 +272,6 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             issues.Add(new("BON_START", "Vorgangsbeginn (BON_START) und TSE-Startzeit (TSE_TA_START) werden noch nicht gespeichert; die Felder bleiben leer.", Blocking: false));
             if (salesWithoutImHaus > 0)
                 issues.Add(new("INHAUS", (salesWithoutImHaus == 1 ? "1 Verkauf stammt" : $"{salesWithoutImHaus} Verkäufe stammen") + " aus der Zeit vor R133, als Im Haus/Außer Haus nicht gespeichert wurde; INHAUS bleibt dort leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
-            issues.Add(new("TRAINING", "Trainingsvorgänge werden von TOR nicht aufgezeichnet und fehlen daher als AVTraining.", Blocking: false));
             if (tseWithoutMasterData.Count > 0)
                 issues.Add(new("TSE_STAMMDATEN", $"Für TSE {string.Join(", ", tseWithoutMasterData)} liegen Zertifikat, öffentlicher Schlüssel, Signaturalgorithmus und Zeitformat nicht vor. Bitte einen TSE-Export (TAR) erstellen - TOR übernimmt die Daten daraus.", Blocking: false));
             if (tseWithUnknownAlgorithm.Count > 0)

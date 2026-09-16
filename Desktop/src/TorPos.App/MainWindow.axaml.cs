@@ -2284,6 +2284,23 @@ public partial class MainWindow:Window
                     !await new CardTestPaymentWindow(snapshot.EffectiveCardPortionCents).ShowDialog<bool>(this)) return;
                 await _audit.WriteAsync(_currentUser.Username,"TEST_SALE_COMPLETED","SIMULATION",snapshot.OperationId,
                     $"total_cents={snapshot.TotalCents}; payment={method}; no_fiscal_sale=true");
+                // R135: on a till that books for real, a training sale is an
+                // AVTraining Vorgang (AEAO zu § 146a Nr. 1.11.1, DSFinV-K 4.2.6):
+                // recorded and TSE-secured, never part of turnover or the closing.
+                if (RecordsTrainingFiscally())
+                {
+                    try
+                    {
+                        var trainings = new TrainingReceiptRepository(new SqliteDatabase(AppPaths.DatabasePath));
+                        var training = await trainings.RecordAsync(snapshot);
+                        await new TrainingFiscalSigningService(_tseFailSafe, _settings, trainings)
+                            .SignAsync(training, _currentUser.Username);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportOperationalError("TRAINING", "Trainingsvorgang konnte nicht als AVTraining erfasst werden: " + ex.Message, ex);
+                    }
+                }
                 long testPickup = 0;
                 var pickupMode = GetImbissPickupMode();
                 if (_activeParkedReceiptId is long testParkedLookup)
@@ -4452,6 +4469,19 @@ public partial class MainWindow:Window
     /// sale". The rule itself lives in TorPos.Core.SaleModePolicy so it can be
     /// asserted in the safety suite without constructing a window.
     /// </summary>
+    /// <summary>R135: see SaleModePolicy.RecordsTrainingFiscally.</summary>
+    private bool RecordsTrainingFiscally()
+    {
+        var edition = InstallationEdition.ReadLocked()
+            ?? _settingsCache.GetText("business.mode", "IMBISS").ToUpperInvariant();
+
+        return SaleModePolicy.RecordsTrainingFiscally(
+            _currentUser.IsTraining,
+            _commercialLicense.Check(edition).IsActive,
+            FiscalRelease.Enabled,
+            _fiscalReadiness?.ProductionAllowed == true);
+    }
+
     private bool CanCommitProductionSale()
     {
         var edition = InstallationEdition.ReadLocked()

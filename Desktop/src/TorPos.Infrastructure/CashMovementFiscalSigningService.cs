@@ -3,6 +3,64 @@ using TorPos.Core;
 namespace TorPos.Infrastructure;
 
 /// <summary>
+/// R135: one Kassenbeleg-V1 transaction for a Vorgang whose data are complete -
+/// start without data, finish with the Anhang I processData. Shared by the cash
+/// movement (R134) and training (R135) signing; a TSE that is not active or not
+/// configured, or a failing call, gives a documented outage, never an exception
+/// that could undo the recorded Vorgang.
+/// </summary>
+internal static class TseKassenbelegSigner
+{
+    public static async Task<SaleTseResult> SignAsync(
+        TseFailSafeService tse,
+        ISettingsRepository settingsRepository,
+        string processData,
+        string vorgang,
+        string actor,
+        CancellationToken ct)
+    {
+        var settings = await settingsRepository.LoadAllAsync(ct);
+        var tseStatus = (settings.GetValueOrDefault("tse.status") ?? "").Trim();
+        if (!string.Equals(tseStatus, "AKTIV", StringComparison.OrdinalIgnoreCase))
+        {
+            var reason = $"TSE ist nicht aktiv (Status: {(tseStatus.Length == 0 ? "nicht gesetzt" : tseStatus)}). {vorgang} wurde ohne TSE-Signatur erfasst.";
+            await tse.ReportUnavailableAsync(reason, actor, ct);
+            return SaleTseResult.Outage(reason);
+        }
+
+        var clientId = (settings.GetValueOrDefault("tse.client_id") ?? "").Trim();
+        if (clientId.Length == 0)
+        {
+            var reason = $"TSE-Client-ID ist nicht konfiguriert. {vorgang} wurde ohne TSE-Signatur erfasst.";
+            await tse.ReportUnavailableAsync(reason, actor, ct);
+            return SaleTseResult.Outage(reason);
+        }
+
+        var (start, _) = await tse.StartTransactionAsync(
+            new TseTransactionStartRequest(clientId, FiscalProcessData.StartProcessData, FiscalProcessData.StartProcessType),
+            actor,
+            ct);
+        if (!start.Success)
+            return SaleTseResult.Outage(start.Message);
+
+        var (finish, _) = await tse.FinishTransactionAsync(
+            new TseTransactionFinishRequest(clientId, start.TransactionNumber, System.Text.Encoding.UTF8.GetBytes(processData), FiscalProcessData.KassenbelegProcessType),
+            actor,
+            ct);
+        if (!finish.Success)
+            return SaleTseResult.Outage(finish.Message);
+
+        return SaleTseResult.SignedResult(
+            clientId,
+            finish.TransactionNumber.ToString(),
+            finish.SignatureCounter.ToString(),
+            finish.SerialNumber,
+            finish.SignatureBase64,
+            finish.LogTime);
+    }
+}
+
+/// <summary>
 /// R134: TSE signing of a production Einlage / Entnahme.
 ///
 /// AEAO zu § 146a Nr. 1.10.2 lists Privatentnahme, Privateinlage,
@@ -36,64 +94,8 @@ public sealed class CashMovementFiscalSigningService
         if (movement.FiscalMode != CashMovement.ProductionMode)
             throw new InvalidOperationException("Nur echte (Produktiv-)Kassenbewegungen werden von der TSE abgesichert.");
 
-        var settings = await _settings.LoadAllAsync(ct);
-        var tseStatus = (settings.GetValueOrDefault("tse.status") ?? "").Trim();
-        if (!string.Equals(tseStatus, "AKTIV", StringComparison.OrdinalIgnoreCase))
-        {
-            return await OutageAsync(
-                movement,
-                $"TSE ist nicht aktiv (Status: {(tseStatus.Length == 0 ? "nicht gesetzt" : tseStatus)}). Kassenbewegung wurde ohne TSE-Signatur gebucht.",
-                actor,
-                reportUnavailable: true,
-                ct);
-        }
-
-        var clientId = (settings.GetValueOrDefault("tse.client_id") ?? "").Trim();
-        if (clientId.Length == 0)
-        {
-            return await OutageAsync(
-                movement,
-                "TSE-Client-ID ist nicht konfiguriert. Kassenbewegung wurde ohne TSE-Signatur gebucht.",
-                actor,
-                reportUnavailable: true,
-                ct);
-        }
-
-        var processData = FiscalProcessData.BuildCashMovement(movement);
-
-        var (start, _) = await _tse.StartTransactionAsync(
-            new TseTransactionStartRequest(clientId, FiscalProcessData.StartProcessData, FiscalProcessData.StartProcessType),
-            actor,
-            ct);
-        if (!start.Success)
-            return await OutageAsync(movement, start.Message, actor, reportUnavailable: false, ct);
-
-        var (finish, _) = await _tse.FinishTransactionAsync(
-            new TseTransactionFinishRequest(clientId, start.TransactionNumber, processData, FiscalProcessData.KassenbelegProcessType),
-            actor,
-            ct);
-        if (!finish.Success)
-            return await OutageAsync(movement, finish.Message, actor, reportUnavailable: false, ct);
-
-        var result = SaleTseResult.SignedResult(
-            clientId,
-            finish.TransactionNumber.ToString(),
-            finish.SignatureCounter.ToString(),
-            finish.SerialNumber,
-            finish.SignatureBase64,
-            finish.LogTime);
-        await _movements.RecordTseResultAsync(movement.Id, result, ct);
-        return result;
-    }
-
-    private async Task<SaleTseResult> OutageAsync(CashMovement movement, string reason, string actor, bool reportUnavailable, CancellationToken ct)
-    {
-        // The TSE calls themselves already opened the outage record on
-        // failure; an inactive or unconfigured TSE has to report it here.
-        if (reportUnavailable)
-            await _tse.ReportUnavailableAsync(reason, actor, ct);
-
-        var result = SaleTseResult.Outage(reason);
+        var result = await TseKassenbelegSigner.SignAsync(
+            _tse, _settings, FiscalProcessData.CashMovementText(movement), "Kassenbewegung", actor, ct);
         await _movements.RecordTseResultAsync(movement.Id, result, ct);
         return result;
     }

@@ -188,7 +188,7 @@ public static class R131ReviewTests
         var codes = report.Issues.Select(x => x.Code).ToHashSet();
         assert(report.Ready && report.Issues.All(x => !x.Blocking),
             $"R131 a closed period with complete company data is exportable (blocking: {string.Join(" | ", report.Issues.Where(x => x.Blocking).Select(x => x.Message))})");
-        assert(new[] { "BON_START", "TRAINING", "KASSENBEWEGUNG", "TSE_STAMMDATEN", "BESTELLUNG", "INHAUS" }.All(codes.Contains) &&
+        assert(new[] { "BON_START", "KASSENBEWEGUNG", "TSE_STAMMDATEN", "BESTELLUNG", "INHAUS" }.All(codes.Contains) &&
                report.Issues.Single(x => x.Code == "OPEN_PERIOD").Message.StartsWith("1 "),
             "R131 what TOR does not record yet is reported, not hidden - and the one sale after the last closing is named as not included");
 
