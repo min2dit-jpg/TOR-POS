@@ -1,0 +1,136 @@
+
+> tor-pos-cloud@0.10.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# (node:7457) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: login, demo data, receipt detail and tenant isolation
+ok 1 - login, demo data, receipt detail and tenant isolation
+  ---
+  duration_ms: 324.063271
+  type: 'test'
+  ...
+# Subtest: consistent sale persists once; changed repeat is conflict
+ok 2 - consistent sale persists once; changed repeat is conflict
+  ---
+  duration_ms: 10.663583
+  type: 'test'
+  ...
+# Subtest: R48 IMBISS pickup number is persisted and returned in receipt detail
+ok 3 - R48 IMBISS pickup number is persisted and returned in receipt detail
+  ---
+  duration_ms: 5.559095
+  type: 'test'
+  ...
+# Subtest: same event ID on a different register does not conflict
+ok 4 - same event ID on a different register does not conflict
+  ---
+  duration_ms: 4.467942
+  type: 'test'
+  ...
+# Subtest: invalid values and HTML payment types rejected; whole batch rolls back
+ok 5 - invalid values and HTML payment types rejected; whole batch rolls back
+  ---
+  duration_ms: 13.525738
+  type: 'test'
+  ...
+# Subtest: snapshots replace removed products and older snapshots cannot reverse stock
+ok 6 - snapshots replace removed products and older snapshots cannot reverse stock
+  ---
+  duration_ms: 10.122258
+  type: 'test'
+  ...
+# Subtest: R42 stock snapshot keeps barcode, SKU, category, price and unit
+ok 7 - R42 stock snapshot keeps barcode, SKU, category, price and unit
+  ---
+  duration_ms: 4.900034
+  type: 'test'
+  ...
+# Subtest: R47 stock snapshot keeps Mindestbestand and Einkaufspreis
+ok 8 - R47 stock snapshot keeps Mindestbestand and Einkaufspreis
+  ---
+  duration_ms: 5.574326
+  type: 'test'
+  ...
+# Subtest: R46 completed sale updates cloud stock once and duplicate does not double-decrement
+ok 9 - R46 completed sale updates cloud stock once and duplicate does not double-decrement
+  ---
+  duration_ms: 10.750432
+  type: 'test'
+  ...
+# Subtest: R49 combo stock consumption decrements components instead of visible menu article
+ok 10 - R49 combo stock consumption decrements components instead of visible menu article
+  ---
+  duration_ms: 5.956706
+  type: 'test'
+  ...
+# Subtest: R46 delayed sale older than latest stock snapshot cannot decrement it again
+ok 11 - R46 delayed sale older than latest stock snapshot cannot decrement it again
+  ---
+  duration_ms: 5.909871
+  type: 'test'
+  ...
+# Subtest: Berlin calendar and DST boundaries
+ok 12 - Berlin calendar and DST boundaries
+  ---
+  duration_ms: 13.192974
+  type: 'test'
+  ...
+# Subtest: pagination reaches older receipts
+ok 13 - pagination reaches older receipts
+  ---
+  duration_ms: 47.002797
+  type: 'test'
+  ...
+# Subtest: R62 Google QR pairing is device-authenticated and returns a scannable matrix
+ok 14 - R62 Google QR pairing is device-authenticated and returns a scannable matrix
+  ---
+  duration_ms: 13.007798
+  type: 'test'
+  ...
+# Subtest: R48 update manifest and download endpoint
+ok 15 - R48 update manifest and download endpoint
+  ---
+  duration_ms: 6.064426
+  type: 'test'
+  ...
+# Subtest: R45 TOTP enrollment and challenge login
+ok 16 - R45 TOTP enrollment and challenge login
+  ---
+  duration_ms: 51.331352
+  type: 'test'
+  ...
+# Subtest: credential and browser-origin protection
+ok 17 - credential and browser-origin protection
+  ---
+  duration_ms: 13.229277
+  type: 'test'
+  ...
+# Subtest: invalid hash preserves active update
+ok 18 - invalid hash preserves active update
+  ---
+  duration_ms: 6.641434
+  type: 'test'
+  ...
+# Subtest: new publication preserves old installer and disable changes manifest
+ok 19 - new publication preserves old installer and disable changes manifest
+  ---
+  duration_ms: 2.776648
+  type: 'test'
+  ...
+# Subtest: lock and absent signature metadata prevent publication
+ok 20 - lock and absent signature metadata prevent publication
+  ---
+  duration_ms: 3.126222
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 622.612921

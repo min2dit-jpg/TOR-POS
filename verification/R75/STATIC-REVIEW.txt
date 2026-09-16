@@ -1,0 +1,41 @@
+TOR POS R75 STATIC REVIEW
+
+PASS - Application project exists
+PASS - Application target net10
+PASS - Application references Core
+PASS - Application no Infrastructure project reference
+PASS - Application source no Infrastructure namespace
+PASS - Application no Avalonia code reference
+PASS - Application no SQLite code reference
+PASS - Core checkout interface
+PASS - Infrastructure implements interface
+PASS - ZVT uses interface
+PASS - App references Application
+PASS - Safety references Application
+PASS - DI registers journal interface
+PASS - DI registers application service
+PASS - MainWindow uses Application service
+PASS - MainWindow direct terminal field removed
+PASS - MainWindow direct card PayAsync removed
+PASS - MainWindow delegates checkout
+PASS - Safety delegates reconciliation
+PASS - Safety direct ResolveAsync removed
+PASS - Diagnostics uses interface
+PASS - Schema remains V5
+PASS - R74 health preserved
+PASS - R73 outcomes preserved
+PASS - Offer 40/50 preserved
+PASS - KDF 600k preserved
+PASS - Production false
+PASS - R75 tests invoked
+PASS - Safety target updated
+PASS - Version app
+PASS - Version core
+PASS - Installer version
+
+R75 new Safety checks: 14 assert + 1 reject = 15
+Expected Windows Safety total: ALL 348 CHECKS PASSED
+TorPos.Application executable dependency violations: 0
+TorPos.Core inward-dependency violations: 0
+Schema remains V5.
+Actual Windows .NET 10 build/test was not executed in this generation environment.

@@ -1,0 +1,1 @@
+Offline C# check references DLLs retained from R42 (same package versions) and generates named XAML control fields. It does NOT compile XAML or execute the Windows UI. Production csproj files retain their real NuGet references. 203 behavior checks passed. No full build claim.

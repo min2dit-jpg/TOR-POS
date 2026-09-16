@@ -1,0 +1,23 @@
+{
+  "Desktop/src/TorPos.Core/Domain.cs": "96e85f239de008509b9efded8f05f0ef296d05cd0cdfc230d8accb594fa27875",
+  "Desktop/src/TorPos.Core/Services.cs": "6fbbd0d690d498fea512b9f380f9ce6fadc919f64fd8069098566cf5919cf7b1",
+  "Desktop/src/TorPos.Core/CheckoutSafety.cs": "5775bbd7ced0bce3c93d3c95f7cd3670c6dc40f14b4d7f22bfdb8186396c960b",
+  "Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs": "21d61bcd742d518710f13188514689d463c15eefa91b80b43477b2ed57ed7afb",
+  "Desktop/src/TorPos.Infrastructure/PromotionCampaignService.cs": "565a8315dad795ab819e23f9bacfd635fa664b4ab025d2f3b01a3ccd4b6e502b",
+  "Desktop/src/TorPos.Infrastructure/Infrastructure.cs": "693e1de0e9bb5b1be430664cba2a8e9016324557187aba1fc5113103bab5ce06",
+  "Desktop/src/TorPos.Infrastructure/StarMcPrint3PrinterService.cs": "f4f8183705e36274d93347be976906c65f606984c956e5ac302f387ca2daf70b",
+  "Desktop/src/TorPos.Infrastructure/BusinessManagementService.cs": "d4aad95888a435820ebc48baba40ab3978d638635e7511df9dc6937e9907a170",
+  "Desktop/src/TorPos.Infrastructure/BusinessManagementReports.cs": "c28923e172e9e0c0fcb4a93c165f2fa123e2faeefc4f093b5041530a10523cdc",
+  "Desktop/src/TorPos.Infrastructure/TorCloudSyncService.cs": "eeda8dd9847d4b6bf5d3104dba97611a8a5c633148d824ca735376b347b64f79",
+  "Desktop/src/TorPos.App/PromotionManagementWindow.cs": "eaad67183bb1110c03a5b11cff487c4987a009e0872b1efe1d807bf69c3c3f2c",
+  "Desktop/src/TorPos.App/MainWindow.axaml": "49023137990641f3c335aa5a2dc6ee3e70367d78e23558e53e01bb4e3a078d93",
+  "Desktop/src/TorPos.App/MainWindow.axaml.cs": "838fcffdcb2a3b050c302a19bf7326352b129a8cf79c2a32fdedeac6f80f201f",
+  "Desktop/src/TorPos.App/ProductEditorWindow.cs": "d26f4248a728037388683476bb2a8ffd8b1b7c1c17f4315d8101f49539441ad0",
+  "Desktop/src/TorPos.App/SettingsWindow.axaml.cs": "a506fd1ab4a425a916309d6db741178522d81e1efed5c857744b0632ba65b5aa",
+  "Desktop/src/TorPos.App/DiagnosticsWindow.cs": "203e53874c8d6763776d436517924d9b971056f1f64659717572788136a6e200",
+  "Desktop/src/TorPos.App/AppWindowFactory.cs": "2657f55b95396b9029611a994d0a89d0001772c5cacae940445e54980c38700b",
+  "Desktop/src/TorPos.App/App.axaml.cs": "11a31021db0c309dd68dee4f177d229c4a385c58f0d68389617f6e2732b9d899",
+  "Desktop/tests/TorPos.SafetyTests/R71ReviewTests.cs": "e7fd67a365f4c7d919b1bd6e1fce11c03315795cf9de95f20e47d45b31b06e0f",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "36906861de79905a4856bc46061e88f67907e6049c0d35c45b78e4d3fa7cd76f",
+  "Desktop/manifest.json": "f333fcc99752dc087df359275e503987782056fe807ac9145d2461c9380340a9"
+}

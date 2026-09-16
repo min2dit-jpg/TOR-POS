@@ -1,0 +1,22 @@
+TOR POS R72 FINAL STATIC REVIEW
+
+PASS - version
+PASS - informational_version
+PASS - release_info
+PASS - installer_version
+PASS - schema_v4
+PASS - promotion_40_50_db
+PASS - promotion_40_50_service
+PASS - promotion_40_50_ui
+PASS - kdf_600k
+PASS - legacy_180k
+PASS - password_rehash
+PASS - pin_rehash
+PASS - kdf_metadata
+PASS - kdf_diagnostics
+PASS - r72_tests
+
+R72 checks: 14 assert + 1 reject = 15
+Windows target: ALL 298 CHECKS PASSED
+SQLite V4 migration was additionally syntax-checked against a disposable SQLite database.
+Actual Windows .NET 10 build was not executed in this generation environment.

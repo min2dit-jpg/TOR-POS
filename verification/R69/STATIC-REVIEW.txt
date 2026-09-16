@@ -1,0 +1,31 @@
+TOR POS R69 STATIC REVIEW
+
+PASS - db path exposed
+PASS - migration service exists
+PASS - target schema version
+PASS - readonly version probe
+PASS - schema_version table
+PASS - schema_migrations table
+PASS - migration transaction
+PASS - verified migration backup
+PASS - migration backup before initialize
+PASS - startup no direct db.Initialize
+PASS - migration DI
+PASS - diagnostics schema
+PASS - diagnostics factory injection
+PASS - R69 tests
+PASS - R69 test invoked
+PASS - downgrade failclosed test
+PASS - backup failure test
+PASS - version
+PASS - installer version
+
+Brace counts:
+Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs: 33/33
+Desktop/src/TorPos.App/App.axaml.cs: 42/42
+Desktop/src/TorPos.App/DiagnosticsWindow.cs: 114/114
+Desktop/src/TorPos.App/AppWindowFactory.cs: 3/3
+Desktop/tests/TorPos.SafetyTests/R69ReviewTests.cs: 6/6
+
+Gerçek Windows .NET 10 build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 261 CHECKS PASSED.

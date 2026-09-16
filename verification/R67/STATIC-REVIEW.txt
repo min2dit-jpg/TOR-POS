@@ -1,0 +1,20 @@
+TOR POS R67 STATIC REVIEW
+
+PASS - Performance LastMs
+PASS - Performance SlowCount
+PASS - Recent timeline
+PASS - Reset
+PASS - Diagnostics window
+PASS - Printer bounded 2s
+PASS - Terminal bounded 3s
+PASS - TSE bounded 3s
+PASS - Menu entry
+PASS - Checkout printer timing
+PASS - Checkout commit timing
+PASS - Startup timing
+PASS - Tests added
+PASS - Version
+PASS - Installer version
+
+Gerçek Windows .NET build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 250 CHECKS PASSED.

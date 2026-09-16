@@ -1,0 +1,14 @@
+[
+  [
+    "SumUpConnectionWindow.cs",
+    true
+  ],
+  [
+    "LoginWindow.axaml.cs",
+    true
+  ],
+  [
+    "SumUpConnectionService.cs",
+    true
+  ]
+]

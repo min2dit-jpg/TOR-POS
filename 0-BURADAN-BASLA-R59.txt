@@ -1,0 +1,8 @@
+TOR POS R59
+
+1) Önce Desktop\7-SICHERHEITSTESTS.bat çalıştırın.
+   Hedef: ALL 234 CHECKS PASSED
+2) Sonra Desktop\1-SETUP-ERSTELLEN.bat çalıştırın.
+3) Build hatası olursa Desktop\TOR-POS-build.log dosyasındaki metni gönderin.
+
+R59: BAR/KARTE öncesi Bondrucker algılama + tüm raporları PDF kaydetme + aylık PDF raporlarının kayıtlı e-posta adresine SMTP ile gönderimi.

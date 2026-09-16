@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "version": "0.7.33.45",
+  "revision": "R45-Update-Lizenz-2FA",
+  "published_at": "",
+  "mandatory": false,
+  "editions": ["KIOSK", "IMBISS"],
+  "filename": "TOR-POS-Pro-Setup.exe",
+  "sha256": "",
+  "signer_thumbprint": "",
+  "release_notes": "Update erst nach Freigabe veröffentlichen."
+}

@@ -1,0 +1,32 @@
+TOR POS R56 · 0.7.33.560
+
+ZIP dosyasını ayrı klasöre çıkarın. Desktop/1-SETUP-ERSTELLEN.bat çalıştırın,
+ardından oluşan Setup.exe ile güncelleyin. Mevcut veri klasörünü silmeyin.
+
+YENİLİKLER
+- Pencerenin altında TASTATUR düğmesi. Önce alanı seçin, sonra düğmeye basın.
+- Dokunmatik ekranda alana dokununca otomatik açılır. Mouse/Scanner otomatik açmaz.
+- Einstellungen > Kasse & Bedienung > Start & Anzeige altında otomatik açma ayarı.
+- Almanca QWERTZ, büyük/küçük harf, ABC/123 ve !?# özel karakter düzenleri.
+- Fiyat/miktar/PIN olarak tanınan alanlarda sayısal düzen; ABC/123 ile elle değişebilir.
+- Enter mevcut alanın Enter davranışını kullanır, her formu otomatik kaydetmez.
+- Klavye açıkken form kaydırılabilir; kapatılınca eski yerleşimine döner.
+- Sipariş kaydı tamamlanınca baskı işçisi hemen uyandırılır.
+  5 saniyelik tarama kurtarma amacıyla kalır. Yazıcı/sürücü beklemesi ayrı olabilir.
+- BESTELLUNG ANNEHMEN iki satır, alt işlem düğmeleri için ayrılmış yükseklik.
+
+KONTROLLER
+1. Ürün adı ve fiyat gir: klavye ile yaz, sil, seçili metni değiştir ve kaydet.
+2. Şifre alanını ve !?# özel karakterlerini dene.
+3. Scanner ile ürün ara: klavye kendiliğinden açılmamalı.
+4. Sipariş al: sıra fişi için düzenli 5 saniyelik bekleme olmamalı.
+5. Siparişi değiştir/iptal et; mutfak fişi ve tekrar baskı kontrolü yap.
+6. Küçük kasa ekranında BESTELLUNG / ANNEHMEN tam görünmeli.
+
+DOĞRULAMA SINIRI
+Yerel bağımlılıklar ile C# derlemesi ve 203 otomatik kontrol geçti.
+Normal NuGet erişimi engellendi; tam Avalonia XAML/Windows Setup derlemesi
+bu oturumda tamamlanmadı. C# kontrolünde XAML isimleri için yalnız test
+iskeleti üretildi; bu tam uygulama derlemesinin yerine geçmez.
+Gerçek dokunmatik ekran/yazıcı testi sizde yapılmalıdır.
+Cloud ve SumUp kaynakları değişmedi. TSE üretim izni açılmadı.

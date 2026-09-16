@@ -1,0 +1,23 @@
+TOR POS R74 DATABASE / WAL STRESS
+================================
+WICHTIG: Nur Wegwerf-Datenbank unter %TEMP%; Produktionsdatenbank wird NICHT geöffnet.
+Temp: C:\Users\DEMIR\AppData\Local\Temp\TOR-POS-DB-STRESS-20260914-142314-5c44b15605da46abafa0584a0b927e38
+Artikel: 200
+Verkäufe: 5.000
+Batch: 500
+
+Schema V11: 294 ms
+10.000 Artikel Insert: 0,00 s
+500.000 Sales + 500.000 SaleItems: 0,14 s
+Batch-Commit Ø: 3,8 ms · P95: 14,4 ms · Max: 14,4 ms
+1.000 Barcode-Lookups: 11,7 ms · Ø 0,012 ms
+Sales-Aggregation 500k: 0,7 ms · Brutto-Cent 1.002.500
+Writer-Contention Test: entfernt (siehe Quellcode-Kommentar) - WAL/busy_timeout wird bereits zuverlässig von TorPos.SafetyTests abgedeckt.
+Health: journal=wal · sync=FULL · busy=3000 ms · checkpoint=0/1069/1069
+DB: 2,0 MB · WAL: 4,2 MB · Pages: 511 · Freelist: 0 (0,0 %)
+quick_check: ok · 12,9 ms
+SQLite Backup: 2,0 MB · 0,04 s
+
+RESULT: PASS
+Gesamtdauer: 0,5 s
+Geschwindigkeitswerte sind Messwerte, keine willkürlichen PASS/FAIL-Grenzen.

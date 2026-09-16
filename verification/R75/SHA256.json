@@ -1,0 +1,19 @@
+{
+  "Desktop/src/TorPos.Application/TorPos.Application.csproj": "9c9536eef42936e91d9dfa31511e6375750aea6766ffe36d0fbb27309e5805f5",
+  "Desktop/src/TorPos.Application/CheckoutApplicationService.cs": "038277c8f9025ce0248c6ec83a999adf3799c257aa7821326ba0d212892b2cdc",
+  "Desktop/src/TorPos.Core/CheckoutSafety.cs": "92561a57f5e892453c886575ed01418110244d1c8817e3614d5584759261e6a0",
+  "Desktop/src/TorPos.Infrastructure/CheckoutJournal.cs": "b6e56ff441b63c1e87aed6d8499534528ee05e1066ce56e0159327b94f79d04a",
+  "Desktop/src/TorPos.Infrastructure/ZvtPaymentTerminalService.cs": "a2ffb5506a02b8642e73b170a65965d9d6812bddf563363f6e565457ad49dc1b",
+  "Desktop/src/TorPos.App/App.axaml.cs": "a8d9301127644a4af02f12e84c9e418ca23e5e0266968177e596f7021f94a0de",
+  "Desktop/src/TorPos.App/MainWindow.axaml.cs": "115344206423092892a0b706189c15f8771b8b30a18b0ea79bd3f8d0bd295ff1",
+  "Desktop/src/TorPos.App/MainWindow.Safety.cs": "153ff0379f4e08bfc1aa04d50e995c6868e144147d9d93aa8e525953e70ce4e2",
+  "Desktop/src/TorPos.App/DiagnosticsWindow.cs": "e91275e3622880c25efe536531071122f47b2b12bbb0b41c24cddffdecef4172",
+  "Desktop/src/TorPos.App/AppWindowFactory.cs": "d7892c5237894ca1d1d939e633d5e10d0a838228baa29b9923e2c37ba3396259",
+  "Desktop/tests/TorPos.SafetyTests/R75ReviewTests.cs": "19ff04e02a1b64009b2d4e17e0afed31aaab137b34dab3862e0922bb2a8ece3d",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "2c88cd1ec64efab05bffbe8252205aa3be3167812165f5d8db0c041b53dde472",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "1c6f373d47acb66108b84bcfe7ee89f43a45d12b4bb6feab4cf00a15163bac17",
+  "Desktop/tests/TorPos.SafetyTests/TorPos.SafetyTests.csproj": "9f1ba428949643f228e3c0d5ebc7ae34e2df7f0197bd77ce98f30438ba955999",
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "046df0035e88ca6492c4ea1537eb4972c4a05d7a5a7dd3ff69b447b9295d571f",
+  "Desktop/TOR-POS-Pro-Setup.iss": "d2a4399f6aa3b17bbd75359f69ac96e9e127448db371bc9358e7f5c4a3f76b9e",
+  "Desktop/manifest.json": "83640413cfb6e44340aada793762bfae8d9f237b489c446b0823184d09175323"
+}

@@ -1,0 +1,13 @@
+{
+  "Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs": "a8b0631a77e1f0e0d766794df79564c3574c5b842e076ea78d203c43129fc171",
+  "Desktop/src/TorPos.Infrastructure/Infrastructure.cs": "42b5d6e5beaedfec3a2dbaa46ba78f5ec907e775ca012e3a54d7ee10817356f6",
+  "Desktop/src/TorPos.App/App.axaml.cs": "d6cf9c2212b547191f8446276b0e6044797875aa252275dbefa79c43c5a85888",
+  "Desktop/src/TorPos.App/DiagnosticsWindow.cs": "777b80fc9525d8ac7e6aff83b3e4431277b0016495fcae5dba9755d0192dd761",
+  "Desktop/src/TorPos.App/AppWindowFactory.cs": "83b1ca24f5fad70a6353e083558f10ed6ab48e5ddec158221fc54028ff319a06",
+  "Desktop/tests/TorPos.SafetyTests/R69ReviewTests.cs": "02b77c7837fc10b11cd8e7ff28f3cca38b6400278966f66900ed997ff2168bd8",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "5ae9809895186ef020debaba21d394f8b0929dbacea9c12049f395752dfc6b1f",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "4b43563ca6995db21007a9806b9f3a5e6078665d4a171993ea97620fd661fa2d",
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "1c95959aab51f5fb8246aa53b382863b458c9f9170395c4bac1b451c6f439053",
+  "Desktop/TOR-POS-Pro-Setup.iss": "4a7675f321da8f10eb99aa5d69f8894a3255b71ff47c03efcdc1a04b67877443",
+  "Desktop/manifest.json": "5a042abdd2d3016cd356d19dff0349001963d04711fef240eb1e217665fea9ff"
+}

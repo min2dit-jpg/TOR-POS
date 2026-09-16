@@ -1,0 +1,25 @@
+TOR POS R72.4 STATIC REVIEW
+
+PASS - backup snapshot pooling disabled
+PASS - backup snapshot private cache
+PASS - backup handles disposed before return
+PASS - full backup directory retry
+PASS - full backup temp file retry
+PASS - restore DB pooling false
+PASS - cleanup retry bounded
+PASS - persistent cleanup error visible
+PASS - R54 exclusive file check
+PASS - R55 staging leak check
+PASS - schema V4 preserved
+PASS - Angebot 40/50 preserved
+PASS - KDF 600k preserved
+PASS - Cloud redirect fix preserved
+PASS - Safety current-schema fixtures preserved
+PASS - Safety BAT failclosed
+PASS - target 298
+PASS - version app
+PASS - version core
+PASS - version installer
+
+Windows-specific file-lock behavior still requires user-machine verification.
+Expected: ALL 298 CHECKS PASSED.

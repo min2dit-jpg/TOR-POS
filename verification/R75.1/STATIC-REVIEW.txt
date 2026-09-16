@@ -1,0 +1,30 @@
+TOR POS R75.1 STATIC REVIEW
+
+PASS - App broad Application import removed
+PASS - App service alias present
+PASS - App Avalonia base remains
+PASS - Main broad Application import removed
+PASS - Main service alias present
+PASS - Main disposition alias present
+PASS - Main Avalonia Application.Current remains
+PASS - Factory broad import removed
+PASS - Factory service alias present
+PASS - Application project preserved
+PASS - Application only Core reference
+PASS - Schema V5 preserved
+PASS - Safety target 348 preserved
+PASS - R75 tests preserved
+PASS - KDF 600k preserved
+PASS - Offer 40/50 preserved
+PASS - Payment outcomes preserved
+PASS - R74 health preserved
+PASS - Production false
+PASS - Version app
+PASS - Version core
+PASS - Installer version
+
+Broad using TorPos.Application imports inside TorPos.App: 0
+Known Avalonia.Application collision patterns with broad import: 0
+Schema remains V5.
+Expected Windows result: ALL 348 CHECKS PASSED.
+Actual Windows .NET build/test must be verified on user machine.

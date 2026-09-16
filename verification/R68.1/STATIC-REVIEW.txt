@@ -1,0 +1,12 @@
+TOR POS R68.1 STATIC REVIEW
+
+PASS - primitives using
+PASS - UniformGrid still used
+PASS - version
+PASS - release version
+PASS - installer version
+PASS - F5 preserved
+PASS - DI preserved
+
+Gerçek Windows build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 254 CHECKS PASSED.

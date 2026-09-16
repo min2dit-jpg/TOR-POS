@@ -1,0 +1,23 @@
+PASS: R62 app version
+PASS: R62 release info
+PASS: Google desktop service exists
+PASS: Google QR window exists
+PASS: Shared MIME builder exists
+PASS: OAuth only minimum Gmail send scope
+PASS: OAuth Web + PKCE S256
+PASS: Refresh token protected in Cloud
+PASS: Refresh token not stored in Desktop source
+PASS: POS uses Gmail API send endpoint
+PASS: POS sends MIME directly to Gmail API
+PASS: QR pairing requires TOR device auth
+PASS: Pair secrets stored as hashes
+PASS: Pair TTL 10 minutes
+PASS: OAuth callback accepts only pending state
+PASS: Token encryption key minimum length
+PASS: Settings has Google QR button
+PASS: SMTP kept as fallback
+PASS: XML project/Avalonia files parse
+PASS: JSON files parse
+PASS: Changed C# delimiter sanity
+PASS: No concrete Google API secret embedded
+22/22 static checks passed

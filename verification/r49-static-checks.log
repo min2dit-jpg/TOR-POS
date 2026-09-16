@@ -1,0 +1,11 @@
+C# delimiter scan: 58 files, errors=0
+AXAML XML parse: 4 files, errors=0
+JSON parse: package.json OK
+PASS: R49 release version
+PASS: combo schema
+PASS: pickup modes
+PASS: kitchen printer setting
+PASS: UI language setting
+PASS: German kitchen output
+PASS: German pickup output
+PASS: R49 safety test registered

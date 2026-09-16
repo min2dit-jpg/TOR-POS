@@ -1,0 +1,23 @@
+TOR POS R58 · 0.7.33.580
+
+R58, R57-FIX1 üzerine hazırlanmıştır.
+
+R58 YENİLİKLERİ
+- Artikel ekranında seyrek sayfalardaki gereksiz boş kutular kaldırıldı.
+- Ürün butonları aynı stil, kenar, boşluk ve içerik düzenine getirildi.
+- Az ürün olan sayfalarda grid 3 dengeli satıra kadar sıkışır; sayfalama kapasitesi değişmez.
+- Gerçek ürün resmi yoksa harf + ürün adı + fiyat tek, birleşik bir touch kartında gösterilir.
+- Açık sipariş varsa OFFENE BESTELLUNGEN butonu sarı vurgulanır.
+- Yazıcı testi önce Windows'taki kayıtlı yazıcıyı ve spooler durumunu kontrol eder.
+- OFFLINE, papier leer, papierstau, pausiert, Abdeckung offen gibi durumlar mümkünse yazdırmadan önce anlaşılır mesajla gösterilir.
+- Timeout sonrası kör tekrar baskı önerilmez; olası çift baskıya karşı Druckwarteschlange kontrolü korunur.
+- Druckereinstellungen düğmesi doğrudan Geräte ayarına götürür.
+
+TEST
+- R57 hedefi: 222 kontrol.
+- R58 6 yeni kontrol ekler; Windows'ta hedef toplam: 228 kontrol.
+- Bu Chat ortamında dotnet/MSBuild yoktur; gerçek Windows derlemesi burada çalıştırılamadı.
+- Windows'ta önce Desktop\7-SICHERHEITSTESTS.bat, sonra Desktop\1-SETUP-ERSTELLEN.bat çalıştırılmalıdır.
+
+FISKAL
+- Produktiv-Freigabe değişmedi. R58 bir UI/Printer iyileştirme sürümüdür.

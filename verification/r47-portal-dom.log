@@ -1,0 +1,1 @@
+NOT RUN: tests/portal-dom.cjs requires jsdom, which is not bundled as a project dependency in this package. npm run check and the 14 built-in node:test regression tests are the authoritative Cloud checks for R47.

@@ -1,0 +1,26 @@
+TOR POS R57 · 0.7.33.570
+
+Bu paket R56 üzerine Work'un yarım kalan R57 hedefleri yeniden uygulanarak hazırlandı.
+
+R57 YENİLİKLERİ
+1. ORDER modu açıkken BAR/KARTE ile doğrudan normal satış yapılabilir.
+2. BESTELLUNG ANNEHMEN ayrı işlem olarak kalır; sepeti açık siparişe kaydeder.
+3. Kundenanzeige'den bağımsız ayrı Bestellmonitor vardır.
+4. Bestellmonitor ayarlardan açılır/kapanır; otomatik ikinci ekran veya 1-4 ekran seçilebilir.
+5. Sipariş ANGENOMMEN / IN VORBEREITUNG: WIRD VORBEREITET olarak görünür.
+6. ABHOLBEREIT: yeşil FERTIG olarak görünür. AUSGEGEBEN ekrandan kalkar.
+7. Günlük otomatik yedekleme varsayılan 00:00'dır ve saat ayarlardan değiştirilebilir.
+8. Program yedek saatinde kapalıysa, kaçırılan yedek sonraki açılışta yapılır.
+9. Aynı yerel takvim gününde başarılı planlı yedek ikinci kez oluşturulmaz.
+10. Disk/klasör erişilemezse başarı kaydı yazılmaz; hata kaydedilir ve 5 dakika sonra tekrar denenir.
+11. Bu yedekleme Z-Bericht, Tagesabschluss veya Kassenabschluss oluşturmaz.
+
+KONTROL
+- R56'da 203 kontrol vardı.
+- R57ReviewTests.cs dosyasına 19 yeni kontrol eklendi; toplam hedef 222 kontroldür.
+- Bu Chat çalışma ortamında dotnet/MSBuild bulunmadığı için yeni R57 burada derlenemedi ve 222 kontrol koşturulamadı.
+- Windows bilgisayarda önce Desktop/1-SETUP-ERSTELLEN.bat veya normal dotnet build/test ile doğrulayın.
+- Gerçek ikinci ekran, touch, yazıcı ve yedekleme diski ayrıca test edilmelidir.
+
+ÖNEMLİ
+TSE/DSFinV-K üretim izni açılmadı. production_allowed=false kalır.

@@ -1,0 +1,5 @@
+R59 modified-source delimiter check: PASS
+R59 report e-mail settings present: PASS
+R59 printer pre-check hook present: PASS
+R59 PDF save/export hooks present: PASS
+Real Windows build not executed in Chat environment.

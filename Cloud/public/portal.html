@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TOR POS Cloud – Kundenportal</title>
+  <link rel="stylesheet" href="/styles.css?v=R45">
+</head>
+<body class="portal">
+<header class="portal-top">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="logo">TOR</span><span>TOR POS Cloud</span></a>
+    <div style="display:flex;gap:12px;align-items:center"><span id="userLabel" style="color:#a9becd;font-size:13px"></span><button id="logoutBtn" class="btn btn-ghost">Abmelden</button></div>
+  </div>
+</header>
+<div class="portal-grid">
+  <aside class="side" id="portalNav">
+    <a data-view="dashboard" href="#dashboard">Dashboard</a>
+    <a data-view="sales" href="#sales">Verkäufe</a>
+    <a data-view="receipts" href="#receipts">Bons</a>
+    <a data-view="reports" href="#reports">Berichte</a>
+    <a data-view="products" href="#products">Artikel</a>
+    <a data-view="stock" href="#stock">Warenbestand</a>
+    <a data-view="employees" href="#employees">Mitarbeiter</a>
+    <a data-view="branches" href="#branches">Filialen & Kassen</a>
+    <a data-view="devices" href="#devices">Gerätestatus</a>
+    <a data-view="security" href="#security">Sicherheit</a>
+    <a data-view="support" href="#support">Support</a>
+  </aside>
+  <main class="main">
+    <div class="page-title portal-common-title">
+      <div><div class="eyebrow">Kundenportal</div><h1 style="margin:4px 0" id="businessName">TOR POS Cloud</h1><div id="syncText" style="color:#8ca4b7"></div></div>
+      <span class="badge">Nur Lesen · Cloud Phase 1</span>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <button id="refreshButton" type="button" class="btn">Aktualisieren</button>
+      <span id="refreshStatus" role="status">Verbindung wird geprüft …</span>
+      <div style="margin-top:12px">Verkäufe / Bons:
+        <button id="previousPage" type="button" class="btn btn-mini">Zurück</button>
+        <span id="pageStatus"></span>
+        <button id="nextPage" type="button" class="btn btn-mini">Weiter</button>
+      </div>
+    </div>
+    <section class="portal-view" data-page="dashboard">
+      <section class="kpis">
+        <div class="kpi"><small>Umsatz heute</small><strong id="kpiTotal">–</strong></div>
+        <div class="kpi"><small>Bons</small><strong id="kpiCount">–</strong></div>
+        <div class="kpi"><small>Bar</small><strong id="kpiCash">–</strong></div>
+        <div class="kpi"><small>Karte</small><strong id="kpiCard">–</strong></div>
+      </section>
+      <section class="portal-row"><div class="panel"><h3>Umsatz nach Stunde</h3><div id="chart" class="chart"></div></div><div class="panel"><h3>Kassenstatus</h3><div id="registers"></div></div></section>
+      <section class="portal-row" style="margin-top:15px"><div class="panel"><h3>Letzte Verkäufe</h3><div class="tablewrap"><table class="table"><thead><tr><th>Bon</th><th>Abhol-Nr.</th><th>Zeit</th><th>Zahlart</th><th>Kasse</th><th>Bediener</th><th>Betrag</th></tr></thead><tbody id="salesRows"></tbody></table></div></div><div class="panel"><h3>Niedriger Bestand</h3><div class="tablewrap"><table class="table"><thead><tr><th>Artikel</th><th>Menge</th><th>Min.</th></tr></thead><tbody id="stockRows"></tbody></table></div></div></section>
+    </section>
+
+    <section class="portal-view" data-page="sales" hidden>
+      <div class="view-head"><div><div class="eyebrow">Verkäufe</div><h2>Verkaufshistorie</h2></div><span class="badge">Read-only</span></div>
+      <div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th>Bon</th><th>Abhol-Nr.</th><th>Datum / Zeit</th><th>Zahlart</th><th>Filiale</th><th>Kasse</th><th>Bediener</th><th>Positionen</th><th>Betrag</th></tr></thead><tbody id="allSalesRows"></tbody></table></div></div>
+    </section>
+
+    <section class="portal-view" data-page="receipts" hidden>
+      <div class="view-head"><div><div class="eyebrow">Bons</div><h2>Bon-Historie</h2></div><span class="badge">Synchronisierte Abschlüsse</span></div>
+      <div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th>Bon-Nr.</th><th>Abhol-Nr.</th><th>Datum / Zeit</th><th>Kasse</th><th>Zahlart</th><th>Bediener</th><th>Summe</th><th></th></tr></thead><tbody id="receiptRows"></tbody></table></div></div>
+    </section>
+
+    <section class="portal-view" data-page="reports" hidden>
+      <div class="view-head"><div><div class="eyebrow">Berichte</div><h2>Auswertung</h2></div><span class="badge">Heute</span></div>
+      <section class="kpis report-kpis"><div class="kpi"><small>Ø Bon</small><strong id="avgReceipt">–</strong></div><div class="kpi"><small>Bar-Anteil</small><strong id="cashShare">–</strong></div><div class="kpi"><small>Karten-Anteil</small><strong id="cardShare">–</strong></div><div class="kpi"><small>Verkäufe</small><strong id="reportSaleCount">–</strong></div></section>
+      <div class="panel"><h3>Z-Bericht Archiv</h3><div class="tablewrap"><table class="table"><thead><tr><th>Z-Nr.</th><th>Datum / Zeit</th><th>Filiale</th><th>Kasse</th><th>Verkäufe</th><th>Brutto</th></tr></thead><tbody id="zRows"></tbody></table></div></div>
+    </section>
+
+    <section class="portal-view" data-page="products" hidden>
+      <div class="view-head"><div><div class="eyebrow">Artikel</div><h2>Artikelübersicht</h2></div><span class="badge">Cloud-Lesedaten</span></div>
+      <div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th>Artikel-Nr.</th><th>EAN</th><th>Artikel</th><th>Warengruppe</th><th>VK</th><th>EK</th><th>Bestand</th><th>Min.</th><th>Kasse</th><th>Aktualisiert</th></tr></thead><tbody id="productRows"></tbody></table></div></div>
+    </section>
+
+    <section class="portal-view" data-page="stock" hidden>
+      <div class="view-head"><div><div class="eyebrow">Warenbestand</div><h2>Bestände</h2></div><span class="badge">Niedrige Bestände markiert</span></div>
+      <div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th>Artikel-Nr.</th><th>EAN</th><th>Artikel</th><th>Warengruppe</th><th>Filiale</th><th>Kasse</th><th>Menge</th><th>Min.</th><th>Wert EK</th><th>Status</th></tr></thead><tbody id="inventoryRows"></tbody></table></div></div>
+    </section>
+
+    <section class="portal-view" data-page="employees" hidden>
+      <div class="view-head"><div><div class="eyebrow">Mitarbeiter</div><h2>Bediener & Auswertung</h2></div><span class="badge">Keine Passwörter sichtbar</span></div>
+      <div class="portal-row"><div class="panel"><h3>Portal-Benutzer</h3><div id="userCards"></div></div><div class="panel"><h3>Umsatz nach Bediener</h3><div class="tablewrap"><table class="table"><thead><tr><th>Bediener</th><th>Bons</th><th>Umsatz</th></tr></thead><tbody id="operatorRows"></tbody></table></div></div></div>
+    </section>
+
+    <section class="portal-view" data-page="branches" hidden>
+      <div class="view-head"><div><div class="eyebrow">Filialen & Kassen</div><h2>Standorte</h2></div><span class="badge">Mandantengetrennt</span></div>
+      <div id="branchCards" class="card-list"></div>
+    </section>
+
+    <section class="portal-view" data-page="devices" hidden>
+      <div class="view-head"><div><div class="eyebrow">Gerätestatus</div><h2>Kassen & Peripherie</h2></div><span class="badge">Letzte Cloud-Meldung</span></div>
+      <div id="deviceCards" class="card-list"></div>
+    </section>
+
+    <section class="portal-view" data-page="security" hidden>
+      <div class="view-head"><div><div class="eyebrow">Konto</div><h2>Sicherheit & Zwei-Faktor-Anmeldung</h2></div><span class="badge" id="twoFactorBadge">Status wird geladen…</span></div>
+      <div class="portal-row">
+        <div class="panel"><h3>Authenticator-App</h3><p class="muted">Für Inhaber kann 2FA im Live-Betrieb verpflichtend sein. Unterstützt werden TOTP-Apps wie Microsoft Authenticator, Google Authenticator, 2FAS oder Authy.</p><div id="twoFactorState" class="status-grid"></div><button id="twoFactorStart" class="btn btn-primary" type="button">2FA EINRICHTEN</button></div>
+        <div class="panel" id="twoFactorSetup" hidden><h3>Einrichtung</h3><p class="muted">In der Authenticator-App „Schlüssel manuell eingeben“ wählen. Der Schlüssel wird nur für die Einrichtung angezeigt.</p><div class="support-code"><small>Geheimer Schlüssel</small><b id="twoFactorSecret">–</b></div><div class="field"><label>6-stelliger Code zur Bestätigung</label><input id="twoFactorConfirmCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div><button id="twoFactorConfirm" class="btn btn-primary" type="button">2FA BESTÄTIGEN</button><div id="twoFactorSetupMsg" class="msg"></div></div>
+      </div>
+      <div class="panel" id="recoveryPanel" hidden style="margin-top:15px"><h3>Recovery-Codes · einmal speichern</h3><p class="muted">Jeder Code funktioniert nur einmal. Offline und sicher aufbewahren; nicht im Kassensystem speichern.</p><pre id="recoveryCodes" style="white-space:pre-wrap;font-size:16px"></pre></div>
+      <div class="panel" id="twoFactorDisablePanel" hidden style="margin-top:15px"><h3>2FA deaktivieren</h3><p class="muted">Nur möglich, wenn die Serverrichtlinie 2FA nicht zwingend verlangt.</p><div class="field"><label>Passwort</label><input id="twoFactorDisablePassword" type="password" autocomplete="current-password"></div><div class="field"><label>Aktueller 6-stelliger Code</label><input id="twoFactorDisableCode" inputmode="numeric" maxlength="6"></div><button id="twoFactorDisable" class="btn btn-ghost" type="button">2FA DEAKTIVIEREN</button><div id="twoFactorDisableMsg" class="msg"></div></div>
+    </section>
+
+    <section class="portal-view" data-page="support" hidden>
+      <div class="view-head"><div><div class="eyebrow">Support</div><h2>Systemhilfe</h2></div><span class="badge" id="cloudHealthBadge">Cloud wird geprüft…</span></div>
+      <div class="portal-row"><div class="panel"><h3>Verbindungsstatus</h3><div id="supportStatus"></div></div><div class="panel"><h3>Für den Support bereithalten</h3><p class="muted">Kundennummer, Kassenname, Softwareversion und Zeitpunkt des Problems. Keine Passwörter oder vollständigen Kartendaten weitergeben.</p><div id="supportIdentity"></div></div></div>
+    </section>
+  </main>
+</div>
+<div id="receiptModal" class="receipt-modal" hidden>
+  <div id="receiptModalBackdrop" class="receipt-modal-backdrop"></div>
+  <section class="receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="receiptModalTitle">
+    <div class="receipt-dialog-head">
+      <div><div class="eyebrow">Bon-Details</div><h2 id="receiptModalTitle">Bon</h2></div>
+      <button id="receiptModalClose" class="btn btn-ghost" type="button">Schließen</button>
+    </div>
+    <div id="receiptModalBody"></div>
+  </section>
+</div>
+<script src="/app.js?v=R48"></script>
+</body>
+</html>

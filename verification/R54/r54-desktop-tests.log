@@ -1,0 +1,183 @@
+PASS: FULL synchronization
+PASS: WAL enabled
+PASS: Checkout snapshot is a deep copy
+PASS: Locked cart rejects all mutation methods
+PASS: Duplicate operation ID refused
+PASS: Second unresolved checkout refused globally
+PASS: Interrupted sent payment survives reopening
+PASS: Second submission refused by expected state
+PASS: Unknown payment cannot create a sale
+PASS: Fiscal gate blocks real booking even after approval
+PASS: Terminal service gate blocks before network request
+PASS: Retry returns original sale without fiscal gate bypass for new sales
+PASS: Retry does not insert a second sale
+PASS: Recovery identifies committed operation
+PASS: Same ID with altered cart is rejected
+PASS: Cash booking also requires fiscal release
+PASS: Database queue preserves admission order
+PASS: Nested repository calls do not deadlock
+PASS: Ordered recovery writes cannot resurrect a cleared cart
+PASS: Corrupt recovery retained with durable lock marker
+PASS: Weak replacement admin credentials refused
+PASS: Queue returns IO failure
+PASS: Queue continues after a failure
+PASS: Printer timeout surfaces without waiting for native completion
+PASS: Already queued job blocked after earlier timeout
+PASS: No second native print call after timeout
+PASS: Shutdown finishes while native print is still pending
+PASS: Restart preserves unknown print state without replay
+PASS: Unknown print job retained on disk
+PASS: Explicit print review unlocks only subsequent requests
+PASS: Simulation receipt contains discounted total and cash change
+PASS: Simulation cannot impersonate a numbered fiscal receipt
+PASS: Queued simulation receipt owns an independent cart snapshot
+PASS: Card simulation has no cash tender or implied real payment
+PASS: Underpaid test cash receipt refused
+PASS: Archive includes both date boundaries across DST and sorts newest first
+PASS: Archive filters cash receipts
+PASS: Archive combines number and payment filters
+PASS: Archive excludes receipt outside selected calendar day
+PASS: Archive rejects reversed dates
+PASS: Archive rejects invalid receipt number
+PASS: Archive bounds results with one overflow sentinel
+PASS: Archive searches leave historical sales intact
+PASS: SumUp parses reader list without claiming online state
+PASS: SumUp preserves offline state and last activity
+PASS: SumUp pairing sent once and processing is not treated as confirmed
+PASS: SumUp device test sends exactly EUR 1.00 once
+PASS: SumUp device test terminate endpoint is called once
+PASS: SumUp test flow calls only list, status, pair, checkout and terminate endpoints
+PASS: SumUp refuses merchant path injection
+PASS: SumUp refuses reader path injection
+PASS: SumUp refuses test-checkout reader path injection
+PASS: SumUp validates pairing-code length
+PASS: SumUp error suppresses credential-echoing response body
+PASS: SumUp errors do not retry prior write operations
+PASS: SumUp connection honors cancellation
+PASS: Cloud configuration stores protected token, not plaintext
+PASS: Cloud refuses plaintext remote HTTP
+PASS: Cloud refuses credentials in URL
+PASS: Offline heartbeat queue stays bounded
+PASS: Uncertain network test server accepted event before losing response
+PASS: Lost acknowledgement retains event durably
+PASS: Cannot reassign pending data to another Cloud target
+PASS: Restart retries same event; duplicate acknowledgement clears local queue once
+PASS: HTTP 200 without matching event acknowledgement cannot delete queue
+PASS: Redirect response is rejected without forwarding credentials
+PASS: Disabled sync retains events without network calls
+PASS: Rolled-back sale transaction also rolls back Cloud event
+PASS: Sale snapshot inserts exactly one durable event in caller transaction
+PASS: Cloud integration cannot bypass fiscal sale gate or checkout journal
+PASS: Automatic article number assigned
+PASS: Automatic article numbers advance
+PASS: Price/name edit preserves stock
+PASS: Stale stock prevents entire product save
+PASS: Audit failure rolls back article and stock
+PASS: Failed stock save leaves no partial new article
+PASS: Inventory audit failure rolls back count
+PASS: Inventory retains original count after audit failure
+PASS: Training starts at 001
+PASS: Training counter survives reopening
+PASS: Test and training counters separated
+PASS: Counter resets on Berlin midnight
+PASS: Simulation never consumes production counter
+PASS: Reopening migration preserves assigned article number
+PASS: R49 menu/combo components persist
+PASS: R49 combo component quantity is preserved
+PASS: R49 ORDER pickup numbers advance at order acceptance
+PASS: R49 editing an accepted order keeps its pickup number
+PASS: R49 pickup mode setting is valid
+PASS: R54 language preference is removed
+PASS: R49 kitchen printer is opt-in
+PASS: R54 legacy Turkish setting stays German
+PASS: R54 legacy English setting stays German
+PASS: R49 German operator UI remains original
+PASS: R49 kitchen and pickup print jobs survive durable queue serialization
+PASS: R50 IMBISS starter never runs for KIOSK
+PASS: R50 fresh KIOSK has no IMBISS food Warengruppen
+PASS: R50 IMBISS starter is applied once
+PASS: R50 IMBISS starter is idempotent after marker
+PASS: R50 IMBISS Warengruppe exists: Döner
+PASS: R50 IMBISS Warengruppe exists: Burger
+PASS: R50 IMBISS Warengruppe exists: Fingerfood
+PASS: R50 IMBISS Warengruppe exists: Pizza
+PASS: R50 IMBISS Warengruppe exists: Getränke
+PASS: R50 starter article exists: Döner
+PASS: R50 starter article exists: Big Döner
+PASS: R50 starter article exists: Dürüm Döner
+PASS: R50 starter article exists: Döner Box Klein
+PASS: R50 starter article exists: Döner Box Groß
+PASS: R50 starter article exists: Hamburger
+PASS: R50 starter article exists: Cheeseburger
+PASS: R50 starter article exists: Chickenburger
+PASS: R50 starter article exists: Doppelburger
+PASS: R50 starter article exists: Pommes Klein
+PASS: R50 starter article exists: Pommes Groß
+PASS: R50 starter article exists: Chicken Wings 6er
+PASS: R50 starter article exists: Coca-Cola 0,33 l
+PASS: R50 starter article exists: fritz-kola 0,33 l
+PASS: R50 starter article exists: Ayran 0,33 l
+PASS: R50 starter article exists: Wasser still 0,5 l
+PASS: R50 starter article exists: Berliner Pilsner 0,5 l
+PASS: R50 starter article exists: Schultheiss Pilsener 0,5 l
+PASS: R50 pizza starter contains the planned pizza selection
+PASS: R50 starter pizzas have exactly two selectable sizes
+PASS: R50 starter products receive automatic article numbers
+PASS: R50 IMBISS starter articles are hidden in KIOSK
+PASS: R50 training and real ORDER pickup sequences are independent
+PASS: R50 training open orders are isolated from real open orders
+PASS: R50 training order list returns only training orders
+PASS: R51 IMBISS starter/template repair runs once
+PASS: R51 IMBISS template is idempotent after marker
+PASS: R51 Döner is listed under Speisen
+PASS: R51 Burger is listed under Speisen
+PASS: R51 Fingerfood is listed under Speisen
+PASS: R51 Pizza is listed under Speisen
+PASS: R51 Getränke Warengruppe is listed under Getränke group
+PASS: R51 KIOSK demo Warengruppen are hidden in IMBISS
+PASS: R51 Döner starter articles are active
+PASS: R51 Döner starter articles are assigned to the Döner Warengruppe
+PASS: R51 Artikel löschen soft-deactivates the product
+PASS: R51 Warengruppe löschen soft-deactivates the category
+PASS: R51 Warengruppe löschen hides assigned articles
+PASS: R51 Gruppe löschen soft-deactivates the group
+PASS: R51 Gruppe löschen hides child Warengruppen
+PASS: R51 Gruppe löschen hides child articles
+PASS: R51 deleting one group leaves unrelated IMBISS groups intact
+PASS: R51 master-data delete operations leave audit records
+PASS: Article, variants, combo and stock save together
+PASS: Invalid combo rejects complete article edit
+PASS: Failed combo leaves all original article data intact
+PASS: Invalid variant rejects new product and stock
+PASS: No partial product after failed variant save
+PASS: Template upgrade preserves configured VAT
+PASS: Template upgrade does not reactivate deleted product
+PASS: Template upgrade does not reactivate deleted category
+PASS: Template upgrade does not reactivate deleted group
+PASS: Template upgrade preserves three custom pizza sizes and prices
+PASS: Nested menu is rejected
+PASS: Existing component cannot become a nested menu
+PASS: Rejected nesting preserves recipe
+PASS: Open order protects recipe from later stock mismatch
+PASS: Unchanged recipe can still be saved with an open order
+PASS: Order without pickup number supported
+PASS: Workflow isolates training and starts unpaid
+PASS: State cannot skip preparation
+PASS: Cross-mode workflow update rejected
+PASS: Stale editor cannot overwrite order
+PASS: Delivered but unpaid order remains visible
+PASS: Kitchen note survives repository reload
+PASS: Preparation does not change stock
+PASS: Preparation does not create a sale
+PASS: Delivered simulated payment leaves active list
+PASS: Simulation is explicitly labelled and retained
+PASS: Simulation cannot complete twice
+PASS: Training completion leaves real open orders untouched
+PASS: Cart edits invalidate workflow snapshot
+PASS: Upgrade removes legacy language preference
+PASS: All UI callers remain German
+PASS: Existing generated photo removed even after template marker
+PASS: Customer photo retained
+PASS: Workflow survives restart/migration
+PASS: Concurrent backups create distinct files
+ALL 182 CHECKS PASSED

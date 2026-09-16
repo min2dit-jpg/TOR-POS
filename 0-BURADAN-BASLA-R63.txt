@@ -1,0 +1,7 @@
+TOR POS R63 - Core Stability & Cleanup
+
+1) Desktop\7-SICHERHEITSTESTS.bat -> hedef: ALL 242 CHECKS PASSED
+2) Desktop\1-SETUP-ERSTELLEN.bat -> Setup olusturur
+3) Desktop\installer-output\TOR-POS-size-report.txt -> kurulum agirligi ve en buyuk dosyalar
+
+Not: Self-contained .NET bilincli olarak korunmustur; stabilite icin trimming yapilmamistir.

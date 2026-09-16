@@ -1,0 +1,13 @@
+{
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "02c2736227049a652f43ab20ecd588acfd94fa1615a62d0969cf34360cd03c68",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "5116848703830a7c15950f68473fb04de1027030f0414033a408e283d2415830",
+  "Desktop/src/TorPos.App/App.axaml.cs": "a2f14e652b5cdb84da9748e749cf61c4245a775da54011278099672d1d401baa",
+  "Desktop/src/TorPos.Infrastructure/TorUpdateService.cs": "6395637a26db43610404526efd336e9fd78d91c1936cf4cc868e4d1489f2c8c8",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "6defaa0c6c56a13e030aa7b054cb73b6461f17d2eb3bdf7630d81759573b675a",
+  "Desktop/1-SETUP-ERSTELLEN.bat": "a71e68e27537b4b4b631cabb93558870f3465011feabf3a10f43dae4261cb216",
+  "Desktop/8-PAKET-GROESSE-PRUEFEN.bat": "b215e0f6f2a3d8a6b796150d9af540dc2057a77fa8cda4a37829a38924cc648d",
+  "Desktop/TOR-POS-Pro-Setup.iss": "fca1601c353fd53b7e19b7f82d0d77c19058cbe6052946ce5b9597191c6c7693",
+  "Desktop/src/TorPos.App/Assets/TorPos-Magnifier.png": "cb5fa0080be1b065f014bd3ecb4eb88b30d3c21cf673900513d6881ada5f4719",
+  "Desktop/manifest.json": "5f1c18a413f88a2bf92a715b10cec34040d052268df79ff1f9d1978a50f4891c",
+  "R63-CHANGELOG.md": "bbced88f59a561fd9a86606affebb90e4a61ae94cf3a2f12b92f979655b003b1"
+}

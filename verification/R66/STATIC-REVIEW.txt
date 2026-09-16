@@ -1,0 +1,12 @@
+TOR POS R66 STATIC REVIEW
+
+PASS - fixed_mutex_app
+PASS - fixed_mutex_setup
+PASS - legacy_process_check
+PASS - no_force_kill
+PASS - usb_stage
+PASS - robocopy_cache_excludes
+PASS - non_solid
+PASS - version
+
+Gerçek Windows/Inno build bu ortamda çalıştırılmadı.

@@ -1,0 +1,9 @@
+  TorPos.Core -> /workspace/scratch/3f62f417a8bf/r48-fix/Desktop/src/TorPos.Core/bin/Debug/net10.0/TorPos.Core.dll
+  TorPos.Infrastructure -> /workspace/scratch/3f62f417a8bf/r48-fix/Desktop/src/TorPos.Infrastructure/bin/Debug/net10.0-windows/TorPos.Infrastructure.dll
+  TorPos.SafetyTests -> /workspace/scratch/3f62f417a8bf/r48-fix/Desktop/tests/TorPos.SafetyTests/bin/Debug/net10.0-windows/TorPos.SafetyTests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:03.29

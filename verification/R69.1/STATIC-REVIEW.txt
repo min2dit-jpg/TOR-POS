@@ -1,0 +1,20 @@
+TOR POS R69.1 STATIC REVIEW
+
+PASS - actual release class exists
+PASS - migration uses TorRelease line 1
+PASS - no bad ReleaseInfo symbol
+PASS - schema target preserved
+PASS - pre migration backup preserved
+PASS - downgrade fail closed preserved
+PASS - version csproj
+PASS - version release
+PASS - version installer
+PASS - manifest target 262
+PASS - test count actual 8
+
+Full C# scan: TorPos.Core.ReleaseInfo = 0 occurrences
+Actual release class: TorPos.Core.TorRelease
+R69 Review check count: 6 assert + 2 reject = 8
+Windows target: ALL 262 CHECKS PASSED
+
+Gerçek .NET 10 Windows build bu ortamda çalıştırılmadı.

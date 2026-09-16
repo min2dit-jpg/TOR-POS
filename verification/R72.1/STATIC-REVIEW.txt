@@ -1,0 +1,19 @@
+TOR POS R72.1 STATIC REVIEW
+
+PASS - root migrations
+PASS - no root direct init
+PASS - test exit explicit zero
+PASS - build exit explicit zero
+PASS - no old errorlevel check
+PASS - duplicate source removed
+PASS - internals visible
+PASS - schema V4 kept
+PASS - offer 40/50 kept
+PASS - KDF 600k kept
+PASS - version app
+PASS - version core
+PASS - version installer
+PASS - target 298
+
+Expected Windows result: ALL 298 CHECKS PASSED
+Actual Windows .NET build/test must be verified on user machine.

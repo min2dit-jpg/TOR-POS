@@ -1,0 +1,52 @@
+TOR POS R71 STATIC REVIEW
+
+PASS - version csproj
+PASS - version release
+PASS - version installer
+PASS - schema V3
+PASS - V3 migration
+PASS - promotion immutable trigger
+PASS - promotion delete blocked
+PASS - pfand excluded
+PASS - sale snapshot fields
+PASS - checkout snapshot copy
+PASS - sale persistence snapshot
+PASS - park persistence snapshot
+PASS - promotion service exists
+PASS - date bounded active lookup
+PASS - percent options
+PASS - create audited
+PASS - disable audited
+PASS - management UI
+PASS - all/category/product scopes
+PASS - product editor offer buttons
+PASS - global offer menu
+PASS - promotion auto applies
+PASS - promotion resolution measured
+PASS - no stacking default
+PASS - receipt offer name percent dates
+PASS - receipt separates discounts
+PASS - Z report financial separation
+PASS - Z report storno return
+PASS - Z report VAT
+PASS - Z report campaigns
+PASS - monthly report
+PASS - booking export
+PASS - cloud snapshot
+PASS - diagnostics offers
+PASS - R71 13 tests
+PASS - R71 tests invoked
+PASS - target 283
+PASS - fiscal production still false
+PASS - no bad ReleaseInfo refs
+PASS - promotion DI main
+PASS - promotion DI diagnostics
+PASS - XML/XAML well formed
+PASS - MainWindow xName unique
+
+R71 safety additions: 11 assert + 2 reject = 13
+Windows target: ALL 283 CHECKS PASSED
+
+V3 promotion SQL was syntax-tested separately with SQLite.
+Real .NET 10/Avalonia Windows compilation was NOT available in this generation environment.
+Fiscal production remains disabled; real BON STORNO/RETOURE and final TSE/DSFinV-K mapping are not claimed.

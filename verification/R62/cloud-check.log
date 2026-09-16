@@ -1,0 +1,4 @@
+
+> tor-pos-cloud@0.10.0 check
+> node --check server.js && node --check public/app.js
+

@@ -1,0 +1,49 @@
+TOR POS R55 — SIPARIS / BASKI / YEDEK / GUNCELLEME
+Sürüm: 0.7.33.550 (program, Windows dosyası ve kurulum aynı)
+
+KURULUM
+1. Mevcut kasadan yedek al; eski programı kaldırma.
+2. ZIP'i ayrı klasöre tamamen çıkar.
+3. Desktop\1-SETUP-ERSTELLEN.bat ile kurulumu oluştur.
+   Paket kaynak kod içerir; hazır Windows Setup.exe değildir.
+4. START-R55.bat geliştirme için Desktop ve Cloud'u birlikte başlatır.
+
+YENİLİKLER
+- Sipariş + mutfak baskısı + günlük kaydı aynı veritabanı işlemindedir.
+- Sipariş kabulü, değişikliği ve iptalinin baskı içeriği kalıcı saklanır.
+- Siparişin o andaki ürün/menü adları ve miktarları baskı kaydında korunur.
+- Baskı kaydı yaklaşık 5 saniyelik aralıklarla mevcut yazdırma kuyruğuna aktarılır.
+- Aynı baskı kimliği yeniden başlatmada otomatik ikinci kez gönderilmez.
+- Sonucu belirsiz ve gönderilememiş yazıcı işleri KASSE > Druckwarteschlange prüfen
+  ekranında kontrol edilir. Kontrolü kaldırmak otomatik tekrar baskı yapmaz.
+- DATENSICHERUNG ekranında DATEN + BILDER SICHERN / PRÜFEN düğmesi eklendi.
+  Veritabanı, ProductImages, ReceiptAssets ve PrintJobs paketlenir.
+  Paket ayrı geçici klasöre geri açılır; SHA256 ve SQLite kontrolleri yapılır.
+- Gereksiz stockUpdated değişkeni ve erişilemeyen mesaj kaldırıldı.
+- Güncelleme yayınında imza zorunlu, kurulumlar benzersiz SHA256 adıyla saklanır;
+  manifest son adımda değiştirilir. Başarısız doğrulama önceki yayını bozmaz.
+
+İLK TESTLER
+1. Ayarlarda sürüm 0.7.33.550 / R55 görünmeli.
+2. IMBISS + TRAINING + ORDER: iki ürünle sipariş kabul et.
+   Seçili mutfak yazıcısına baskı gitmeli; programı yeniden açınca aynı iş
+   otomatik tekrar basılmamalı.
+3. Açık siparişi değiştirip yeniden kaydet: ÄNDERUNG fişi gelmeli.
+4. Siparişi iptal et: STORNO / NICHT ZUBEREITEN fişi gelmeli.
+5. Yazıcı hatasında satış veya siparişi tekrar tekrar oluşturma.
+   Normal admin ile Druckwarteschlange prüfen ekranını ve Windows kuyruğunu kontrol et.
+6. Einstellungen > Datensicherung > DATEN + BILDER SICHERN / PRÜFEN.
+   Sonuçta dosya, ürün ve satış adetleriyle paket yolu gösterilmeli.
+7. R54'ün Almanca, sıra numarası seçeneği, ürün görselleri ve uzun Bon/A4
+   rapor kontrollerini de tamamla.
+
+DOĞRULAMA VE SINIRLAR
+.NET 10 derlemesi: başarılı. 195 Desktop kontrolü ve 19 Cloud testi geçti.
+Gerçek Windows kurulumu, PowerShell Authenticode ve fiziksel yazıcı burada test edilmedi.
+Yeni yedek kontrolü mevcut kasayı değiştirmez; başka bilgisayara otomatik kurulum değildir.
+Paket canlı sepet kurtarma dosyasını, dış klasördeki görselleri ve güncelleme dosyalarını
+kapsamaz. Resim yolları ve Windows hesabına bağlı erişim bilgileri taşınmada ele alınmalı.
+Kontrol sınırı: açılmış içerikte 2 GB / 50000 dosya. Oluşmuş paket hata durumunda saklanır.
+Normal otomatik kapanış yedeği hâlâ mevcut veritabanı yedeğidir.
+Sipariş hazırlama durumlarının Cloud'a aktarılması henüz eklenmedi.
+SumUp ve gerçek fiskal üretim kilidi korunmuştur.

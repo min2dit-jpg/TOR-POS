@@ -1,0 +1,23 @@
+✔ login, demo data, receipt detail and tenant isolation (626.936139ms)
+✔ consistent sale persists once; changed repeat is conflict (23.910386ms)
+✔ R48 IMBISS pickup number is persisted and returned in receipt detail (16.733353ms)
+✔ same event ID on a different register does not conflict (12.253474ms)
+✔ invalid values and HTML payment types rejected; whole batch rolls back (26.480895ms)
+✔ snapshots replace removed products and older snapshots cannot reverse stock (27.320208ms)
+✔ R42 stock snapshot keeps barcode, SKU, category, price and unit (7.950337ms)
+✔ R47 stock snapshot keeps Mindestbestand and Einkaufspreis (8.020713ms)
+✔ R46 completed sale updates cloud stock once and duplicate does not double-decrement (23.320809ms)
+✔ R46 delayed sale older than latest stock snapshot cannot decrement it again (13.836808ms)
+✔ Berlin calendar and DST boundaries (22.543303ms)
+✔ pagination reaches older receipts (86.433128ms)
+✔ R48 update manifest and download endpoint (9.086948ms)
+✔ R45 TOTP enrollment and challenge login (120.483762ms)
+✔ credential and browser-origin protection (32.464256ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1199.76349

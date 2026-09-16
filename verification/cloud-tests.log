@@ -1,0 +1,16 @@
+✔ login, demo data, receipt detail and tenant isolation (879.765969ms)
+✔ consistent sale persists once; changed repeat is conflict (70.30907ms)
+✔ same event ID on a different register does not conflict (11.359767ms)
+✔ invalid values and HTML payment types rejected; whole batch rolls back (17.630319ms)
+✔ snapshots replace removed products and older snapshots cannot reverse stock (34.407785ms)
+✔ Berlin calendar and DST boundaries (30.976453ms)
+✔ pagination reaches older receipts (109.177798ms)
+✔ credential and browser-origin protection (36.70568ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1512.154737

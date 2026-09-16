@@ -1,0 +1,112 @@
+
+> tor-pos-cloud@0.9.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# (node:2703) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: login, demo data, receipt detail and tenant isolation
+ok 1 - login, demo data, receipt detail and tenant isolation
+  ---
+  duration_ms: 335.121335
+  type: 'test'
+  ...
+# Subtest: consistent sale persists once; changed repeat is conflict
+ok 2 - consistent sale persists once; changed repeat is conflict
+  ---
+  duration_ms: 13.22794
+  type: 'test'
+  ...
+# Subtest: R48 IMBISS pickup number is persisted and returned in receipt detail
+ok 3 - R48 IMBISS pickup number is persisted and returned in receipt detail
+  ---
+  duration_ms: 6.981687
+  type: 'test'
+  ...
+# Subtest: same event ID on a different register does not conflict
+ok 4 - same event ID on a different register does not conflict
+  ---
+  duration_ms: 6.390345
+  type: 'test'
+  ...
+# Subtest: invalid values and HTML payment types rejected; whole batch rolls back
+ok 5 - invalid values and HTML payment types rejected; whole batch rolls back
+  ---
+  duration_ms: 11.193279
+  type: 'test'
+  ...
+# Subtest: snapshots replace removed products and older snapshots cannot reverse stock
+ok 6 - snapshots replace removed products and older snapshots cannot reverse stock
+  ---
+  duration_ms: 12.174325
+  type: 'test'
+  ...
+# Subtest: R42 stock snapshot keeps barcode, SKU, category, price and unit
+ok 7 - R42 stock snapshot keeps barcode, SKU, category, price and unit
+  ---
+  duration_ms: 5.493662
+  type: 'test'
+  ...
+# Subtest: R47 stock snapshot keeps Mindestbestand and Einkaufspreis
+ok 8 - R47 stock snapshot keeps Mindestbestand and Einkaufspreis
+  ---
+  duration_ms: 5.809218
+  type: 'test'
+  ...
+# Subtest: R46 completed sale updates cloud stock once and duplicate does not double-decrement
+ok 9 - R46 completed sale updates cloud stock once and duplicate does not double-decrement
+  ---
+  duration_ms: 14.355282
+  type: 'test'
+  ...
+# Subtest: R49 combo stock consumption decrements components instead of visible menu article
+ok 10 - R49 combo stock consumption decrements components instead of visible menu article
+  ---
+  duration_ms: 7.13902
+  type: 'test'
+  ...
+# Subtest: R46 delayed sale older than latest stock snapshot cannot decrement it again
+ok 11 - R46 delayed sale older than latest stock snapshot cannot decrement it again
+  ---
+  duration_ms: 9.254119
+  type: 'test'
+  ...
+# Subtest: Berlin calendar and DST boundaries
+ok 12 - Berlin calendar and DST boundaries
+  ---
+  duration_ms: 19.230773
+  type: 'test'
+  ...
+# Subtest: pagination reaches older receipts
+ok 13 - pagination reaches older receipts
+  ---
+  duration_ms: 51.22421
+  type: 'test'
+  ...
+# Subtest: R48 update manifest and download endpoint
+ok 14 - R48 update manifest and download endpoint
+  ---
+  duration_ms: 8.810364
+  type: 'test'
+  ...
+# Subtest: R45 TOTP enrollment and challenge login
+ok 15 - R45 TOTP enrollment and challenge login
+  ---
+  duration_ms: 56.427454
+  type: 'test'
+  ...
+# Subtest: credential and browser-origin protection
+ok 16 - credential and browser-origin protection
+  ---
+  duration_ms: 15.091969
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 640.107998

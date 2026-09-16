@@ -1,5 +1,9 @@
 name: TOR-POS Windows kontrol
 
+# R127: the repository now holds the whole project folder. The Desktop job
+# runs inside Desktop/, the Cloud job inside Cloud/ - the steps themselves are
+# unchanged from when each lived in its own place.
+
 on:
   push:
     branches: [main]
@@ -23,10 +27,11 @@ jobs:
   windows-checks:
     name: Windows derleme ve mevcut testler
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
+        working-directory: Desktop
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v7
@@ -95,13 +100,40 @@ jobs:
           $uiExit = $LASTEXITCODE
           if ($uiExit -ne 0) { exit $uiExit }
 
+      # upload-artifact paths are relative to the repository root, not to the
+      # job's working-directory.
       - name: Hata ve test gunluklerini sakla
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: tor-pos-ci-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ci-results/*.log
-            ci-results/ui/*.png
+            Desktop/ci-results/*.log
+            Desktop/ci-results/ui/*.png
           if-no-files-found: warn
           retention-days: 7
+
+  cloud-checks:
+    name: Cloud sozdizimi ve testler
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: Cloud
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # node:sqlite without an experimental flag needs Node 22.13 or newer.
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Sozdizimi kontrolu
+        run: npm run check
+
+      - name: Cloud testlerini calistir
+        run: npm test

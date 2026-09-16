@@ -1,0 +1,101 @@
+{
+  "passed": 19,
+  "total": 19,
+  "checks": [
+    {
+      "check": "Version 0.7.33.570 consistent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Old ORDER checkout blocker removed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Separate order display window present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Order display separate from customer display",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Accepted/preparing displayed as preparing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Ready rendered green",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Automatic second-screen guard present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Daily backup default 00:00",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Missed backup checked immediately on startup",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Same-day scheduled success suppresses duplicate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Retry delay five minutes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Failure catch does not write success marker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Daily scheduler has no Z-report/daily-closing dependency",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Scheduler-owned status protected from stale settings save",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "R57 adds 19 safety checks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "R56 baseline confirms 203 passed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Combined target is 222",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "XML/AXAML/CSProj parse",
+      "ok": true,
+      "detail": "10 files"
+    },
+    {
+      "check": "C# delimiter/static balance",
+      "ok": true,
+      "detail": "74 files"
+    }
+  ]
+}

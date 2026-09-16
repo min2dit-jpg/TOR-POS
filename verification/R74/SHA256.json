@@ -1,0 +1,15 @@
+{
+  "Desktop/src/TorPos.Infrastructure/DatabaseHealthService.cs": "ad03429e8fda5b231ac31aca800a839345bd43fa9158ea968150f4f6fb7aac42",
+  "Desktop/src/TorPos.App/App.axaml.cs": "b9bb3e1859462e52fe87c39c8618c2e6ea8c9f9efc07fe2b11084d7863d43c21",
+  "Desktop/src/TorPos.App/AppWindowFactory.cs": "905002c54773e0970ed51a65409d10996d06943917bf4d57d57b4adb38ed7cf7",
+  "Desktop/src/TorPos.App/DiagnosticsWindow.cs": "49ec13143eaa85ea36054807aca59234d550db5ba10dd5eef23f1d9501c663d8",
+  "Desktop/tests/TorPos.SafetyTests/R74ReviewTests.cs": "af91cb45de1faafc957df1d640cf88676040b2dbfdccbeda5b775c97f7eca107",
+  "Desktop/tools/TorPos.DbStress/TorPos.DbStress.csproj": "bd97bd4c65e8b225ad1c596c7614131c6a9a7855703123f0580d886f5edf8b55",
+  "Desktop/tools/TorPos.DbStress/Program.cs": "37be0d504c39b924aced66f863f29480fe488fb7acd6b9b642f167d03284e65c",
+  "Desktop/8-DATENBANK-WAL-LASTTEST.bat": "c58d8803aea3bc780db8cf9faf9a8f2eecaa3716bd7697d5e577efe52f900ea9",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "d3cec02ff934bca8852501c5d7748c9fafc4d9244074d48a0c5526c0b44b19f6",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "9f3f22e17ea8b929bc3313d5c17cdeb95211421f4a96b01be5f8bdcda3ce1223",
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "663e65b20cb74d5e7c6b19f97799b39afbd297c2766286209dba7ab64deb1016",
+  "Desktop/TOR-POS-Pro-Setup.iss": "fcd4dc4e4b96fbc46dd448e00cf4a02c796756218560cbd7f170d3bf995201cb",
+  "Desktop/manifest.json": "ce3b3a732a32d3eec543ae8bd5645c5104152818fac093ccae443616b2d79208"
+}

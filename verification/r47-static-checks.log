@@ -1,0 +1,5 @@
+R47 static checks
+XAML XML: OK (4 files)
+C# lexical structure: OK (51 files)
+MainWindow click handlers: OK (63)
+manifest.json: OK

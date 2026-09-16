@@ -1,0 +1,19 @@
+{
+  "Desktop/src/TorPos.Core/PaymentTerminals.cs": "8d3271f23409d49753722515067fb0255c570d48a3a0d7b29888e31f991a6f01",
+  "Desktop/src/TorPos.Core/CheckoutSafety.cs": "eed8c6cc6aa203a46e95788f1ca2b625bb2d3837371481f2a40c8d08472c1b99",
+  "Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs": "f321e3e65b1ab6df375292c43cd48813ef81602375a7f7e53fd5081eac0304a9",
+  "Desktop/src/TorPos.Infrastructure/CheckoutJournal.cs": "dfb064dcb7744b05f0ee4f7369fa335efacd342fda53e6cc3c3becee7bd095bc",
+  "Desktop/src/TorPos.Infrastructure/ZvtPaymentTerminalService.cs": "11dc3ef9fada639e9e0b4ef688211fe75263c328ef5e11b3918c7c9eecb5f20e",
+  "Desktop/src/TorPos.App/MainWindow.axaml.cs": "505b934b8b5b4e1be67eb68d72ddbb22bf5f5f1cf4170a3fa3bdfa30ac766981",
+  "Desktop/src/TorPos.App/MainWindow.Safety.cs": "ccd9454b6feaf724e782030b275cf0e044a47da4758f7c0ab5bacf58bf35924b",
+  "Desktop/src/TorPos.App/CheckoutReviewWindow.cs": "aacdc11e02c749ef9931e8dacda6ddd4d988c7d4edca1d98141c97eed5589807",
+  "Desktop/src/TorPos.App/DiagnosticsWindow.cs": "2eb0633d22c4fa3bc2e317a8569e803531159494c42b15bd83f67145fafaeeea",
+  "Desktop/src/TorPos.App/AppWindowFactory.cs": "937b85e9881fe2255d4c81e7a890eaa241e3f76d4306bc057aaae5f8dd507138",
+  "Desktop/tests/TorPos.SafetyTests/R72ReviewTests.cs": "9d27dc04b764f30f5b9b521da1942a62c61309616f122ca2f55d1201469b9674",
+  "Desktop/tests/TorPos.SafetyTests/R73ReviewTests.cs": "a37ff7aa5558c45390fbe26b444f23e4ee5063198951607dfb82049c99680f4e",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "dd736a56e11840e6e714ee0358dfbdbb0c6a0e8b92d5e057f214df0249a5d220",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "199b68d2246622e65a510f935b72986fc5e195b6023d220b7d97232e6eb84f29",
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "edbaaed77cd8dd0dee9197bc36f062f3782ba8251c39101dd4ba1987160589f0",
+  "Desktop/TOR-POS-Pro-Setup.iss": "e371bdd46031dbd890ae8976e8c07f676e9771904057a53bbaeec158b8c74379",
+  "Desktop/manifest.json": "5fd3a1cf9f5a65d1af073f68c1d30078cb94d69e73f2efb399ea1e0fd69529c5"
+}

@@ -1,0 +1,31 @@
+TOR POS R72.3 STATIC REVIEW
+
+PASS - helper exists
+PASS - helper migrates current
+PASS - main uses helper
+PASS - R48 uses helper
+PASS - R49 uses helper
+PASS - R50 uses helper
+PASS - R51 uses helper
+PASS - R53 uses helper
+PASS - R54 uses helper
+PASS - R55 uses helper
+PASS - R56 uses helper
+PASS - R57 uses helper
+PASS - Cloud uses helper
+PASS - no ordinary legacy init
+PASS - R69 intentional legacy remains
+PASS - schema V4
+PASS - 40/50 preserved
+PASS - KDF 600k preserved
+PASS - cloud redirect preserved
+PASS - failclosed BAT preserved
+PASS - target 298
+PASS - app version
+PASS - core version
+PASS - installer version
+
+Ordinary executable InitializeAsync hits outside R69: 0
+Intentional R69 executable InitializeAsync hits: 3
+Expected Windows result: ALL 298 CHECKS PASSED
+Actual Windows execution requires user machine verification.

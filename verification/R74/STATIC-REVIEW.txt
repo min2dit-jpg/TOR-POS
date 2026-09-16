@@ -1,0 +1,38 @@
+TOR POS R74 STATIC REVIEW
+
+PASS - health service exists
+PASS - health uses PASSIVE
+PASS - no TRUNCATE in health
+PASS - health quick check
+PASS - health WAL
+PASS - health FULL
+PASS - health busy timeout
+PASS - health page metrics
+PASS - DI health
+PASS - diagnose health row
+PASS - performance database health
+PASS - R74 test invoked
+PASS - baseline correct
+PASS - stress project exists
+PASS - stress temp only
+PASS - stress 10k
+PASS - stress 500k
+PASS - stress barcode
+PASS - stress contention
+PASS - stress backup
+PASS - stress script
+PASS - schema remains V5
+PASS - R73 outcome preserved
+PASS - offer 40/50 preserved
+PASS - KDF 600k preserved
+PASS - backup lock fix preserved
+PASS - cloud redirect fix preserved
+PASS - version app
+PASS - version core
+PASS - installer version
+PASS - manifest target
+
+R74 safety checks: 12 assert + 0 reject = 12
+Expected Windows Safety total: ALL 333 CHECKS PASSED
+Dedicated DB stress: 10,000 products + 500,000 sales + 500,000 items; temp DB only.
+Actual Windows .NET build/stress execution was not run in this generation environment.

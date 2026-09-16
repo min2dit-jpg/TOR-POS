@@ -1,0 +1,7 @@
+TOR POS R52.1
+
+1) Eski TOR POS'u KALDIRMAYIN.
+2) Desktop\1-SETUP-ERSTELLEN.bat ile yeni setup oluşturun.
+3) Oluşan TOR-POS-Pro-Setup.exe dosyasını normal çift tıklayın. Setup kendisi administrator yetkisi isteyecek; sağ tık > Yönetici olarak çalıştır gerekmez.
+4) Windows UAC güvenlik onayı Windows tarafından zorunlu tutulabilir ve program tarafından atlanamaz.
+5) Anmeldung ekranında artık dil seçimi yoktur. Program dili Einstellungen > Programmsprache bölümünden yönetilir.

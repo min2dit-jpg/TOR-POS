@@ -1,0 +1,17 @@
+{
+  "Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs": "97895f350d40e2f028a2d95214d1525ac49ff0ea3bb85342bf7c2916157435ff",
+  "Desktop/src/TorPos.Infrastructure/ControlledPosActionService.cs": "9bc03b84186d53c363435468348c813693717b290a20a1c416c041dbca662ebc",
+  "Desktop/src/TorPos.App/PosActionReasonWindow.cs": "a8ffe19f6ff49bd3565200ac2a18c62c44d13a1bfcd0fdc02133a7f0b3f80033",
+  "Desktop/src/TorPos.App/MainWindow.axaml.cs": "e5a45643ff84f6138eb0a5bade1c52f3cc2ba8267fbe45b1396310328b0208dc",
+  "Desktop/src/TorPos.App/SettingsWindow.axaml.cs": "0b9dbe5e8cda62ae9310ad2bc742853506af8bb57c4a81316e75e1be319d9118",
+  "Desktop/src/TorPos.App/DiagnosticsWindow.cs": "f43b4ed3f87319a19e460503df705ed3adfbb31ecc5c9a3e7e95f88236cda60b",
+  "Desktop/src/TorPos.App/AppWindowFactory.cs": "29736585120bce119f6b821ec16127b52d06f44908ec64c6c7b7880358f57632",
+  "Desktop/src/TorPos.App/App.axaml.cs": "d5db842b2416bbc034aab97c7ef40e28bf9b94fa0f52842cc6b58e6e3fb65cc6",
+  "Desktop/tests/TorPos.SafetyTests/R70ReviewTests.cs": "544fb3a25d698e7c358f1674b352e2ba98ea5a4a805628021da2b847277ae0ec",
+  "Desktop/tests/TorPos.SafetyTests/R69ReviewTests.cs": "977d405c4f70813e2fd0046a1a65b01b6b49fca1893adcada342f77e63ccf0d2",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "f5a6d0d28b2c72554431b13318f0f5efe826f33dbfc9a4cbe6b60ecbf0b48448",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "c373cc07e90d4282c73cfdf4bd4fcc7299884603614480316ed2275ed18ae086",
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "b208620b26c91decced0e56364a4683886f16cc169277900829f43c002b3f6ce",
+  "Desktop/TOR-POS-Pro-Setup.iss": "58be889b913322141904632d4cf43e40b0a40331e8b3a53d06036dfafa4da46f",
+  "Desktop/manifest.json": "c4fc91b4fb0e1262790c4abd655aa0d49ffe4ea4d000a8860470ba6f48f37c02"
+}

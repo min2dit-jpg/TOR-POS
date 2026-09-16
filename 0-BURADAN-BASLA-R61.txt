@@ -1,0 +1,18 @@
+TOR POS R61 - Gmail Explicit STARTTLS Hotfix
+Version 0.7.33.610
+
+1) Desktop\7-SICHERHEITSTESTS.bat
+   Hedef: ALL 240 CHECKS PASSED
+2) Desktop\1-SETUP-ERSTELLEN.bat
+3) TOR POS > Einstellungen > Berichte & E-Mail
+4) GMAIL-STANDARD ÜBERNEHMEN
+5) SMTP-Benutzer ve Absender: tam Gmail adresi
+6) Google App-Passwort girin
+7) TEST-E-MAIL SENDEN
+
+R61 artik System.Net.Mail.SmtpClient ile STARTTLS varsayimina guvenmez.
+Baglanti sirasi kod tarafinda zorunlu olarak:
+EHLO -> STARTTLS -> TLS -> EHLO -> AUTH -> MAIL/RCPT/DATA
+
+SMTP-Diagnose alani hangi fazda hata oldugunu gosterir.
+App-Passwort hicbir hata mesajinda veya logda gosterilmez.

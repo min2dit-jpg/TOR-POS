@@ -1,0 +1,15 @@
+TOR POS R66.1 STATIC REVIEW
+
+PASS - old CIM detection removed
+PASS - system-drive direct build
+PASS - staging label before build label
+PASS - publish failure goes to build_fail
+PASS - robocopy error log visible
+PASS - Restart Manager auto-close disabled
+PASS - pre-install TOR POS process check
+PASS - fast installer compression
+PASS - USB local install helper
+PASS - version 0.7.33.661
+
+Gerçek Windows build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 246 CHECKS PASSED.

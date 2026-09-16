@@ -1,0 +1,13 @@
+data/*.db
+data/*.db-shm
+data/*.db-wal
+.env
+
+# Runtime state, secrets and anything installed locally stay out of history.
+data/
+node_modules/
+*.env
+.env.*
+!deploy/tor-pos-cloud.env.example
+updates/*.exe
+backups/

@@ -1,0 +1,13 @@
+TOR POS R67.1 STATIC REVIEW
+
+PASS - TSE no result.Success
+PASS - TSE Ready state
+PASS - TSE Connected state
+PASS - TSE Error state
+PASS - Watermark removed dialogs
+PASS - Watermark removed firstrun
+PASS - Watermark removed producteditor
+PASS - version app
+PASS - version setup
+
+Windows target: ALL 250 CHECKS PASSED

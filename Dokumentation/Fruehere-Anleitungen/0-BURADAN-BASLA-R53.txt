@@ -1,0 +1,41 @@
+TOR POS R53 — R52.1 ÜZERİNE KARARLILIK DÜZELTMELERİ
+
+KURULUM
+1. Eski TOR POS'u kaldırma. Önce kasa yedeğini al; eski klasörü sakla.
+2. ZIP'i ayrı klasöre tamamen çıkar.
+3. Desktop\1-SETUP-ERSTELLEN.bat ile Windows kurulumunu oluştur.
+4. Oluşan Setup.exe normal çift tıklanabilir; Windows UAC onayı istenir.
+   Yönetici kurulumu ve mevcut kurulum klasörünü kullanma ayarı korundu.
+5. Giriş ekranına dil seçimi eklenmedi; dil Einstellungen içinden yönetilir.
+6. Kaynak koddan çalıştırmak için START-R53.bat kullanılabilir.
+7. Cloud verilerini taşımak gerekiyorsa eski ve yeni sunucu kapalıyken
+   eski Cloud/data klasörünü yeni Cloud klasörüne kopyala; eskiyi sakla.
+
+DÜZELTMELER
+- Hızlı ürün seçimi sırasında geç gelen eski sorgu sonucu uygulanmaz.
+- Ürün kaydı sürerken ikinci kayıt ve form düzenleme engellenir.
+- Ürün + stok + varyantlar + menü içeriği tek veritabanı işleminde kaydedilir.
+  Varyant/menü hatasında ürün ve stok değişikliği de geri alınır.
+- Katalog şablonu güncellenirken pasifleştirilmiş ürün/grup yeniden açılmaz.
+- Müşterinin mevcut KDV ve pizza varyant fiyatları şablonla değiştirilmez.
+- Uzun rapor satırları sayfalar arasında bölünür. Baskı ilerleyemiyorsa hata
+  verir; aynı satır için sınırsız boş sayfa oluşturmaz.
+- Masaüstü test projesindeki eksik uygulama referansı düzeltildi.
+- İçeride eski R51 görünen sürüm bilgisi R53 ile tutarlı hâle getirildi.
+
+İLK KABUL TESTLERİ
+1. Ürün listesindeki iki ürünü hızlı seç; form son seçilen ürünü göstermeli.
+2. Bir ürüne stok, varyant ve menü bileşeni girip tek seferde kaydet.
+   Pencereyi kapat/aç; hepsinin birlikte kaydedildiğini kontrol et.
+3. X/Monatsbericht ve uzun Warenbestand raporunu Bon ve A4 yazıcısında dene.
+   Sayfa geçişinde satırlar kaybolmamalı veya tekrarlanmamalı.
+4. IMBISS ORDER → sıra numarası → mutfak fişi → sonra test tahsilatı akışını dene.
+
+DOĞRULAMA / SINIRLAR
+.NET 10 ile uygulama ve test projesi derlendi: 0 hata / 8 mevcut uyarı.
+157 masaüstü testi ve 16 Cloud testi geçti.
+Cloud, SumUp ve giriş ekranı işlevleri bu pakette değiştirilmedi.
+Windows Setup/UAC, gerçek yazıcı, scanner ve terminal burada çalıştırılmadı.
+Bu kaynak kodlu geliştirme paketidir; hazır kurulum EXE'si değildir.
+Gerçek fiskal üretim kilidi ve TSE/DSFinV-K sınırları devam ediyor.
+Bon, mutfak fişi ve raporların Almanca çıktı ilkesi korundu.

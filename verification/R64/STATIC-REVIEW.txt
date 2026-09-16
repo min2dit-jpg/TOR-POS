@@ -1,0 +1,23 @@
+TOR POS R64 FIX1 - STATIC REVIEW
+=================================
+Basis: R64-Menu-Cleanup
+
+Kontrol edilen ana noktalar:
+PASS - R63 -> R64 farkları yalnızca menu/editor alanında.
+PASS - MainWindow partial class bölünmesi yapısal olarak uyumlu.
+PASS - Merkezi GridPaging kategori ve ürün sayfalamasında aynı formülü kullanıyor.
+PASS - Sürüm metadata kaynak/EXE/installer tarafında 0.7.33.640 olarak eşitlendi.
+PASS - Warengruppe reorder artık tek transaction ve sort-only.
+PASS - Geçersiz reorder ID transaction rollback tetikliyor.
+PASS - Warengruppe footer iki satır; genişlik taşması azaltıldı.
+PASS - Kategori editör sırası kasa ekranıyla eşleştirildi.
+PASS - Boş kategori placeholder kutuları kaldırıldı.
+PASS - 2 yeni safety test eklendi.
+
+Bu ortamda .NET SDK/MSBuild yoktur. Gerçek Windows build iddia edilmez.
+Zorunlu Windows doğrulaması:
+1) Desktop\7-SICHERHEITSTESTS.bat -> ALL 244 CHECKS PASSED
+2) Desktop\1-SETUP-ERSTELLEN.bat
+3) Warengruppe seç -> ▲/▼ -> sıra değişsin
+4) Programı kapat/aç -> sıra kalıcı olsun
+5) Kasa ekranı ile Warengruppen editör sırası aynı olsun

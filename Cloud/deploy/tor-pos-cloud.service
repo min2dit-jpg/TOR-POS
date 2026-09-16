@@ -1,0 +1,40 @@
+# R125: systemd unit for a Linux server.
+#
+#   sudo useradd --system --home /opt/tor-pos-cloud --shell /usr/sbin/nologin torcloud
+#   sudo cp -r Cloud /opt/tor-pos-cloud && sudo chown -R torcloud: /opt/tor-pos-cloud
+#   sudo cp deploy/tor-pos-cloud.env.example /etc/tor-pos-cloud.env   # then fill in every secret
+#   sudo chmod 600 /etc/tor-pos-cloud.env
+#   sudo cp deploy/tor-pos-cloud.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tor-pos-cloud
+#   journalctl -u tor-pos-cloud -f
+#
+# The server only listens on 127.0.0.1. TLS is terminated by the reverse proxy
+# in front of it (see deploy/Caddyfile.example); nothing talks to Node directly.
+
+[Unit]
+Description=TOR POS Cloud
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=torcloud
+Group=torcloud
+WorkingDirectory=/opt/tor-pos-cloud
+EnvironmentFile=/etc/tor-pos-cloud.env
+ExecStart=/usr/bin/node server.js
+# server.js closes the HTTP server and the database cleanly on SIGTERM (R120).
+KillSignal=SIGTERM
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the process may only write its data, backup and update folders.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tor-pos-cloud/data /opt/tor-pos-cloud/updates /var/backups/tor-pos-cloud
+
+[Install]
+WantedBy=multi-user.target

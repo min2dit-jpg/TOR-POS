@@ -1,0 +1,94 @@
+
+> tor-pos-cloud@0.6.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# (node:3594) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: login, demo data, receipt detail and tenant isolation
+ok 1 - login, demo data, receipt detail and tenant isolation
+  ---
+  duration_ms: 321.790455
+  type: 'test'
+  ...
+# Subtest: consistent sale persists once; changed repeat is conflict
+ok 2 - consistent sale persists once; changed repeat is conflict
+  ---
+  duration_ms: 15.19715
+  type: 'test'
+  ...
+# Subtest: same event ID on a different register does not conflict
+ok 3 - same event ID on a different register does not conflict
+  ---
+  duration_ms: 5.188576
+  type: 'test'
+  ...
+# Subtest: invalid values and HTML payment types rejected; whole batch rolls back
+ok 4 - invalid values and HTML payment types rejected; whole batch rolls back
+  ---
+  duration_ms: 9.187095
+  type: 'test'
+  ...
+# Subtest: snapshots replace removed products and older snapshots cannot reverse stock
+ok 5 - snapshots replace removed products and older snapshots cannot reverse stock
+  ---
+  duration_ms: 11.953532
+  type: 'test'
+  ...
+# Subtest: R42 stock snapshot keeps barcode, SKU, category, price and unit
+ok 6 - R42 stock snapshot keeps barcode, SKU, category, price and unit
+  ---
+  duration_ms: 4.781982
+  type: 'test'
+  ...
+# Subtest: R46 completed sale updates cloud stock once and duplicate does not double-decrement
+ok 7 - R46 completed sale updates cloud stock once and duplicate does not double-decrement
+  ---
+  duration_ms: 12.443382
+  type: 'test'
+  ...
+# Subtest: R46 delayed sale older than latest stock snapshot cannot decrement it again
+ok 8 - R46 delayed sale older than latest stock snapshot cannot decrement it again
+  ---
+  duration_ms: 6.751806
+  type: 'test'
+  ...
+# Subtest: Berlin calendar and DST boundaries
+ok 9 - Berlin calendar and DST boundaries
+  ---
+  duration_ms: 12.733601
+  type: 'test'
+  ...
+# Subtest: pagination reaches older receipts
+ok 10 - pagination reaches older receipts
+  ---
+  duration_ms: 44.638693
+  type: 'test'
+  ...
+# Subtest: R45 update manifest and download endpoint
+ok 11 - R45 update manifest and download endpoint
+  ---
+  duration_ms: 5.157789
+  type: 'test'
+  ...
+# Subtest: R45 TOTP enrollment and challenge login
+ok 12 - R45 TOTP enrollment and challenge login
+  ---
+  duration_ms: 48.732106
+  type: 'test'
+  ...
+# Subtest: credential and browser-origin protection
+ok 13 - credential and browser-origin protection
+  ---
+  duration_ms: 14.887524
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 578.962748

@@ -1,0 +1,86 @@
+{
+  "passed": 16,
+  "total": 16,
+  "checks": [
+    {
+      "check": "Version 0.7.33.580 consistent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Unified producttile style present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "IMBISS product default reduced to 4x3",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Sparse product rows helper present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Sparse product grid no longer draws outlined empty cells",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Unified no-image article card present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Open-order button visual emphasis present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Windows spooler status probe present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Offline/paper/error states mapped",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Test sale checks printer before submission",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Timeout dialog forbids blind reprint",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Printer settings test performs readiness probe",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "R58 adds six executable review checks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Legacy SystemDecorations compile bug absent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "XML/AXAML/CSProj parse",
+      "ok": true,
+      "detail": "7 files"
+    },
+    {
+      "check": "C# coarse delimiter balance preserved on changed files",
+      "ok": true,
+      "detail": "5 baseline files + 2 new files"
+    }
+  ]
+}

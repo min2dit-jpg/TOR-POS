@@ -1,0 +1,16 @@
+TOR POS R64 - Menü Aufräumen & Sortierung
+
+Bu paket, Claude ile yapilan menu/kategori temizligi degisikliklerini icerir.
+Bu ortamda .NET derleyicisi YOKTU, yani kod hicbir zaman derlenip
+calistirilmadi. Kuruluma almadan once mutlaka:
+
+1) Desktop\1-SETUP-ERSTELLEN.bat -> derleme hatasi olup olmadigini kontrol et
+2) Desktop\7-SICHERHEITSTESTS.bat -> hedef: ALL 242 CHECKS PASSED
+3) Urun Duzenleyici > Warengruppen sekmesinde "NACH OBEN"/"NACH UNTEN"
+   butonlarini elle test et, kasa ekranindaki menu sirasinin degistigini
+   dogrula.
+
+Detaylar icin: R64-CHANGELOG.md
+
+FIX1: Surum numarasi artik gercekten 0.7.33.640 / R64 olarak kaynak, EXE ve Setup metadata'sina islendi.
+Safety test hedefi: ALL 244 CHECKS PASSED.

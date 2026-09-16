@@ -1,0 +1,10 @@
+R61 System.Net.Mail.SmtpClient transport removed: PASS
+R61 Explicit STARTTLS command exists: PASS
+R61 TLS handshake uses SslStream: PASS
+R61 Second EHLO after TLS exists: PASS
+R61 AUTH happens after TLS source block: PASS
+R61 No certificate-validation bypass callback: PASS
+R61 Gmail password normalization preserved: PASS
+R61 SMTP phase diagnostics present: PASS
+R61 PDF attachment MIME remains supported: PASS
+R61 60 second timeout present: PASS

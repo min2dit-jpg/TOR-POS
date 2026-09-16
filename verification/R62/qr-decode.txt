@@ -1,0 +1,6 @@
+PASS
+Encoder: Cloud/qr-v6.js
+Matrix: QR Model 2 Version 6-L (41x41)
+Test URL: https://cloud.tor-pos.de/g/AbC1234567890xyz?t=QwertyUiop1234567890xyz
+Decoder: OpenCV QRCodeDetector
+Result: exact URL round-trip matched.

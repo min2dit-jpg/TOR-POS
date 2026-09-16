@@ -1,0 +1,47 @@
+TOR POS R54 — ALMANCA / SIPARIS TAKIBI / TEMEL SAGLAMLASTIRMA
+
+KURULUM
+Önce mevcut kasadan yedek al. Eski programı kaldırma.
+ZIP'i ayrı bir klasöre tamamen çıkar.
+Desktop\1-SETUP-ERSTELLEN.bat dosyasını çalıştır ve oluşan kurulumu kullan.
+Bu paket kaynak kod içerir; önceden derlenmiş Windows Setup.exe değildir.
+START-R54.bat, Cloud ve Desktop geliştirme başlangıcını birlikte açar.
+
+YENİLİKLER
+- Dil seçimi kaldırıldı: uygulama ve çıktılar Almanca.
+- Hazır IMBISS görselleri kaldırıldı. Kullanıcının kendi fotoğrafları korunur.
+- KASSE > Bestellübersicht: Angenommen / In Vorbereitung / Abholbereit / Ausgegeben.
+- Ödeme durumu ayrıdır. Durum değişikliği satış veya stok hareketi oluşturmaz.
+- Abholnummer veya P numarasıyla arama; açık siparişi tahsilata geri çağırma.
+- Ohne Zwiebeln / Extra scharf / Zum Mitnehmen hızlı notları. Notu kaydet.
+  Kaydedilen not sonraki mutfak baskısına eklenir; not kaydı tek başına baskı başlatmaz.
+- Einstellungen > Kasse & Bedienung > Abholnummer / Bestellablauf: ORDER seçiliyken
+  'Bei Bestellannahme eine Abholnummer vergeben' kapatılabilir.
+  Sıra numarası olmadan da sipariş takibi yapılır; P numarası korunur.
+- Sipariş içeriği değişince hazırlama durumu tekrar Angenommen olur.
+- Değişiklik mutfak fişi tam güncel sipariştir: önceki fişin yerine geçer.
+  İptal fişinde STORNO / NICHT ZUBEREITEN uyarısı ürünlerden önce yer alır.
+- Uzun mutfak siparişlerinde devam sayfaları oluşturulur.
+- Menü içinde menü engellendi. Açık sipariş varken menü reçetesi değiştirilemez.
+- Aynı anda alınan yedekler ayrı dosyalar oluşturur.
+
+YARINKİ İLK KONTROLLER
+1. Eski dil TR/EN olsa da açılış ve ayarlar Almanca olmalı; dil seçimi olmamalı.
+2. IMBISS'e gir: eski hazır resimler kaybolmalı, kendi eklediğin fotoğraf kalmalı.
+3. TRAINING + ORDER: ürün ekle, BESTELLUNG ANNEHMEN ile siparişi kaydet.
+4. KASSE > Bestellübersicht: sırayla In Vorbereitung, Abholbereit, Ausgegeben.
+   Ödeme yapılmadığı için sipariş 'Nicht bezahlt' olarak görünmeye devam etmeli.
+5. ZUM KASSIEREN / BEARBEITEN ile aç, BAR TEST yap.
+   'Ausgegebene Bestellungen anzeigen' ile TEST / Bar simuliert kaydını gör.
+6. Sıra numarası seçeneğini kapat, yeni sipariş oluştur. Sıra numarası olmamalı.
+7. Uzun sipariş ve değişiklik/iptal fişini gerçek mutfak yazıcısında kontrol et.
+   Önceki R53 uzun Bon/A4 rapor ve ürün kaydı testlerini de tamamla.
+
+SINIRLAR
+182 Desktop kontrolü, 16 Cloud testi geçti. .NET 10 derlemesi başarılı.
+Windows kurulumu, dokunmatik ekran ve fiziksel yazıcı burada denenmedi.
+Cloud kaynakları ve SumUp bağlantı dosyaları R53 ile aynı.
+Yeni hazırlama durumları R54'te yerel kasada tutulur; henüz Cloud'a aktarılmaz.
+Sipariş listesi en son 500 uygun kaydı gösterir.
+TSE/DSFinV-K ve gerçek üretim tahsilatı kilidi devam eder.
+Derin inceleme ve sonraki teknik işler: R54-INCELEME-VE-YOL-HARITASI.md

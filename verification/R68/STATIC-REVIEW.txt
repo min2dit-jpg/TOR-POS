@@ -1,0 +1,31 @@
+TOR POS R68 STATIC REVIEW
+
+PASS - DI package reference
+PASS - window factory exists
+PASS - DI provider validates
+PASS - App uses windowFactory
+PASS - Main settings via factory
+PASS - Diagnostics via factory
+PASS - F5 hotkey
+PASS - Quick checkout button
+PASS - Quick default setting
+PASS - Exact cash setting
+PASS - Normal F1 cash preserved
+PASS - Exact cash quick-only policy
+PASS - Payment method never unknown
+PASS - Default settings seeded
+PASS - R68 tests
+PASS - Duplicate xName removed
+PASS - Version
+PASS - Installer version
+
+C# brace balance:
+Desktop/src/TorPos.App/AppWindowFactory.cs: 3/3
+Desktop/src/TorPos.App/QuickCheckoutPolicy.cs: 2/2
+Desktop/src/TorPos.App/PaymentChoiceWindow.cs: 13/13
+Desktop/src/TorPos.App/App.axaml.cs: 39/39
+Desktop/src/TorPos.App/MainWindow.axaml.cs: 517/517
+Desktop/src/TorPos.App/SettingsWindow.axaml.cs: 442/442
+
+Gerçek Windows .NET 10 build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 254 CHECKS PASSED.

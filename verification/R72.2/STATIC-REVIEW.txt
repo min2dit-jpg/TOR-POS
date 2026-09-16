@@ -1,0 +1,21 @@
+TOR POS R72.2 STATIC REVIEW
+
+PASS - sync default redirect disabled
+PASS - non-success checked before success JSON parse
+PASS - 302 safe status retained
+PASS - arbitrary error body hidden
+PASS - connection ping redirect disabled
+PASS - redirect test one request
+PASS - schema V4 preserved
+PASS - offer 40/50 preserved
+PASS - KDF 600k preserved
+PASS - safety failclosed preserved
+PASS - version app
+PASS - version core
+PASS - version installer
+PASS - target stays 298
+
+Cloud redirect is rejected before success-body JSON parsing.
+Both cloud clients explicitly disable automatic redirects.
+Expected Windows result: ALL 298 CHECKS PASSED.
+Actual Windows .NET build/test must be verified on user machine.

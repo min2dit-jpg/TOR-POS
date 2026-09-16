@@ -1,0 +1,11 @@
+Build started 09/09/2026 16:59:31.
+     1>Project "/workspace/scratch/3f62f417a8bf/r56/Desktop/src/TorPos.App/TorPos.App.csproj" on node 1 (Restore target(s)).
+     1>_GetAllRestoreProjectPathItems:
+         Determining projects to restore...
+     1>Done Building Project "/workspace/scratch/3f62f417a8bf/r56/Desktop/src/TorPos.App/TorPos.App.csproj" (Restore target(s)) -- FAILED.
+
+Build FAILED.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:00.40

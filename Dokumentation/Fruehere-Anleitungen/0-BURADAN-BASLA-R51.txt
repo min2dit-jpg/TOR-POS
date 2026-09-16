@@ -1,0 +1,27 @@
+TOR POS R51
+============
+
+Basis: R50 IMBISS Sortiment + Abholnummer.
+
+R51 YENİLİKLERİ
+- Program dili Anmeldung/Giriş ekranında seçilebilir: Deutsch / Türkçe / English.
+- Seçim kaydedilir ve operatör arayüzüne uygulanır.
+- Bon, Küchenbon, Abholschein, rapor ve fiskal çıktılar Almanca kalır.
+- IMBISS ana ekranda KIOSK demo grupları Schnellwahl/Snacks artık görünmez.
+- IMBISS ürün hiyerarşisi: Speisen > Döner/Burger/Fingerfood/Pizza, Getränke > Getränke.
+- R50'den kalan yanlış kategori yerleşimleri R51 ilk açılışında onarılır.
+- Gruppe / Warengruppe / Artikel için admin silme (soft deactivate) eklendi. Geçmiş satış/fiskal kayıtlar silinmez.
+- Verilen 57 IMBISS starter ürününün tamamına yerel, çevrimdışı ürün resmi eklendi. Müşterinin kendi resmi varsa üzerine yazılmaz.
+- Mevcut ORDER / Abholnummer akışı değiştirilmedi.
+- SumUp kaynakları değiştirilmedi.
+
+WINDOWS TEST
+1) Desktop\1-SETUP-ERSTELLEN.bat
+2) Anmeldung ekranında TR/DE/EN değiştir.
+3) IMBISS seçip giriş yap. Ana ekranda Döner/Burger/Fingerfood/Pizza/Getränke kontrol et.
+4) Artikelverwaltung'da ürün seç; resim önizlemesi görünmeli. Ana kasa ürün tuşlarında da resimler görünmeli.
+5) Admin olarak test ürün/warengruppe/grup oluşturup LÖSCHEN akışını test et.
+6) ORDER/Abholnummer akışının R50 gibi kaldığını doğrula.
+
+NOT
+Bu paket üretim TSE kilidini açmaz. TEST_ONLY / production_allowed=false korunur.

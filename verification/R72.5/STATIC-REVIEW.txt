@@ -1,0 +1,22 @@
+TOR POS R72.5 STATIC REVIEW
+
+PASS - baseline 300 in Program
+PASS - baseline mismatch fails
+PASS - BAT no hardcoded 298
+PASS - BAT failclosed preserved
+PASS - AVLN3001 demoted only
+PASS - no generic warning suppression
+PASS - schema V4 preserved
+PASS - offer 40/50 preserved
+PASS - KDF 600k preserved
+PASS - backup pooling fix preserved
+PASS - cloud redirect fix preserved
+PASS - manifest target 300
+PASS - manifest auth 600k
+PASS - app version
+PASS - core version
+PASS - installer version
+
+Confirmed prior Windows run: ALL 300 CHECKS PASSED.
+R72.5 changes presentation/baseline handling and AVLN3001 warning classification.
+Actual R72.5 Windows build must still be run by the user.

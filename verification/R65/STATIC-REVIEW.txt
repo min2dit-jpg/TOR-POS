@@ -1,0 +1,12 @@
+TOR POS R65 STATIC REVIEW
+
+PASS - bounded_helper
+PASS - no_sync_installed_checkout
+PASS - checkout_2s
+PASS - sim_print_background
+PASS - configured_probe_direct
+PASS - tests_added
+PASS - version
+
+Gerçek Windows build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 246 CHECKS PASSED.

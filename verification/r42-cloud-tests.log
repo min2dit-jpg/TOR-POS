@@ -1,0 +1,74 @@
+
+> tor-pos-cloud@0.4.2 check
+> node --check server.js && node --check public/app.js
+
+
+> tor-pos-cloud@0.4.2 test
+> node --test tests/*.test.js
+
+TAP version 13
+# (node:2472) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: login, demo data, receipt detail and tenant isolation
+ok 1 - login, demo data, receipt detail and tenant isolation
+  ---
+  duration_ms: 317.413938
+  type: 'test'
+  ...
+# Subtest: consistent sale persists once; changed repeat is conflict
+ok 2 - consistent sale persists once; changed repeat is conflict
+  ---
+  duration_ms: 17.151806
+  type: 'test'
+  ...
+# Subtest: same event ID on a different register does not conflict
+ok 3 - same event ID on a different register does not conflict
+  ---
+  duration_ms: 8.441926
+  type: 'test'
+  ...
+# Subtest: invalid values and HTML payment types rejected; whole batch rolls back
+ok 4 - invalid values and HTML payment types rejected; whole batch rolls back
+  ---
+  duration_ms: 10.712897
+  type: 'test'
+  ...
+# Subtest: snapshots replace removed products and older snapshots cannot reverse stock
+ok 5 - snapshots replace removed products and older snapshots cannot reverse stock
+  ---
+  duration_ms: 23.248759
+  type: 'test'
+  ...
+# Subtest: R42 stock snapshot keeps barcode, SKU, category, price and unit
+ok 6 - R42 stock snapshot keeps barcode, SKU, category, price and unit
+  ---
+  duration_ms: 8.633495
+  type: 'test'
+  ...
+# Subtest: Berlin calendar and DST boundaries
+ok 7 - Berlin calendar and DST boundaries
+  ---
+  duration_ms: 13.199395
+  type: 'test'
+  ...
+# Subtest: pagination reaches older receipts
+ok 8 - pagination reaches older receipts
+  ---
+  duration_ms: 42.812956
+  type: 'test'
+  ...
+# Subtest: credential and browser-origin protection
+ok 9 - credential and browser-origin protection
+  ---
+  duration_ms: 19.386793
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 524.556239

@@ -1,0 +1,100 @@
+
+> tor-pos-cloud@0.7.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# (node:4944) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: login, demo data, receipt detail and tenant isolation
+ok 1 - login, demo data, receipt detail and tenant isolation
+  ---
+  duration_ms: 353.955114
+  type: 'test'
+  ...
+# Subtest: consistent sale persists once; changed repeat is conflict
+ok 2 - consistent sale persists once; changed repeat is conflict
+  ---
+  duration_ms: 17.222153
+  type: 'test'
+  ...
+# Subtest: same event ID on a different register does not conflict
+ok 3 - same event ID on a different register does not conflict
+  ---
+  duration_ms: 4.903927
+  type: 'test'
+  ...
+# Subtest: invalid values and HTML payment types rejected; whole batch rolls back
+ok 4 - invalid values and HTML payment types rejected; whole batch rolls back
+  ---
+  duration_ms: 10.604988
+  type: 'test'
+  ...
+# Subtest: snapshots replace removed products and older snapshots cannot reverse stock
+ok 5 - snapshots replace removed products and older snapshots cannot reverse stock
+  ---
+  duration_ms: 12.130052
+  type: 'test'
+  ...
+# Subtest: R42 stock snapshot keeps barcode, SKU, category, price and unit
+ok 6 - R42 stock snapshot keeps barcode, SKU, category, price and unit
+  ---
+  duration_ms: 5.064601
+  type: 'test'
+  ...
+# Subtest: R47 stock snapshot keeps Mindestbestand and Einkaufspreis
+ok 7 - R47 stock snapshot keeps Mindestbestand and Einkaufspreis
+  ---
+  duration_ms: 5.305183
+  type: 'test'
+  ...
+# Subtest: R46 completed sale updates cloud stock once and duplicate does not double-decrement
+ok 8 - R46 completed sale updates cloud stock once and duplicate does not double-decrement
+  ---
+  duration_ms: 11.875728
+  type: 'test'
+  ...
+# Subtest: R46 delayed sale older than latest stock snapshot cannot decrement it again
+ok 9 - R46 delayed sale older than latest stock snapshot cannot decrement it again
+  ---
+  duration_ms: 7.234607
+  type: 'test'
+  ...
+# Subtest: Berlin calendar and DST boundaries
+ok 10 - Berlin calendar and DST boundaries
+  ---
+  duration_ms: 12.976139
+  type: 'test'
+  ...
+# Subtest: pagination reaches older receipts
+ok 11 - pagination reaches older receipts
+  ---
+  duration_ms: 44.794208
+  type: 'test'
+  ...
+# Subtest: R45 update manifest and download endpoint
+ok 12 - R45 update manifest and download endpoint
+  ---
+  duration_ms: 5.697907
+  type: 'test'
+  ...
+# Subtest: R45 TOTP enrollment and challenge login
+ok 13 - R45 TOTP enrollment and challenge login
+  ---
+  duration_ms: 58.753387
+  type: 'test'
+  ...
+# Subtest: credential and browser-origin protection
+ok 14 - credential and browser-origin protection
+  ---
+  duration_ms: 16.579352
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 626.941657

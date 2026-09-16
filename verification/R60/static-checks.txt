@@ -1,0 +1,11 @@
+R60 UseDefaultCredentials=false before NetworkCredential: PASS
+R60 Gmail App-Passwort whitespace normalization: PASS
+R60 masked-password rejection: PASS
+R60 stored DPAPI password fallback: PASS
+R60 Gmail smtp.gmail.com / 587 / STARTTLS validation: PASS
+R60 Gmail preset button: PASS
+R60 multiline safe SMTP diagnostics: PASS
+R60 plaintext password not loaded into settings field: PASS
+R60 six safety checks added: PASS
+Static source review completed in Chat environment.
+Real Windows build not executed here.

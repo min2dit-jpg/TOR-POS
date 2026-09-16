@@ -1,0 +1,11 @@
+TOR POS R67.2 STATIC REVIEW
+
+PASS - misleading metric removed
+PASS - new printer metric
+PASS - technical timer
+PASS - bounded timeout preserved
+PASS - operator wait wording
+PASS - version
+PASS - installer version
+
+Windows target remains: ALL 250 CHECKS PASSED

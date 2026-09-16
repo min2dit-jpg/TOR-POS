@@ -1,0 +1,9 @@
+TOR POS R51.1
+
+R51 UI DIL HOTFIX
+- Anmeldung ekranında Türkçe seçildiğinde Ayarlar alt menüsü artık Almanca kalmaz.
+- Ürünler, Kasa ve Raporlar alt menüleri de seçilen program diline göre DE/TR/EN gösterilir.
+- Software & Update yeniden Ayarlar alt menüsünde görünür.
+- Bon / Küchenbon / Abholschein / rapor / fiskal çıktılar Almanca kalır.
+
+Windows test: Desktop\1-SETUP-ERSTELLEN.bat

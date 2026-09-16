@@ -1,0 +1,18 @@
+{
+  "Desktop/tests/TorPos.SafetyTests/SafetyDatabase.cs": "9853328ff070ceb6d7fc861f56d23f19d86c8f9f3935cbf6969bf8ccd481c0dc",
+  "Desktop/tests/TorPos.SafetyTests/Program.cs": "fa2cb8367ee27f9504de51d49523b89ade70975200e9ea11b6100297a8681ad3",
+  "Desktop/tests/TorPos.SafetyTests/R48ReviewTests.cs": "503c31d12d6aaa8b97a190c9714f710bd9271c5d82cecaf5dc9f673794696e4f",
+  "Desktop/tests/TorPos.SafetyTests/R49ReviewTests.cs": "c808a7c7cd6dd841abe6863055a0938b7dce6997a10e34005f44998b790a42d3",
+  "Desktop/tests/TorPos.SafetyTests/R50ReviewTests.cs": "283f03a6ad8a59fd1bb001526f3b9f76581dc587584d786dae78923a5146f83b",
+  "Desktop/tests/TorPos.SafetyTests/R51ReviewTests.cs": "f74b52fb6497bfffd6a64f352d360c1828b89e316460a53561f085960536107a",
+  "Desktop/tests/TorPos.SafetyTests/R53ReviewTests.cs": "46a911136c832bd921ef2b300575efd2ec196f896e78bc6c3f2b36c1c1f002f6",
+  "Desktop/tests/TorPos.SafetyTests/R54ReviewTests.cs": "6fe721f6e31898c1fa32ef0eb3f6550d90947f75e6a19672dfa9f48e41f9b6bb",
+  "Desktop/tests/TorPos.SafetyTests/R55ReviewTests.cs": "6ea26e0844e8664e996b9f679d8c203d2c190963d3a4c4b98d60930379953e14",
+  "Desktop/tests/TorPos.SafetyTests/R56ReviewTests.cs": "59c0be2d347ba765815c58dbd27909dbd6edf27f97f1122726096eeae42f9995",
+  "Desktop/tests/TorPos.SafetyTests/R57ReviewTests.cs": "4dd1f5335549e396bfa63f904533f9c481153f8b26cbc6ebac87ae28d880d790",
+  "Desktop/tests/TorPos.SafetyTests/CloudTests.cs": "44a737d3d3ebb3691829c57b6c54af20982287f360ea692364d2fb2119b0ca9e",
+  "Desktop/src/TorPos.App/TorPos.App.csproj": "9b39d2e400880184cc51467ece0753a7ca41f13793d0ffcc58f8fb06a9aebf7f",
+  "Desktop/src/TorPos.Core/ReleaseInfo.cs": "c49c5cb6aa6dd9e1471f8e684642a9a1d80cec45dbf13d798b45a9c1cff6e19c",
+  "Desktop/TOR-POS-Pro-Setup.iss": "f9e80f80fa52f52aca538f323a164401d76a6d9a92abd894eb4eb7495709b271",
+  "Desktop/manifest.json": "7c82a0c327779d8776ab8433f78d6bd885af2b597f42a883200fe5f74fa347e0"
+}

@@ -1,0 +1,38 @@
+TOR POS R70 STATIC REVIEW
+
+PASS - schema target V2
+PASS - pos_action_log migration
+PASS - append-only update trigger
+PASS - append-only delete trigger
+PASS - hash chain service
+PASS - general audit same transaction
+PASS - reason window
+PASS - storno reason mandatory
+PASS - discount reason mandatory
+PASS - cancel reason mandatory
+PASS - audit before storno mutation
+PASS - audit before discount mutation
+PASS - park cancel before RAM clear
+PASS - denied logging
+PASS - diagnostics audit
+PASS - DI service registration
+PASS - R70 tests
+PASS - R70 tests invoked
+PASS - version
+PASS - installer version
+
+R70 safety checks: 5 assert + 3 reject = 8
+
+Brace counts:
+Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs: 34/34
+Desktop/src/TorPos.Infrastructure/ControlledPosActionService.cs: 40/40
+Desktop/src/TorPos.App/PosActionReasonWindow.cs: 17/17
+Desktop/src/TorPos.App/MainWindow.axaml.cs: 579/579
+Desktop/src/TorPos.App/SettingsWindow.axaml.cs: 443/443
+Desktop/src/TorPos.App/DiagnosticsWindow.cs: 120/120
+Desktop/src/TorPos.App/AppWindowFactory.cs: 3/3
+Desktop/tests/TorPos.SafetyTests/R70ReviewTests.cs: 10/10
+
+TorPos.Core.ReleaseInfo bad refs: 0
+Gerçek Windows .NET 10 build bu ortamda çalıştırılmadı.
+Windows hedefi: ALL 270 CHECKS PASSED.

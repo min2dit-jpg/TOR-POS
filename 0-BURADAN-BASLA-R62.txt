@@ -1,0 +1,26 @@
+TOR POS R62 - Google OAuth QR + Gmail API
+Version 0.7.33.620
+
+WINDOWS TEST:
+1) Desktop\7-SICHERHEITSTESTS.bat
+   Hedef: ALL 240 CHECKS PASSED
+2) Desktop\1-SETUP-ERSTELLEN.bat
+
+GOOGLE QR ICIN ONEMLI:
+R62 source kodu QR/OAuth akisini icerir; gercek Google girisi icin TOR POS Cloud public HTTPS adresinde yayinlanmis ve Google OAuth Web Client ile konfigure edilmis olmalidir.
+
+Cloud\R62-GOOGLE-OAUTH-SETUP.md dosyasini okuyun.
+
+KULLANICI AKISI:
+Einstellungen > Berichte & E-Mail > MIT GOOGLE ANMELDEN (QR)
+-> QR telefondan okutulur
+-> Google'in kendi sayfasinda oturum acilir
+-> gmail.send izni verilir
+-> TOR POS Google verbunden olarak gorunur
+-> GOOGLE TEST-E-MAIL SENDEN
+
+GUVENLIK:
+- Gmail sifresi TOR POS'a girilmez.
+- App-Passwort gerekmez.
+- Refresh token POS'ta tutulmaz.
+- PDF, TOR POS Cloud'a yuklenmez; kasa PC'sinden Gmail API'ye dogrudan gider.

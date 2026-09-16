@@ -1,0 +1,42 @@
+TOR POS R73 STATIC REVIEW
+
+PASS - Schema V5
+PASS - V5 migration named
+PASS - outcome DB columns
+PASS - legacy unresolved submitted backfill
+PASS - legacy UNKNOWN outcome backfill
+PASS - typed outcome enum
+PASS - typed resolution enum
+PASS - classifier conservative
+PASS - submitted durable marker
+PASS - atomic terminal transition
+PASS - manual reconciliation separate
+PASS - PREPARED cannot manual paid
+PASS - ZVT uses typed submit
+PASS - ZVT uses typed outcome transition
+PASS - explicit decline closes
+PASS - generic post-submit unknown
+PASS - MainWindow reads closed outcomes
+PASS - MainWindow decline message
+PASS - reconciliation preserves outcome
+PASS - review shows outcome
+PASS - diagnose payment journal
+PASS - diagnostics DI
+PASS - R72 test future-safe
+PASS - R73 tests invoked
+PASS - test target exact
+PASS - Angebot 40/50 preserved
+PASS - KDF 600k preserved
+PASS - backup lock fix preserved
+PASS - cloud redirect fix preserved
+PASS - AVLN3001 cleanup preserved
+PASS - version app
+PASS - version core
+PASS - version installer
+PASS - manifest target
+
+R73 new safety checks: 16 assert + 5 reject = 21
+Windows expected total: ALL 321 CHECKS PASSED
+SQLite V5 migration syntax/backfill: PASS
+Production callers using generic CheckoutJournal.TransitionAsync: 0
+Actual .NET 10 / Windows build was not executed in this generation environment.
