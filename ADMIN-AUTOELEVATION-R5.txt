@@ -1,0 +1,7 @@
+TOR POS Pro v0.7.33 R5
+
+- 1-SETUP-ERSTELLEN.bat requests Administrator rights automatically on double-click.
+- 2-SETUP-SAUBER-NEU.bat requests Administrator rights automatically on double-click.
+- build-windows.bat requests Administrator rights automatically on double-click.
+- Windows still shows the normal UAC confirmation. This cannot and should not be bypassed.
+- TOR POS itself is not forced to run permanently as Administrator. The installer already uses PrivilegesRequired=admin.

@@ -1,0 +1,2 @@
+DOTNET_SDK_AVAILABLE=NO
+Desktop build not executed in this Linux generation environment. Run Desktop\1-SETUP-ERSTELLEN.bat on the Windows build/test PC.

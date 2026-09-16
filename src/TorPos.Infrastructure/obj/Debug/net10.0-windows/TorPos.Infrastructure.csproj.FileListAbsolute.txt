@@ -1,0 +1,15 @@
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\bin\Debug\net10.0-windows\TorPos.Infrastructure.deps.json
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\bin\Debug\net10.0-windows\TorPos.Infrastructure.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\bin\Debug\net10.0-windows\TorPos.Infrastructure.pdb
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\bin\Debug\net10.0-windows\TorPos.Core.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\bin\Debug\net10.0-windows\TorPos.Core.pdb
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.csproj.AssemblyReference.cache
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.AssemblyInfoInputs.cache
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.AssemblyInfo.cs
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.csproj.CoreCompileInputs.cache
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.I.5532A4BA.Up2Date
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\refint\TorPos.Infrastructure.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\TorPos.Infrastructure.pdb
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Infrastructure\obj\Debug\net10.0-windows\ref\TorPos.Infrastructure.dll

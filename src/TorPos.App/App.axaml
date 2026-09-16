@@ -1,0 +1,18 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TorPos.App.App"
+             RequestedThemeVariant="Dark">
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="Button">
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Padding" Value="12,8"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="CornerRadius" Value="6"/>
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="MinHeight" Value="38"/>
+    </Style>
+  </Application.Styles>
+</Application>

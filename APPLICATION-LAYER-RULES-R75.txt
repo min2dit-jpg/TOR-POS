@@ -1,0 +1,47 @@
+TOR POS R75 - APPLICATION LAYER REGELN
+========================================
+
+Abhängigkeitsrichtung:
+
+TorPos.App
+  -> TorPos.Application
+  -> TorPos.Core
+
+TorPos.App
+  -> TorPos.Infrastructure
+  -> TorPos.Core
+
+TorPos.Application
+  -> TorPos.Core
+
+NICHT erlaubt:
+- TorPos.Application -> TorPos.Infrastructure
+- TorPos.Application -> Avalonia
+- TorPos.Application -> Microsoft.Data.Sqlite
+- TorPos.Core -> TorPos.Infrastructure
+
+R75 erster extrahierter Use Case:
+CheckoutApplicationService
+
+Verantwortung:
+- Fiskal-Preflight orchestrieren
+- Checkout-Journal beginnen
+- Kartenterminal aufrufen
+- PREPARED/NOT_SENT normalisieren
+- ReadyToCommit / NotCharged / Unresolved / FiscalBlocked liefern
+- manuelle Reconciliation orchestrieren
+
+Nicht verantwortlich:
+- Dialoge
+- Touch UI
+- Scanner
+- Drucker-Popup
+- Simulation-UI
+- KIOSK/IMBISS Layout
+- SQLite SQL
+- ZVT Implementierungsdetails
+
+KIOSK und IMBISS verwenden denselben Application-Service.
+Edition-spezifische Funktionen bleiben in ihren bestehenden Grenzen.
+
+MVVM wird schrittweise aufgebaut. R75 ist KEIN Big-Bang-Umbau.

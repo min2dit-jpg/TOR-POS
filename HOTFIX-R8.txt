@@ -1,0 +1,6 @@
+TOR POS Pro v0.7.33 R8
+
+Hotfix Warengruppen-Farbpalette:
+- CS0117 behoben: Avalonia Button besitzt keine direkte ToolTip-Property.
+- ToolTip wird jetzt korrekt per ToolTip.SetTip(button, hex) gesetzt.
+- Basis: R7, alle bisherigen UX-/Techniker-/Security-Aenderungen bleiben erhalten.

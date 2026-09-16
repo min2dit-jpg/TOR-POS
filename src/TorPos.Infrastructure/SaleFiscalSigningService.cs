@@ -1,0 +1,142 @@
+using TorPos.Core;
+
+namespace TorPos.Infrastructure;
+
+/// <summary>
+/// R78: post-commit TSE fiscal signing for one completed direct sale
+/// (KIOSK checkout and IMBISS SALE-mode checkout only - the IMBISS
+/// ORDER/Bestellung lifecycle is a separate, not-yet-covered TSE Vorgang).
+///
+/// Runs strictly AFTER the sale row is already durably committed via
+/// ISaleRepository.CommitAsync. TSE signing failure (TSE-Ausfall) can never
+/// block, roll back or alter an already-completed sale - it only means the
+/// sale's TSE fields stay empty and the failure is logged through
+/// TseFailSafeService/ITseOutageRepository, exactly like every other TSE
+/// operation in this codebase.
+///
+/// One Kassenbeleg is signed as a single Start+Finish TSE transaction
+/// (process type <see cref="FiscalProcessData.KassenbelegProcessType"/>).
+/// See FiscalProcessData for the important caveat about its ProcessData
+/// format not yet being legally validated.
+///
+/// NOTE: FiscalComplianceService currently hard-gates ProductionAllowed to
+/// false (fiscalReleaseBuild=false in code), so MainWindow's real
+/// (non-simulation) checkout path cannot reach this service in the shipped
+/// build today. It exists so the wiring can be built and tested ahead of
+/// that gate being lifted - it does not by itself make TOR POS fiscally
+/// production-ready.
+/// </summary>
+public sealed class SaleFiscalSigningService
+{
+    private readonly TseFailSafeService _tse;
+    private readonly ISettingsRepository _settings;
+    private readonly ISaleRepository _sales;
+
+    public SaleFiscalSigningService(
+        TseFailSafeService tse,
+        ISettingsRepository settings,
+        ISaleRepository sales)
+    {
+        _tse = tse;
+        _settings = settings;
+        _sales = sales;
+    }
+
+    public async Task SignAsync(Sale sale, string actor, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sale);
+
+        var settings = await _settings.LoadAllAsync(ct);
+
+        // R113: these two states used to `return` silently, which left the
+        // sale with TseOutage=false - so nothing was logged AND the printed
+        // receipt carried no "TSE-AUSFALL" note, i.e. an unsigned sale looked
+        // exactly like a signed one. A productive sale can only reach this
+        // method at all when FiscalComplianceService already considered the
+        // TSE active, so finding it inactive here is a genuine outage.
+        var tseStatus = (settings.GetValueOrDefault("tse.status") ?? "").Trim();
+        if (!string.Equals(tseStatus, "AKTIV", StringComparison.OrdinalIgnoreCase))
+        {
+            await ReportOutageAsync(
+                sale,
+                $"TSE ist nicht aktiv (Status: {(tseStatus.Length == 0 ? "nicht gesetzt" : tseStatus)}). Beleg wurde ohne TSE-Signatur abgeschlossen.",
+                actor,
+                ct);
+            return;
+        }
+
+        var clientId = (settings.GetValueOrDefault("tse.client_id") ?? "").Trim();
+        if (clientId.Length == 0)
+        {
+            await ReportOutageAsync(
+                sale,
+                "TSE-Client-ID ist nicht konfiguriert. Beleg wurde ohne TSE-Signatur abgeschlossen.",
+                actor,
+                ct);
+            return;
+        }
+
+        var processData = FiscalProcessData.BuildKassenbeleg(sale);
+
+        var (startResult, _) = await _tse.StartTransactionAsync(
+            new TseTransactionStartRequest(clientId, processData, FiscalProcessData.KassenbelegProcessType),
+            actor,
+            ct);
+
+        if (!startResult.Success)
+        {
+            await ApplyAsync(sale, SaleTseResult.Outage(startResult.Message), ct);
+            return;
+        }
+
+        var (finishResult, _) = await _tse.FinishTransactionAsync(
+            new TseTransactionFinishRequest(clientId, startResult.TransactionNumber, processData, FiscalProcessData.KassenbelegProcessType),
+            actor,
+            ct);
+
+        if (!finishResult.Success)
+        {
+            await ApplyAsync(sale, SaleTseResult.Outage(finishResult.Message), ct);
+            return;
+        }
+
+        var result = SaleTseResult.SignedResult(
+            clientId,
+            finishResult.TransactionNumber.ToString(),
+            finishResult.SignatureCounter.ToString(),
+            finishResult.SerialNumber,
+            finishResult.SignatureBase64,
+            finishResult.LogTime);
+
+        await ApplyAsync(sale, result, ct);
+    }
+
+    /// <summary>
+    /// R113: documents a TSE that was unavailable before a transaction could
+    /// even be started, and marks the sale as an outage so the receipt prints
+    /// its legally required "TSE-AUSFALL" note. Same two effects the
+    /// start/finish failure paths already had - they were simply missing on
+    /// the "not configured / not active" paths.
+    /// </summary>
+    private async Task ReportOutageAsync(Sale sale, string reason, string actor, CancellationToken ct)
+    {
+        await _tse.ReportUnavailableAsync(reason, actor, ct);
+        await ApplyAsync(sale, SaleTseResult.Outage(reason), ct);
+    }
+
+    private async Task ApplyAsync(Sale sale, SaleTseResult result, CancellationToken ct)
+    {
+        await _sales.RecordTseResultAsync(sale.Id, result, ct);
+
+        // Mutate the in-memory Sale too so the immediate post-commit receipt
+        // print (same request, same object) reflects the signature without
+        // a redundant re-read from the database.
+        sale.TseClientId = result.ClientId;
+        sale.TseTransactionNumber = result.TransactionNumber;
+        sale.TseSignatureCounter = result.SignatureCounter;
+        sale.TseSerialNumber = result.SerialNumber;
+        sale.TseSignature = result.Signature;
+        sale.TseLogTime = result.LogTime;
+        sale.TseOutage = !result.Signed;
+    }
+}

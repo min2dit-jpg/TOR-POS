@@ -1,0 +1,1485 @@
+{
+  "name": "TOR POS Pro Commercial Core",
+  "_note": "R121: only the identity fields below are maintained. Everything after 'static_validation' is a frozen record of the R57-R63 build reviews and is kept for traceability, not as a current description. ReleaseInfo.cs is the authoritative version.",
+  "version": "0.7.33.822",
+  "revision": "R122",
+  "platforms": [
+    "Windows"
+  ],
+  "platform_note": "Windows only. build-linux.sh cross-compiles, but printing, TSE and the payment terminal are Windows-specific, so a Linux binary cannot run a till.",
+  "framework": ".NET 10 + Avalonia 12.1.2",
+  "database": "SQLite / Microsoft.Data.Sqlite 10.0.11",
+  "focus": [
+    "Kiosk",
+    "Späti",
+    "Imbiss"
+  ],
+  "implemented_but_gated": [
+    "TSE (Swissbit bridge implemented, vendor WormAPI.dll not shipped)",
+    "ZVT card payment incl. Storno/Retoure",
+    "DSFinV-K (preflight only, export deliberately blocked)"
+  ],
+  "excluded_now": [
+    "Tisch"
+  ],
+  "static_validation": {
+    "xml_files_ok": 10,
+    "brace_issues": [],
+    "r57_static_checks_passed": 19,
+    "r57_static_checks_total": 19,
+    "r58_static_checks_passed": 16,
+    "r58_static_checks_total": 16,
+    "r62_source_review": "22/22 static checks passed",
+    "r63_static_review": "PASS",
+    "r63_windows_build": "NOT_EXECUTED_IN_GENERATION_ENVIRONMENT"
+  },
+  "windows_installer": "1-SETUP-ERSTELLEN.bat",
+  "dotnet_sdk_auto_install": "winget Microsoft.DotNet.SDK.10",
+  "settings_overhaul": true,
+  "reference_documents": [
+    "POSprom Suite Anleitung",
+    "POSprom Handel Plus TSE Anleitung"
+  ],
+  "fiscal_status": "TEST_TSE_NOT_CONNECTED",
+  "installation_edition_locked": true,
+  "edition_choices": [
+    "KIOSK",
+    "IMBISS"
+  ],
+  "tse_settings_page": true,
+  "tse_activation_enabled": false,
+  "tse_credentials_persisted": false,
+  "standard_tse": {
+    "manufacturer": "Swissbit",
+    "product": "Hardware TSE 2",
+    "form_factor": "USB",
+    "provider_id": "SWISSBIT_HARDWARE",
+    "vendor_sdk_required": true
+  },
+  "swissbit_sdk_bridge_implemented": false,
+  "real_tse_activation_enabled": false,
+  "install_directory": "%ProgramFiles%\\TOR POS Pro",
+  "desktop_shortcut_prompt": false,
+  "desktop_shortcut_names": [
+    "TOR POS Pro.lnk"
+  ],
+  "standard_receipt_printer": {
+    "manufacturer": "Star Micronics",
+    "family": "mC-Print3",
+    "model": "MCP31CBI",
+    "paper_mm": 80,
+    "windows_driver_integration": true,
+    "background_queue": true,
+    "direct_starprnt_sdk": false
+  },
+  "customer_installer": "TOR-POS-Pro-Setup.exe",
+  "installer_engine": "Inno Setup 6",
+  "customer_console_prompts": false,
+  "wizard": {
+    "edition_selection": true,
+    "edition_locked_after_install": true,
+    "desktop_shortcut_task": false,
+    "desktop_shortcut_default": true,
+    "launch_after_install": true
+  },
+  "windows_install_v0718": {
+    "requires_admin": true,
+    "program_files_install": true,
+    "previous_per_user_directory_not_reused": true,
+    "setup_exe_copied_to_desktop": false,
+    "desktop_contains_only_app_shortcut": true,
+    "start_menu_shortcut": false,
+    "custom_magnifier_tor_icon": true,
+    "ico_resolutions": [
+      16,
+      24,
+      32,
+      48,
+      64,
+      128,
+      256
+    ]
+  },
+  "windows_only": true,
+  "license_acceptance_required": true,
+  "desktop_shortcut_mandatory": true,
+  "edition_selection_required": true,
+  "authentication": {
+    "required": true,
+    "default_username": "admin",
+    "default_password": "admin",
+    "default_pin": "1234",
+    "admin_full_access": true,
+    "hash": "PBKDF2-SHA256",
+    "iterations": 600000,
+    "passwordless_login": false,
+    "staff_users": 3,
+    "per_user_permissions": true,
+    "training_login_option": true,
+    "rehash_on_successful_login": true,
+    "legacy_iterations_supported": 180000
+  },
+  "compile_fix": {
+    "app_axaml_cs_missing_avalonia_controls_using": true,
+    "cs0246_window_type": true
+  },
+  "build_log": "TOR-POS-build.log",
+  "target_framework_app": "net10.0-windows",
+  "target_framework_infrastructure": "net10.0-windows",
+  "installer_compile_fix": "Removed unsupported Inno Pascal SetFileAttributes call",
+  "bootstrap_hidden_attribute": false,
+  "bootstrap_deleted_after_first_security_initialization": true,
+  "scanner": {
+    "global_capture": true,
+    "ean_textbox_on_main_screen": false,
+    "manual_search_button": "EAN SUCHEN",
+    "enter_suffix_supported": true,
+    "no_enter_timeout_supported": true,
+    "automatic_cart_add": true
+  },
+  "cart_ui": {
+    "line_total_inline_removed": true,
+    "shows_item_summary": true,
+    "shows_subtotal": true,
+    "shows_discount": true,
+    "shows_total_bottom": true
+  },
+  "parked_receipts": {
+    "enabled": true,
+    "stored_separately_from_sales": true,
+    "receipt_number_consumed_on_park": false,
+    "restorable": true,
+    "marked_cashed_after_payment": true
+  },
+  "z_closing_guard": {
+    "enabled": true,
+    "block_when_open_parked_receipts_exist": true,
+    "parked_receipts_in_sales_totals": false
+  },
+  "country": "DE",
+  "legal_mode": "TEST_ONLY",
+  "production_allowed": false,
+  "production_unlock_user_override": false,
+  "eas_identity": {
+    "manufacturer": "TOR Kassensysteme",
+    "model": "TOR POS Pro",
+    "immutable": true
+  },
+  "fiscal_readiness": {
+    "swissbit_tse_real_sdk": false,
+    "dsfinvk_target": "2.4",
+    "dsfinvk_implemented": false,
+    "ksichv_receipt_validated": false,
+    "parked_order_tse_validated": false,
+    "pfand_tax_validated": false
+  },
+  "audit_log_append_only": true,
+  "completed_sales_program_immutable": true,
+  "cash_movements": true,
+  "tse_outage_log_schema": true,
+  "legal_documents": [
+    "RECHTLICHE-ANFORDERUNGEN-DE.md",
+    "VERFAHRENSDOKUMENTATION-TEMPLATE-DE.md",
+    "DSFINVK-2.4-IMPLEMENTATION-PLAN.md"
+  ],
+  "payment_terminal": {
+    "primary_protocol": "ZVT",
+    "transport": "TCP/IP",
+    "zvt_library": "Portalum.Zvt 3.4.0",
+    "amount_transfer": true,
+    "sale_requires_terminal_success_when_enabled": true,
+    "profiles": [
+      "AUTO_ZVT",
+      "INGENICO_ZVT",
+      "CCV_ZVT",
+      "VERIFONE_ZVT",
+      "PAX_PROVIDER_ZVT",
+      "OTHER_ZVT"
+    ],
+    "separate_adapters": [
+      "SUMUP",
+      "STRIPE_TERMINAL",
+      "ADYEN_TERMINAL_API"
+    ],
+    "stores_pan": false,
+    "stores_pin": false,
+    "stores_cvv": false
+  },
+  "startup_fix": {
+    "async_void_framework_initialization_removed": true,
+    "loading_window_before_async_init": true,
+    "startup_log": "%LOCALAPPDATA%\\TOR POS Pro\\Logs\\TOR-POS-startup.log",
+    "graphical_startup_error_window": true
+  },
+  "windows_publish": {
+    "self_contained": true,
+    "single_file_internal_app": false,
+    "customer_receives_single_setup_exe": true,
+    "trimmed": false
+  },
+  "developer_build": {
+    "default_mode": "incremental",
+    "deletes_bin_obj_every_time": false,
+    "separate_restore_every_time": false,
+    "clean_release_script": "2-SETUP-SAUBER-NEU.bat"
+  },
+  "installer_edition_selection": {
+    "fresh_install_default": "KIOSK",
+    "fresh_install_choice_enabled": true,
+    "direct_first_run_choice_enabled": true,
+    "explicit_choice_required": true,
+    "stale_lock_does_not_lock_fresh_install": true,
+    "existing_installation_update_keeps_edition_locked": true,
+    "existing_installation_update_can_change_edition": false
+  },
+  "main_ui": {
+    "z_report_front_panel": true,
+    "remove_sonstiges": true,
+    "larger_cart_edit_buttons": true,
+    "larger_parking_cash_movement_buttons": true,
+    "total_inside_sale_window_bottom": true,
+    "full_width_four_by_four_action_panel": true,
+    "uniform_grid_layout": true,
+    "all_panel_buttons_equal_size": true,
+    "button_gap_px": 0,
+    "action_area_height": "responsive_57_percent",
+    "large_flexible_current_sale_area": true,
+    "pfand_front_panel": {
+      "edition": "KIOSK",
+      "enabled": true,
+      "values_cents": [
+        8,
+        15,
+        25,
+        150,
+        330
+      ]
+    },
+    "imbiss_extra_front_panel": {
+      "edition": "IMBISS",
+      "enabled": true,
+      "configurable_in_master_data": true,
+      "vat_inherited_from_category": true
+    },
+    "clear_button": {
+      "label": "C",
+      "front_panel": true,
+      "clears_cart": true,
+      "clears_discount": true,
+      "preserves_parked_receipt": true,
+      "audit_logged": true
+    }
+  },
+  "swissbit_runtime": {
+    "native_loader": true,
+    "library": "WormAPI.dll",
+    "library_files_bundled_by_tor": false,
+    "sdk_version_read": true,
+    "drive_auto_detection": true,
+    "safe_activation": true,
+    "start_transaction": true,
+    "update_transaction": true,
+    "finish_transaction": true,
+    "tar_export": true,
+    "native_calls_serialized": true,
+    "production_fiscal_release": false
+  },
+  "swissbit_sdk_discovery": {
+    "search_existing_pc": true,
+    "manual_dll_picker": true,
+    "persistent_external_path": true,
+    "validate_required_exports": true,
+    "official_download_center_button": true,
+    "standalone_search_script": "4-SWISSBIT-SDK-AUF-PC-SUCHEN.bat"
+  },
+  "commercial_licensing_v0716": {
+    "rsa_signed_license_file": true,
+    "private_key_bundled_in_customer_setup": false,
+    "installation_id_binding": true,
+    "edition_binding": true,
+    "expiry_validation": true,
+    "activation_request_export": true,
+    "license_import_ui": true,
+    "fiscal_release_unchanged": "TEST_ONLY"
+  },
+  "commercial_licensing_v0717": {
+    "customer_number_required": true,
+    "single_pc_binding": true,
+    "device_code_hash": "SHA256",
+    "device_code_inputs": [
+      "installation_id",
+      "windows_machine_guid",
+      "system_volume_serial"
+    ],
+    "raw_hardware_identifiers_exported": false,
+    "copied_license_rejected_on_other_pc": true,
+    "offline_revocation": false
+  },
+  "edition_and_operator_v0719": {
+    "kiosk_and_imbiss_license_files_are_distinct": true,
+    "wrong_edition_license_blocks_checkout": true,
+    "edition_locked_after_first_install": true,
+    "kiosk_action": "PFAND",
+    "imbiss_action": "EXTRA",
+    "staff_user_count": 3,
+    "permissions_editable_by_admin": true,
+    "training_sales_written_to_fiscal_sales": false,
+    "daily_receipt_history": true,
+    "history_view_resets_at_day_start_or_last_z": true,
+    "completed_sales_deleted_after_z": false
+  },
+  "article_editor_v0716": {
+    "form_scrollable": true,
+    "save_actions_sticky_footer": true
+  },
+  "master_data_safe_architecture": {
+    "base": "v0.7.0-known-opening-core",
+    "alters_existing_categories_table": false,
+    "product_groups_table": true,
+    "category_master_data_table": true,
+    "vat_master": "WARENGRUPPE",
+    "startup_diagnostic_bat": "5-STARTPROBLEM-PRUEFEN.bat"
+  },
+  "windows_compile_fix": {
+    "CS1626_candidate_libraries": true,
+    "CS1626_bounded_file_search": true,
+    "CS8604_star_graphics": true
+  },
+  "windows_compile_fix_v075": {
+    "CS0246_FilePickerOpenOptions": true,
+    "CS0246_FilePickerFileType": true,
+    "added_namespace": "Avalonia.Platform.Storage"
+  },
+  "main_ui_redesign": {
+    "premium_touch_panel": true,
+    "utility_row": [
+      "+1",
+      "-1",
+      "STORNO",
+      "RABATT",
+      "C"
+    ],
+    "action_grid": [
+      "PARKEN",
+      "GEPARKTE BONS",
+      "EINLAGE / ENTNAHME",
+      "Z-BERICHT"
+    ],
+    "payment_row": [
+      "BAR",
+      "KARTE"
+    ],
+    "rounded_buttons": true,
+    "color_coding": true,
+    "dynamic_textblocks": true
+  },
+  "main_ui_redesign_v077": {
+    "right_panel_width": 560,
+    "larger_current_sale_window": true,
+    "utility_row": [
+      "+1",
+      "-1",
+      "SOFORT STORNO",
+      "RABATT",
+      "C"
+    ],
+    "middle_row": [
+      "BON STORNO",
+      "PARKEN",
+      "GEPARKTE BONS"
+    ],
+    "secondary_row": [
+      "EINLAGE / ENTNAHME",
+      "Z-BERICHT"
+    ],
+    "payment_row": [
+      "BAR",
+      "KARTE"
+    ],
+    "sofort_storno_removes_selected_open_line": true,
+    "bon_storno_separate_test_mode_action": true
+  },
+  "hardening_v078": {
+    "audit_csv_export": true,
+    "tse_outage_repository": true,
+    "tse_fail_safe_wrapper": true,
+    "receipt_tse_outage_mode": true,
+    "zvt_connect_timeout": true,
+    "zvt_ambiguous_timeout": true,
+    "star_umlaut_test": true,
+    "startup_sqlite_quick_check": true,
+    "startup_tse_runtime_warning": true,
+    "dsfinvk_preflight_service": true,
+    "full_dsfinvk_export_released": false
+  },
+  "receipt_panel_v079": {
+    "last_receipt_button": true,
+    "receipt_on_button": true,
+    "receipt_off_button": true,
+    "last_receipt_reprints_without_new_sale": true,
+    "last_receipt_marks_copy": true,
+    "auto_print_setting": "receipt.auto_print",
+    "visual_active_state": true
+  },
+  "compile_fix_v0710": {
+    "error": "CS7036",
+    "location": "MainWindow.OnSettingsClick",
+    "missing_argument": "_dsfinvkExport",
+    "fixed": true
+  },
+  "ui_v0711": {
+    "right_panel_width": 610,
+    "larger_current_sale": true,
+    "equal_quick_buttons": true,
+    "equal_three_column_rows": true,
+    "equal_two_column_action_row": true,
+    "large_equal_payment_buttons": true
+  },
+  "ui_v0720": {
+    "top_toolbar_actions": [
+      "Z-BERICHT",
+      "EINLAGE / ENTNAHME",
+      "BON-HISTORIE",
+      "RABATT",
+      "GEPARKTE BONS",
+      "BON EIN/AUS",
+      "BON STORNO"
+    ],
+    "visible_auto_scan_badge": false,
+    "visible_performance_text": false,
+    "single_receipt_mode_button": true,
+    "numeric_keypad": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      ",",
+      "×"
+    ],
+    "explicit_first_install_edition_choice": true,
+    "fresh_install_preselected_edition": null
+  },
+  "login_defaults_v0721": {
+    "edition_selection_on_login": true,
+    "fresh_install_preselected_edition": null,
+    "training_code": "0000",
+    "admin_username": "admin",
+    "admin_default_password": "admin",
+    "admin_default_pin": "1234",
+    "staff_default_usernames": [
+      "kassierer1",
+      "kassierer2",
+      "kassierer3"
+    ],
+    "staff_default_password": "1234",
+    "staff_default_pin": "1234",
+    "customer_can_change_credentials": true,
+    "preserve_configured_credentials_on_update": true
+  },
+  "login_ui_v0722": {
+    "window_size": "600x680",
+    "compact_header": true,
+    "scrollable_body": true,
+    "persistent_login_button": true,
+    "training_enter_login": true
+  },
+  "login_v0723": {
+    "pin_tab_removed": true,
+    "edition_always_explicit": true,
+    "edition_not_preselected": true,
+    "training_code": "0000",
+    "training_password_required": false,
+    "training_license_bypass_for_simulation": true
+  },
+  "session_controls_v0724": {
+    "logout_button": true,
+    "logout_returns_to_login": true,
+    "login_exit_button": true,
+    "automatic_backup_on_application_exit": true,
+    "block_logout_with_open_cart": true,
+    "shared_printer_survives_logout": true
+  },
+  "license_deactivation": {
+    "local_deactivation": true,
+    "deactivation_journal": "commercial-license-deactivations.jsonl",
+    "same_license_id_reactivation_blocked": true,
+    "desktop_receipt": true,
+    "audit_event": "COMMERCIAL_LICENSE_DEACTIVATE"
+  },
+  "management_menus_v0726": {
+    "warenverwaltung": [
+      "Artikelverwaltung",
+      "Duplikate anzeigen",
+      "Etiketten drucken",
+      "Artikel importieren",
+      "Artikel exportieren",
+      "Import aus Datenbank",
+      "Inventur",
+      "Programm beenden"
+    ],
+    "einstellungen": [
+      "Programmeinstellungen",
+      "Funktionseinstellungen",
+      "Personalverwaltung",
+      "Artikel-Optionen",
+      "Umsatzsteuer",
+      "Zahlungen",
+      "EAN-Einstellungen",
+      "Stornogründe",
+      "Datensicherung",
+      "Geräte-Manager",
+      "Bon / Rechnung",
+      "Pfand / Leergut",
+      "Datenbank-Sicherungskopie erstellen"
+    ],
+    "berichte": [
+      "X-Bericht",
+      "Kassensturz",
+      "Kassenjournal",
+      "Export Buchungsdaten",
+      "Warenbestand",
+      "Z-Abschluss-Journal",
+      "Umsatzberichte",
+      "Monatsumsatz",
+      "Verkaufsstatistik",
+      "Bedienerabrechnung",
+      "Personalüberwachung",
+      "Stornobericht",
+      "Programmierungsprotokoll",
+      "Fiskal-Prüfung",
+      "GDPdU-Tools",
+      "DSFinV-K Export",
+      "TSE Export"
+    ],
+    "z_archive_immutable": true,
+    "inventory_stock_deduction_on_sale": true,
+    "programming_protocol_pdf": true
+  },
+  "cashier_touch_layout": {
+    "category_default": {
+      "columns": 4,
+      "rows": 3,
+      "visible": 12
+    },
+    "product_default": {
+      "columns": 4,
+      "rows": 3,
+      "visible": 12
+    },
+    "category_paging": true,
+    "product_paging": true,
+    "settings_page": "Einstellungen > Programmeinstellungen"
+  },
+  "historical_revision_at_this_point": "R75.1-Application-Namespace-Hotfix",
+  "r32_safety": {
+    "base": "R31",
+    "fiscal_production_enabled": false,
+    "persistent_checkout_journal": true,
+    "immutable_checkout_snapshot": true,
+    "single_open_checkout": true,
+    "sqlite_synchronous": "FULL",
+    "persistent_print_journal": true,
+    "single_process_per_profile": true,
+    "review_document": "R32-SAFETY-REVIEW.md",
+    "test_project": "tests/TorPos.SafetyTests/TorPos.SafetyTests.csproj"
+  },
+  "r33": {
+    "changes": [
+      "Windows printer selection and test",
+      "Stored device status summary",
+      "Daily receipt preview and PDF",
+      "Admin report center"
+    ],
+    "build_errors": 0,
+    "build_warnings": 6,
+    "safety_checks_passed": 30,
+    "windows_hardware_tested": false,
+    "production_allowed": false
+  },
+  "r34": {
+    "safety_checks_passed": 35,
+    "build_errors": 0,
+    "build_warnings": 8,
+    "hardware_tested": false,
+    "production_allowed": false,
+    "changes": [
+      "simulation receipt printing",
+      "explicit empty-state dialogs"
+    ]
+  },
+  "r35": {
+    "safety_checks_passed": 43,
+    "build_errors": 0,
+    "build_warnings": 8,
+    "hardware_tested": false,
+    "production_allowed": false,
+    "changes": [
+      "receipt date range search",
+      "receipt number and payment filters",
+      "bounded read-only archive"
+    ]
+  },
+  "r36": {
+    "safety_checks_passed": 53,
+    "build_errors": 0,
+    "build_warnings": 2,
+    "hardware_tested": false,
+    "production_allowed": false,
+    "changes": [
+      "SumUp reader pairing and connection diagnostics only"
+    ],
+    "api_tests": "mock HTTP only"
+  },
+  "r37": {
+    "build_verified_in_generation_environment": false,
+    "hardware_tested": false,
+    "production_allowed": false,
+    "changes": [
+      "SumUp fixed EUR 1.00 Reader Checkout device test",
+      "SumUp Reader terminate test",
+      "normal cash-register KARTE TEST remains simulation"
+    ],
+    "api_reference_checked": "2026-09-07",
+    "physical_test_required": true
+  },
+  "r38": {
+    "build_verified_in_generation_environment": false,
+    "production_allowed": false,
+    "sumup_changed": false,
+    "cloud_mode": "connection-test-only",
+    "cloud_local_first": true,
+    "device_token_persisted": false,
+    "http_allowed_only_for_loopback": true,
+    "live_https_required": true,
+    "sync_outbox_implemented": false,
+    "changes": [
+      "TOR Cloud connection settings in Geräte",
+      "device-authorized ping against TOR Cloud API",
+      "local-first architecture boundary documented"
+    ]
+  },
+  "release": "R75.1-Application-Namespace-Hotfix",
+  "r41": {
+    "desktop_build_verified": true,
+    "cloud_outbox": true,
+    "stock_sync": "manual full snapshot <=5000 active products",
+    "token_storage": "Windows DPAPI CurrentUser",
+    "test_bons_exported": false,
+    "production_allowed": false,
+    "sumup_changed": false,
+    "hardware_tested": false,
+    "verification": "../verification/R41-TEST-RESULTS.md"
+  },
+  "r42": {
+    "desktop_build_verified_in_generation_environment": false,
+    "cloud_tests_passed": 9,
+    "sumup_changed": false,
+    "tse_changed": false,
+    "production_allowed": false,
+    "changes": [
+      "WAREN and BERICHTE menus grouped for daily KIOSK use",
+      "direct report printing through durable Windows print queue",
+      "per-report printer and 58 mm / 80 mm / A4 preference",
+      "article editor stock quantity with optimistic concurrency protection",
+      "article search by name/EAN/SKU with scanner Enter selection",
+      "inventory full overview plus scanner/EAN search",
+      "inventory update refuses to overwrite a concurrently changed stock value",
+      "Cloud stock snapshot includes SKU, barcode, group, category, unit and price"
+    ],
+    "verification": "../verification/R42-TEST-RESULTS.md",
+    "desktop_static_checks_passed": true,
+    "physical_printer_scanner_tested": false
+  },
+  "r43": {
+    "base": "R42-Kiosk-Waren-Berichte",
+    "parked_receipt_cancel": true,
+    "parked_receipt_delete_from_list": true,
+    "variants_embedded_in_article_editor": true,
+    "separate_variant_tab_removed": true,
+    "receipt_logo_picker": true,
+    "receipt_logo_copied_to_app_data": true,
+    "receipt_logo_printed_on_test_and_normal_receipts": true,
+    "sumup_unchanged": true,
+    "cloud_component": "R42 cloud functionality unchanged; desktop heartbeat reports R43"
+  },
+  "r44": {
+    "base": "R43-Parkbon-Varianten-Bonlogo",
+    "auto_update_foundation": true,
+    "update_check_interval_hours": 6,
+    "update_sha256_verification": true,
+    "remote_https_required": true,
+    "remote_authenticode_thumbprint_required": true,
+    "pre_update_backup": true,
+    "open_cart_or_payment_blocks_update": true,
+    "license_expiry_warning_days": 30,
+    "sumup_unchanged": true,
+    "desktop_build_verified_in_generation_environment": false
+  },
+  "r45": {
+    "base": "R44-Update-License",
+    "cloud_version": "0.5.0-R45",
+    "totp_2fa": true,
+    "owner_2fa_live_default": true,
+    "totp_secret_storage": "AES-256-GCM with TOR_CLOUD_TOTP_KEY",
+    "recovery_codes": 8,
+    "recovery_storage": "SHA-256 hashes only",
+    "cloud_tests_passed": 11,
+    "new_third_party_packages": false,
+    "sumup_unchanged": true,
+    "verification": "../verification/R45-TEST-RESULTS.md"
+  },
+  "r46": {
+    "base": "R45-Update-Lizenz-2FA",
+    "software_update_main_settings": true,
+    "update_server_stays_technician_only": true,
+    "automatic_cloud_stock_after_product_inventory_changes": true,
+    "cloud_stock_decrement_from_sale_event": true,
+    "stock_snapshot_coalescing": true,
+    "repair_snapshot": "startup + hourly",
+    "sumup_unchanged": true,
+    "verification": "../verification/R46-TEST-RESULTS.md"
+  },
+  "r47": {
+    "base": "R46-SoftwareUpdate-AutoCloudBestand",
+    "quick_item_free_price": true,
+    "quick_item_mutates_master_data": false,
+    "purchase_price_in_article": true,
+    "minimum_stock_per_article": true,
+    "cashier_low_stock_badge": true,
+    "inventory_scanner_enter_flow": true,
+    "inventory_purchase_value": true,
+    "cloud_purchase_price_and_min_stock": true,
+    "cloud_tests_passed": 14,
+    "sumup_unchanged": true,
+    "desktop_build_verified_in_generation_environment": false,
+    "verification": "../verification/R47-TEST-RESULTS.md"
+  },
+  "r48": {
+    "base": "R47-Kiosk-Schnellartikel-Mindestbestand",
+    "automatic_article_number": true,
+    "article_number_start": 100000,
+    "backfill_missing_article_numbers": true,
+    "existing_article_numbers_preserved": true,
+    "imbiss_daily_pickup_number": true,
+    "pickup_number_daily_reset": true,
+    "pickup_number_receipt_and_history": true,
+    "pickup_number_cloud": true,
+    "training_pickup_sequence": "session-only; does not consume production sequence",
+    "sumup_unchanged": true,
+    "production_allowed": false,
+    "desktop_build_verified_in_generation_environment": false,
+    "cloud_tests_passed": 15,
+    "verification": "../verification/R48-TEST-RESULTS.md"
+  },
+  "r49": {
+    "base": "R48.1-StabilityReview",
+    "menu_combo": true,
+    "combo_components_reduce_stock": true,
+    "combo_parent_remains_visible_sale_item": true,
+    "kitchen_printer_second_windows_printer": true,
+    "kitchen_print_uses_durable_queue": true,
+    "kitchen_output_language": "DE",
+    "pickup_slip_output_language": "DE",
+    "ui_languages": [
+      "DE",
+      "TR",
+      "EN"
+    ],
+    "printed_receipts_reports_fiscal_language": "DE",
+    "pickup_modes": [
+      "OFF",
+      "SALE",
+      "ORDER"
+    ],
+    "order_mode": "pickup number at order acceptance; final receipt/payment only after order recall",
+    "pickup_number_is_not_fiscal_receipt_number": true,
+    "sumup_unchanged": true,
+    "production_allowed": false,
+    "desktop_build_verified_in_generation_environment": false,
+    "cloud_tests_passed": 16,
+    "verification": "../verification/R49-TEST-RESULTS.md"
+  },
+  "r50": {
+    "base": "R49-Combo-Kuechendrucker-Multilang-Order",
+    "imbiss_starter_catalog": true,
+    "imbiss_warengruppen": [
+      "Döner",
+      "Burger",
+      "Fingerfood",
+      "Pizza",
+      "Getränke"
+    ],
+    "pizza_sizes": [
+      "Klein 26 cm",
+      "Groß 32 cm"
+    ],
+    "starter_catalog_edition": "IMBISS_ONLY",
+    "edition_scoped_categories_and_products": true,
+    "automatic_article_numbers_for_starter_products": true,
+    "pickup_settings_more_visible": true,
+    "training_order_mode_enabled": true,
+    "training_pickup_sequence_separate": true,
+    "training_open_orders_isolated": true,
+    "printed_receipts_reports_fiscal_language": "DE",
+    "sumup_unchanged": true,
+    "production_allowed": false,
+    "desktop_build_verified_in_generation_environment": false,
+    "verification": "../verification/R50-TEST-RESULTS.md"
+  },
+  "r51": {
+    "revision": "R51-Imbiss-Bilder-Sprache-Loeschen",
+    "login_language_selector": [
+      "DE",
+      "TR",
+      "EN"
+    ],
+    "operator_ui_language_only": true,
+    "printed_receipts_reports_fiscal_language": "DE",
+    "imbiss_groups": {
+      "Speisen": [
+        "Döner",
+        "Burger",
+        "Fingerfood",
+        "Pizza"
+      ],
+      "Getränke": [
+        "Getränke"
+      ]
+    },
+    "kiosk_demo_categories_hidden_in_imbiss": [
+      "Schnellwahl",
+      "Snacks"
+    ],
+    "starter_product_images": 57,
+    "starter_images_local_offline": true,
+    "customer_product_images_preserved": true,
+    "masterdata_soft_delete": [
+      "product_group",
+      "category",
+      "product"
+    ],
+    "masterdata_delete_admin_only": true,
+    "historical_sales_preserved_on_delete": true,
+    "pickup_order_flow_unchanged_from_r50": true,
+    "sumup_unchanged": true,
+    "production_allowed": false,
+    "desktop_build_verified_in_generation_environment": false,
+    "verification": "../verification/R51-TEST-RESULTS.md"
+  },
+  "r51_1": {
+    "base": "R51",
+    "status": "UI_LANGUAGE_HOTFIX",
+    "changes": [
+      "Login DE/TR/EN now applies recursively to nested Avalonia Menu/MenuItem trees before popup open",
+      "Settings, products, register and reports submenus translated in TR/EN",
+      "Software & Update restored to visible Settings submenu",
+      "Receipt/kitchen/report/fiscal output language remains German"
+    ],
+    "production_allowed": false
+  },
+  "current_release": {
+    "base": "R75.1-Application-Namespace-Hotfix",
+    "version": "0.7.33.751",
+    "ui_languages": [
+      "DE"
+    ],
+    "bundled_product_images": 0,
+    "order_print_transaction": true,
+    "order_audit_transaction": true,
+    "printer_journal_stable_ids": true,
+    "backup_assets_and_restore_verification": true,
+    "live_restore_installer": false,
+    "cloud_order_workflow_sync": false,
+    "desktop_checks_passed": null,
+    "cloud_tests_passed": 20,
+    "desktop_build_verified": false,
+    "windows_authenticode_tested": false,
+    "hardware_tested": false,
+    "production_allowed": false,
+    "verification": "../verification/R71/",
+    "historical_sections": "rXX entries below describe previous releases",
+    "offline_csharp_build_verified": false,
+    "xaml_compiler_verified": false,
+    "touch_keyboard": true,
+    "order_print_immediate_wakeup": true,
+    "cloud_unchanged_from_R55": false,
+    "desktop_checks_expected": 348,
+    "order_mode_direct_sale": true,
+    "separate_order_display": true,
+    "daily_scheduled_backup": true,
+    "cloud_unchanged_from_R56": false,
+    "r58_review_checks_added": 6,
+    "target_total_checks": 348,
+    "r59_review_checks_added": 6,
+    "r60_review_checks_added": 6,
+    "gmail_smtp_hotfix": true,
+    "gmail_smtp_starttls_port": 587,
+    "article_grid_imbiss_default": "4x3",
+    "printer_preflight_status": true,
+    "gmail_smtp_explicit_rfc3207": true,
+    "gmail_smtp_command_order": "EHLO -> STARTTLS -> TLS -> EHLO -> AUTH -> MAIL/RCPT/DATA",
+    "system_net_mail_smtpclient_for_report_transport": false,
+    "google_oauth_qr": true,
+    "gmail_api_transport": true,
+    "gmail_app_password_required_for_google_transport": false,
+    "google_refresh_token_stored_on_pos": false,
+    "cloud_google_refresh_token_encrypted": true,
+    "gmail_scope": "https://www.googleapis.com/auth/gmail.send"
+  },
+  "r57": {
+    "order_mode_direct_sale": true,
+    "order_accept_remains_separate_action": true,
+    "separate_order_display": true,
+    "order_display_independent_from_customer_display": true,
+    "order_display_states": {
+      "ACCEPTED": "PREPARING",
+      "PREPARING": "PREPARING",
+      "READY": "READY_GREEN",
+      "DELIVERED": "HIDDEN"
+    },
+    "order_display_screen_selectable": true,
+    "daily_backup_enabled_default": true,
+    "daily_backup_default_time": "00:00",
+    "daily_backup_missed_run_on_next_start": true,
+    "daily_backup_once_per_successful_local_day": true,
+    "daily_backup_retry_minutes": 5,
+    "daily_backup_creates_z_report": false,
+    "daily_backup_creates_cash_closing": false,
+    "daily_backup_persists_last_success_and_error": true,
+    "additional_safety_checks": 19
+  },
+  "r58": {
+    "base": "R57-OrderDisplay-DailyBackup",
+    "changes": [
+      "balanced sparse article grid without outlined empty cells",
+      "unified equal article touch tiles",
+      "open-order button visual emphasis when count > 0",
+      "Windows printer offline/paper/error preflight via spooler status",
+      "user-friendly printer issue dialog without blind retry after uncertain timeout"
+    ],
+    "safety_checks_added": 6,
+    "target_total_checks": 228,
+    "desktop_build_verified_in_generation_environment": false,
+    "hardware_tested": false,
+    "production_allowed": false,
+    "verification": "../verification/R59/"
+  },
+  "target_total_checks": 348,
+  "r62": {
+    "base": "R61-Explicit-STARTTLS",
+    "version": "0.7.33.620",
+    "google_oauth_qr": true,
+    "gmail_api_transport": true,
+    "google_password_stored_on_pos": false,
+    "google_app_password_required": false,
+    "google_refresh_token_stored_on_pos": false,
+    "cloud_refresh_token_storage": "AES-256-GCM protected",
+    "gmail_scope": "https://www.googleapis.com/auth/gmail.send",
+    "report_pdf_path": "POS PC -> Gmail API (PDF does not pass through TOR Cloud)",
+    "cloud_public_https_required": true,
+    "google_oauth_web_client_required": true,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false,
+    "verification": "../verification/R62/"
+  },
+  "r63": {
+    "base": "R62-Google-OAuth-QR",
+    "version": "0.7.33.630",
+    "installer_publish_folder_recreated_each_build": true,
+    "debug_symbols_in_customer_setup": false,
+    "self_contained_runtime_kept_for_customer_reliability": true,
+    "publish_trimming_enabled": false,
+    "ready_to_run_enabled": false,
+    "loose_runtime_icon_removed": true,
+    "splash_logo_optimized_from_px": "1254x1254",
+    "splash_logo_optimized_to_px": "512x512",
+    "stale_update_download_cleanup_hours": 24,
+    "retained_update_installers": 2,
+    "staged_update_installer_always_retained": true,
+    "fiscal_data_auto_cleanup": false,
+    "backup_auto_cleanup": false,
+    "size_report_script": "8-PAKET-GROESSE-PRUEFEN.bat",
+    "additional_safety_checks": 2,
+    "target_total_checks": 242,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false,
+    "verification": "../verification/R63/"
+  },
+  "r64": {
+    "base": "R63-Core-Stability-Cleanup",
+    "version": "0.7.33.640",
+    "main_window_menu_split": true,
+    "central_grid_paging": true,
+    "category_direct_move": true,
+    "category_reorder_atomic_transaction": true,
+    "category_reorder_sort_only": true,
+    "category_editor_order_matches_cashier": true,
+    "empty_category_placeholders_removed": true,
+    "category_footer_split_to_prevent_overflow": true,
+    "additional_safety_checks": 2,
+    "target_total_checks": 244,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r65": {
+    "base": "R64-Menu-Cleanup-FIX1",
+    "version": "0.7.33.650",
+    "checkout_printer_probe_ui_thread_block_removed": true,
+    "checkout_printer_probe_timeout_seconds": 2,
+    "configured_printer_probe_skips_full_windows_printer_enumeration": true,
+    "simulation_print_is_background_after_sale_completion": true,
+    "additional_safety_checks": 2,
+    "target_total_checks": 246,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r66": {
+    "base": "R65-Checkout-Freeze-Fix",
+    "version": "0.7.33.660",
+    "usb_build_stages_to_local_ssd": true,
+    "local_build_cache_retained": true,
+    "installer_fixed_app_mutex": true,
+    "installer_legacy_process_precheck": true,
+    "force_kill_pos_process": false,
+    "solid_compression": false,
+    "reason": "Faster USB-origin builds/updates and safe early detection of an open TOR POS process.",
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r66_1": {
+    "base": "R66-Installer-Speed-Safe-Upgrade",
+    "version": "0.7.33.661",
+    "fixed_unconditional_staging_bug": true,
+    "system_drive_builds_directly": true,
+    "non_system_drive_stages_before_publish": true,
+    "robocopy_error_log_visible": true,
+    "restart_manager_disabled": true,
+    "explicit_old_torpos_process_check_before_install": true,
+    "compression": "lzma2/fast",
+    "usb_install_copy_to_local_helper": true,
+    "target_total_checks": 246,
+    "production_allowed": false
+  },
+  "r67": {
+    "base": "R66.1-Installer-Hotfix",
+    "version": "0.7.33.670",
+    "diagnostics_window": true,
+    "device_status": [
+      "receipt_printer",
+      "payment_terminal",
+      "tse",
+      "data_storage",
+      "daily_backup"
+    ],
+    "device_probe_ui_blocking": false,
+    "printer_probe_timeout_seconds": 2,
+    "terminal_probe_timeout_seconds": 3,
+    "tse_probe_timeout_seconds": 3,
+    "performance_recent_timeline": true,
+    "performance_slow_threshold_ms": 500,
+    "performance_reset": true,
+    "checkout_timing": [
+      "recovery_flush",
+      "printer_preflight",
+      "fiscal_preflight",
+      "journal_begin",
+      "terminal_payment_roundtrip",
+      "database_commit",
+      "aftercare",
+      "receipt_spool",
+      "kitchen_spool"
+    ],
+    "startup_timing": [
+      "settings",
+      "cart_recovery",
+      "fiscal_status",
+      "parked_count",
+      "stock_warning"
+    ],
+    "additional_safety_checks": 4,
+    "target_total_checks": 250,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r67_1": {
+    "base": "R67-Performance-Diagnose",
+    "version": "0.7.33.671",
+    "fix": "DiagnosticsWindow TseProbeResult uses State instead of nonexistent Success",
+    "tse_ready_green": true,
+    "tse_connected_warning": true,
+    "tse_error_red": true,
+    "avalonia_watermark_deprecations_removed": true,
+    "target_total_checks": 250,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r67_2": {
+    "base": "R67.1-TSE-Diagnose-Hotfix",
+    "version": "0.7.33.672",
+    "fix": "printer preflight no longer counts operator dialog wait as system latency",
+    "old_metric_removed": "checkout.printer_preflight",
+    "new_metric": "checkout.printer_probe",
+    "operator_dialog_wait_excluded": true,
+    "printer_timeout_seconds": 2,
+    "target_total_checks": 250,
+    "production_allowed": false
+  },
+  "r68": {
+    "base": "R67.2-Perf-Metric-Hotfix",
+    "version": "0.7.33.680",
+    "fast_checkout": true,
+    "fast_checkout_hotkey": "F5",
+    "fast_checkout_default_methods": [
+      "AUS",
+      "BAR",
+      "KARTE"
+    ],
+    "single_enabled_tender_skips_choice": true,
+    "exact_cash_without_dialog_optional": true,
+    "normal_f1_cash_flow_unchanged": true,
+    "normal_f2_card_flow_unchanged": true,
+    "payment_method_always_explicit_in_snapshot": true,
+    "payment_in_progress_lock_preserved": true,
+    "di_container": "Microsoft.Extensions.DependencyInjection 10.0.0",
+    "di_window_factory": true,
+    "async_initialization_remains_explicit": true,
+    "big_bang_refactor": false,
+    "additional_safety_checks": 4,
+    "target_total_checks": 254,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r68_1": {
+    "base": "R68-Fast-Checkout-DI",
+    "version": "0.7.33.681",
+    "fix": "PaymentChoiceWindow missing Avalonia.Controls.Primitives namespace for UniformGrid",
+    "target_total_checks": 254,
+    "production_allowed": false
+  },
+  "r69": {
+    "base": "R68.1-UniformGrid-Hotfix",
+    "version": "0.7.33.690",
+    "schema_versioning": true,
+    "schema_target_version": 1,
+    "schema_tables": [
+      "schema_version",
+      "schema_migrations"
+    ],
+    "legacy_bootstrap_preserved": true,
+    "new_post_r69_schema_changes_must_use_versioned_migrations": true,
+    "pre_migration_backup_existing_database": true,
+    "pre_migration_backup_verified_with_sqlite_quick_check": true,
+    "migration_fails_closed_when_backup_fails": true,
+    "downgrade_newer_schema_refused": true,
+    "migration_restart_idempotent": true,
+    "diagnostics_schema_status": true,
+    "migration_backup_directory": "Backups/Migrationen",
+    "additional_safety_checks": 8,
+    "target_total_checks": 262,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r69_1": {
+    "base": "R69-Versioned-Migrations",
+    "version": "0.7.33.691",
+    "compile_fix": "SchemaMigrationService now references TorPos.Core.TorRelease.Version",
+    "releaseinfo_bad_references_removed": true,
+    "r69_safety_checks_actual": 8,
+    "target_total_checks": 262,
+    "production_allowed": false
+  },
+  "r70": {
+    "base": "R69.1-Migration-Compile-Hotfix",
+    "version": "0.7.33.700",
+    "schema_version": 2,
+    "controlled_actions": [
+      "SOFORT_STORNO",
+      "DISCOUNT_SET",
+      "C_CLEAR_CART"
+    ],
+    "mandatory_reasons": true,
+    "denied_action_logging": true,
+    "structured_before_after_values": true,
+    "actor_register_operation_id": true,
+    "audit_first_fail_closed": true,
+    "parked_cancel_before_ram_clear": true,
+    "pos_action_log_append_only": true,
+    "pos_action_log_hash_chain": "SHA-256",
+    "general_audit_mirror_same_db_transaction": true,
+    "diagnostics_audit_integrity": true,
+    "signed_external_checkpoint": false,
+    "tamper_evident_not_tamper_proof": true,
+    "additional_safety_checks": 8,
+    "target_total_checks": 270,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r71": {
+    "base": "R70-Audit-Integrity",
+    "version": "0.7.33.710",
+    "schema_version": 3,
+    "promotion_campaigns": true,
+    "promotion_percent_options": [
+      10,
+      15,
+      20,
+      25,
+      30
+    ],
+    "promotion_scopes": [
+      "ALL",
+      "CATEGORY",
+      "PRODUCT"
+    ],
+    "date_range_inclusive": true,
+    "automatic_cashier_application": true,
+    "normal_product_price_unchanged": true,
+    "pfand_excluded_from_promotion": true,
+    "promotion_snapshot_immutable_on_sale_line": true,
+    "parked_order_preserves_promotion_snapshot": true,
+    "receipt_shows_promotion_name_percent_and_dates": true,
+    "z_report_separates_list_value_promotion_manual_discount_storno_returns": true,
+    "z_report_vat_after_discount": true,
+    "monthly_report_promotion_breakdown": true,
+    "booking_export_includes_promotion_snapshot": true,
+    "cloud_sale_event_includes_promotion_snapshot": true,
+    "manual_discount_stacking_default": false,
+    "campaign_delete_blocked": true,
+    "campaign_terms_immutable_after_creation": true,
+    "campaign_disable_audited": true,
+    "diagnostics_promotion_status": true,
+    "actual_receipt_storno_return_workflow_implemented": false,
+    "additional_safety_checks": 13,
+    "target_total_checks": 283,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r72": {
+    "base": "R71-Angebot-Promotions",
+    "version": "0.7.33.720",
+    "schema_version": 4,
+    "promotion_percentages": [
+      10,
+      15,
+      20,
+      25,
+      30,
+      40,
+      50
+    ],
+    "credential_kdf": "PBKDF2-SHA256",
+    "current_iterations": 600000,
+    "legacy_iterations": 180000,
+    "per_secret_algorithm_metadata": true,
+    "per_secret_work_factor_metadata": true,
+    "rehash_on_successful_login": true,
+    "failed_login_does_not_rehash": true,
+    "unsupported_kdf_fails_closed": true,
+    "maximum_accepted_iterations": 5000000,
+    "diagnostics_auth_kdf": true,
+    "kdf_upgrade_audit": true,
+    "additional_safety_checks": 15,
+    "target_total_checks": 298,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r72_1": {
+    "base": "R72-Auth-KDF-Hardening",
+    "version": "0.7.33.721",
+    "schema_version": 4,
+    "fixes": [
+      "SafetyTests root DB initialized through SchemaMigrationService",
+      "Every non-zero Windows test exit code is treated as failure",
+      "Duplicate RecoveryFiles source include removed"
+    ],
+    "target_total_checks": 298,
+    "production_allowed": false
+  },
+  "r72_2": {
+    "base": "R72.1-Safety-Migration-Hotfix",
+    "version": "0.7.33.722",
+    "schema_version": 4,
+    "fixes": [
+      "Cloud sync rejects 3xx/non-2xx before success JSON parsing",
+      "HTTP 302 remains visible as safe status for retry/reconciliation",
+      "Cloud sync default handler keeps AllowAutoRedirect=false",
+      "TorCloudConnectionService ping now also disables automatic redirects",
+      "Redirect safety test verifies exactly one request was made"
+    ],
+    "target_total_checks": 298,
+    "production_allowed": false
+  },
+  "r72_3": {
+    "base": "R72.2-Cloud-Redirect-Hotfix",
+    "version": "0.7.33.723",
+    "schema_version": 4,
+    "fixes": [
+      "Added central SafetyDatabase current-schema fixture helper",
+      "Updated ordinary historical tests R48-R57 and Cloud to use ordered migrations",
+      "Kept R69 migration edge tests intentionally on legacy bootstrap"
+    ],
+    "target_total_checks": 298,
+    "production_allowed": false
+  },
+  "r72_4": {
+    "base": "R72.3-Safety-Fixture-Schema-Hotfix",
+    "version": "0.7.33.724",
+    "schema_version": 4,
+    "fixes": [
+      "Temporary SQLite backup destination uses Pooling=false and private cache",
+      "Snapshot DB handles are disposed before backup path is returned",
+      "FullBackupService retries transient Windows cleanup locks",
+      "VerifyRestore cleanup also retries transient Windows locks",
+      "R54 existing backup assertion verifies exclusive file access after creation",
+      "R55 existing full-backup assertion verifies no staging directory leak",
+      "No unsafe dummy Avalonia parameterless constructors added"
+    ],
+    "target_total_checks": 298,
+    "production_allowed": false
+  },
+  "r72_5": {
+    "base": "R72.4-Backup-FileLock-Hotfix",
+    "version": "0.7.33.725",
+    "schema_version": 4,
+    "windows_confirmed_previous_run": {
+      "build_succeeded": true,
+      "safety_checks_passed": 300
+    },
+    "fixes": [
+      "Safety test runtime baseline corrected from stale 298 to confirmed 300",
+      "Program fails if future test count changes without intentional baseline review",
+      "BAT no longer hardcodes a duplicate expected check count",
+      "AVLN3001 is demoted to MSBuild message for DI-created TopLevel windows",
+      "No dummy public parameterless constructors introduced",
+      "Stale manifest authentication iteration value corrected to 600000"
+    ],
+    "target_total_checks": 300,
+    "production_allowed": false
+  },
+  "r73": {
+    "base": "R72.5-Baseline-Warning-Cleanup",
+    "version": "0.7.33.730",
+    "schema_version": 5,
+    "payment_model": {
+      "checkout_safety_states": [
+        "PREPARED",
+        "SENT",
+        "UNKNOWN",
+        "APPROVED",
+        "CASH_READY",
+        "COMMITTED",
+        "NOT_CHARGED"
+      ],
+      "terminal_outcomes": [
+        "NONE",
+        "APPROVED",
+        "DECLINED",
+        "CANCELLED",
+        "NOT_SENT",
+        "UNKNOWN"
+      ],
+      "resolutions": [
+        "NONE",
+        "AUTO_APPROVED",
+        "AUTO_NOT_CHARGED",
+        "MANUAL_PAID",
+        "MANUAL_NOT_CHARGED"
+      ],
+      "explicit_decline_closes_not_charged": true,
+      "explicit_cancel_closes_not_charged": true,
+      "generic_failure_after_submit_stays_unknown": true,
+      "pre_send_failure_closes_not_charged": true,
+      "unknown_blocks_second_checkout": true,
+      "manual_reconciliation_preserves_original_terminal_outcome": true,
+      "void_reversal_is_not_modeled_as_rewriting_original_payment": true
+    },
+    "diagnostics_checkout_journal": true,
+    "additional_safety_checks": 21,
+    "target_total_checks": 321,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r74": {
+    "base": "R73-Payment-Outcome-State-Machine",
+    "version": "0.7.33.740",
+    "schema_version": 5,
+    "database_health": {
+      "journal_mode": "WAL",
+      "synchronous": "FULL",
+      "busy_timeout_ms": 3000,
+      "health_probe": true,
+      "quick_check": true,
+      "passive_checkpoint_only": true,
+      "automatic_truncate_checkpoint": false,
+      "metrics": [
+        "database file size",
+        "WAL file size",
+        "SHM file size",
+        "page count",
+        "page size",
+        "freelist pages",
+        "freelist percent",
+        "WAL autocheckpoint pages",
+        "checkpoint busy/log/checkpointed"
+      ]
+    },
+    "stress_tool": {
+      "production_database_touched": false,
+      "temp_database_only": true,
+      "products": 10000,
+      "sales": 500000,
+      "sale_items": 500000,
+      "batch_size": 5000,
+      "barcode_lookups": 1000,
+      "short_writer_contention_test": true,
+      "backup_benchmark": true,
+      "speed_thresholds_are_informational": true,
+      "script": "8-DATENBANK-WAL-LASTTEST.bat"
+    },
+    "additional_safety_checks": 12,
+    "target_total_checks": 333,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r75": {
+    "base": "R74-Database-WAL-Health",
+    "version": "0.7.33.750",
+    "schema_version": 5,
+    "application_layer": {
+      "project": "TorPos.Application",
+      "target_framework": "net10.0",
+      "references_core_only": true,
+      "references_infrastructure": false,
+      "references_avalonia": false,
+      "references_sqlite": false,
+      "checkout_use_case_extracted": true,
+      "reconciliation_use_case_extracted": true,
+      "checkout_journal_core_interface": true,
+      "kiosk_imbiss_shared": true,
+      "big_bang_mvvm": false
+    },
+    "additional_safety_checks": 15,
+    "target_total_checks": 348,
+    "desktop_build_verified_in_generation_environment": false,
+    "production_allowed": false
+  },
+  "r75_1": {
+    "base": "R75-Application-Layer-Foundation",
+    "version": "0.7.33.751",
+    "schema_version": 5,
+    "fixes": [
+      "Removed broad 'using TorPos.Application;' from Avalonia App files",
+      "Added explicit type aliases for CheckoutApplicationService and CheckoutApplicationDisposition",
+      "Prevents namespace collision with Avalonia.Application base type",
+      "Prevents namespace collision with Avalonia.Application.Current in MainWindow"
+    ],
+    "target_total_checks": 348,
+    "production_allowed": false
+  }
+}

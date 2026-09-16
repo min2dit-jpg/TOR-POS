@@ -1,0 +1,23 @@
+TOR POS R70+ CONTROLLED ACTION AUDIT RULES
+===========================================
+
+Hassas UI aksiyonları:
+- SOFORT STORNO
+- RABATT
+- VERKAUF ABBRECHEN / C
+- gelecekte BON STORNO / RETOURE
+
+Kurallar:
+1. Mutasyondan önce yetki kontrolü.
+2. Mutasyondan önce zorunlu reason.
+3. Durable AUTHORIZED audit başarısızsa mutate ETME.
+4. actor + register_id + operation_id zorunlu.
+5. before/after financial values zorunlu.
+6. pos_action_log satırı update/delete edilmez.
+7. APPLIED/FAILED yeni satırdır; önceki kayıt overwrite edilmez.
+8. Her satır hash chain'e bağlanır.
+9. General audit_log'a aynı transaction içinde mirror edilir.
+10. Gerçek BON STORNO geldiğinde original sale değiştirilmez/silinmez;
+    ayrı Gegenbuchung oluşturulur.
+11. Hash-chain = tamper-evident. Gelecekte signed daily checkpoint eklenmeden
+    "tamper-proof" denmemelidir.

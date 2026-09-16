@@ -1,0 +1,12 @@
+TOR POS Pro v0.7.33 - Frontend SalesFlow R4 Hotfix
+Date: 2026-09-05
+
+Fixed build errors in SettingsWindow.axaml.cs:
+- CS0103: TsePage was referenced but its method body was missing.
+- CS0103: LegalPage was referenced but its method body was missing.
+
+The two existing Settings pages were restored from the last intact v0.7.33 security branch and merged into the current R3 frontend branch.
+No intentional rollback of the R2/R3 UX changes.
+
+Expected remaining messages during build:
+- Nullable warnings (CS8604) may still appear. They are warnings, not build-blocking errors.

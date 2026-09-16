@@ -1,0 +1,36 @@
+PASS: FULL synchronization
+PASS: WAL enabled
+PASS: Checkout snapshot is a deep copy
+PASS: Locked cart rejects all mutation methods
+PASS: Duplicate operation ID refused
+PASS: Second unresolved checkout refused globally
+PASS: Interrupted sent payment survives reopening
+PASS: Second submission refused by expected state
+PASS: Unknown payment cannot create a sale
+PASS: Fiscal gate blocks real booking even after approval
+PASS: Terminal service gate blocks before network request
+PASS: Retry returns original sale without fiscal gate bypass for new sales
+PASS: Retry does not insert a second sale
+PASS: Recovery identifies committed operation
+PASS: Same ID with altered cart is rejected
+PASS: Cash booking also requires fiscal release
+PASS: Database queue preserves admission order
+PASS: Nested repository calls do not deadlock
+PASS: Ordered recovery writes cannot resurrect a cleared cart
+PASS: Corrupt recovery retained with durable lock marker
+PASS: Weak replacement admin credentials refused
+PASS: Queue returns IO failure
+PASS: Queue continues after a failure
+PASS: Printer timeout surfaces without waiting for native completion
+PASS: Already queued job blocked after earlier timeout
+PASS: No second native print call after timeout
+PASS: Shutdown finishes while native print is still pending
+PASS: Restart preserves unknown print state without replay
+PASS: Unknown print job retained on disk
+PASS: Explicit print review unlocks only subsequent requests
+PASS: Simulation receipt contains discounted total and cash change
+PASS: Simulation cannot impersonate a numbered fiscal receipt
+PASS: Queued simulation receipt owns an independent cart snapshot
+PASS: Card simulation has no cash tender or implied real payment
+PASS: Underpaid test cash receipt refused
+ALL 35 CHECKS PASSED

@@ -1,0 +1,13 @@
+TOR POS Pro v0.7.33 – R38 Cloud Foundation
+
+1) 1-SETUP-ERSTELLEN.bat ile build/setup oluştur.
+2) TOR POS → Einstellungen → Geräte.
+3) TOR POS Cloud bölümünde yerel test için:
+   Server-URL: http://127.0.0.1:8787
+   Gerätecode: DEMO-KASSE-01
+   Gerätetoken: tor-demo-device-token-2026
+4) TOR Cloud paketinde START-TOR-CLOUD.bat çalışıyor olmalı.
+5) TOR CLOUD VERBINDUNG TESTEN bas.
+6) Beklenen: "TOR Cloud erreichbar · Gerät autorisiert".
+
+Bu test veri senkronize etmez; yalnız POS → Cloud bağlantısını doğrular.

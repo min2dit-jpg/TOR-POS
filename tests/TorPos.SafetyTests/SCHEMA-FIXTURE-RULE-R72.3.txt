@@ -1,0 +1,22 @@
+TOR POS SAFETY TEST DATABASE RULE - R72.3
+===========================================
+
+Normal feature/repository test:
+    await SafetyDatabase.CreateCurrentAsync(path)
+
+Existing DB/restart in a normal feature test:
+    await SafetyDatabase.EnsureCurrentAsync(db)
+
+Do not call:
+    await db.InitializeAsync()
+
+for ordinary post-R69 feature tests.
+
+Reason:
+SqliteDatabase.InitializeAsync() is the legacy compatibility bootstrap.
+SchemaMigrationService owns all post-R69 schema changes.
+
+Intentional exception:
+R69ReviewTests.cs
+
+It deliberately tests legacy/unversioned/newer-schema and migration-failure cases.

@@ -1,0 +1,151 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TorPos.App.LoginWindow"
+        Title="TOR POS Pro – Anmeldung"
+        Width="580" Height="625"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="#0D1420">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+
+    <!-- Kompakter Kopfbereich -->
+    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,12">
+      <Border Background="#2CC4A7"
+              CornerRadius="12"
+              Width="58" Height="58"
+              HorizontalAlignment="Center">
+        <TextBlock Text="TOR"
+                   Foreground="#07140F"
+                   FontSize="17"
+                   FontWeight="Bold"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"/>
+      </Border>
+      <TextBlock Text="TOR POS Pro"
+                 FontSize="24"
+                 FontWeight="Bold"
+                 HorizontalAlignment="Center"
+                 Margin="0,8,0,0"/>
+      <TextBlock Text="Anmeldung erforderlich"
+                 FontSize="12"
+                 Opacity="0.62"
+                 HorizontalAlignment="Center"/>
+    </StackPanel>
+
+    <!-- Inhalt darf bei hoher Windows-Skalierung scrollen -->
+    <Border Grid.Row="1"
+            Background="#121C2B"
+            BorderBrush="#21324A"
+            BorderThickness="1"
+            CornerRadius="12"
+            Padding="16">
+      <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="7">
+
+          <TextBlock Text="Kassenart" Opacity="0.75"/>
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+            <RadioButton x:Name="KioskEditionRadio"
+                         GroupName="edition"
+                         Content="KIOSK"
+                         FontWeight="Bold"
+                         MinHeight="42"
+                         HorizontalContentAlignment="Center"/>
+            <RadioButton x:Name="ImbissEditionRadio"
+                         Grid.Column="1"
+                         GroupName="edition"
+                         Content="IMBISS"
+                         FontWeight="Bold"
+                         MinHeight="42"
+                         HorizontalContentAlignment="Center"/>
+          </Grid>
+          <TextBlock x:Name="EditionStatusText"
+                     Text="Bitte KIOSK oder IMBISS auswählen."
+                     Foreground="#9CC3FF"
+                     FontSize="11"
+                     TextWrapping="Wrap"/>
+
+          <TextBlock Text="Benutzername" Opacity="0.75" Margin="0,3,0,0"/>
+          <TextBox x:Name="UsernameBox"
+                   Text="admin"
+                   MinHeight="38"/>
+
+          <TextBlock Text="Passwort" Opacity="0.75" Margin="0,5,0,0"/>
+          <TextBox x:Name="PasswordBox"
+                   PasswordChar="●"
+                   MinHeight="40"
+                   KeyDown="OnPasswordKeyDown"/>
+
+          <Border Background="#493A12"
+                  CornerRadius="8"
+                  Padding="10,8"
+                  Margin="0,5,0,0">
+            <StackPanel Spacing="6">
+              <CheckBox x:Name="TrainingModeBox"
+                        Content="TRAININGSMODUS · keine echte Buchung / keine Kartenzahlung"
+                        Foreground="#FFD166"
+                        FontWeight="Bold"/>
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <TextBlock Text="Training-Code"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Opacity="0.78"/>
+                <TextBox x:Name="TrainingCodeBox"
+                         Grid.Column="1"
+                         PasswordChar="●"
+                         MaxLength="4"
+                         MinHeight="36"
+                         PlaceholderText="····"
+                         KeyDown="OnTrainingCodeKeyDown"/>
+              </Grid>
+              <!-- R122: the code itself is only named here while it is still
+                   the factory default; LoginWindow.RefreshTrainingHintAsync
+                   replaces this text once an operator has set their own. -->
+              <TextBlock x:Name="TrainingHintText"
+                         Text="Training-Anmeldung nur mit dem Training-Code · Benutzer-Passwort ist dann nicht erforderlich."
+                         FontSize="10"
+                         Opacity="0.64"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+
+          <TextBlock x:Name="StatusText"
+                     Text="Ohne Anmeldung ist kein Zugriff möglich."
+                     Foreground="#FFD166"
+                     TextWrapping="Wrap"
+                     FontSize="11"
+                     Margin="0,5,0,0"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Anmeldung / komplettes Programmende bleiben immer sichtbar -->
+    <StackPanel Grid.Row="2" Spacing="6" Margin="0,12,0,0">
+      <Grid ColumnDefinitions="2*,*" ColumnSpacing="10">
+        <Button x:Name="LoginButton"
+                Content="ANMELDEN"
+                Click="OnLoginClick"
+                Background="#2CC4A7"
+                Foreground="#07140F"
+                FontSize="16"
+                FontWeight="Bold"
+                MinHeight="52"/>
+        <Button Grid.Column="1"
+                x:Name="ExitProgramButton"
+                Content="PROGRAMM BEENDEN"
+                Click="OnExitProgramClick"
+                Background="#602B35"
+                Foreground="#FFF6F7"
+                BorderBrush="#A85A6B"
+                BorderThickness="1"
+                FontSize="12"
+                FontWeight="Bold"
+                MinHeight="52"/>
+      </Grid>
+      <TextBlock Text="Standard: admin / admin · kassierer1 / 1234 · Training-Code 0000"
+                 HorizontalAlignment="Center"
+                 Opacity="0.45"
+                 FontSize="10"/>
+    </StackPanel>
+  </Grid>
+</Window>

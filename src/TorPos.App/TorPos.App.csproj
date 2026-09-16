@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Version>0.7.33.751</Version>
+    <FileVersion>0.7.33.751</FileVersion>
+    <InformationalVersion>0.7.33.751-R75.1-Application-Namespace-Hotfix</InformationalVersion>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ApplicationIcon>Assets\TorPos.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+
+    <!-- R72.5:
+         LoginWindow/MainWindow/SettingsWindow are DI/factory-created TopLevel
+         windows and intentionally have no public parameterless constructor.
+         AVLN3001 is therefore treated as an MSBuild message, not a warning.
+         Do not add dummy constructors only to satisfy the runtime-loader warning. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);AVLN3001</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TorPos.Core\TorPos.Core.csproj" />
+    <ProjectReference Include="..\TorPos.Application\TorPos.Application.csproj" />
+    <ProjectReference Include="..\TorPos.Infrastructure\TorPos.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\THIRD-PARTY-NOTICES.md"
+          Link="Dokumentation\THIRD-PARTY-NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\NUTZUNGSBEDINGUNGEN-DE.txt"
+          Link="Dokumentation\NUTZUNGSBEDINGUNGEN-DE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\VERFAHRENSDOKUMENTATION-TEMPLATE-DE.md"
+          Link="Dokumentation\VERFAHRENSDOKUMENTATION-TEMPLATE-DE.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\TorPos-Magnifier.png"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

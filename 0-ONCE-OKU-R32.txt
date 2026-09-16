@@ -1,0 +1,41 @@
+TOR POS Pro v0.7.33 R32 - Guvenlik ve kurtarma revizyonu
+
+KURULUM
+1. ZIP'i yeni bir klasore tamamen cikarin.
+2. 1-SETUP-ERSTELLEN.bat dosyasini calistirin.
+3. Derleme sonunda acilan kurulumla guncelleyin.
+4. Program acilmazsa TOR-POS-build.log dosyasini gonderin.
+
+BU SURUMDE
+- R31'deki errorId / CS0136 derleme cakismasi giderildi.
+- Odeme boyunca sepet sabitlenir; urun, miktar, indirim ve park degistirilemez.
+- Kart odemesi gonderilmeden once kalici islem kimligi kaydedilir.
+- Belirsiz odeme veya kapanma sonrasi tekrar tahsilat kilitlidir.
+- KASSE > Zahlung pruefen / fortsetzen: yonetici ve terminal kontrol kanitiyla inceleme.
+- Ayni islem kimligi ikinci satis/bon olusturmaz.
+- Egitim sepeti gercek kurtarma dosyasina dokunmaz.
+- Veritabani islemleri sirali arka plan kuyrugunda; WAL + FULL aktif.
+- Standart admin bilgileri degistirilmeden normal kasa girisi acilmaz.
+- Yazici hata fisi ve 15 saniye zaman asimi korunur. Belirsiz isler otomatik tekrarlanmaz.
+- KASSE > Druckwarteschlange pruefen: Windows kuyrugu ve kagit fis kontrolunden sonra admin kilidi kaldirabilir.
+- Bozuk kurtarma verisi silinmez; inceleme icin saklanir.
+- Ayni Windows kullanicisinda ikinci TOR POS sureci engellenir.
+
+ONEMLI KULLANIM FARKI
+Bu bir uretim/fiskal onayi degildir. TSE satis imzalama ve DSFinV-K henuz
+bitmedigi icin ticari lisans tek basina gercek nakit/kart tahsilatini acmaz.
+Lisanssiz test ve TRAINING ile arayuz denenebilir. Gercek terminal odemesi
+ve yeni fiskal satis, tamamlanmis uretim onayi olmadan baslatilmaz.
+Onceden onaylanmis bir odeme incelemede onayli olarak korunur; fiscal
+hazirlik yoksa tekrar cekilmez ve kasa kaydi da zorla olusturulmaz.
+
+ILK KASA KONTROLU
+- KIOSK ve IMBISS girisini dene.
+- Istenirse admin sifresini (en az 10 karakter) ve PIN'i degistir.
+- TRAINING'de urun ekle; nakit/kart simule et.
+- Ayarlardan yazici test fisi gonder.
+- Programi normal kapat/ac; acik test sepetinin kurtarilmasini dene.
+- Gercek Windows yazici ve ZVT/TSE donanim kabul testleri bu ortamda yapilmadi.
+
+Detaylar: R32-SAFETY-REVIEW.md
+Otomatik testler: tests/TorPos.SafetyTests ve verification/

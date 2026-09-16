@@ -1,0 +1,50 @@
+TOR POS PRO – NUTZUNGSBEDINGUNGEN UND ENDNUTZER-LIZENZVEREINBARUNG
+Entwurfsstand 0.7.19 – Stand: 05.09.2026
+
+1. Anbieter und Vertragsgegenstand
+TOR POS Pro ist eine Kassensoftware von TOR Kassensysteme. Diese Vereinbarung regelt Installation und Nutzung der Software auf dem vereinbarten Windows-Kassensystem. Anbieteranschrift, Kontakt, Vertragslaufzeit, Vergütung, Update- und Supportumfang ergeben sich aus dem individuellen Vertrag und müssen vor Vertrieb ergänzt werden.
+
+2. Lizenz und Aktivierung
+Der Kunde erhält nach Maßgabe des individuellen Vertrags ein einfaches, nicht übertragbares Nutzungsrecht für die vereinbarte Installation, Laufzeit und Produktvariante. Die Nutzung kann eine kryptografisch signierte, Kunden-Nr.-, installations-, PC- und editionsgebundene Lizenzdatei voraussetzen. Weitergabe, Vermietung, Unterlizenzierung, Vervielfältigung zu fremden Zwecken, Veränderung von Lizenzdaten oder Umgehung technischer Schutzmechanismen ist ohne ausdrückliche Genehmigung nicht gestattet. Gerätewechsel, Neuinstallation, Windows-Neuinstallation oder Verlust des TOR-Datenordners kann eine Neuausstellung erfordern. Eine aktive Softwarelizenz bestätigt keine steuerliche Produktivfreigabe.
+
+3. KIOSK- oder IMBISS-Version
+Bei der ersten Installation wird die gekaufte Produktvariante KIOSK oder IMBISS gewählt. Die Variante wird für diese Installation gespeichert und bei Updates nicht gewechselt. Für KIOSK und IMBISS werden getrennte, editionsgebundene Lizenzdateien ausgestellt. Ein Wechsel der Produktvariante erfordert einen gesonderten, vom Anbieter dokumentierten Editionswechsel und eine neue passende Lizenz.
+
+4. Zugangsschutz und Administratorrechte
+TOR POS Pro darf nicht ohne Benutzeranmeldung betrieben werden. Während der Installation sind sichere individuelle Administrator-Zugangsdaten festzulegen. Der Betreiber ist für Verwahrung, regelmäßige Prüfung und unverzügliche Sperrung nicht mehr berechtigter Zugänge verantwortlich. Administratoren besitzen Zugriff auf Stammdaten, Berichte, Storno-/Rabattfunktionen, Sicherung, Geräte- und Fiskaleinstellungen.
+
+5. TSE / Fiskalisierung / Testbetrieb
+Eine produktive Nutzung als elektronisches Aufzeichnungssystem in Deutschland setzt eine gesetzlich erforderliche, korrekt eingerichtete und funktionsfähige zertifizierte TSE sowie alle erforderlichen Fiskal-, Beleg-, Export- und Dokumentationsfunktionen voraus. Solange TOR POS Pro „TESTBETRIEB“, „PRODUKTIV GESPERRT“, „TSE NICHT AKTIV“ oder einen vergleichbaren Status anzeigt, darf es nicht zur produktiven steuerlichen Aufzeichnung eingesetzt und nicht als finanzamts-, KassenSichV- oder TSE-konform beworben werden. Die Produktivfreigabe kann weder durch Benutzeroption noch Lizenzdatei umgangen werden.
+
+6. Betreiberpflichten
+Der Betreiber bleibt insbesondere verantwortlich für richtige Unternehmens- und Steuerdaten, zutreffende Artikel-/Steuersatzpflege, gesetzlich erforderliche Mitteilungen, Belegausgabe, Aufbewahrung und Prüfbarkeit steuerrelevanter Daten, regelmäßige Sicherungen, Wiederherstellungstests und eine aktuelle betriebsbezogene Verfahrensdokumentation.
+
+7. Hardware, TSE, Zahlungsdienste und Drittsoftware
+Bondrucker, Scanner, Kartenterminals, TSE und weitere Geräte können Treiber, SDKs, Verträge oder Software von Drittherstellern erfordern. Für diese Komponenten gelten zusätzlich deren Bedingungen und technische Voraussetzungen. Ein TSE-, Terminal- oder Treibervertrag wird nicht automatisch Bestandteil der TOR-POS-Lizenz. Copyright- und Lizenzhinweise verwendeter Komponenten sind in THIRD-PARTY-NOTICES.md bzw. im ausgelieferten Produkt aufgeführt.
+
+8. Datensicherung und Datenintegrität
+Der Betreiber muss regelmäßige Sicherungen erstellen, getrennt aufbewahren und Wiederherstellungstests dokumentieren. Das Verändern, Löschen oder Umgehen von Aufzeichnungen, Journalen, Fiskaldaten oder Sicherheitsfunktionen zur Verschleierung von Geschäftsvorfällen oder Umgehung gesetzlicher Pflichten ist unzulässig.
+
+9. Updates und Änderungen
+Updates können Fehler-, Sicherheits-, Kompatibilitäts- und Rechtsanpassungen enthalten. Freigegebene Updates sollen zeitnah und nach dokumentierter Datensicherung installiert und getestet werden. Eigenmächtige Änderungen an Programm, Datenbank, TSE-Anbindung oder Lizenzprüfung erfolgen außerhalb der Freigabe.
+
+10. Verfügbarkeit und externe Systeme
+Software kann trotz sorgfältiger Entwicklung Fehler enthalten. Strom-, Hardware-, Betriebssystem-, Netzwerk-, Treiber-, TSE-, Terminal- oder Fremddienstausfälle können die Nutzung einschränken. Eine unterbrechungsfreie Verfügbarkeit wird nur geschuldet, wenn dies individuell ausdrücklich vereinbart ist. Unklare Terminalzahlungen dürfen nicht automatisch wiederholt werden, bevor der Zahlungsstatus geklärt wurde.
+
+11. Datenschutz
+Geschäfts- und Kassendaten werden grundsätzlich lokal im TOR-POS-Datenbereich gespeichert, soweit keine aktivierte Fremd- oder Cloudfunktion verwendet wird. Der Betreiber bleibt für die anwendbaren Datenschutzpflichten verantwortlich. Für später ergänzte Online-Aktivierung oder Telemetrie wäre vor Einsatz eine gesonderte Datenschutzprüfung erforderlich.
+
+12. Haftung und Gewährleistung
+Die gesetzliche Haftung für Vorsatz, grobe Fahrlässigkeit sowie Schäden an Leben, Körper oder Gesundheit bleibt unberührt. Im Übrigen gelten die gesetzlichen Vorschriften und der individuelle Vertrag. Haftungsbegrenzungen, Gewährleistungsumfang und B2B/B2C-Einsatz müssen vor Vertrieb rechtlich abschließend geregelt werden.
+
+13. Beendigung
+Bei wesentlicher Vertragsverletzung kann das Nutzungsrecht nach Maßgabe von Vertrag und Gesetz beendet werden. Steuerliche Aufbewahrungs-, Herausgabe- und Dokumentationspflichten bleiben unberührt; ihre Erfüllung darf nicht durch das Vertragsende verhindert werden.
+
+14. Keine stillschweigende Fiskalfreigabe
+Lizenzaktivierung, Installation, TSE-Erkennung oder eine erfolgreiche Einzeltransaktion allein bestätigt keine vollständige Einhaltung steuerlicher, technischer oder betrieblicher Pflichten. Maßgeblich sind der im Programm angezeigte Freigabestatus, der freigegebene Produktstand, die konkrete TSE-/SDK-Kombination, die Kundendokumentation und die gesetzlichen Anforderungen.
+
+15. Schlussbestimmungen
+Es gilt deutsches Recht, soweit gesetzlich zulässig. Zwingende Verbraucherschutzvorschriften bleiben unberührt. Sollte eine Bestimmung unwirksam sein, bleiben die übrigen Bestimmungen davon unberührt.
+
+WICHTIGER ENTWURFSHINWEIS
+Dies ist keine anwaltlich freigegebene Endfassung. Vor einem kommerziellen Rollout muss der Text durch eine in Deutschland qualifizierte Rechtsberatung geprüft und an Anbieteridentität, Preise/Laufzeit, Update- und Supportmodell, Gewährleistung, Haftung, Datenschutz, B2B/B2C-Vertrieb, Lizenzwiderruf und tatsächlichen Funktionsumfang angepasst werden.

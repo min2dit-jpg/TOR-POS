@@ -1,0 +1,12 @@
+R32 verification record
+
+The full Avalonia project was built in Release configuration with .NET SDK
+10.0.100 on Linux, targeting net10.0-windows. A prior recorded build completed
+with 0 errors and 8 warnings (existing nullable, deprecated Watermark, and
+Avalonia resource-loader warnings). The final compiled outputs also exist and
+postdate the final source changes. The temporary raw build logs were not
+retained across the environment restart; this file is a summary, not a raw log.
+
+No Windows GUI startup or physical device test was performed.
+The source package includes reproducible regression checks and Windows build
+scripts. Build on Windows with 1-SETUP-ERSTELLEN.bat.

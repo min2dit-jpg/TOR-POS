@@ -1,0 +1,7 @@
+TOR POS v0.7.33 R9
+Warengruppen-Farben Layout Fix
+
+- Warengruppe-Editor ist vertikal scrollbar.
+- NEUE WARENGRUPPE und WARENGRUPPE SPEICHERN liegen in einer festen unteren Aktionsleiste.
+- Die Schaltflächen bleiben auch auf kleineren Displays jederzeit sichtbar.
+- Die freie Farbauswahl und die 48 Schnellfarben aus R8 bleiben unverändert erhalten.

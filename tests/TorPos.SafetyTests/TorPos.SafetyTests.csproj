@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/TorPos.App/TorPos.App.csproj"/>
+    <ProjectReference Include="../../src/TorPos.Infrastructure/TorPos.Infrastructure.csproj"/>
+    <ProjectReference Include="../../src/TorPos.Application/TorPos.Application.csproj"/>
+  </ItemGroup>
+</Project>

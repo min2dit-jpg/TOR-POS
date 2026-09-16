@@ -1,0 +1,46 @@
+TOR POS v0.7.33 R33 - Yazıcı ve günlük kullanım
+
+KURULUM
+Programı kapatın; mevcut verilerin yedeğini alın.
+ZIP dosyasını yeni bir klasöre tamamen çıkarın.
+1-SETUP-ERSTELLEN.bat dosyasını çalıştırın.
+Bu paket kaynak kodu ve kurulum oluşturma araçlarını içerir; hazır setup.exe değildir.
+
+YAZICI
+Admin → EINSTELLUNGEN → Geräte → Drucker / Yazıcılar
+LISTE AKTUALISIEREN → Windows yazıcısını seç → TESTDRUCK → SPEICHERN.
+Normal A4 yazıcısı da test için seçilebilir. Fiş kesme/çekmece kontrolünü
+normal yazıcı doğrulamaz. A4 raporları PDF olarak açılır; yazıcı PDF programından seçilir.
+Yazıcı listesinde görünmüyorsa önce Windows'a sürücüsünü kurun.
+Windows'a gönderildi mesajı fiziksel baskının doğrulandığı anlamına gelmez.
+
+CİHAZ DURUMU
+Geräte → GERÄTESTATUS AKTUALISIEREN: terminal/TSE son kontrol bilgileri.
+Bu ekran canlı bağlantı taraması yapmaz. Bağlantı testleri Erweitert / Techniker içindedir.
+
+FİŞ
+BON-HISTORIE → fiş seç → VORSCHAU / PDF.
+Liste bugün / son Z kapanışından sonraki fişlerle sınırlıdır.
+Çift tıklama artık baskı yerine önizlemeyi açar.
+BON-KOPIE DRUCKEN ayrı düğmedir; yeni satış oluşturmaz.
+PDF, kaydedilmiş satışın veri kopyasıdır; sonradan mali imza üretmez.
+
+RAPOR
+BERICHTE → Berichtszentrum · Tageskontrolle (admin, eğitim dışında).
+Bugün/hafta/ay nakit-kart toplamları, X raporu, kasa hareketleri,
+ürün/personel/iptal raporları aynı merkezden açılır.
+Rapor açmak gün sonu yapmaz. PDF oluşturma arka planda çalışır.
+
+KONTROL LİSTESİ
+1. Yazıcı seçip kaydedin; kapatıp açınca seçimin korunduğunu kontrol edin.
+2. Gerçek yazıcıda test çıktısını ve Türkçe/Almanca karakterleri kontrol edin.
+3. Mevcut günlük fişi önizleyin/PDF açın; yeni satış sayısı oluşmamalı.
+4. Rapor merkezinin mevcut raporlarla aynı değerleri gösterdiğini kontrol edin.
+5. Eğitim modunda mali rapor/geçmiş erişiminin kapalı kaldığını kontrol edin.
+
+SINIRLAR
+R32 ödeme/kurtarma güvenliği ve üretim engeli korunur.
+TSE satış imzalama ve DSFinV-K tamamlanmadı; ticari kullanıma onay değildir.
+Parçalı ödeme, bahşiş, QR sipariş bu sürümün kapsamında değildir.
+Linux üzerinde Release derleme ve 30 güvenlik testi geçti.
+Windows GUI, gerçek yazıcı/terminal/TSE testleri burada yapılmadı.

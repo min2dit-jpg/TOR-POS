@@ -1,0 +1,22 @@
+release_version=PASS
+release_revision=PASS
+installer_version=PASS
+sku_sequence=PASS
+sku_migration=PASS
+sku_readonly=PASS
+pickup_column=PASS
+pickup_setting=PASS
+pickup_receipt=PASS
+pickup_history=PASS
+pickup_cloud=PASS
+manifest_revision=PASS
+SUMUP_SHA Desktop/src/TorPos.App/SumUpConnectionWindow.cs=PASS 4327c864bd37d985735c74722a3a9de213ed3d2d7e6bdfb35e8c818456cebe27
+SUMUP_SHA Desktop/src/TorPos.Infrastructure/SumUpConnectionService.cs=PASS d23468a8087a4d91608288d8b5982c3cd7c7dc8a223af4fd20c30dc1389d6ea1
+SQL_ARTICLE_BACKFILL=PASS {1: '100121', 2: 'ABC-7', 3: '100120', 4: '100122'}
+SQL_ARTICLE_NEXT=PASS 100123
+SQL_PICKUP_DAILY=PASS day1=2 day2=1
+README_CURRENT_R48=PASS
+ROADMAP_CURRENT_R48=PASS
+DESKTOP_BUILD=NOT_RUN (.NET 10 SDK unavailable in generation environment)
+RESULT=PASS
+ARTICLE_LIST_SHOWS_AUTO_NUMBER=PASS

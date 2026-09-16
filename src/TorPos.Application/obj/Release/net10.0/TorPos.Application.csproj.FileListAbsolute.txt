@@ -1,0 +1,12 @@
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\bin\Release\net10.0\TorPos.Application.deps.json
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\bin\Release\net10.0\TorPos.Application.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\bin\Release\net10.0\TorPos.Core.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.Application.csproj.AssemblyReference.cache
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.Application.AssemblyInfoInputs.cache
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.Application.AssemblyInfo.cs
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.Application.csproj.CoreCompileInputs.cache
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.A.679D1505.Up2Date
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\TorPos.Application.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\refint\TorPos.Application.dll
+C:\Users\DEMIR\Downloads\TOR-POS-R75.1-Application-Namespace-Hotfix\TOR-POS-R75.1-Application-Namespace-Hotfix\Desktop\src\TorPos.Application\obj\Release\net10.0\ref\TorPos.Application.dll

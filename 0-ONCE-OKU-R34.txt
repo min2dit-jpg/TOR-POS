@@ -1,0 +1,21 @@
+TOR POS R34 - Test satış fişi ve menü açıklamaları
+
+KURULUM
+Kasayı kapatın; verilerin yedeğini alın. ZIP'i yeni klasöre çıkarın.
+1-SETUP-ERSTELLEN.bat ile kurulumu oluşturun. Hazır setup.exe değildir.
+
+TEST
+1. Einstellungen > Geräte: Bondrucker verwenden açık, yazıcı seçili ve SPEICHERN yapılmış olsun.
+2. Ana ekranda BON EIN açık olsun.
+3. Test modunda 5 EUR ürün ekleyin; BAR TEST > verilen 10 EUR > KASSIEREN.
+4. Çıktıda ürün, 5 EUR toplam, 10 EUR verilen ve 5 EUR para üstü görünmeli.
+5. Üst ve altta TESTBON - KEIN FISKALBELEG; test işlem kimliği bulunmalı.
+6. KARTE TEST simülasyonu gerçek terminale bağlanmaz ve para çekmez.
+7. KASSE menüsündeki ilk üç öğeyi deneyin. Kayıt yoksa açıklamalı pencere açılır.
+8. BON AUS ile test satışında çıktı verilmemeli.
+
+Test fişleri gerçek satış/fiş numarası oluşturmaz ve günlük fiş geçmişinde görünmez.
+Baskı R32'nin kalıcı yazıcı kuyruğundan geçer; belirsiz baskı otomatik tekrarlanmaz.
+Windows'a gönderildi mesajından sonra fiziksel kâğıt çıktısını kontrol edin.
+TSE/DSFinV-K üretim engeli sürüyor. SumUp entegrasyonu henüz eklenmedi.
+Windows GUI ve fiziksel yazıcı testlerini kullanıcının cihazında tamamlamak gerekir.

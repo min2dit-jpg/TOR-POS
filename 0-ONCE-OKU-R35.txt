@@ -1,0 +1,29 @@
+TOR POS R35 - Tarih aralıklı fiş arşivi
+
+Kurulum: Verilerin yedeğini alın, programı kapatın. ZIP'i yeni klasöre
+çıkarıp 1-SETUP-ERSTELLEN.bat dosyasını çalıştırın.
+Paket kaynak kod ve kurulum oluşturma araçlarını içerir.
+
+KASSE > Bon-Historie
+- Von / Bis: GG.AA.YYYY formatında başlangıç ve bitiş tarihi.
+- İki tarih de aramaya dahildir; fişin kaydedildiği takvim günü esas alınır.
+- Bonnummer: İsteğe bağlı tam fiş numarası.
+- Alle Zahlarten / Bar / Karte: ödeme türü filtresi.
+- SUCHEN: Aramayı başlatır. Z kapanışı öncesi kayıtlar da aranır.
+- Bir fiş seçilince VORSCHAU / PDF veya BON-KOPIE DRUCKEN kullanılabilir.
+- 200'den fazla sonuçta en yeni 200 gösterilir; tarih veya numarayla daraltın.
+
+R34 test fişi ve açıklamalı kontrol pencereleri korunur.
+Test satışları gerçek satış tablosuna kaydedilmediğinden arşivde görünmez.
+Eğitim modunda gerçek fiş arşivi erişimi kapalıdır.
+SumUp ve mali üretim onayı bu sürüme dahil değildir.
+
+İlk kontroller
+1. Test kullanıcısında Bon-Historie ekranı boş olsa da filtreler açılmalı.
+2. Başlangıç tarihini bitişten ileri yapınca açıklama görünmeli.
+3. Boş fiş numarası kabul edilmeli; harf/eksi/sıfır reddedilmeli.
+4. Kaydedilmiş eski fiş varsa tarih ve ödeme türüyle bulunabilmeli.
+5. Önizleme ve kopya baskısı yeni satış oluşturmamalı.
+6. R34'teki test satış baskısını bir kez tekrar deneyin.
+
+Windows dokunmatik ekran ve gerçek yazıcı doğrulaması kullanıcı cihazında yapılmalıdır.

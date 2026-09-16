@@ -1,0 +1,10 @@
+TOR POS R72+ AUTH KDF
+
+- New hashes: PBKDF2-HMAC-SHA256 / 600000 / unique 32-byte salt.
+- Legacy 180000 stays valid until next successful login, then rehashes.
+- Password and PIN store algorithm + iteration metadata separately.
+- Failed login never rehashes.
+- Unknown/invalid KDF metadata fails closed.
+- Iteration metadata above 5000000 is rejected to avoid DB-tamper CPU DoS.
+- Never log credential plaintext.
+- 4-digit PIN is convenience access, not equivalent to a strong admin password.

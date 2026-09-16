@@ -1,0 +1,324 @@
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Data.Sqlite;
+using TorPos.Core;
+
+namespace TorPos.Infrastructure;
+
+public sealed record TorCloudEvent(
+    [property: JsonPropertyName("event_id")] string EventId,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("occurred_at")] string OccurredAt,
+    [property: JsonPropertyName("payload")] JsonElement Payload);
+public sealed record TorCloudConfiguration(string BaseUrl, string DeviceCode, string ProtectedToken, bool Enabled);
+public interface ICloudSecretProtector { string Protect(string value); string Unprotect(string value); }
+public sealed class WindowsCloudSecretProtector : ICloudSecretProtector
+{
+    public string Protect(string value) => Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser));
+    public string Unprotect(string value) => Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(value), null, DataProtectionScope.CurrentUser));
+}
+
+/// <summary>No HTTP happens inside a database transaction or the cashier UI thread.</summary>
+public sealed class TorCloudOutbox
+{
+    private readonly SqliteDatabase _db;
+    public TorCloudOutbox(SqliteDatabase db) => _db=db;
+    public const string Schema = """
+        CREATE TABLE IF NOT EXISTS cloud_outbox(
+          event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, occurred_at TEXT NOT NULL,
+          payload TEXT NOT NULL, target_url TEXT NOT NULL, device_code TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0, next_attempt TEXT NOT NULL DEFAULT '', last_error TEXT NOT NULL DEFAULT '');
+        CREATE INDEX IF NOT EXISTS cloud_outbox_due ON cloud_outbox(next_attempt);
+        """;
+    public static TorCloudEvent Event(string type, object payload, string? id=null, DateTimeOffset? occurred=null) =>
+        new(id??Guid.NewGuid().ToString("N"),type,(occurred??DateTimeOffset.UtcNow).ToUniversalTime().ToString("O"),JsonSerializer.SerializeToElement(payload));
+    public static TorCloudConfiguration? Configuration(SqliteConnection c,SqliteTransaction? tx=null)
+    {
+        using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT value FROM app_settings WHERE key='cloud.configuration';";
+        var raw=q.ExecuteScalar() as string;
+        return string.IsNullOrEmpty(raw)?null:JsonSerializer.Deserialize<TorCloudConfiguration>(raw);
+    }
+    public static void Insert(SqliteConnection c,SqliteTransaction tx,TorCloudConfiguration config,TorCloudEvent e)
+    {
+        using var q=c.CreateCommand();q.Transaction=tx;
+        q.CommandText="INSERT INTO cloud_outbox(event_id,event_type,occurred_at,payload,target_url,device_code) VALUES($id,$type,$at,$p,$url,$code);";
+        q.Parameters.AddWithValue("$id",e.EventId);q.Parameters.AddWithValue("$type",e.Type);q.Parameters.AddWithValue("$at",e.OccurredAt);
+        q.Parameters.AddWithValue("$p",e.Payload.GetRawText());q.Parameters.AddWithValue("$url",config.BaseUrl);q.Parameters.AddWithValue("$code",config.DeviceCode);q.ExecuteNonQuery();
+    }
+    // Called before sale COMMIT, with the exact immutable checkout snapshot.
+    public static void EnqueueSale(SqliteConnection c,SqliteTransaction tx,CheckoutSnapshot s,long receipt,long pickupNumber,DateTimeOffset at)
+    {
+        var config=Configuration(c,tx);if(config is null)return;
+        var consumption=new Dictionary<long,decimal>();
+        foreach(var line in s.Lines.Where(x=>x.ProductId>0))
+        {
+            var found=false;
+            using var combo=c.CreateCommand(); combo.Transaction=tx;
+            combo.CommandText="SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id;";
+            combo.Parameters.AddWithValue("$id",line.ProductId);
+            using var r=combo.ExecuteReader();
+            while(r.Read())
+            {
+                found=true; var id=r.GetInt64(0); var qty=line.Quantity*Convert.ToDecimal(r.GetDouble(1));
+                consumption[id]=consumption.GetValueOrDefault(id)+qty;
+            }
+            if(!found) consumption[line.ProductId]=consumption.GetValueOrDefault(line.ProductId)+line.Quantity;
+        }
+        Insert(c,tx,config,Event("sale.completed",new {
+            receipt_number=receipt, pickup_number=pickupNumber, payment_method=s.Method.ToString().ToUpperInvariant(),
+            // R101: lets TOR Cloud recover the cash/card split of a Mixed sale.
+            cash_portion_cents=s.EffectiveCashPortionCents, card_portion_cents=s.EffectiveCardPortionCents,
+            list_subtotal_cents=s.Lines.Sum(x=>x.ListLineTotalCents),
+            promotion_discount_cents=s.Lines.Sum(x=>x.PromotionDiscountCents),
+            subtotal_cents=s.Lines.Sum(x=>x.LineTotalCents),
+            manual_discount_cents=s.DiscountCents,total_cents=s.TotalCents,
+            operator_name=s.OperatorName,item_count=s.Lines.Length,
+            items=s.Lines.Select((x,i)=>new {position_no=i+1,product_key=x.ProductId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                name=x.ProductName+(string.IsNullOrEmpty(x.VariantName)?"":" · "+x.VariantName),quantity=x.Quantity,
+                list_unit_price_cents=x.EffectiveListUnitPriceCents,
+                unit_price_cents=x.UnitPriceCents,line_total_cents=x.LineTotalCents,vat_rate=x.VatRate,
+                promotion_id=x.PromotionId,promotion_name=x.PromotionName,promotion_percent=x.PromotionPercent,
+                promotion_discount_cents=x.PromotionDiscountCents,promotion_start_date=x.PromotionStartDate,promotion_end_date=x.PromotionEndDate}).ToArray(),
+            stock_consumption=consumption.Select(x=>new {product_key=x.Key.ToString(System.Globalization.CultureInfo.InvariantCulture),quantity=x.Value}).ToArray()
+        },"sale-"+s.OperationId,at));
+    }
+    public Task<TorCloudConfiguration?> GetConfigurationAsync()=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();return Task.FromResult(Configuration(c));
+    });
+    public Task SaveConfigurationAsync(TorCloudConfiguration config)=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();using var tx=c.BeginTransaction();
+        using var q=c.CreateCommand();q.Transaction=tx;
+        q.CommandText="SELECT COUNT(*) FROM cloud_outbox WHERE target_url<>$url OR device_code<>$code;";
+        q.Parameters.AddWithValue("$url",config.BaseUrl);q.Parameters.AddWithValue("$code",config.DeviceCode);
+        if(Convert.ToInt64(q.ExecuteScalar())>0)throw new InvalidOperationException("Noch ungesendete Daten für die bisherige Cloud. Erst synchronisieren; Zielwechsel wurde nicht gespeichert.");
+        q.Parameters.Clear();q.CommandText="INSERT INTO app_settings(key,value) VALUES('cloud.configuration',$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value;";
+        q.Parameters.AddWithValue("$v",JsonSerializer.Serialize(config));q.ExecuteNonQuery();tx.Commit();return Task.CompletedTask;
+    });
+    public Task EnqueueHeartbeatAsync()=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx);
+        if(config is null||!config.Enabled)return Task.CompletedTask;
+        using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT COUNT(*) FROM cloud_outbox WHERE event_type='heartbeat';";
+        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status="NICHT GEPRÜFT",printer_status="NICHT GEPRÜFT"}));
+        tx.Commit();return Task.CompletedTask;
+    });
+    public Task EnqueueStockAsync()=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx)??throw new InvalidOperationException("Cloud zuerst speichern.");
+        using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="""
+            SELECT p.id,p.name,p.sku,p.barcode,COALESCE(p.stock_quantity,0),p.unit,p.base_price_cents,
+                   c.name,COALESCE(g.name,'Standard'),COALESCE(p.min_stock_quantity,0),COALESCE(p.purchase_price_cents,0)
+            FROM products p
+            JOIN categories c ON c.id=p.category_id
+            LEFT JOIN category_master_data m ON m.category_id=c.id
+            LEFT JOIN product_groups g ON g.id=m.group_id
+            WHERE p.is_active=1
+              AND (UPPER(COALESCE(p.edition_scope,'ALL'))='ALL'
+                   OR UPPER(p.edition_scope)=UPPER(COALESCE((SELECT value FROM app_settings WHERE key='business.mode'),'IMBISS')))
+              AND (UPPER(COALESCE(c.edition_scope,'ALL'))='ALL'
+                   OR UPPER(c.edition_scope)=UPPER(COALESCE((SELECT value FROM app_settings WHERE key='business.mode'),'IMBISS')))
+            ORDER BY p.id
+            LIMIT 5001;
+            """;
+        var items=new List<object>();
+        using(var r=q.ExecuteReader())while(r.Read())items.Add(new {
+            product_key=r.GetInt64(0).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            name=r.GetString(1),sku=r.GetString(2),barcode=r.GetString(3),quantity=r.GetDouble(4),
+            unit=r.GetString(5),price_cents=r.GetInt64(6),category_name=r.GetString(7),group_name=r.GetString(8),
+            min_stock_quantity=r.GetDouble(9),purchase_price_cents=r.GetInt64(10)});
+        if(items.Count>5000)throw new InvalidOperationException("R48 unterstützt vollständige Artikel-/Bestandsübertragung bis 5000 aktive Artikel. Es wurden keine Artikel übertragen.");
+        var e=Event("stock.snapshot",new {items});
+        if(Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(e))>900000)throw new InvalidOperationException("Bestandsdaten zu groß. Es wurden keine Artikel übertragen.");
+        // R46: A full stock snapshot supersedes older unsent snapshots for the same device.
+        // Sales/events keep their FIFO order; only redundant stock snapshots are coalesced.
+        using(var cleanup=c.CreateCommand()){
+            cleanup.Transaction=tx;
+            cleanup.CommandText="DELETE FROM cloud_outbox WHERE event_type='stock.snapshot' AND target_url=$url AND device_code=$code;";
+            cleanup.Parameters.AddWithValue("$url",config.BaseUrl);cleanup.Parameters.AddWithValue("$code",config.DeviceCode);
+            cleanup.ExecuteNonQuery();
+        }
+        Insert(c,tx,config,e);tx.Commit();return Task.CompletedTask;
+    });
+    public Task<IReadOnlyList<TorCloudEvent>> PendingAsync(TorCloudConfiguration config)=>IoQueue.RunAsync<IReadOnlyList<TorCloudEvent>>(()=>{
+        using var c=_db.OpenConnection();using var q=c.CreateCommand();
+        // FIFO: an unacknowledged head is never overtaken by newer snapshots.
+        q.CommandText="SELECT event_id,event_type,occurred_at,payload,next_attempt FROM cloud_outbox WHERE target_url=$url AND device_code=$code ORDER BY rowid LIMIT 25;";
+        q.Parameters.AddWithValue("$url",config.BaseUrl);q.Parameters.AddWithValue("$code",config.DeviceCode);
+        var result=new List<TorCloudEvent>();int bytes=0;
+        using var r=q.ExecuteReader();while(r.Read()){
+            if(DateTimeOffset.TryParse(r.GetString(4),out var next)&&next>DateTimeOffset.UtcNow)break;
+            var e=new TorCloudEvent(r.GetString(0),r.GetString(1),r.GetString(2),JsonSerializer.Deserialize<JsonElement>(r.GetString(3)));
+            var size=Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(e));if(result.Count>0&&bytes+size>900000)break;
+            result.Add(e);bytes+=size;
+        }
+        return Task.FromResult<IReadOnlyList<TorCloudEvent>>(result);
+    });
+    public Task CompleteAsync(IReadOnlyList<TorCloudEvent> events,bool success,string error="")=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();using var tx=c.BeginTransaction();
+        foreach(var e in events){
+            using var q=c.CreateCommand();q.Transaction=tx;
+            q.CommandText=success?"DELETE FROM cloud_outbox WHERE event_id=$id;":
+                "UPDATE cloud_outbox SET attempts=attempts+1,next_attempt=strftime('%Y-%m-%dT%H:%M:%fZ','now','+' || MIN(300,10 * (1 << MIN(attempts,5))) || ' seconds'),last_error=$error WHERE event_id=$id;";
+            q.Parameters.AddWithValue("$id",e.EventId);if(!success)q.Parameters.AddWithValue("$error",error);q.ExecuteNonQuery();
+        }
+        if(success){using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="INSERT INTO app_settings(key,value) VALUES('cloud.last_success',$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value;";q.Parameters.AddWithValue("$v",DateTimeOffset.UtcNow.ToString("O"));q.ExecuteNonQuery();}
+        tx.Commit();return Task.CompletedTask;
+    });
+    public Task<string> StatusAsync()=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();using var q=c.CreateCommand();q.CommandText="SELECT COUNT(*),COALESCE(MAX(last_error),'') FROM cloud_outbox;";
+        long n;string error;using(var r=q.ExecuteReader()){r.Read();n=r.GetInt64(0);error=r.GetString(1);}
+        q.CommandText="SELECT value FROM app_settings WHERE key='cloud.last_success';";var last=q.ExecuteScalar() as string;
+        var at=DateTimeOffset.TryParse(last,out var t)?t.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"):"Noch keine Übertragung";
+        return Task.FromResult($"Wartende Ereignisse: {n} · Letzte Bestätigung: {at}"+(error.Length>0?" · "+error:""));
+    });
+}
+
+public sealed class TorCloudSyncService : IAsyncDisposable
+{
+    private readonly TorCloudOutbox _outbox;
+    private readonly ICloudSecretProtector _secrets;
+    private readonly HttpClient _http;
+    private readonly SemaphoreSlim _gate=new(1,1);
+    private readonly CancellationTokenSource _stop=new();
+    private Task? _worker;
+    private int _stockRefreshRequested;
+    public TorCloudSyncService(SqliteDatabase db,ICloudSecretProtector? secrets=null,HttpMessageHandler? handler=null)
+    {
+        _outbox=new(db);_secrets=secrets??new WindowsCloudSecretProtector();
+        _http=new HttpClient(handler??new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(12)};
+    }
+    public static Uri Endpoint(string baseUrl,string suffix)
+    {
+        if(!Uri.TryCreate(baseUrl.Trim().TrimEnd('/')+"/",UriKind.Absolute,out var root)||root.UserInfo.Length>0||root.Query.Length>0||root.Fragment.Length>0||
+           (root.Scheme!="https" && !(root.Scheme=="http" && root.Host is "127.0.0.1" or "localhost" or "::1" or "[::1]")))
+            throw new InvalidOperationException("HTTPS erforderlich; HTTP nur auf diesem PC (127.0.0.1). Keine Zugangsdaten in der URL.");
+        return new Uri(root,suffix);
+    }
+    public Task<TorCloudConfiguration?> ConfigurationAsync()=>_outbox.GetConfigurationAsync();
+    public Task<string> StatusAsync()=>_outbox.StatusAsync();
+    public Task QueueStockAsync()=>_outbox.EnqueueStockAsync();
+    /// <summary>
+    /// Marks article/stock data dirty without blocking the cashier UI. The worker coalesces
+    /// repeated article/inventory changes into one full snapshot and also performs a
+    /// periodic repair snapshot so an abrupt power loss cannot leave Cloud stock stale forever.
+    /// </summary>
+    public void RequestStockRefresh()=>Interlocked.Exchange(ref _stockRefreshRequested,1);
+    public void Start()=>_worker??=Task.Run(LoopAsync);
+    public async Task SaveAsync(string url,string code,string token,bool enabled)
+    {
+        await _gate.WaitAsync();try{
+            url=Endpoint(url,"").AbsoluteUri;
+            code=code.Trim();if(code.Length<1||code.Length>120||code.Any(ch=>!char.IsAsciiLetterOrDigit(ch)&&ch!='-'&&ch!='_'))throw new InvalidOperationException("Ungültiger Gerätecode.");
+            var previous=await ConfigurationAsync();
+            if(string.IsNullOrWhiteSpace(token)){
+                if(previous is null||previous.BaseUrl!=url||previous.DeviceCode!=code)throw new InvalidOperationException("Gerätetoken eingeben.");
+                token=_secrets.Unprotect(previous.ProtectedToken);
+            }
+            if(token.Length>500||token.Any(char.IsControl))throw new InvalidOperationException("Ungültiges Gerätetoken.");
+            var config=new TorCloudConfiguration(url,code,_secrets.Protect(token),enabled);
+            // No network requirement to pause or queue while offline. Test is a separate action.
+            await _outbox.SaveConfigurationAsync(config);
+            if(enabled)RequestStockRefresh();
+        }finally{_gate.Release();}
+    }
+    private async Task<JsonElement> RequestAsync(TorCloudConfiguration config,string route,object? body,CancellationToken ct)
+    {
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        using var request=new HttpRequestMessage(body is null?HttpMethod.Get:HttpMethod.Post,Endpoint(config.BaseUrl,route));
+        request.Headers.Add("X-Device-Code",config.DeviceCode);request.Headers.Add("X-Device-Token",_secrets.Unprotect(config.ProtectedToken));
+        if(body is not null)request.Content=JsonContent.Create(body);
+        using var response=await _http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);
+        using var stream=await response.Content.ReadAsStreamAsync(timeout.Token);using var buffer=new MemoryStream();var block=new byte[8192];int read;
+        while((read=await stream.ReadAsync(block,timeout.Token))>0){if(buffer.Length+read>1024*1024)throw new InvalidDataException("Cloud-Antwort zu groß.");buffer.Write(block,0,read);}
+
+        // R72.2: HTTP status is authoritative. Redirects/non-2xx are rejected
+        // before any success-body parsing. This preserves the safe HTTP code
+        // even when a 3xx/4xx/5xx response has an empty or non-JSON body.
+        if(!response.IsSuccessStatusCode)
+        {
+            var error="";
+            if(buffer.Length>0)
+            {
+                try
+                {
+                    var failure=JsonSerializer.Deserialize<JsonElement>(buffer.ToArray());
+                    if(failure.ValueKind==JsonValueKind.Object &&
+                       failure.TryGetProperty("error",out var e))
+                        error=e.GetString()??"";
+                }
+                catch
+                {
+                    // Arbitrary HTML/text error bodies are deliberately not exposed.
+                }
+            }
+
+            if(error.Length>500)error=error[..500];
+            throw new InvalidOperationException(
+                $"Cloud HTTP {(int)response.StatusCode}" +
+                (string.IsNullOrWhiteSpace(error)?"":": "+error));
+        }
+
+        JsonElement result;
+        try{result=JsonSerializer.Deserialize<JsonElement>(buffer.ToArray());}
+        catch{throw new InvalidDataException($"Cloud HTTP {(int)response.StatusCode}: ungültige Serverantwort.");}
+
+        if(!result.TryGetProperty("ok",out var ok)||ok.ValueKind!=JsonValueKind.True)
+            throw new InvalidDataException("Cloud-Bestätigung fehlt.");
+
+        return result;
+    }
+    public async Task<JsonElement> DeviceApiAsync(string route,object? body,CancellationToken ct=default)
+    {
+        var config=await ConfigurationAsync()??throw new InvalidOperationException("TOR POS Cloud zuerst unter Geräte konfigurieren und speichern.");
+        return await RequestAsync(config,route,body,ct);
+    }
+    public async Task TestAsync(){var config=await ConfigurationAsync()??throw new InvalidOperationException("Cloud zuerst speichern.");await RequestAsync(config,"api/v1/devices/ping",null,_stop.Token);}
+    public async Task SyncOnceAsync()
+    {
+        await _gate.WaitAsync(_stop.Token);try{
+            var config=await ConfigurationAsync();if(config is null||!config.Enabled)return;
+            var batch=await _outbox.PendingAsync(config);if(batch.Count==0)return;
+            try{
+                var reply=await RequestAsync(config,"api/v1/devices/sync",new {events=batch},_stop.Token);
+                if(!reply.TryGetProperty("results",out var results)||results.ValueKind!=JsonValueKind.Array||results.GetArrayLength()!=batch.Count)throw new InvalidDataException("Unvollständige Cloud-Bestätigung.");
+                var ids=new HashSet<string>(batch.Select(x=>x.EventId),StringComparer.Ordinal);
+                foreach(var row in results.EnumerateArray()){
+                    if(!row.TryGetProperty("event_id",out var id)||!ids.Remove(id.GetString()??"")||!row.TryGetProperty("status",out var status)||status.GetString() is not ("accepted" or "duplicate"))throw new InvalidDataException("Cloud-Bestätigung passt nicht zum Auftrag.");
+                }
+                await _outbox.CompleteAsync(batch,true);
+            }catch(OperationCanceledException) when(_stop.IsCancellationRequested){throw;}
+            catch(Exception ex){var message=ex is InvalidOperationException?ex.Message:"Cloud nicht bestätigt. Automatische Wiederholung; Daten bleiben gespeichert.";await _outbox.CompleteAsync(batch,false,message);}
+        }finally{_gate.Release();}
+    }
+    private async Task LoopAsync()
+    {
+        var heartbeat=DateTimeOffset.MinValue;
+        var stockRepair=DateTimeOffset.UtcNow.AddSeconds(20);
+        while(!_stop.IsCancellationRequested){
+            try{
+                var now=DateTimeOffset.UtcNow;
+                if(now>=heartbeat){await _outbox.EnqueueHeartbeatAsync();heartbeat=now.AddSeconds(60);}
+
+                var requested=Interlocked.Exchange(ref _stockRefreshRequested,0)==1;
+                if(requested || now>=stockRepair){
+                    try{
+                        var config=await ConfigurationAsync();
+                        if(config is not null && config.Enabled)await _outbox.EnqueueStockAsync();
+                    }catch(InvalidOperationException){ /* no/changed Cloud config: keep POS local-first */ }
+                    stockRepair=now.AddHours(1);
+                }
+
+                await SyncOnceAsync();
+            }catch(OperationCanceledException) when(_stop.IsCancellationRequested){break;}
+            catch{ /* Retain queue and retry; never copy credentials or response bodies into logs. */ }
+            try{await Task.Delay(TimeSpan.FromSeconds(10),_stop.Token);}catch(OperationCanceledException){break;}
+        }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+        if(_worker is not null){try{await _worker.WaitAsync(TimeSpan.FromSeconds(2));}catch{}}
+        _http.Dispose();
+    }
+}

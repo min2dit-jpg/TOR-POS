@@ -1,0 +1,44 @@
+TOR POS R36 - SumUp Solo bağlantı denemesi
+
+KURULUM
+Kasayı kapatıp yedek alın. ZIP'i yeni klasöre çıkarın ve
+1-SETUP-ERSTELLEN.bat ile kurulumu oluşturun.
+
+KAPSAM
+Bu sürüm gerçek SumUp Readers API ile cihaz listesi, eşleştirme ve
+son cihaz durumu sorgulaması yapar. Ödeme başlatmaz; KARTE TEST simülasyondur.
+TSE gerektirmeyen bağlantı aşamasıdır; üretim/mali onay değildir.
+
+HAZIRLIK
+https://me.sumup.com hesabınıza tarayıcıdan giriş yapın.
+Profil > Settings > For Developers > Toolkit > API Keys > Create.
+Public Key kullanmayın. API-Key'i sohbet, fotoğraf veya e-postayla paylaşmayın.
+Anahtar yalnızca TOR POS içindeki gizli alana girilir; diske kaydedilmez.
+Merchant Code / Händlercode alanına kendi hesabınızın Händler-ID bilgisini girin.
+
+TOR POS
+Admin > Einstellungen > Geräte > SUMUP SOLO · VERBINDUNG TESTEN.
+Händlercode ve API-Key girip GERÄTELISTE LADEN düğmesine basın.
+Solo zaten API'ye bağlıysa seçip GERÄTESTATUS PRÜFEN ile kontrol edin.
+
+YENİ EŞLEŞTİRME
+Kasa bilgisayarı ve Solo internete bağlı olsun. Deneme için Solo'da Wi-Fi kullanın.
+Solo hesabından çıkış: Settings > About > Log out (Abmelden).
+Solo: Connections / Verbindungen > API > Connect / Verbinden.
+Gösterilen 8 veya 9 karakterli kodu 5 dakika içinde TOR POS'taki Kopplungscode
+alanına girip SOLO MIT DIESEM KONTO KOPPELN düğmesine basın.
+Bu düğme cihazı yazdığınız hesaba gerçekten eşleştirir; para çekmez.
+Cihaz ekranındaki onayı kontrol edin. Sonra listeyi yenileyip durum sorgulayın.
+'processing' bekleme; 'paired' eşleşme durumudur. Online olduğunu tek başına kanıtlamaz.
+Durum sorgusu son bilinen durumu ve cihazın son aktivite zamanını gösterir.
+Zaman aşımında eşleşme gerçekleşmiş olabilir. Önce listeyi yenileyin.
+API menüsü yoksa cihazın yazılım/erişim durumunu SumUp desteğiyle kontrol edin.
+
+DOĞRULAMA
+53 otomatik test geçti. API yanıtları testte taklit edildi; gerçek hesap ve Solo
+bağlantısı henüz doğrulanmadı. Sonuç ekranını gönderirken API anahtarını göstermeyin.
+
+Resmi belgeler:
+https://developer.sumup.com/terminal-payments/cloud-api
+https://developer.sumup.com/tools/authorization/api-keys
+https://developer.sumup.com/api/readers/create

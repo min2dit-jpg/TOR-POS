@@ -1,0 +1,18 @@
+R37 static verification record - 2026-09-07
+
+Generation environment did not contain the .NET SDK and had no network access to install it.
+Therefore R37 was NOT compiled in this environment and no claim of a successful R37 build is made.
+
+Static checks performed:
+- manifest.json parsed successfully as JSON.
+- Project/installer version markers updated to 0.7.33.37 / R37.
+- SumUp device-test endpoint is exactly POST /v0.1/merchants/{merchant}/readers/{reader}/checkout.
+- Test request is fixed to EUR, minor_unit=2, value=100 (EUR 1.00).
+- Termination endpoint is exactly POST /v0.1/merchants/{merchant}/readers/{reader}/terminate.
+- Normal cash-register KARTE TEST was not modified.
+- API key remains masked in UI and is not persisted by this window.
+- HTTP error response bodies are not surfaced.
+- Modified C# files have balanced delimiters in a lexical static scan.
+- No generated binaries are included; build on Windows with 1-SETUP-ERSTELLEN.bat.
+
+Official SumUp API reference verified via current developer documentation on 2026-09-07.

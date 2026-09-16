@@ -1,0 +1,9 @@
+Desktop/src/TorPos.App/SumUpConnectionWindow.cs
+  R49 4327c864bd37d985735c74722a3a9de213ed3d2d7e6bdfb35e8c818456cebe27
+  R50 4327c864bd37d985735c74722a3a9de213ed3d2d7e6bdfb35e8c818456cebe27
+  SAME True
+Desktop/src/TorPos.Infrastructure/SumUpConnectionService.cs
+  R49 d23468a8087a4d91608288d8b5982c3cd7c7dc8a223af4fd20c30dc1389d6ea1
+  R50 d23468a8087a4d91608288d8b5982c3cd7c7dc8a223af4fd20c30dc1389d6ea1
+  SAME True
+SUMUP_UNCHANGED=True

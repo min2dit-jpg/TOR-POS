@@ -1,0 +1,34 @@
+TOR POS R37 - SumUp Solo 1,00 € cihaz gönderme testi
+
+AMAÇ
+Bu sürüm normal satışa SumUp ödeme entegrasyonu yapmaz. Sadece TOR POS'un
+SumUp Cloud üzerinden seçili Solo cihazına gerçek bir ödeme talebi gönderip
+gönderemediğini fiziksel olarak doğrulamak içindir.
+
+KURULUM
+Kasayı kapatıp yedek alın. ZIP'i yeni klasöre çıkarın ve
+1-SETUP-ERSTELLEN.bat ile kurulumu oluşturun.
+
+TEST
+Admin > Einstellungen > Drucker / Yazıcılar & Geräte >
+SUMUP SOLO · VERBINDUNG / 1,00 € TEST.
+
+1) Händlercode ve API-Key girin.
+2) 1 · GERÄTELISTE LADEN.
+3) Solo'yu seçin.
+4) İsterseniz 2 · GERÄTESTATUS PRÜFEN.
+5) 3 · 1,00 € TEST AN SOLO SENDEN.
+6) Solo ekranında 1,00 € görünürse bağlantı başarılıdır.
+7) KARTA DOKUNMAYIN / KART OKUTMAYIN.
+8) Hemen 4 · TEST ABBRECHEN veya Solo üzerindeki iptal tuşuna basın.
+
+DİKKAT
+Bu test gerçek SumUp Reader Checkout endpoint'ini kullanır. Kart okutulursa
+gerçek 1,00 € ödeme oluşabilir. Bu nedenle amaç yalnızca tutarın cihazda
+göründüğünü doğrulamak ve hemen iptal etmektir.
+
+Normal kasa ekranındaki KARTE TEST bu sürümde hâlâ simülasyondur.
+Bu test Bon, TSE, satış kaydı veya Bon-Historie oluşturmaz.
+
+SumUp terminate çağrısı asenkrondur ve ayrı bir başarılı-abort cevabı vermez.
+Solo ekranından işlemin gerçekten kapandığını kontrol edin.

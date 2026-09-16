@@ -1,0 +1,16 @@
+TOR POS R71+ ANGEBOT / PROMOTION RULES
+==========================================
+
+1. Normal ürün master price kampanya nedeniyle UPDATE edilmez.
+2. Aktif kampanya satış anında seçilir ve CartLine/Checkout/SaleItem snapshot'ına yazılır.
+3. Pfand kampanya yüzdesine dahil edilmez.
+4. Kampanya başlangıç ve bitiş tarihi dahil geçerlidir.
+5. Overlap: en yüksek yüzde; eşitte PRODUCT > CATEGORY > ALL.
+6. Campaign row silinmez. Yanlış kampanya deaktive edilir, yenisi oluşturulur.
+7. Eski Bon/Parkbon kampanya değişikliklerinden etkilenmez.
+8. Promotion discount ile manual discount ayrı finansal alanlardır.
+9. Z/X/aylık raporda Listenwert, Angebot, manueller Rabatt ve gerçek Umsatz ayrı gösterilir.
+10. Vergi özeti indirim sonrası gerçek satış tutarından hesaplanır.
+11. SOFORT STORNO, Angebot/Rabatt değildir ve ayrı tutulur.
+12. Gerçek BON STORNO/RETOURE gelecekte original sale'i mutate etmeyen Gegenbuchung olarak yazılacaktır.
+13. TSE/DSFinV-K production mapping final donanım/compliance doğrulaması yapılmadan açılmaz.

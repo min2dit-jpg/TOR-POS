@@ -1,0 +1,24 @@
+TOR POS DATABASE MIGRATION RULES - R69+
+========================================
+
+1. SqliteDatabase.InitializeAsync = LEGACY COMPATIBILITY BOOTSTRAP.
+   R69'dan sonra yeni schema değişikliği buraya ekleme.
+
+2. Her yeni schema değişikliği SchemaMigrationService.OrderedMigrations
+   listesine artan tam sayı version ile eklenir.
+
+3. Migration sırası atlanamaz:
+   V1 -> V2 -> V3 ...
+
+4. Migration transaction içinde çalışmalıdır.
+   Hata olursa schema_version ilerletilmemelidir.
+
+5. Mevcut müşteri DB'sinde pending migration varsa önce verified
+   PRE-MIGRATION BACKUP alınır.
+
+6. Backup başarısızsa migration yapılmaz.
+
+7. Daha yeni schema version eski uygulamayla açılmaz (downgrade fail-closed).
+
+8. Completed sales/audit/fiscal evidence için destructive migration
+   yazmadan önce ayrıca veri koruma incelemesi yapılmalıdır.

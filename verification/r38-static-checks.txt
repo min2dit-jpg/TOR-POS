@@ -1,0 +1,7 @@
+XML parse OK: 7 files
+src/TorPos.App/SettingsWindow.axaml.cs: braces open=282 close=282
+src/TorPos.Infrastructure/TorCloudConnectionService.cs: braces open=10 close=10
+R37 SumUp unchanged: src/TorPos.Infrastructure/SumUpConnectionService.cs sha256=d23468a8087a4d91608288d8b5982c3cd7c7dc8a223af4fd20c30dc1389d6ea1
+R37 SumUp unchanged: src/TorPos.App/SumUpConnectionWindow.cs sha256=4327c864bd37d985735c74722a3a9de213ed3d2d7e6bdfb35e8c818456cebe27
+Cloud device token is test-only TextBox, not an app_settings-bound field
+NOTE: .NET SDK unavailable in generation environment; Windows/Avalonia compile still required on build PC.

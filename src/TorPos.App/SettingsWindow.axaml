@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TorPos.App.SettingsWindow"
+        Title="TOR POS Pro – Einstellungen"
+        Width="1160" Height="780"
+        MinWidth="980" MinHeight="650"
+        Background="#0D1420">
+  <Grid RowDefinitions="72,*,66">
+    <Border Background="#121C2B" Padding="20,12">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel>
+          <TextBlock Text="Einstellungen" FontSize="26" FontWeight="Bold"/>
+          <TextBlock Text="Nur das einstellen, was im Alltag wirklich gebraucht wird"
+                     Opacity="0.65" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Border Grid.Column="1" Background="#493A12" CornerRadius="8" Padding="12,8" VerticalAlignment="Center">
+          <TextBlock Text="TESTBETRIEB · TSE NICHT VERBUNDEN" Foreground="#FFD166" FontWeight="Bold"/>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="240,*">
+      <Border Background="#101925" Padding="12">
+        <Grid RowDefinitions="Auto,*">
+          <TextBlock Text="EINSTELLUNGEN" FontSize="11" FontWeight="Bold" Opacity="0.55" Margin="8,4,8,10"/>
+          <ListBox x:Name="NavList" Grid.Row="1" SelectionChanged="OnNavigationChanged"/>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1" Background="#0D1420" Padding="18">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ContentControl x:Name="SettingsContent"/>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="2" Background="#121C2B" Padding="20,10">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+        <TextBlock x:Name="StatusText" Text="Bereit" VerticalAlignment="Center" Opacity="0.70"/>
+        <Button Grid.Column="1" Content="SCHLIESSEN" Click="OnCloseClick" MinWidth="130" MinHeight="44"/>
+        <Button Grid.Column="2" Content="SPEICHERN" Click="OnSaveClick"
+                MinWidth="160" MinHeight="44" Background="#2CC4A7" Foreground="#07140F" FontWeight="Bold"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

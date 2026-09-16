@@ -1,0 +1,16 @@
+TOR POS R72.4 - AVLN3001 NOTU
+================================
+
+LoginWindow / MainWindow / SettingsWindow constructor injection ile
+AppWindowFactory / DI üzerinden oluşturulur.
+
+AVLN3001 bu üç pencerenin XAML runtime loader tarafından public parameterless
+constructor ile instantiate edilemeyeceğini bildirir; mevcut uygulama startup
+akışı factory/DI olduğu için bu backup crash'inin nedeni değildir.
+
+Sadece warning'i susturmak için dummy public parameterless constructor
+EKLENMEDİ. Özellikle MainWindow gerçek servis/repository/auth bağımlılıkları
+olmadan yaratılırsa yarım ve güvensiz bir pencere durumu oluşabilir.
+
+Bu warning daha sonra Application/MVVM refactor sırasında düzgün biçimde
+ele alınacaktır.

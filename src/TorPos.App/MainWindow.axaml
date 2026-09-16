@@ -1,0 +1,747 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TorPos.App.MainWindow"
+        Title="TOR POS Pro"
+        Width="1440" Height="900"
+        MinWidth="1024" MinHeight="640"
+        Background="#0D1420">
+
+  <Window.Styles>
+    <!-- R111: front-screen freshness pass - category tile COLORS stay
+         admin-owned data (untouched), this only adds the hover/pressed
+         feedback and a smooth transition that categorytile/producttile
+         already had but action/topaction/keypad never did, so every
+         touch/click across the whole cashier screen now feels consistently
+         responsive instead of some buttons reacting and others not. -->
+    <Style Selector="Button.action">
+      <Setter Property="Background" Value="#1C3852"/>
+      <Setter Property="Foreground" Value="#F7FBFF"/>
+      <Setter Property="BorderBrush" Value="#496985"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="8"/>
+      <Setter Property="Margin" Value="3"/>
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.action:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#264868"/>
+      <Setter Property="BorderBrush" Value="#6FA0C2"/>
+    </Style>
+
+    <Style Selector="Button.action:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#152C45"/>
+      <Setter Property="BorderBrush" Value="#53E0C0"/>
+    </Style>
+
+    <Style Selector="Button.topaction">
+      <Setter Property="Background" Value="#1B344C"/>
+      <Setter Property="Foreground" Value="#F5F9FE"/>
+      <Setter Property="BorderBrush" Value="#496985"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Padding" Value="7,5"/>
+      <Setter Property="Margin" Value="2"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.topaction:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#264868"/>
+      <Setter Property="BorderBrush" Value="#6FA0C2"/>
+    </Style>
+
+    <Style Selector="Button.topaction:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#122438"/>
+      <Setter Property="BorderBrush" Value="#53E0C0"/>
+    </Style>
+
+    <Style Selector="Button.keypad">
+      <Setter Property="Background" Value="#142B42"/>
+      <Setter Property="Foreground" Value="#F7FBFF"/>
+      <Setter Property="BorderBrush" Value="#3C5F7C"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="6"/>
+      <Setter Property="Margin" Value="3"/>
+      <Setter Property="FontSize" Value="24"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.keypad:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1D3A55"/>
+      <Setter Property="BorderBrush" Value="#5E91B8"/>
+    </Style>
+
+    <Style Selector="Button.keypad:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#0E1F32"/>
+      <Setter Property="BorderBrush" Value="#53E0C0"/>
+    </Style>
+
+    <!-- Große, vollständig gefüllte Warengruppen-Kacheln. Farbe bleibt
+         Admin-Daten (pro Warengruppe gewählt) - hier nur die Übergänge und
+         jetzt (R112, Nutzerwunsch "etwas mehr neon") ein Leucht-Rand, der
+         beim Hover deutlich heller/größer aufglüht. -->
+    <Style Selector="Button.categorytile">
+      <Setter Property="Background" Value="#17466A"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#3C9ED3"/>
+      <Setter Property="BorderThickness" Value="1.4"/>
+      <Setter Property="CornerRadius" Value="11"/>
+      <Setter Property="Padding" Value="10"/>
+      <Setter Property="Margin" Value="5"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1"/>
+        </Transitions>
+      </Setter>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="#3C9ED3" BlurRadius="10" OffsetX="0" OffsetY="0" Opacity="0.35"/>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.categorytile:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.015)"/>
+    </Style>
+
+    <Style Selector="Button.categorytile:pointerover">
+      <Setter Property="Background" Value="#1E5C86"/>
+      <Setter Property="BorderBrush" Value="#57C8F6"/>
+      <Setter Property="BorderThickness" Value="2"/>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="#57C8F6" BlurRadius="26" OffsetX="0" OffsetY="0" Opacity="0.8"/>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.categorytile:pressed">
+      <Setter Property="Background" Value="#0E6B88"/>
+      <Setter Property="BorderBrush" Value="#7BE2FF"/>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="#7BE2FF" BlurRadius="30" OffsetX="0" OffsetY="0" Opacity="0.9"/>
+      </Setter>
+    </Style>
+
+    <!-- R58: einheitliche Artikeltasten ohne optische Lücken zwischen unterschiedlich aufgebauten Karten. -->
+    <Style Selector="Button.producttile">
+      <Setter Property="Background" Value="#172C42"/>
+      <Setter Property="Foreground" Value="#F7FBFF"/>
+      <Setter Property="BorderBrush" Value="#3C5F7C"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="10"/>
+      <Setter Property="Margin" Value="4"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1"/>
+        </Transitions>
+      </Setter>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="#3C5F7C" BlurRadius="8" OffsetX="0" OffsetY="0" Opacity="0.3"/>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.producttile:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.015)"/>
+    </Style>
+
+    <Style Selector="Button.producttile:pointerover">
+      <Setter Property="Background" Value="#1D3A55"/>
+      <Setter Property="BorderBrush" Value="#5E91B8"/>
+      <Setter Property="BorderThickness" Value="1.8"/>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="#5E91B8" BlurRadius="20" OffsetX="0" OffsetY="0" Opacity="0.75"/>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button.producttile:pressed">
+      <Setter Property="Background" Value="#205274"/>
+      <Setter Property="BorderBrush" Value="#7CC7EF"/>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="#7CC7EF" BlurRadius="24" OffsetX="0" OffsetY="0" Opacity="0.85"/>
+      </Setter>
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="64,52,*">
+    <Grid.ColumnDefinitions>
+      <!-- R109: the cart column used to be a hard-coded 570px, meaning on
+           the smallest supported screens (MinWidth=1024, R105) it ate the
+           majority of the window (570/1024 = 56%) instead of shrinking -
+           exactly backwards from what a small tablet needs. 0.42* is
+           calibrated so a normal maximized desktop (~1920px) still gets
+           close to the original ~570px cart (unchanged look on the screens
+           this was designed against), while the MinWidth/MaxWidth bounds
+           make it shrink toward its floor on a small tablet and never grow
+           unreasonably large on a very wide monitor - the product/category
+           side always keeps a usable minimum too. -->
+      <ColumnDefinition Width="*" MinWidth="480"/>
+      <ColumnDefinition Width="0.42*" MinWidth="380" MaxWidth="650"/>
+    </Grid.ColumnDefinitions>
+    <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#111B2A" Padding="14,7"
+            BoxShadow="0 2 14 0 #4000C2A0">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Background="#2CC4A7" CornerRadius="10" Width="44" Height="44"
+                BoxShadow="0 0 14 1 #802CC4A7">
+          <TextBlock Text="TOR" Foreground="#07140F" FontSize="15" FontWeight="Bold"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+
+        <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+          <TextBlock x:Name="CompanyNameText" Text="TOR POS Pro" FontSize="20" FontWeight="Bold"/>
+          <TextBlock x:Name="RegisterInfoText" Text="Kasse 1 · IMBISS" Opacity="0.58" Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Background="#173A32" CornerRadius="8" Padding="14,10"
+                  BorderBrush="#2CC4A7" BorderThickness="1" BoxShadow="0 0 10 0 #6653E0C0">
+            <TextBlock x:Name="EditionText" Text="IMBISS" Foreground="#53E0C0" FontWeight="Bold"/>
+          </Border>
+          <Menu Background="Transparent" VerticalAlignment="Center">
+            <MenuItem x:Name="ProductsButton" Header="WAREN">
+              <MenuItem Header="ARTIKEL">
+                <MenuItem Header="Artikelverwaltung · Anlegen / Ändern / Scanner" Click="OnProductsClick"/>
+                <MenuItem Header="ANGEBOTE / AKTIONEN" Click="OnPromotionsClick"/>
+                <MenuItem Header="Duplikate anzeigen" Click="OnDuplicatesClick"/>
+                <MenuItem Header="EAN-Etiketten drucken" Click="OnLabelsClick"/>
+              </MenuItem>
+              <MenuItem Header="BESTAND / INVENTUR">
+                <MenuItem Header="Inventur · Scanner &amp; Bestand" Click="OnInventoryClick"/>
+                <MenuItem Header="Warenbestand · Bericht" Click="OnInventoryReportMenuClick"/>
+              </MenuItem>
+              <MenuItem Header="DATENAUSTAUSCH">
+                <MenuItem Header="Artikel importieren · CSV" Click="OnImportArticlesClick"/>
+                <MenuItem Header="Artikel exportieren · CSV" Click="OnExportArticlesClick"/>
+                <MenuItem Header="Import aus TOR-Datenbank" Click="OnImportDatabaseClick"/>
+              </MenuItem>
+              <Separator/>
+              <MenuItem Header="Programm beenden" Click="OnProgramExitMenuClick"/>
+            </MenuItem>
+
+            <MenuItem x:Name="SettingsButton" Header="EINSTELLUNGEN">
+              <MenuItem Header="Kasse &amp; Bedienung" Click="OnCashOperationSettingsMenuClick"/>
+              <MenuItem Header="Firma &amp; Bon" Click="OnCompanyReceiptSettingsMenuClick"/>
+              <MenuItem Header="Artikel &amp; Steuern" Click="OnArticleTaxSettingsMenuClick"/>
+              <MenuItem Header="Zahlung" Click="OnGroupedPaymentSettingsMenuClick"/>
+              <MenuItem Header="Geräte" Click="OnGroupedDeviceSettingsMenuClick"/>
+              <MenuItem Header="Personal" Click="OnGroupedPersonnelSettingsMenuClick"/>
+              <MenuItem Header="Berichte &amp; E-Mail" Click="OnGroupedReportsEmailSettingsMenuClick"/>
+              <MenuItem Header="Datensicherung" Click="OnGroupedBackupSettingsMenuClick"/>
+              <MenuItem Header="Software &amp; Update" Click="OnSoftwareUpdateSettingsMenuClick"/>
+              <Separator/>
+              <MenuItem Header="Erweitert / Techniker" Click="OnTechnicianSettingsMenuClick"/>
+            </MenuItem>
+
+            <MenuItem Header="KASSE">
+              <MenuItem Header="Bestellübersicht · Vorbereitung / Abholung" Click="OnOrderBoardClick"/>
+              <MenuItem Header="Zahlung prüfen / fortsetzen" Click="OnCheckoutReviewClick"/>
+              <MenuItem Header="Druckwarteschlange prüfen" Click="OnPrinterReviewClick"/>
+              <MenuItem Header="Systemstatus / Diagnose" Click="OnDiagnosticsClick"/>
+              <MenuItem Header="Bon-Historie" Click="OnReceiptHistoryClick"/>
+              <MenuItem Header="Einlage / Entnahme" Click="OnCashMovementClick"/>
+              <MenuItem Header="Z-Bericht" Click="OnZReportClick"/>
+              <Separator/>
+              <MenuItem Header="Bon stornieren" Click="OnBonStornoClick"/>
+              <MenuItem Header="Teilretoure (einzelne Artikel)" Click="OnPartialReturnClick"/>
+            </MenuItem>
+
+            <MenuItem x:Name="ReportsMenu" Header="BERICHTE">
+              <MenuItem Header="TAGESKONTROLLE">
+                <MenuItem Header="Berichtszentrum" Click="OnReportCenterClick"/>
+                <MenuItem Header="X-Bericht" Click="OnXReportMenuClick"/>
+                <MenuItem Header="Kassensturz" Click="OnCashCountReportMenuClick"/>
+                <MenuItem Header="Kassenjournal" Click="OnCashJournalMenuClick"/>
+              </MenuItem>
+              <MenuItem Header="VERKAUF / BESTAND">
+                <MenuItem Header="Umsatzberichte" Click="OnTurnoverReportsMenuClick"/>
+                <MenuItem Header="Monatsbericht / Monatsumsatz" Click="OnMonthlyTurnoverMenuClick"/>
+                <MenuItem Header="Verkaufsstatistik · Artikel" Click="OnSalesStatisticsMenuClick"/>
+                <MenuItem Header="Warenbestand" Click="OnInventoryReportMenuClick"/>
+              </MenuItem>
+              <MenuItem Header="ARCHIV / PERSONAL">
+                <MenuItem Header="Z-Abschluss-Journal" Click="OnZArchiveMenuClick"/>
+                <MenuItem Header="Bedienerabrechnung" Click="OnOperatorSettlementMenuClick"/>
+                <MenuItem Header="Personalüberwachung" Click="OnPersonnelMonitoringMenuClick"/>
+                <MenuItem Header="Stornobericht" Click="OnStornoReportMenuClick"/>
+              </MenuItem>
+              <MenuItem Header="E-MAIL / PDF">
+                <MenuItem Header="Berichte &amp; E-Mail Einstellungen" Click="OnGroupedReportsEmailSettingsMenuClick"/>
+              </MenuItem>
+              <MenuItem Header="FINANZAMT / EXPORT">
+                <MenuItem Header="Export Buchungsdaten" Click="OnBookingExportMenuClick"/>
+                <MenuItem Header="Programmierungsprotokoll" Click="OnProgrammingProtocolMenuClick"/>
+                <MenuItem Header="Fiskal-Prüfung" Click="OnFiscalAuditMenuClick"/>
+                <MenuItem Header="GDPdU / GoBD Tools" Click="OnGdpduToolsMenuClick"/>
+                <MenuItem Header="DSFinV-K Export" Click="OnDsfinvkExportMenuClick"/>
+                <MenuItem Header="TSE Export" Click="OnTseExportMenuClick"/>
+              </MenuItem>
+            </MenuItem>
+          </Menu>
+          <!-- R113: an open TSE outage is a legal state the cashier must be
+               able to see. The outage repository could always report one, but
+               nothing in the running till ever asked it, so an unsigned-sales
+               situation stayed completely invisible at the register. -->
+          <Border x:Name="TseOutageBadge" IsVisible="False" Background="#5A1A1A" BorderBrush="#FF8A80" BorderThickness="1" CornerRadius="8" Padding="12,8">
+            <TextBlock x:Name="TseOutageText" Text="TSE-AUSFALL" Foreground="#FF8A80" FontWeight="Bold" FontSize="11"/>
+          </Border>
+          <Button x:Name="StockWarningBadge" IsVisible="False" Click="OnInventoryClick" Background="#493A12" BorderBrush="#D6A83C" BorderThickness="1" CornerRadius="8" Padding="10,8">
+            <TextBlock x:Name="StockWarningText" Text="BESTAND" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
+          </Button>
+          <Border x:Name="LicenseWarningBadge" IsVisible="False" Background="#5A3A10" BorderBrush="#E3A62F" BorderThickness="1" CornerRadius="8" Padding="10,8">
+            <TextBlock x:Name="LicenseWarningText" Text="LIZENZ" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
+          </Border>
+          <Button x:Name="UpdateButton" IsVisible="False" Content="UPDATE" Click="OnUpdateClick"
+                  Background="#17466A" Foreground="#DDF7FF" BorderBrush="#3C9ED3" BorderThickness="1"
+                  CornerRadius="8" Padding="10,8" FontWeight="Bold" FontSize="11"/>
+          <Border Background="#1A2D46" CornerRadius="8" Padding="12,8">
+            <TextBlock x:Name="UserModeText" Text="ADMIN · Vollzugriff" Foreground="#9CC3FF" FontWeight="Bold"/>
+          </Border>
+          <Border Background="#493A12" CornerRadius="8" Padding="12,8">
+            <TextBlock x:Name="FiscalModeText" Text="TESTBETRIEB · FISKAL GESPERRT" Foreground="#FFD166" FontWeight="Bold"/>
+          </Border>
+          <Button x:Name="ImHausToggleButton" IsVisible="False" Click="OnImHausToggleClick"
+                  Background="#26445E" BorderBrush="#5B879F" BorderThickness="1"
+                  CornerRadius="8" Padding="12,8">
+            <TextBlock x:Name="ImHausToggleText" Text="AUSSER HAUS" Foreground="#DDEEFF" FontWeight="Bold" FontSize="12"/>
+          </Button>
+          <!-- R101: append-only, deliberately kept out of the fully-packed
+               4x4 numpad/payment Grid below - same low-risk placement
+               reasoning as ImHausToggleButton above. -->
+          <Button x:Name="MixedPaymentButton" Click="OnMixedPaymentClick"
+                  Background="#5B3E8A" BorderBrush="#A98AE0" BorderThickness="1"
+                  CornerRadius="8" Padding="12,8">
+            <Button.Effect>
+              <DropShadowEffect Color="#A98AE0" BlurRadius="12" OffsetX="0" OffsetY="0" Opacity="0.5"/>
+            </Button.Effect>
+            <TextBlock Text="GEMISCHT" Foreground="#F0E8FF" FontWeight="Bold" FontSize="12"/>
+          </Button>
+          <Button x:Name="LogoutButton"
+                  Content="ABMELDEN"
+                  Click="OnLogoutClick"
+                  Background="#602B35"
+                  Foreground="#FFF6F7"
+                  BorderBrush="#A85A6B"
+                  BorderThickness="1"
+                  CornerRadius="8"
+                  Padding="14,9"
+                  FontWeight="Bold"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#162235" Padding="9,5">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*">
+        <TextBlock Text="EAN / BARCODE"
+                   VerticalAlignment="Center"
+                   FontWeight="Bold"
+                   Foreground="#53E0C0"/>
+        <Button Grid.Column="1"
+                Content="EAN SUCHEN"
+                Click="OnEanSearchClick"
+                Margin="12,0,8,0"
+                Padding="14,7"/>
+        <Button Grid.Column="2"
+                x:Name="QuickItemButton"
+                Content="SCHNELLARTIKEL"
+                Click="OnQuickItemClick"
+                Margin="0,0,8,0"
+                Padding="14,7"
+                Background="#264A5E"
+                BorderBrush="#5B879F"
+                FontWeight="Bold"/>
+
+        <!-- v0.7.33: Nur täglich benötigte Funktionen bleiben im direkten Sichtfeld.
+             Seltenere Kassenaktionen liegen oben im Menü KASSE. -->
+        <UniformGrid Grid.Column="3"
+                     Rows="1"
+                     Columns="4"
+                     HorizontalAlignment="Stretch"
+                     VerticalAlignment="Stretch">
+          <Button x:Name="DiscountButton" Classes="topaction" Click="OnDiscountClick">
+            <TextBlock Text="RABATT" FontSize="11" FontWeight="Bold"/>
+          </Button>
+          <Button x:Name="ParkedReceiptsButton" Classes="topaction" Click="OnParkedReceiptsClick">
+            <TextBlock x:Name="ParkedReceiptsText" Text="GEPARKTE BONS (0)"
+                       FontSize="10" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
+          </Button>
+          <Button x:Name="ReceiptModeButton" Classes="topaction" Click="OnReceiptModeClick">
+            <TextBlock x:Name="ReceiptModeText" Text="BON EIN/AUS"
+                       FontSize="10" FontWeight="Bold" TextAlignment="Center"/>
+          </Button>
+          <Button x:Name="QuickCheckoutButton" Classes="topaction" Click="OnQuickCheckoutClick"
+                  Background="#0F7A55" BorderBrush="#53E0C0">
+            <Button.Effect>
+              <DropShadowEffect Color="#53E0C0" BlurRadius="16" OffsetX="0" OffsetY="0" Opacity="0.55"/>
+            </Button.Effect>
+            <StackPanel Spacing="1" HorizontalAlignment="Center">
+              <TextBlock x:Name="QuickCheckoutText" Text="KASSIEREN"
+                         FontSize="10" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
+              <TextBlock x:Name="QuickCheckoutSubText" Text="F5 · ZAHLART"
+                         FontSize="8" Opacity="0.76" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+        </UniformGrid>
+
+        <!-- Diese Controls bleiben logisch vorhanden, sind aber aus dem täglichen
+             Schnellbereich entfernt. Aufruf erfolgt über das Menü KASSE. -->
+        <StackPanel IsVisible="False">
+          <Button x:Name="ZReportButton" Click="OnZReportClick"/>
+          <Button x:Name="CashMovementButton" Click="OnCashMovementClick"/>
+          <Button x:Name="ReceiptHistoryButton" Click="OnReceiptHistoryClick"/>
+          <Button x:Name="BonStornoButton" Click="OnBonStornoClick"/>
+        </StackPanel>
+
+        <!-- Bleibt für Diagnose-Code vorhanden, wird aber nicht mehr als UI-Text angezeigt. -->
+        <TextBlock x:Name="PerformanceStatus" IsVisible="False"/>
+      </Grid>
+    </Border>
+
+    <!--
+      POSprom-inspirierte Schnellwahl:
+      Im Normalzustand füllt WARENGRUPPEN die gesamte linke Arbeitsfläche.
+      Erst nach Auswahl einer Warengruppe erscheinen deren Artikel auf derselben Fläche.
+    -->
+    <Grid Grid.Row="2" Grid.Column="0" Margin="10">
+
+      <Border x:Name="CategoryArea"
+              Background="#10263A"
+              BorderBrush="#39698D"
+              BorderThickness="1"
+              CornerRadius="12"
+              Padding="9"
+              BoxShadow="0 0 16 0 #3339698D"
+              IsVisible="True">
+        <Grid RowDefinitions="44,*">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="7">
+            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+              <TextBlock x:Name="CategoryHeaderText" Text="WARENGRUPPEN"
+                         FontSize="16"
+                         FontWeight="Bold"
+                         Foreground="#53E0C0"
+                         VerticalAlignment="Center"/>
+              <TextBlock x:Name="CategoryModeHintText"
+                         Text="Antippen → Artikel"
+                         FontSize="11"
+                         Foreground="#7F98AF"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    x:Name="CategoryPrevButton"
+                    Content="◀"
+                    Click="OnCategoryPrevClick"
+                    MinWidth="48"
+                    Padding="8,5"/>
+
+            <TextBlock Grid.Column="2"
+                       x:Name="CategoryPageText"
+                       Text="1 / 1"
+                       MinWidth="64"
+                       TextAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       Foreground="#9CC3FF"/>
+
+            <Button Grid.Column="3"
+                    x:Name="CategoryNextButton"
+                    Content="▶"
+                    Click="OnCategoryNextClick"
+                    MinWidth="48"
+                    Padding="8,5"/>
+          </Grid>
+
+          <Grid Grid.Row="1" x:Name="CategoryGrid"/>
+        </Grid>
+      </Border>
+
+      <Border x:Name="ProductArea"
+              Background="#102235"
+              BorderBrush="#39698D"
+              BorderThickness="1"
+              CornerRadius="12"
+              Padding="9"
+              BoxShadow="0 0 16 0 #3339698D"
+              IsVisible="False">
+        <Grid RowDefinitions="44,*">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="7">
+
+            <Button Grid.Column="0"
+                    x:Name="BackToCategoriesButton"
+                    Content="◀ WARENGRUPPEN"
+                    Click="OnBackToCategoriesClick"
+                    MinWidth="154"
+                    Padding="12,5"
+                    Background="#17364D"
+                    BorderBrush="#4B7391"
+                    FontWeight="Bold"/>
+
+            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Spacing="1">
+              <TextBlock x:Name="SelectedCategoryText"
+                         Text="ARTIKEL"
+                         FontSize="16"
+                         FontWeight="Bold"
+                         Foreground="#F4F8FC"/>
+              <TextBlock x:Name="ProductModeHintText"
+                         Text="Artikel antippen → direkt im Bon"
+                         FontSize="10"
+                         Foreground="#7F98AF"/>
+            </StackPanel>
+
+            <Button Grid.Column="2"
+                    x:Name="ProductPrevButton"
+                    Content="◀"
+                    Click="OnProductPrevClick"
+                    MinWidth="48"
+                    Padding="8,5"/>
+
+            <TextBlock Grid.Column="3"
+                       x:Name="ProductPageText"
+                       Text="1 / 1"
+                       MinWidth="64"
+                       TextAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       Foreground="#9CC3FF"/>
+
+            <Button Grid.Column="4"
+                    x:Name="ProductNextButton"
+                    Content="▶"
+                    Click="OnProductNextClick"
+                    MinWidth="48"
+                    Padding="8,5"/>
+          </Grid>
+
+          <Grid Grid.Row="1" x:Name="ProductGrid"/>
+        </Grid>
+      </Border>
+
+    </Grid>
+
+    <Border Grid.Row="2" Grid.Column="1"
+            Background="#0A1726"
+            Margin="0,8,8,8"
+            BorderBrush="#294765"
+            BorderThickness="1"
+            CornerRadius="14"
+            Padding="0"
+            BoxShadow="0 0 18 0 #4053E0C0">
+      <Grid RowDefinitions="1.08*,0.92*" RowSpacing="0">
+
+        <Border Grid.Row="0"
+                Background="#0B1B2D"
+                BorderBrush="#3A5D7E"
+                BorderThickness="1.2"
+                CornerRadius="14,14,0,0"
+                Padding="13"
+                MinHeight="250">
+          <Grid RowDefinitions="Auto,*,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="2,1,2,10">
+              <TextBlock Text="AKTUELLER VERKAUF"
+                         FontSize="16"
+                         FontWeight="Bold"
+                         Foreground="#F4F8FC"/>
+              <Border Grid.Column="1"
+                      Margin="12,0"
+                      Background="#12283D"
+                      BorderBrush="#31526C"
+                      BorderThickness="1"
+                      CornerRadius="7"
+                      Padding="10,4"
+                      HorizontalAlignment="Center">
+                <TextBlock x:Name="NumericInputText"
+                           Text="EINGABE: —"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Foreground="#9CC3FF"/>
+              </Border>
+              <Border Grid.Column="2" Background="#142B42" CornerRadius="7" Padding="10,4">
+                <TextBlock Text="LOKALE KASSE"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           Foreground="#9EB3C7"/>
+              </Border>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Background="#101F32"
+                    BorderBrush="#29445F"
+                    BorderThickness="1"
+                    CornerRadius="9"
+                    Padding="5">
+              <Grid>
+                <ListBox x:Name="CartList"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         FontSize="15"/>
+                <StackPanel x:Name="EmptyCartHint"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="5"
+                            IsHitTestVisible="False">
+                  <TextBlock x:Name="EmptyCartHintText"
+                             Text="Artikel scannen oder antippen"
+                             FontSize="18"
+                             FontWeight="SemiBold"
+                             Foreground="#7F98AF"
+                             HorizontalAlignment="Center"/>
+                  <TextBlock x:Name="CheckoutHintText"
+                             Text="Danach BAR oder KARTE"
+                             FontSize="11"
+                             Foreground="#58748D"
+                             HorizontalAlignment="Center"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Margin="0,10,0,0"
+                    Padding="10,8,8,4"
+                    Background="#0E2033"
+                    CornerRadius="9">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                  <TextBlock x:Name="ItemsSummaryText" FontSize="12" Opacity="0.68"/>
+                  <TextBlock x:Name="SubtotalText" FontSize="12" Opacity="0.75"/>
+                  <TextBlock x:Name="DiscountText" FontSize="12" Foreground="#FFD166"/>
+                  <TextBlock x:Name="ScannerStatus"
+                             Text="Scanner bereit"
+                             FontSize="10"
+                             Foreground="#8FA7BC"
+                             MaxWidth="300"
+                             TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <TextBlock Text="GESAMT"
+                             HorizontalAlignment="Right"
+                             FontSize="12"
+                             FontWeight="Bold"
+                             Foreground="#AFC0D0"/>
+                  <TextBlock x:Name="TotalText"
+                             Text="0,00 €"
+                             FontSize="42"
+                             FontWeight="Bold"
+                             Foreground="#FFFFFF"
+                             HorizontalAlignment="Right"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
+        </Border>
+
+        <!-- Arbeitsfeld: Nummernblock + direkte Verkaufsfunktionen. -->
+        <Border Grid.Row="1"
+                Background="#101F32"
+                BorderBrush="#496985"
+                BorderThickness="1"
+                CornerRadius="0,0,14,14"
+                Padding="3"
+                ClipToBounds="True">
+          <Grid RowDefinitions="*,*,*,*,78" ColumnDefinitions="*,*,*,*"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch">
+            <!-- Nummernblock -->
+            <Button Grid.Row="0" Grid.Column="0" Classes="keypad" Tag="7" Click="OnNumpadDigitClick">7</Button>
+            <Button Grid.Row="0" Grid.Column="1" Classes="keypad" Tag="8" Click="OnNumpadDigitClick">8</Button>
+            <Button Grid.Row="0" Grid.Column="2" Classes="keypad" Tag="9" Click="OnNumpadDigitClick">9</Button>
+            <Button Grid.Row="0" Grid.Column="3" Classes="keypad" Click="OnNumpadMultiplyClick" Background="#203D58">×</Button>
+
+            <Button Grid.Row="1" Grid.Column="0" Classes="keypad" Tag="4" Click="OnNumpadDigitClick">4</Button>
+            <Button Grid.Row="1" Grid.Column="1" Classes="keypad" Tag="5" Click="OnNumpadDigitClick">5</Button>
+            <Button Grid.Row="1" Grid.Column="2" Classes="keypad" Tag="6" Click="OnNumpadDigitClick">6</Button>
+            <Button Grid.Row="1" Grid.Column="3" Classes="keypad" Click="OnNumpadCommaClick" Background="#203D58">,</Button>
+
+            <Button Grid.Row="2" Grid.Column="0" Classes="keypad" Tag="1" Click="OnNumpadDigitClick">1</Button>
+            <Button Grid.Row="2" Grid.Column="1" Classes="keypad" Tag="2" Click="OnNumpadDigitClick">2</Button>
+            <Button Grid.Row="2" Grid.Column="2" Classes="keypad" Tag="3" Click="OnNumpadDigitClick">3</Button>
+            <Button Grid.Row="2" Grid.Column="3" x:Name="ClearButton" Classes="action" Click="OnClearClick"
+                    Background="#C93432" BorderBrush="#F06461">
+              <TextBlock Text="C" FontSize="24" FontWeight="Bold"/>
+            </Button>
+
+            <Button Grid.Row="3" Grid.Column="0" Classes="keypad" Tag="0" Click="OnNumpadDigitClick">0</Button>
+            <Button Grid.Row="3" Grid.Column="1" x:Name="QtyPlusButton" Classes="action" Click="OnQtyPlusClick">
+              <TextBlock Text="+1" FontSize="20" FontWeight="Bold"/>
+            </Button>
+            <Button Grid.Row="3" Grid.Column="2" x:Name="QtyMinusButton" Classes="action" Click="OnQtyMinusClick">
+              <TextBlock Text="−1" FontSize="20" FontWeight="Bold"/>
+            </Button>
+            <Button Grid.Row="3" Grid.Column="3" x:Name="ImmediateStornoButton" Classes="action" Click="OnRemoveClick">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <TextBlock Text="SOFORT STORNO" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock Text="F4 · POSITION" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Row="4" Grid.Column="0" x:Name="EditionActionButton" Classes="action" Click="OnEditionActionClick"
+                    Background="#264A5E" BorderBrush="#5B879F">
+              <TextBlock x:Name="EditionActionText" Text="PFAND" FontSize="15" FontWeight="Bold"/>
+            </Button>
+            <Button Grid.Row="4" Grid.Column="1" x:Name="ParkButton" Classes="action" Click="OnParkClick">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <TextBlock x:Name="ParkButtonText" Text="PARKEN" TextAlignment="Center" TextWrapping="Wrap" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="ParkButtonSubText" Text="F3 · BON" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Grid.Row="4" Grid.Column="2" x:Name="CashButton" Classes="action" Click="OnCashClick"
+                    Background="#0E9F47" BorderBrush="#4DDA82">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <TextBlock x:Name="CashButtonText" Text="BAR · TEST" TextWrapping="Wrap" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock Text="F1 · BEZAHLEN" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Grid.Row="4" Grid.Column="3" x:Name="CardButton" Classes="action" Click="OnCardClick"
+                    Background="#1766D1" BorderBrush="#65A0FF">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <TextBlock x:Name="CardButtonText" Text="KARTE · TEST" TextWrapping="Wrap" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock Text="F2 · BEZAHLEN" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
