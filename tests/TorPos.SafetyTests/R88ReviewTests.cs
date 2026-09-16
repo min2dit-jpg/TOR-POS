@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using TorPos.Infrastructure;
 
@@ -74,7 +75,24 @@ public static class R88ReviewTests
             q.ExecuteNonQuery();
         }
 
-        var report = await management.BuildStornoReportAsync();
+        // Execute the report inside the I/O worker's culture scope: the queue
+        // has its own ExecutionContext, so changing only the caller is insufficient.
+        static Task<ReportDocument> ReportInCultureAsync(BusinessManagementService service, string culture) =>
+            IoQueue.RunAsync(async () =>
+            {
+                var previous = CultureInfo.CurrentCulture;
+                try
+                {
+                    CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+                    return await service.BuildStornoReportAsync();
+                }
+                finally
+                {
+                    CultureInfo.CurrentCulture = previous;
+                }
+            });
+
+        var report = await ReportInCultureAsync(management, "en-US");
         var text = string.Join("\n", report.Lines);
 
         assert(
@@ -83,7 +101,8 @@ public static class R88ReviewTests
 
         assert(
             text.Contains("kassierer-a") && text.Contains("R88 Testartikel entfernt") && text.Contains("5,00 EUR"),
-            "R88 a SOFORT STORNO entry from pos_action_log appears in the report with its amount");
+            "R88 a SOFORT STORNO entry from pos_action_log appears in the report with its amount; row: " +
+            report.Lines.FirstOrDefault(line => line.Contains("R88 Testartikel entfernt")));
 
         assert(
             text.Contains("088002") && text.Contains("088001") && text.Contains("BON STORNO") && text.Contains("admin-a"),
@@ -106,11 +125,21 @@ public static class R88ReviewTests
         Directory.CreateDirectory(emptyDir);
         var emptyDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(emptyDir, "empty.db"));
         var emptyManagement = new BusinessManagementService(emptyDb, new SettingsRepository(emptyDb), new AuditLogRepository(emptyDb));
-        var emptyReport = await emptyManagement.BuildStornoReportAsync();
+        var emptyReport = await ReportInCultureAsync(emptyManagement, "en-US");
         var emptyText = string.Join("\n", emptyReport.Lines);
         assert(
             emptyText.Contains("Summe SOFORT STORNO: 0 · 0,00 EUR") &&
             emptyText.Contains("Summe BON STORNO/TEILRETOURE: 0 · 0,00 EUR"),
             "R88 an empty database still produces a well-formed report with zero totals instead of an empty/broken document");
+
+        foreach (var culture in new[] { "de-DE", "tr-TR" })
+        {
+            var localized = await ReportInCultureAsync(management, culture);
+            var localizedEmpty = await ReportInCultureAsync(emptyManagement, culture);
+            assert(
+                localized.Lines.SequenceEqual(report.Lines) &&
+                localizedEmpty.Lines.SequenceEqual(emptyReport.Lines),
+                $"R88 German report amounts and totals remain identical under {culture} and en-US");
+        }
     }
 }
