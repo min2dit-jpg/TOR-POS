@@ -254,6 +254,12 @@ test('R125 provisioning creates a customer whose owner and till work against the
   // The server verifies what the tool wrote - same hashing, one module.
   const login=await request('/api/login',{email:customer.ownerEmail,password:customer.oneTimePassword});
   assert.equal(login.status,200,'the new owner can sign in with the one-time password');
+  // R128: ...but sees nothing until that one-time password has been replaced.
+  const blocked=await request('/api/portal/data',undefined,{Cookie:login.cookie});
+  assert.equal(blocked.status,428);
+  assert.equal(blocked.body.code,'PASSWORD_CHANGE_REQUIRED');
+  const own='R125-Eigenes-Passwort!';
+  assert.equal((await request('/api/password/change',{current_password:customer.oneTimePassword,new_password:own},{Cookie:login.cookie})).status,200);
   const portal=await request('/api/portal/data',undefined,{Cookie:login.cookie});
   assert.equal(portal.status,200);
   assert.equal(portal.body.saleTotal,0,'a new customer sees none of the sales of another tenant');
@@ -294,4 +300,54 @@ test('R125 provisioning creates a customer whose owner and till work against the
  assert.equal(listed[0].branches[0].registers[0].deviceCode,'R125-KASSE-01');
  assert.equal(listed[0].branches[0].registers[0].activeTokens,0);
  assert.throws(()=>provision.run(['add-branch','--db',dbPath,'--customer'],{out:()=>{}}),/braucht einen Wert/);
+});
+
+// ---------------------------------------------------------------- R128
+
+test('R128 an owner on a one-time password must choose an own password before anything else',async()=>{
+ const provision=require('../tools/provision');
+ const dbPath=path.join(root,'db.sqlite');
+ const db=provision.openDatabase(dbPath);
+ let customer;
+ try{customer=provision.createCustomer(db,{name:'Imbiss R128',customerNumber:'TOR-R128-001',ownerEmail:'inhaber.r128@example.de',ownerName:'R128 Inhaber'});}
+ finally{db.close();}
+
+ const first=await request('/api/login',{email:customer.ownerEmail,password:customer.oneTimePassword});
+ const second=await request('/api/login',{email:customer.ownerEmail,password:customer.oneTimePassword});
+ assert.equal(first.status,200);
+ const cookieA=first.cookie, cookieB=second.cookie;
+
+ const me=await request('/api/me',undefined,{Cookie:cookieA});
+ assert.equal(me.status,200,'the portal can still ask who is logged in');
+ assert.equal(me.body.security.password_change_required,true,'and learns that the password must be changed');
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:cookieA})).body.code,'PASSWORD_CHANGE_REQUIRED','business data stays closed');
+ assert.equal((await request('/api/2fa/setup/start',{},{Cookie:cookieA})).body.code,'PASSWORD_CHANGE_REQUIRED','2FA is enrolled only after the handed-over password is gone');
+
+ const change=body=>request('/api/password/change',body,{Cookie:cookieA});
+ assert.equal((await change({current_password:'falsch-falsch-falsch',new_password:'Ganz-Neues-Passwort-1'})).status,401,'the current password is required');
+ const short=await change({current_password:customer.oneTimePassword,new_password:'kurz'});
+ assert.equal(short.status,400);assert.match(short.body.error,/mindestens 12 Zeichen/);
+ assert.equal((await change({current_password:customer.oneTimePassword,new_password:customer.oneTimePassword})).status,400,'the same password is not accepted as a new one');
+ assert.equal((await change({current_password:customer.oneTimePassword,new_password:customer.ownerEmail})).status,400,'the e-mail address is not accepted as a password');
+ assert.equal((await request('/api/password/change',{current_password:customer.oneTimePassword,new_password:'Ganz-Neues-Passwort-1'})).status,401,'not without a session');
+
+ const ok=await change({current_password:customer.oneTimePassword,new_password:'Ganz-Neues-Passwort-1'});
+ assert.equal(ok.status,200);
+ assert.equal(ok.body.sessions_ended,1,'the other session opened with the one-time password is ended');
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:cookieB})).status,401);
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:cookieA})).status,200,'the session that changed the password continues into the portal');
+ assert.equal((await request('/api/me',undefined,{Cookie:cookieA})).body.security.password_change_required,false);
+
+ assert.equal((await request('/api/login',{email:customer.ownerEmail,password:customer.oneTimePassword})).status,401,'the one-time password no longer works');
+ assert.equal((await request('/api/login',{email:customer.ownerEmail,password:'Ganz-Neues-Passwort-1'})).status,200,'the own password does');
+
+ // A reset hands out a new one-time password - and with it the same obligation.
+ const db2=provision.openDatabase(dbPath);
+ let reset;
+ try{reset=provision.resetOwnerPassword(db2,{email:customer.ownerEmail});}finally{db2.close();}
+ const again=await request('/api/login',{email:customer.ownerEmail,password:reset.oneTimePassword});
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:again.cookie})).body.code,'PASSWORD_CHANGE_REQUIRED','a password reset requires a new own password again');
+
+ // The demo owner was never on a one-time password and is not affected.
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:cookie})).status,200);
 });

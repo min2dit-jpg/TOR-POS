@@ -13,8 +13,8 @@ const {makeQrV6L}=require('./qr-v6');
 // R125: shared with tools/provision.js so both hash credentials identically.
 const {hashPassword,hashToken}=require('./credentials');
 // R127: the version string was typed twice (startup log and /api/health) and
-// both still said R62 three years of revisions later. One constant now.
-const CLOUD_VERSION='0.11.0-R125';
+// both still said R62 many revisions later. One constant now.
+const CLOUD_VERSION='0.12.0-R128';
 const DEMO=process.env.TOR_CLOUD_DEMO==='true';
 const REQUIRE_OWNER_2FA = String(process.env.TOR_CLOUD_REQUIRE_OWNER_2FA ?? (!DEMO ? 'true' : 'false')).toLowerCase()==='true';
 
@@ -417,6 +417,9 @@ ensureColumn('users','totp_enabled','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','totp_pending_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','recovery_hashes',"TEXT NOT NULL DEFAULT '[]'");
+// R128: set by tools/provision.js for a one-time password; cleared when the
+// owner chooses their own. Existing accounts default to 0 and are unaffected.
+ensureColumn('users','must_change_password','INTEGER NOT NULL DEFAULT 0');
 if(!DEMO && db.prepare("SELECT 1 FROM businesses WHERE customer_number='TOR-DEMO-001'").get())throw new Error('Demodatenbank nur mit TOR_CLOUD_DEMO=true verwenden.');
 db.exec(`CREATE TABLE IF NOT EXISTS cloud_migrations(id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS stock_sync_state(register_id INTEGER PRIMARY KEY,occurred_at TEXT NOT NULL);`);
@@ -464,7 +467,7 @@ function getSessionUser(req) {
   const sid = parseCookies(req).tor_session;
   if (!sid) return null;
   const row = db.prepare(`
-    SELECT u.id AS user_id,u.business_id,u.email,u.display_name,u.role,u.totp_enabled,u.totp_secret,u.recovery_hashes,s.expires_at
+    SELECT u.id AS user_id,u.business_id,u.email,u.display_name,u.role,u.totp_enabled,u.totp_secret,u.recovery_hashes,u.must_change_password,s.expires_at
     FROM sessions s JOIN users u ON u.id=s.user_id
     WHERE s.id=? AND u.is_active=1
   `).get(sid);
@@ -476,12 +479,28 @@ function getSessionUser(req) {
   return row;
 }
 
-function requireUser(req,res,{allowUnenrolled=false}={}){
+function requireUser(req,res,{allowUnenrolled=false,allowPasswordChange=false}={}){
   const user=getSessionUser(req);
   if(!user){json(res,401,{ok:false,error:'Nicht angemeldet'});return null;}
   if(user.role!=='OWNER'){json(res,403,{ok:false,error:'Portalzugriff nur für freigegebene Rollen'});return null;}
+  // R128: an account still on the one-time password from tools/provision.js
+  // gets nothing but the password change - checked before 2FA, so the owner
+  // first replaces a password that was handed over, then enrols 2FA with it.
+  if(user.must_change_password && !allowPasswordChange){json(res,428,{ok:false,error:'Bitte zuerst das Einmal-Passwort durch ein eigenes Passwort ersetzen.',code:'PASSWORD_CHANGE_REQUIRED'});return null;}
   if(REQUIRE_OWNER_2FA && !allowUnenrolled && !user.totp_enabled){json(res,428,{ok:false,error:'Zwei-Faktor-Anmeldung muss zuerst eingerichtet werden.',code:'TWO_FACTOR_SETUP_REQUIRED'});return null;}
   return user;
+}
+
+// R128: deliberately simple and explainable to a shop owner: long enough to
+// resist guessing, not the password it replaces, not the e-mail address.
+const MIN_PASSWORD_LENGTH=12;
+function passwordProblem(next,current,email){
+  if(next.length<MIN_PASSWORD_LENGTH)return `Das neue Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.`;
+  if(next.length>200)return 'Das neue Passwort ist zu lang (höchstens 200 Zeichen).';
+  if(!next.trim())return 'Das neue Passwort darf nicht nur aus Leerzeichen bestehen.';
+  if(next===current)return 'Das neue Passwort muss sich vom bisherigen unterscheiden.';
+  if(next.trim().toLowerCase()===String(email||'').toLowerCase())return 'Die E-Mail-Adresse ist als Passwort nicht erlaubt.';
+  return '';
 }
 
 function requireDevice(req, res) {
@@ -932,9 +951,30 @@ async function handler(req, res) {
     }
 
     if (req.method === 'GET' && pathname === '/api/me') {
-      const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;
+      const user=requireUser(req,res,{allowUnenrolled:true,allowPasswordChange:true});if(!user)return;
       const business=db.prepare('SELECT name,customer_number FROM businesses WHERE id=?').get(user.business_id);
-      return json(res,200,{ok:true,user:{display_name:user.display_name,role:user.role,email:user.email},business,demo:DEMO,security:{totp_enabled:!!user.totp_enabled,setup_required:REQUIRE_OWNER_2FA&&user.role==='OWNER'&&!user.totp_enabled}});
+      return json(res,200,{ok:true,user:{display_name:user.display_name,role:user.role,email:user.email},business,demo:DEMO,security:{totp_enabled:!!user.totp_enabled,setup_required:REQUIRE_OWNER_2FA&&user.role==='OWNER'&&!user.totp_enabled,password_change_required:!!user.must_change_password}});
+    }
+
+    // R128: until now an owner had no way at all to change their password -
+    // the one-time password from tools/provision.js would have stayed theirs
+    // for good. Shares the login rate limit, so this cannot be used to guess
+    // the current password faster than the login form could.
+    if(req.method==='POST' && pathname==='/api/password/change'){
+      const user=requireUser(req,res,{allowUnenrolled:true,allowPasswordChange:true});if(!user)return;
+      const body=await readJson(req);
+      if(loginLimited(req,user.email))return json(res,429,{ok:false,error:'Zu viele Versuche. Bitte 15 Minuten warten.'});
+      const current=String(body.current_password||'');const next=String(body.new_password||'');
+      const row=db.prepare('SELECT password_salt,password_hash FROM users WHERE id=?').get(user.user_id);
+      if(!row || !await verifyPassword(current,row.password_salt,row.password_hash))return json(res,401,{ok:false,error:'Aktuelles Passwort ist falsch.'});
+      const problem=passwordProblem(next,current,user.email);
+      if(problem)return json(res,400,{ok:false,error:problem});
+      const secret=hashPassword(next);
+      db.prepare('UPDATE users SET password_salt=?,password_hash=?,must_change_password=0 WHERE id=?').run(secret.salt,secret.hash,user.user_id);
+      // Whoever knew the old password must not stay logged in elsewhere; the
+      // session that made the change continues.
+      const ended=Number(db.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').run(user.user_id,parseCookies(req).tor_session||'').changes);
+      return json(res,200,{ok:true,sessions_ended:ended});
     }
 
     if(req.method==='POST' && pathname==='/api/2fa/setup/start'){

@@ -106,9 +106,27 @@ if ($('logoutBtn')) {
     $('twoFactorBadge').textContent=sec.totp_enabled?'2FA aktiv':sec.setup_required?'Einrichtung erforderlich':'2FA nicht aktiv';
     $('twoFactorBadge').classList.toggle('badge-ok',!!sec.totp_enabled);
     $('twoFactorState').innerHTML=`${statusLine('Zwei-Faktor',sec.totp_enabled?'Aktiv':'Nicht aktiv',['AKTIV'])}${statusLine('Inhaber-Richtlinie',sec.setup_required?'Einrichtung erforderlich':'Erfüllt',['ERFÜLLT'])}`;
-    $('twoFactorStart').hidden=!!sec.totp_enabled;
+    // R128: while the one-time password is still active the server refuses
+    // 2FA enrolment anyway, so the button would only produce an error.
+    $('twoFactorStart').hidden=!!sec.totp_enabled||!!sec.password_change_required;
     $('twoFactorDisablePanel').hidden=!sec.totp_enabled;
+    $('passwordHint').textContent=sec.password_change_required
+      ?'Sie sind mit einem Einmal-Passwort angemeldet. Bitte jetzt ein eigenes Passwort festlegen (mindestens 12 Zeichen) – vorher werden keine Geschäftsdaten angezeigt.'
+      :'Mindestens 12 Zeichen. Nach der Änderung werden alle anderen Anmeldungen dieses Kontos beendet.';
+    $('passwordHint').classList.toggle('low',!!sec.password_change_required);
   }
+  if($('passwordChange')) $('passwordChange').addEventListener('click',async()=>{
+    const msg=$('passwordMsg');msg.textContent='';msg.classList.remove('ok-text');
+    const current=$('passwordCurrent').value,next=$('passwordNew').value,repeat=$('passwordRepeat').value;
+    if(next!==repeat){msg.textContent='Die beiden neuen Passwörter stimmen nicht überein.';return;}
+    try{
+      const r=await api('/api/password/change',{method:'POST',body:JSON.stringify({current_password:current,new_password:next})});
+      $('passwordCurrent').value='';$('passwordNew').value='';$('passwordRepeat').value='';
+      msg.textContent='Passwort geändert.'+(r.sessions_ended?` ${r.sessions_ended} andere Anmeldung(en) beendet.`:'');
+      msg.classList.add('ok-text');
+      await refresh();
+    }catch(err){msg.textContent=err.message;}
+  });
   if($('twoFactorStart')) $('twoFactorStart').addEventListener('click',async()=>{
     $('twoFactorSetupMsg').textContent='';
     try{const r=await api('/api/2fa/setup/start',{method:'POST',body:'{}'});$('twoFactorSecret').textContent=r.secret;$('twoFactorSetup').hidden=false;$('twoFactorConfirmCode').focus();}
@@ -133,6 +151,10 @@ if ($('logoutBtn')) {
       $('userLabel').textContent=me.user.display_name;
       $('businessName').textContent=me.business.name;
       await loadSecurity(me);
+      // R128: the one-time password comes first, then 2FA, then the business data.
+      // Only switch views when not already there, so the 30-second refresh does
+      // not jump the page while the owner is typing.
+      if(me.security?.password_change_required){$('refreshStatus').textContent='Sicherheit: Einmal-Passwort zuerst durch ein eigenes Passwort ersetzen.';if(location.hash!=='#security'){showView('security');$('passwordCurrent').focus();}return;}
       if(me.security?.setup_required){$('refreshStatus').textContent='Sicherheit: Zwei-Faktor-Anmeldung zuerst einrichten.';showView('security');return;}
       const data=await api('/api/portal/data?offset='+offset);
       $('refreshStatus').textContent=(me.demo?'DEMO · Beispieldaten und Testverbindung · ':'')+'Aktualisiert '+new Date().toLocaleTimeString('de-DE')+' · Europe/Berlin';
