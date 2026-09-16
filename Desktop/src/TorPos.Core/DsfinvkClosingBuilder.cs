@@ -43,7 +43,19 @@ public sealed record DsfinvkTseResult(
     string Signature,
     DateTimeOffset? LogTime,
     bool Outage,
-    string OutageReason);
+    string OutageReason,
+    DateTimeOffset? StartLogTime = null);
+
+/// <summary>R136: a Vorgang that was started and aborted before it became a receipt (AVBelegabbruch).</summary>
+public sealed record DsfinvkAbortedVorgang(
+    long Number,
+    DateTimeOffset StartedAt,
+    DateTimeOffset EndedAt,
+    string Operator,
+    IReadOnlyList<CartLine> Lines,
+    long DiscountCents,
+    DsfinvkTseResult? Tse,
+    bool Training = false);
 
 /// <summary>Where the receipt a Storno or Retoure refers to was closed.</summary>
 public sealed record DsfinvkOriginalReference(long ZNumber, DateTimeOffset ZCreatedAt, string BonId);
@@ -56,6 +68,9 @@ public sealed class DsfinvkClosingInput
     public required DsfinvkMasterData Master { get; init; }
     public IReadOnlyList<Sale> Sales { get; init; } = Array.Empty<Sale>();
     public IReadOnlyList<DsfinvkCashMovement> CashMovements { get; init; } = Array.Empty<DsfinvkCashMovement>();
+
+    /// <summary>R136: aborted Vorgänge (AVBelegabbruch).</summary>
+    public IReadOnlyList<DsfinvkAbortedVorgang> Aborted { get; init; } = Array.Empty<DsfinvkAbortedVorgang>();
 
     /// <summary>R135: training sales recorded as AVTraining.</summary>
     public IReadOnlyList<DsfinvkTraining> Trainings { get; init; } = Array.Empty<DsfinvkTraining>();
@@ -129,6 +144,7 @@ public static class DsfinvkClosingBuilder
     public static string CashMovementBonId(long id) => $"KB-{id.ToString(CultureInfo.InvariantCulture)}";
     public static string OrderBonId(long parkNumber) => $"BE-{parkNumber.ToString(CultureInfo.InvariantCulture)}";
     public static string TrainingBonId(long trainingNumber) => $"TR-{trainingNumber.ToString(CultureInfo.InvariantCulture)}";
+    public static string AbortedBonId(long number) => $"AB-{number.ToString(CultureInfo.InvariantCulture)}";
     public static string OrderAllocationGroup(ParkedReceipt order) => $"Bestellung {order.DisplayNumber}";
 
     /// <summary>
@@ -173,6 +189,8 @@ public static class DsfinvkClosingBuilder
                 vorgaenge.Add((order.CreatedAt, 2, OrderBonId(order.ParkNumber), () => WriteOrder(order)));
             foreach (var training in _input.Trainings)
                 vorgaenge.Add((training.Receipt.CreatedAt, 3, TrainingBonId(training.Receipt.ReceiptNumber), () => WriteTraining(training)));
+            foreach (var aborted in _input.Aborted)
+                vorgaenge.Add((aborted.EndedAt, 4, AbortedBonId(aborted.Number), () => WriteAborted(aborted)));
 
             vorgaenge.Sort((a, b) => a.At != b.At ? a.At.CompareTo(b.At) : a.Order.CompareTo(b.Order));
             foreach (var vorgang in vorgaenge)
@@ -197,6 +215,7 @@ public static class DsfinvkClosingBuilder
                 ["BON_TYP"] = FiscalProcessData.VorgangstypBeleg,
                 ["BON_NAME"] = sale.TransactionType switch { "STORNO" => "Storno", "RETURN" => "Retoure", _ => "Verkauf" },
                 ["BON_STORNO"] = sale.TransactionType == "STORNO" ? "1" : "0",
+                ["BON_START"] = sale.StartedAt is { } saleStart ? DsfinvkCsv.Timestamp(saleStart) : null,
                 ["BON_ENDE"] = DsfinvkCsv.Timestamp(sale.CreatedAt),
                 ["BEDIENER_ID"] = DsfinvkCsv.Fit(sale.OperatorName, 50),
                 ["BEDIENER_NAME"] = DsfinvkCsv.Fit(sale.OperatorName, 50),
@@ -241,7 +260,8 @@ public static class DsfinvkClosingBuilder
                 sale.TseOutage,
                 FiscalProcessData.KassenbelegProcessType,
                 () => FiscalProcessData.KassenbelegText(sale),
-                sale.CreatedAt);
+                sale.CreatedAt,
+                startLogTime: sale.TseStartLogTime);
         }
 
         private void WriteCashMovement(DsfinvkCashMovement movement)
@@ -266,6 +286,8 @@ public static class DsfinvkClosingBuilder
                 ["BON_TYP"] = FiscalProcessData.VorgangstypBeleg,
                 ["BON_NAME"] = bonName,
                 ["BON_STORNO"] = "0",
+                // A cash movement begins and ends when it is recorded.
+                ["BON_START"] = DsfinvkCsv.Timestamp(movement.CreatedAt),
                 ["BON_ENDE"] = DsfinvkCsv.Timestamp(movement.CreatedAt),
                 ["BEDIENER_ID"] = DsfinvkCsv.Fit(movement.Actor, 50),
                 ["BEDIENER_NAME"] = DsfinvkCsv.Fit(movement.Actor, 50),
@@ -300,7 +322,8 @@ public static class DsfinvkClosingBuilder
                 FiscalProcessData.KassenbelegProcessType,
                 () => FiscalProcessData.CashMovementText(new CashMovement(movement.Id, movement.CreatedAt, movement.Kind, movement.AmountCents, movement.Reason, movement.Actor, CashMovement.ProductionMode, movement.BusinessCase)),
                 movement.CreatedAt,
-                tse?.OutageReason);
+                tse?.OutageReason,
+                tse?.StartLogTime);
         }
 
         /// <summary>
@@ -319,6 +342,7 @@ public static class DsfinvkClosingBuilder
                 ["BON_TYP"] = FiscalProcessData.VorgangstypTraining,
                 ["BON_NAME"] = "Training",
                 ["BON_STORNO"] = "0",
+                ["BON_START"] = receipt.StartedAt is { } trainingStart ? DsfinvkCsv.Timestamp(trainingStart) : null,
                 ["BON_ENDE"] = DsfinvkCsv.Timestamp(receipt.CreatedAt),
                 ["BEDIENER_ID"] = DsfinvkCsv.Fit(receipt.OperatorName, 50),
                 ["BEDIENER_NAME"] = DsfinvkCsv.Fit(receipt.OperatorName, 50),
@@ -342,7 +366,58 @@ public static class DsfinvkClosingBuilder
                 FiscalProcessData.KassenbelegProcessType,
                 () => FiscalProcessData.KassenbelegText(receipt),
                 receipt.CreatedAt,
-                tse?.OutageReason);
+                tse?.OutageReason,
+                tse?.StartLogTime);
+        }
+
+        /// <summary>
+        /// R136: AVBelegabbruch (Anhang B) - the positions that were in the
+        /// cart, payment "Keine", the TSE transaction ended with the Anhang I
+        /// abort data; no effect on the closing.
+        /// </summary>
+        private void WriteAborted(DsfinvkAbortedVorgang aborted)
+        {
+            var bonId = AbortedBonId(aborted.Number);
+            var total = Math.Max(0, aborted.Lines.Sum(l => l.LineTotalCents) - aborted.DiscountCents);
+
+            Add("Bonkopf", new()
+            {
+                ["BON_ID"] = bonId,
+                ["BON_NR"] = aborted.Number,
+                ["BON_TYP"] = "AVBelegabbruch",
+                ["BON_NAME"] = aborted.Training ? "Abbruch (Training)" : "Abbruch",
+                ["BON_STORNO"] = "0",
+                ["BON_START"] = DsfinvkCsv.Timestamp(aborted.StartedAt),
+                ["BON_ENDE"] = DsfinvkCsv.Timestamp(aborted.EndedAt),
+                ["BEDIENER_ID"] = DsfinvkCsv.Fit(aborted.Operator, 50),
+                ["BEDIENER_NAME"] = DsfinvkCsv.Fit(aborted.Operator, 50),
+                ["UMS_BRUTTO"] = new DsfinvkMoney(total),
+            });
+
+            WriteHeaderVat(bonId, aborted.Lines, aborted.DiscountCents, 1);
+            Add("Bonkopf_Zahlarten", new()
+            {
+                ["BON_ID"] = bonId,
+                ["ZAHLART_TYP"] = "Keine",
+                ["ZAHLART_NAME"] = "Keine",
+                ["BASISWAEH_BETRAG"] = new DsfinvkMoney(0),
+            });
+            WritePositions(bonId, aborted.Lines, aborted.DiscountCents, 1, inHaus: null, beleg: false);
+
+            var tse = aborted.Tse;
+            WriteTse(
+                bonId,
+                tse?.SerialNumber ?? "",
+                tse?.TransactionNumber ?? "",
+                tse?.SignatureCounter ?? "",
+                tse?.Signature ?? "",
+                tse?.LogTime,
+                tse?.Outage ?? false,
+                FiscalProcessData.KassenbelegProcessType,
+                () => FiscalProcessData.BelegabbruchText,
+                aborted.EndedAt,
+                tse?.OutageReason,
+                tse?.StartLogTime);
         }
 
         private void WriteOrder(ParkedReceipt order)
@@ -356,6 +431,7 @@ public static class DsfinvkClosingBuilder
                 ["BON_TYP"] = "AVBestellung",
                 ["BON_NAME"] = "Bestellung",
                 ["BON_STORNO"] = "0",
+                ["BON_START"] = order.VorgangStartedAt is { } orderStart ? DsfinvkCsv.Timestamp(orderStart) : null,
                 ["BON_ENDE"] = DsfinvkCsv.Timestamp(order.CreatedAt),
                 ["BEDIENER_ID"] = DsfinvkCsv.Fit(order.CreatedBy, 50),
                 ["BEDIENER_NAME"] = DsfinvkCsv.Fit(order.CreatedBy, 50),
@@ -388,7 +464,8 @@ public static class DsfinvkClosingBuilder
                 order.TseOutage,
                 FiscalProcessData.BestellungProcessType,
                 () => FiscalProcessData.BestellungText(order),
-                order.CreatedAt);
+                order.CreatedAt,
+                startLogTime: order.TseStartLogTime);
         }
 
         // ----------------------------------------------------------- positions
@@ -559,7 +636,7 @@ public static class DsfinvkClosingBuilder
         private void WriteTse(
             string bonId, string serial, string transactionNumber, string signatureCounter, string signature,
             DateTimeOffset? logTime, bool outage, string processType, Func<string> processData, DateTimeOffset at,
-            string? storedOutageReason = null)
+            string? storedOutageReason = null, DateTimeOffset? startLogTime = null)
         {
             var row = new Dictionary<string, object?> { ["BON_ID"] = bonId };
 
@@ -567,6 +644,7 @@ public static class DsfinvkClosingBuilder
             {
                 row["TSE_ID"] = TseId(serial);
                 row["TSE_TANR"] = ParseCounter(transactionNumber, bonId, "Transaktionsnummer");
+                row["TSE_TA_START"] = startLogTime is { } started ? DsfinvkCsv.TseTime(started) : null;
                 row["TSE_TA_ENDE"] = logTime is { } finished ? DsfinvkCsv.TseTime(finished) : null;
                 row["TSE_TA_VORGANGSART"] = processType;
                 row["TSE_TA_SIGZ"] = ParseCounter(signatureCounter, bonId, "Signaturzähler");

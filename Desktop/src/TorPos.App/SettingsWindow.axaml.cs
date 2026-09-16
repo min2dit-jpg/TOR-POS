@@ -2923,7 +2923,7 @@ private Control TsePage()
                 database,
                 _settings,
                 new BusinessManagementService(database, _settings, _audit),
-                new DailyClosingGuard(new ParkedReceiptRepository(database)),
+                new DailyClosingGuard(new ParkedReceiptRepository(database), database),
                 _audit);
             var saved = await masterData.SaveSettingsAsync(values, _currentUser.Username);
             _reportSmtpPassword.Text = "";

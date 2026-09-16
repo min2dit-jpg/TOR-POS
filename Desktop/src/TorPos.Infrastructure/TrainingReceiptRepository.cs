@@ -53,8 +53,8 @@ public sealed class TrainingReceiptRepository
                 q.CommandText = """
                     INSERT INTO training_receipts(
                       training_number,created_at,operator_name,payment_method,
-                      discount_cents,total_cents,cash_portion_cents,card_portion_cents,im_haus)
-                    VALUES($n,$at,$op,$pm,$disc,$total,$cash,$card,$imHaus);
+                      discount_cents,total_cents,cash_portion_cents,card_portion_cents,im_haus,started_at)
+                    VALUES($n,$at,$op,$pm,$disc,$total,$cash,$card,$imHaus,$started);
                     SELECT last_insert_rowid();
                     """;
                 q.Parameters.AddWithValue("$n", number);
@@ -66,6 +66,7 @@ public sealed class TrainingReceiptRepository
                 q.Parameters.AddWithValue("$cash", snapshot.EffectiveCashPortionCents);
                 q.Parameters.AddWithValue("$card", snapshot.EffectiveCardPortionCents);
                 q.Parameters.AddWithValue("$imHaus", snapshot.ImHaus ? 1 : 0);
+                q.Parameters.AddWithValue("$started", (snapshot.StartedAt ?? now).ToString("O"));
                 id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
             }
 
@@ -93,10 +94,11 @@ public sealed class TrainingReceiptRepository
             q.CommandText = """
                 INSERT INTO training_tse_signatures(
                   training_id,client_id,transaction_number,signature_counter,serial_number,
-                  signature,log_time,outage,outage_reason,created_at)
-                VALUES($id,$client,$tanr,$sigz,$serial,$sig,$log,$outage,$reason,$at);
+                  signature,log_time,outage,outage_reason,created_at,start_log_time)
+                VALUES($id,$client,$tanr,$sigz,$serial,$sig,$log,$outage,$reason,$at,$startlog);
                 """;
             q.Parameters.AddWithValue("$id", trainingId);
+            q.Parameters.AddWithValue("$startlog", result.StartLogTime?.ToString("O") ?? "");
             q.Parameters.AddWithValue("$client", result.ClientId);
             q.Parameters.AddWithValue("$tanr", result.TransactionNumber);
             q.Parameters.AddWithValue("$sigz", result.SignatureCounter);
@@ -144,7 +146,7 @@ public sealed class TrainingReceiptRepository
                 SELECT r.training_number,r.created_at,r.operator_name,r.payment_method,r.discount_cents,r.total_cents,
                        r.cash_portion_cents,r.card_portion_cents,r.im_haus,
                        t.training_id,t.client_id,t.transaction_number,t.signature_counter,t.serial_number,t.signature,
-                       t.log_time,t.outage,t.outage_reason
+                       t.log_time,t.outage,t.outage_reason,r.started_at,t.start_log_time
                 FROM training_receipts r
                 LEFT JOIN training_tse_signatures t ON t.training_id=r.id
                 WHERE r.id=$id;
@@ -168,12 +170,15 @@ public sealed class TrainingReceiptRepository
                 ImHaus = r.GetInt64(8) != 0,
                 TransactionType = FiscalProcessData.TrainingTransactionType,
                 FiscalStatus = "TRAINING",
+                StartedAt = r.IsDBNull(18) ? null : DateTimeOffset.Parse(r.GetString(18), CultureInfo.InvariantCulture),
             };
 
             if (!r.IsDBNull(9))
             {
                 var logTime = string.IsNullOrWhiteSpace(r.GetString(15)) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(15), CultureInfo.InvariantCulture);
-                tse = new DsfinvkTseResult(r.GetString(13), r.GetString(11), r.GetString(12), r.GetString(14), logTime, r.GetInt64(16) != 0, r.GetString(17));
+                var startLogTime = string.IsNullOrWhiteSpace(r.GetString(19)) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(19), CultureInfo.InvariantCulture);
+                tse = new DsfinvkTseResult(r.GetString(13), r.GetString(11), r.GetString(12), r.GetString(14), logTime, r.GetInt64(16) != 0, r.GetString(17), startLogTime);
+                sale.TseStartLogTime = startLogTime;
                 sale.TseClientId = r.GetString(10);
                 sale.TseTransactionNumber = r.GetString(11);
                 sale.TseSignatureCounter = r.GetString(12);
@@ -261,6 +266,38 @@ public sealed class TrainingFiscalSigningService
         _tse = tse;
         _settings = settings;
         _trainings = trainings;
+    }
+
+    /// <summary>R136: see SaleFiscalSigningService.Vorgaenge.</summary>
+    public TseVorgangService? Vorgaenge { get; init; }
+
+    /// <summary>R136: ends the training Vorgang started with the first position of the cart.</summary>
+    public async Task<SaleTseResult> SignInVorgangAsync(Sale training, string vorgangId, string actor, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(training);
+        if (string.IsNullOrEmpty(vorgangId) || Vorgaenge is not { } vorgaenge)
+            return await SignAsync(training, actor, ct);
+        if (training.TransactionType != FiscalProcessData.TrainingTransactionType)
+            throw new InvalidOperationException("Nur Trainingsvorgänge werden hier als AVTraining abgesichert.");
+
+        var reference = $"TRAINING:{training.Id}";
+        string processData;
+        try
+        {
+            processData = FiscalProcessData.KassenbelegText(training);
+        }
+        catch (UnsupportedVatRateException ex)
+        {
+            await vorgaenge.CloseUnsignedAsync(vorgangId, reference, ct);
+            await _tse.ReportUnavailableAsync(ex.Message, actor, ct);
+            var refused = SaleTseResult.Outage(ex.Message);
+            await _trainings.RecordTseResultAsync(training.Id, refused, ct);
+            return refused;
+        }
+
+        var result = await vorgaenge.FinishAsync(vorgangId, FiscalProcessData.KassenbelegProcessType, processData, actor, reference, ct);
+        await _trainings.RecordTseResultAsync(training.Id, result, ct);
+        return result;
     }
 
     public async Task<SaleTseResult> SignAsync(Sale training, string actor, CancellationToken ct = default)

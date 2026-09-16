@@ -97,6 +97,15 @@ public partial class MainWindow:Window
     // initial empty UpdateCart() cannot erase a recovery file from a crash.
     private bool _cartRecoveryReady;
 
+    // R136: the TSE Vorgang of the cart. AEAO zu § 146a Nr. 2.2.2 - the TSE
+    // transaction starts with the first position, not after payment. It ends
+    // with payment, order acceptance or parking, or as an aborted Vorgang
+    // (AVBelegabbruch) when the cart is emptied. TSE calls run one after the
+    // other on _tseVorgangWork, never blocking the cashier.
+    private readonly TseVorgangCartTracker _tseVorgang = new();
+    private Task _tseVorgangWork = Task.CompletedTask;
+    private TseVorgangService? Vorgaenge => _fiscalSigning.Vorgaenge;
+
     private sealed class OpenCartRecoverySnapshot
     {
         public string OperationId { get; set; } = "";
@@ -110,6 +119,9 @@ public partial class MainWindow:Window
         // completing checkout would silently recover the cart items but
         // lose the Im-Haus choice, reverting to Außer Haus.
         public bool ImHaus { get; set; }
+        // R136: the TSE Vorgang of the recovered cart continues.
+        public string TseVorgangId { get; set; } = "";
+        public DateTimeOffset? VorgangStartedAt { get; set; }
     }
 
     // Touch-Oberfläche: sichtbare Waren-/Artikel-Tasten werden in den
@@ -211,6 +223,14 @@ public partial class MainWindow:Window
                 await TryRestoreOpenCartAsync();
 
             _cartRecoveryReady = true;
+            // R136: a TSE Vorgang left open by a crash whose cart did not come
+            // back is ended as aborted. A training login leaves them for the
+            // next regular one, which may still restore its cart.
+            if (!_currentUser.IsTraining)
+            {
+                var keep = _tseVorgang.VorgangId;
+                QueueTseVorgangWork(v => v.AbortOrphansAsync(keep, _currentUser.Username));
+            }
             // R126: the button states were last computed while recovery was
             // still pending (CartLocked), and nothing recomputed them once it
             // finished - C, EXTRA and SCHNELLARTIKEL stayed disabled after every
@@ -423,8 +443,83 @@ public partial class MainWindow:Window
         if (itemCount > 0)
             _customerDisplayWindow?.ShowCart(_engine.Cart, _engine.DiscountCents, _engine.TotalCents);
 
+        TrackTseVorgang();
+
         if (_cartRecoveryReady)
             PersistOpenCartRecovery();
+    }
+
+    /// <summary>
+    /// R136: starts the TSE transaction with the first position of a Vorgang
+    /// and ends it as aborted when the cart is emptied without payment, order
+    /// acceptance or parking. Only a till that records the Vorgang fiscally - a
+    /// real booking or a recorded training - starts one.
+    /// </summary>
+    private void TrackTseVorgang()
+    {
+        if (Vorgaenge is null || !_cartRecoveryReady)
+            return;
+
+        var fiscal = _engine.Cart.Count > 0 && _tseVorgang.VorgangId is null &&
+            (!IsSimulation || RecordsTrainingFiscally());
+        var action = _tseVorgang.OnCartChanged(_engine.Cart, _engine.DiscountCents, _imHaus, fiscal, DateTimeOffset.Now);
+        var actor = _currentUser.Username;
+        var training = _currentUser.IsTraining;
+
+        switch (action.Kind)
+        {
+            case TseVorgangActionKind.Start:
+                QueueTseVorgangWork(v => v.StartAsync(action.VorgangId, training, action.StartedAt, actor));
+                break;
+            case TseVorgangActionKind.Abort:
+                QueueTseVorgangWork(v => v.AbortAsync(action.VorgangId, action.Lines, action.DiscountCents, actor, actor));
+                break;
+        }
+    }
+
+    private void QueueTseVorgangWork(Func<TseVorgangService, Task> work)
+    {
+        if (Vorgaenge is not { } vorgaenge)
+            return;
+        _tseVorgangWork = RunTseVorgangWorkAsync(_tseVorgangWork, () => work(vorgaenge));
+    }
+
+    private static async Task RunTseVorgangWorkAsync(Task previous, Func<Task> work)
+    {
+        await previous;
+        try
+        {
+            await work();
+        }
+        catch (Exception ex)
+        {
+            // The TSE service documents its own outages; this is a database or
+            // programming fault and must not reach the cashier's flow.
+            CrashLog.WriteException("TSE-Vorgang", ex);
+        }
+    }
+
+    private void AdoptTseVorgang(string vorgangId, DateTimeOffset? startedAt)
+    {
+        if (!string.IsNullOrEmpty(vorgangId) && startedAt is { } started)
+            _tseVorgang.Adopt(vorgangId, started, _engine.Cart, _engine.DiscountCents, _imHaus);
+    }
+
+    /// <summary>R136: a parked receipt that is taken up again continues its own Vorgang.</summary>
+    private async Task ResumeTseVorgangAsync(ParkedReceipt parked)
+    {
+        if (Vorgaenge is not { } vorgaenge)
+            return;
+        try
+        {
+            await _tseVorgangWork;
+            if (await vorgaenge.ResumeParkedAsync(parked.Id) is { } vorgang)
+                _tseVorgang.Adopt(vorgang.Id, vorgang.StartedAt, parked.Lines, parked.DiscountCents, parked.ImHaus);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("TSE-Vorgang fortsetzen", ex);
+        }
     }
 
     private string OpenCartRecoveryPath()
@@ -448,7 +543,7 @@ public partial class MainWindow:Window
             OperationId = _operationId, SavedAt=DateTimeOffset.Now, OperatorName=_currentUser.Username,
             DiscountCents=_engine.DiscountCents, ActiveParkedReceiptId=_activeParkedReceiptId,
             ActiveParkNumber=_activeParkNumber, Lines=CheckoutSnapshot.CopyLines(_engine.Cart).ToList(),
-            ImHaus=_imHaus
+            ImHaus=_imHaus, TseVorgangId=_tseVorgang.VorgangId ?? "", VorgangStartedAt=_tseVorgang.StartedAt
         };
         _recoveryWrite = SaveRecoverySafelyAsync(OpenCartRecoveryPath(),
             snapshot.Lines.Count==0 ? null : JsonSerializer.Serialize(snapshot));
@@ -482,6 +577,7 @@ public partial class MainWindow:Window
                 _engine.Restore(saved.Lines,saved.DiscountCents);
                 _activeParkedReceiptId=saved.ParkedReceiptId;
                 _imHaus=saved.ImHaus;
+                AdoptTseVorgang(saved.TseVorgangId, saved.StartedAt);
                 UpdateCart();
                 ScannerStatus.Text="ZAHLUNG OFFEN / UNGEKLÄRT · KASSE → ZAHLUNG PRÜFEN · NICHT ERNEUT KASSIEREN";
                 return;
@@ -503,6 +599,7 @@ public partial class MainWindow:Window
             _engine.Restore(snapshot.Lines,snapshot.DiscountCents);
             _activeParkedReceiptId=snapshot.ActiveParkedReceiptId; _activeParkNumber=snapshot.ActiveParkNumber;
             _imHaus=snapshot.ImHaus;
+            AdoptTseVorgang(snapshot.TseVorgangId, snapshot.VorgangStartedAt);
             if (string.IsNullOrEmpty(snapshot.OperationId) && snapshot.Lines.Count>0 && !IsSimulation)
             {
                 var legacy=CaptureCheckout(PaymentMethod.Card);
@@ -1847,6 +1944,7 @@ public partial class MainWindow:Window
             _operationId=Guid.NewGuid().ToString("N");_engine.Restore(parked.Lines,parked.DiscountCents);
             _activeParkedReceiptId=parked.Id;_activeParkNumber=parked.ParkNumber;
             _imHaus=parked.ImHaus;RefreshImHausToggle();
+            await ResumeTseVorgangAsync(parked);
             UpdateCart();
         } catch(Exception ex) { ShowOperationalError("BESTELLÜBERSICHT", ex); }
     }
@@ -1871,12 +1969,18 @@ public partial class MainWindow:Window
         SetCheckoutBusy(true);
         try
         {
+            // R136: the Vorgang that ends here (order acceptance) or stays open
+            // in the TSE while the receipt is parked.
+            var vorgangId = _tseVorgang.VorgangId;
+            var vorgangStartedAt = _tseVorgang.StartedAt;
             if (_activeParkedReceiptId is long parkedId)
             {
                 await _parkedReceipts.UpdateAsync(
                     parkedId,
                     _engine.Cart.ToArray(),
                     _engine.DiscountCents, orderPrint: orderMode, actor:_currentUser.Username, imHaus: _imHaus);
+                if (vorgangId is not null)
+                    QueueTseVorgangWork(v => v.ParkAsync(vorgangId, parkedId));
                 var updated=await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining);
                 ScannerStatus.Text = orderMode && updated?.PickupNumber>0
                     ? $"BESTELLUNG {updated.PickupNumber:000} aktualisiert und wieder geöffnet gespeichert."
@@ -1900,12 +2004,28 @@ public partial class MainWindow:Window
                 {
                     try
                     {
-                        await _orderFiscalSigning.SignAsync(parked, _currentUser.Username);
+                        // R136: ends the order Vorgang started with its first position.
+                        await _tseVorgangWork;
+                        await _orderFiscalSigning.SignInVorgangAsync(parked, vorgangId ?? "", vorgangStartedAt, _currentUser.Username);
                     }
                     catch (Exception ex)
                     {
                         CrashLog.WriteException("Fiscal signing order " + parked.ParkNumber, ex);
                     }
+                }
+                else if (vorgangId is not null && orderMode)
+                {
+                    // A training order stays a simulation (R135): its Vorgang
+                    // does not become a record and ends as aborted.
+                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus);
+                    var discount = _engine.DiscountCents;
+                    var actor = _currentUser.Username;
+                    QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
+                }
+                else if (vorgangId is not null)
+                {
+                    var parkedReceiptId = parked.Id;
+                    QueueTseVorgangWork(v => v.ParkAsync(vorgangId, parkedReceiptId));
                 }
 
                 ScannerStatus.Text = orderMode && parked.PickupNumber>0
@@ -1914,6 +2034,7 @@ public partial class MainWindow:Window
 
             }
 
+            _tseVorgang.Release();
             _activeParkedReceiptId = null;
             _activeParkNumber = null;
             _operationId=Guid.NewGuid().ToString("N");
@@ -1969,6 +2090,12 @@ public partial class MainWindow:Window
             try
             {
                 await _parkedReceipts.CancelAsync(selection.Id,orderPrint:orderMode,actor:_currentUser.Username);
+                // R136: the Vorgang of a deleted parked receipt ends as aborted.
+                if (open.FirstOrDefault(x => x.Id == selection.Id) is { } deleted)
+                {
+                    var actor = _currentUser.Username;
+                    QueueTseVorgangWork(v => v.AbortParkedAsync(deleted.Id, deleted.Lines, deleted.DiscountCents, actor, actor));
+                }
                 ScannerStatus.Text = "Geparkter Bon gelöscht.";
                 await RefreshParkedCountAsync();
             }
@@ -1998,6 +2125,7 @@ public partial class MainWindow:Window
         _activeParkNumber = parked.ParkNumber;
         _imHaus = parked.ImHaus;
         RefreshImHausToggle();
+        await ResumeTseVorgangAsync(parked);
         UpdateCart();
 
         ScannerStatus.Text = parked.PickupNumber>0
@@ -2044,6 +2172,28 @@ public partial class MainWindow:Window
         if (!RequirePermission(UserPermissions.ZReport, "Z-BERICHT") ||
             !RequireRealMode("Z-BERICHT"))
             return;
+
+        // R136: AEAO zu § 146a Nr. 2.2.3.3 - no Vorgang may stay open at a
+        // closing. The cart must be empty; transactions still open without a
+        // cart (a crash) are ended as aborted before the closing.
+        if (_engine.Cart.Count > 0)
+        {
+            ScannerStatus.Text = "Z-BERICHT: Aktuellen Vorgang zuerst kassieren, parken oder mit C leeren.";
+            return;
+        }
+
+        await _tseVorgangWork;
+        if (Vorgaenge is { } openVorgaenge)
+        {
+            try
+            {
+                await openVorgaenge.AbortOrphansAsync(null, _currentUser.Username);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("TSE-Vorgänge vor Z-Bericht", ex);
+            }
+        }
 
         var parkedCheck = await _dailyClosingGuard.CheckAsync();
 
@@ -2184,7 +2334,8 @@ public partial class MainWindow:Window
 
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
         _operationId, CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus), _engine.DiscountCents,
-        method, _currentUser.Username, _activeParkedReceiptId, _imHaus, cashPortionCents);
+        method, _currentUser.Username, _activeParkedReceiptId, _imHaus, cashPortionCents,
+        _tseVorgang.VorgangId ?? "", _tseVorgang.StartedAt);
 
     private async void OnMixedPaymentClick(object? sender, RoutedEventArgs e)
     {
@@ -2293,13 +2444,22 @@ public partial class MainWindow:Window
                     {
                         var trainings = new TrainingReceiptRepository(new SqliteDatabase(AppPaths.DatabasePath));
                         var training = await trainings.RecordAsync(snapshot);
-                        await new TrainingFiscalSigningService(_tseFailSafe, _settings, trainings)
-                            .SignAsync(training, _currentUser.Username);
+                        await _tseVorgangWork;
+                        await new TrainingFiscalSigningService(_tseFailSafe, _settings, trainings) { Vorgaenge = Vorgaenge }
+                            .SignInVorgangAsync(training, snapshot.TseVorgangId, _currentUser.Username);
                     }
                     catch (Exception ex)
                     {
                         ReportOperationalError("TRAINING", "Trainingsvorgang konnte nicht als AVTraining erfasst werden: " + ex.Message, ex);
                     }
+                }
+                else if (snapshot.TseVorgangId.Length > 0)
+                {
+                    // R136: the till left real booking while this cart was open
+                    // (fiscal readiness changed). The started Vorgang does not
+                    // become a receipt and ends as aborted.
+                    var actor = _currentUser.Username;
+                    QueueTseVorgangWork(v => v.AbortAsync(snapshot.TseVorgangId, snapshot.Lines, snapshot.DiscountCents, actor, actor));
                 }
                 long testPickup = 0;
                 var pickupMode = GetImbissPickupMode();
@@ -2429,8 +2589,13 @@ public partial class MainWindow:Window
         // rückgängig machen oder blockieren - siehe SaleFiscalSigningService.
         try
         {
+            // R136: ends the Vorgang whose TSE transaction started with the
+            // first position of this cart.
             using (_perf.Measure("checkout.fiscal_signing"))
-                await _fiscalSigning.SignAsync(sale, _currentUser.Username);
+            {
+                await _tseVorgangWork;
+                await _fiscalSigning.SignInVorgangAsync(sale, snapshot.TseVorgangId, _currentUser.Username);
+            }
         }
         catch (Exception ex)
         {
@@ -2569,6 +2734,8 @@ public partial class MainWindow:Window
 
     private void ClearCompletedCart()
     {
+        // R136: the Vorgang ended with its receipt; the empty cart is no abort.
+        _tseVorgang.Release();
         _pendingCheckout=null; _engine.IsReadOnly=false; _engine.Clear();
         _activeParkedReceiptId=null; _activeParkNumber=null;
         _operationId=Guid.NewGuid().ToString("N");
@@ -2723,7 +2890,9 @@ public partial class MainWindow:Window
             string.IsNullOrWhiteSpace(sale.TseSerialNumber) ? _settingsCache.GetText("tse.serial","") : sale.TseSerialNumber,
             sale.TseTransactionNumber,
             long.TryParse(sale.TseSignatureCounter, out var tseCounter) ? tseCounter : 0,
-            sale.CreatedAt,
+            // R136: Vorgangsbeginn is the TSE's start log time; during an outage
+            // the till's own start of the Vorgang (sales before R136: CreatedAt).
+            sale.TseStartLogTime ?? sale.StartedAt ?? sale.CreatedAt,
             // R121: no "?? DateTimeOffset.Now" fallback. Vorgangsende is the
             // TSE's log time; substituting the PC clock presented a fabricated
             // value as TSE-derived and made the receipt validator's own

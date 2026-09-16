@@ -95,7 +95,8 @@ public static class DsfinvkMasterDataStore
                     WHERE created_at_utc > $from
                       AND movement_type IN ('EINLAGE','ENTNAHME')
                       AND fiscal_mode <> 'TEST_ONLY')
-                 + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from);
+                 + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from)
+                 + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from);
             """))
         {
             q.Parameters.AddWithValue("$from", from);

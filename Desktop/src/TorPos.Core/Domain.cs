@@ -287,6 +287,12 @@ public sealed class Sale
     public string TseSignature { get; set; } = "";
     public DateTimeOffset? TseLogTime { get; set; }
     public bool TseOutage { get; set; }
+
+    /// <summary>R136: when the Vorgang began at the till (first position); null for sales from before R136.</summary>
+    public DateTimeOffset? StartedAt { get; set; }
+
+    /// <summary>R136: TSE log time of StartTransaction; null before R136 or during an outage.</summary>
+    public DateTimeOffset? TseStartLogTime { get; set; }
 }
 
 /// <summary>
@@ -302,16 +308,19 @@ public sealed record SaleTseResult(
     string SerialNumber,
     string Signature,
     DateTimeOffset? LogTime,
-    string OutageMessage)
+    string OutageMessage,
+    DateTimeOffset? StartLogTime = null)
 {
+    /// <summary>R136: <paramref name="startLogTime"/> is the TSE log time of StartTransaction (TSE_TA_START, Vorgangsbeginn on the receipt).</summary>
     public static SaleTseResult SignedResult(
         string clientId,
         string transactionNumber,
         string signatureCounter,
         string serialNumber,
         string signature,
-        DateTimeOffset? logTime) =>
-        new(true, clientId, transactionNumber, signatureCounter, serialNumber, signature, logTime, "");
+        DateTimeOffset? logTime,
+        DateTimeOffset? startLogTime = null) =>
+        new(true, clientId, transactionNumber, signatureCounter, serialNumber, signature, logTime, "", startLogTime);
 
     public static SaleTseResult Outage(string message) =>
         new(false, "", "", "", "", "", null, message);
@@ -351,6 +360,10 @@ public sealed class ParkedReceipt
     public string TseSignature { get; set; } = "";
     public DateTimeOffset? TseLogTime { get; set; }
     public bool TseOutage { get; set; }
+
+    /// <summary>R136: start of the Vorgang that became this order, and the TSE start log time.</summary>
+    public DateTimeOffset? VorgangStartedAt { get; set; }
+    public DateTimeOffset? TseStartLogTime { get; set; }
 }
 
 public sealed record DailyCloseCheck(

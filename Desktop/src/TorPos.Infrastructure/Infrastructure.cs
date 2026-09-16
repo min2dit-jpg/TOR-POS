@@ -1895,7 +1895,12 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                 saved = reader.GetString(2);
             }
 
-            if (saved != System.Text.Json.JsonSerializer.Serialize(snapshot))
+            // R136: normalised through the current record shape, so a payment
+            // journalled by an older build (without fields added since) still
+            // matches its own cart.
+            var savedSnapshot = System.Text.Json.JsonSerializer.Deserialize<CheckoutSnapshot>(saved);
+            if (savedSnapshot is null ||
+                System.Text.Json.JsonSerializer.Serialize(savedSnapshot) != System.Text.Json.JsonSerializer.Serialize(snapshot))
                 throw new InvalidOperationException("Zahlung und Warenkorb stimmen nicht überein.");
             if (state == "COMMITTED" && previousSale is long existingId)
             {
@@ -1969,12 +1974,12 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                     receipt_number,pickup_number,created_at,payment_method,
                     subtotal_cents,discount_cents,total_cents,fiscal_status,
                     list_subtotal_cents,promotion_discount_cents,
-                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus)
+                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus,started_at)
                 VALUES(
                     $r,$pickup,$d,$p,
                     $s,$x,$t,'TEST_TSE_NOT_CONNECTED',
                     $list,$promotion,
-                    'SALE',NULL,$cash,$card,$imHaus);
+                    'SALE',NULL,$cash,$card,$imHaus,$started);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$r", receipt);
@@ -1989,6 +1994,9 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Parameters.AddWithValue("$cash", snapshot.EffectiveCashPortionCents);
             q.Parameters.AddWithValue("$card", snapshot.EffectiveCardPortionCents);
             q.Parameters.AddWithValue("$imHaus", snapshot.ImHaus ? 1 : 0);
+            // R136: the first position of the Vorgang; without a tracked start
+            // (a legacy recovery) the Vorgang is taken to begin now.
+            q.Parameters.AddWithValue("$started", (snapshot.StartedAt ?? now).ToString("O"));
             saleId = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
         }
 
@@ -2216,7 +2224,9 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        COALESCE(t.outage,0),
                        COALESCE(s.cash_portion_cents,0),
                        COALESCE(s.card_portion_cents,0),
-                       s.im_haus
+                       s.im_haus,
+                       s.started_at,
+                       COALESCE(t.start_log_time,'')
                 FROM sales s
                 LEFT JOIN sale_operators o ON o.sale_id=s.id
                 LEFT JOIN sale_tse_signatures t ON t.sale_id=s.id
@@ -2258,7 +2268,9 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                 TseOutage = r.GetInt64(19) != 0,
                 CashPortionCents = r.GetInt64(20),
                 CardPortionCents = r.GetInt64(21),
-                ImHaus = r.IsDBNull(22) ? null : r.GetInt64(22) != 0
+                ImHaus = r.IsDBNull(22) ? null : r.GetInt64(22) != 0,
+                StartedAt = r.IsDBNull(23) ? null : DateTimeOffset.Parse(r.GetString(23)),
+                TseStartLogTime = string.IsNullOrWhiteSpace(r.GetString(24)) ? null : DateTimeOffset.Parse(r.GetString(24))
             };
         }
 
@@ -2414,12 +2426,12 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                     receipt_number,pickup_number,created_at,payment_method,
                     subtotal_cents,discount_cents,total_cents,fiscal_status,
                     list_subtotal_cents,promotion_discount_cents,
-                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus)
+                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus,started_at)
                 VALUES(
                     $r,0,$d,$pm,
                     $subtotal,$discount,$total,'TEST_TSE_NOT_CONNECTED',
                     $list,$promotion,
-                    'STORNO',$original,$cash,$card,$imHaus);
+                    'STORNO',$original,$cash,$card,$imHaus,$d);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$r", receipt);
@@ -2658,11 +2670,11 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 INSERT INTO sales(
                     receipt_number,pickup_number,created_at,payment_method,
                     subtotal_cents,discount_cents,total_cents,fiscal_status,
-                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus)
+                    transaction_type,original_sale_id,cash_portion_cents,card_portion_cents,im_haus,started_at)
                 VALUES(
                     $r,0,$d,$pm,
                     $subtotal,$discount,$total,'TEST_TSE_NOT_CONNECTED',
-                    'RETURN',$original,$cash,$card,$imHaus);
+                    'RETURN',$original,$cash,$card,$imHaus,$d);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$r", receipt);
@@ -2820,8 +2832,8 @@ public async Task RecordTseResultAsync(long saleId, SaleTseResult result, Cancel
         q.CommandText = """
             INSERT INTO sale_tse_signatures(
               sale_id,client_id,transaction_number,signature_counter,
-              serial_number,signature,log_time,outage,created_at)
-            VALUES($id,$client,$txn,$counter,$serial,$sig,$logtime,$outage,$now);
+              serial_number,signature,log_time,outage,created_at,start_log_time)
+            VALUES($id,$client,$txn,$counter,$serial,$sig,$logtime,$outage,$now,$startlog);
             """;
         q.Parameters.AddWithValue("$id", saleId);
         q.Parameters.AddWithValue("$client", result.ClientId);
@@ -2832,6 +2844,7 @@ public async Task RecordTseResultAsync(long saleId, SaleTseResult result, Cancel
         q.Parameters.AddWithValue("$logtime", result.LogTime?.ToString("O") ?? "");
         q.Parameters.AddWithValue("$outage", result.Signed ? 0 : 1);
         q.Parameters.AddWithValue("$now", DateTimeOffset.Now.ToString("O"));
+        q.Parameters.AddWithValue("$startlog", result.StartLogTime?.ToString("O") ?? "");
         await q.ExecuteNonQueryAsync(ct);
     });
 }
@@ -2986,7 +2999,7 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
                    COALESCE(tse_client_id,''),COALESCE(tse_transaction_number,''),
                    COALESCE(tse_signature_counter,''),COALESCE(tse_serial_number,''),
                    COALESCE(tse_signature,''),COALESCE(tse_log_time,''),COALESCE(tse_outage,0),
-                   COALESCE(im_haus,0)
+                   COALESCE(im_haus,0),vorgang_started_at,COALESCE(tse_start_log_time,'')
             FROM parked_receipts
             WHERE status='OPEN' AND COALESCE(is_training,0)=$training
             ORDER BY created_at;
@@ -3004,7 +3017,9 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
                 TseSerialNumber = r.GetString(12), TseSignature = r.GetString(13),
                 TseLogTime = string.IsNullOrWhiteSpace(r.GetString(14)) ? null : DateTimeOffset.Parse(r.GetString(14)),
                 TseOutage = r.GetInt64(15) != 0,
-                ImHaus = r.GetInt64(16) != 0
+                ImHaus = r.GetInt64(16) != 0,
+                VorgangStartedAt = r.IsDBNull(17) ? null : DateTimeOffset.Parse(r.GetString(17)),
+                TseStartLogTime = string.IsNullOrWhiteSpace(r.GetString(18)) ? null : DateTimeOffset.Parse(r.GetString(18))
             });
         }
 
@@ -3040,7 +3055,7 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
                        COALESCE(tse_client_id,''),COALESCE(tse_transaction_number,''),
                        COALESCE(tse_signature_counter,''),COALESCE(tse_serial_number,''),
                        COALESCE(tse_signature,''),COALESCE(tse_log_time,''),COALESCE(tse_outage,0),
-                       COALESCE(im_haus,0)
+                       COALESCE(im_haus,0),vorgang_started_at,COALESCE(tse_start_log_time,'')
                 FROM parked_receipts
                 WHERE id=$id AND status='OPEN' AND COALESCE(is_training,0)=$training;
                 """;
@@ -3067,7 +3082,9 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
                     TseSignature = r.GetString(13),
                     TseLogTime = string.IsNullOrWhiteSpace(r.GetString(14)) ? null : DateTimeOffset.Parse(r.GetString(14)),
                     TseOutage = r.GetInt64(15) != 0,
-                    ImHaus = r.GetInt64(16) != 0
+                    ImHaus = r.GetInt64(16) != 0,
+                    VorgangStartedAt = r.IsDBNull(17) ? null : DateTimeOffset.Parse(r.GetString(17)),
+                    TseStartLogTime = string.IsNullOrWhiteSpace(r.GetString(18)) ? null : DateTimeOffset.Parse(r.GetString(18))
                 };
             }
         }
@@ -3138,7 +3155,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                 tse_serial_number=$serial,
                 tse_signature=$sig,
                 tse_log_time=$logtime,
-                tse_outage=$outage
+                tse_outage=$outage,
+                tse_start_log_time=$startlog
             WHERE id=$id;
             """;
         q.Parameters.AddWithValue("$client", result.ClientId);
@@ -3148,6 +3166,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
         q.Parameters.AddWithValue("$sig", result.Signature);
         q.Parameters.AddWithValue("$logtime", result.LogTime?.ToString("O") ?? "");
         q.Parameters.AddWithValue("$outage", result.Signed ? 0 : 1);
+        q.Parameters.AddWithValue("$startlog", result.StartLogTime?.ToString("O") ?? "");
         q.Parameters.AddWithValue("$id", parkedReceiptId);
         await q.ExecuteNonQueryAsync(ct);
     });
@@ -3279,7 +3298,12 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
 public sealed class DailyClosingGuard : IDailyClosingGuard
 {
     private readonly IParkedReceiptRepository _parked;
-    public DailyClosingGuard(IParkedReceiptRepository parked) => _parked = parked;
+    private readonly SqliteDatabase? _db;
+    public DailyClosingGuard(IParkedReceiptRepository parked, SqliteDatabase? db = null)
+    {
+        _parked = parked;
+        _db = db;
+    }
 public async Task<DailyCloseCheck> CheckAsync(CancellationToken ct = default)
 {
     return await IoQueue.RunAsync(async () =>
@@ -3288,6 +3312,18 @@ public async Task<DailyCloseCheck> CheckAsync(CancellationToken ct = default)
         if (count > 0)
         {
             return new DailyCloseCheck(false, count, $"Z-Abschluss gesperrt: {count} geparkte Bon(s) sind noch offen. " + "Bitte zuerst alle geparkten Bons kassieren.");
+        }
+
+        // R136: AEAO zu § 146a Nr. 2.2.3.3 - at a closing no Vorgang may still
+        // be open in the TSE (a cart at the till).
+        if (_db is not null)
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = "SELECT COUNT(*) FROM tse_vorgaenge WHERE state='OPEN';";
+            var open = Convert.ToInt32(await q.ExecuteScalarAsync(ct));
+            if (open > 0)
+                return new DailyCloseCheck(false, open, "Z-Abschluss gesperrt: an der Kasse ist noch ein Vorgang offen. Bitte zuerst kassieren, parken oder den Bon leeren.");
         }
 
         return new DailyCloseCheck(true, 0, "Z-Abschluss freigegeben: keine geparkten Bons offen.");

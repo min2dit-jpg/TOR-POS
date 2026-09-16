@@ -956,6 +956,13 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                     Text($"Pruefwert: {job.VerificationValue}", small);
                 }
 
+                // R136: § 6 Satz 1 Nr. 3 KassenSichV - Vorgangsbeginn and
+                // Vorgangsende, also next to the QR code, which does not carry them.
+                if (job.ProcessStart is { } processStart)
+                    Text($"Vorgangsbeginn: {processStart.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
+                if (job.ProcessEnd is { } processEnd)
+                    Text($"Vorgangsende: {processEnd.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
+
                 if (job.TseOutage)
                 {
                     Rule();

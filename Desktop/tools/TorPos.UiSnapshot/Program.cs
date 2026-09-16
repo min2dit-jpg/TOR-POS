@@ -79,7 +79,7 @@ async Task RunAsync()
     var sales = new SaleRepository(db);
     var cardRefundLocks = new CardRefundLockRepository(db, audit);
     var parkedReceipts = new ParkedReceiptRepository(db);
-    var dailyClosingGuard = new DailyClosingGuard(parkedReceipts);
+    var dailyClosingGuard = new DailyClosingGuard(parkedReceipts, db);
     var catalog = new ProductCatalogCache(repo, perf);
     var settings = new SettingsRepository(db);
     var identity = new SystemIdentityRepository(db);

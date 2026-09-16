@@ -35,6 +35,39 @@ public sealed class OrderFiscalSigningService
         _orders = orders;
     }
 
+    /// <summary>R136: see SaleFiscalSigningService.Vorgaenge.</summary>
+    public TseVorgangService? Vorgaenge { get; init; }
+
+    /// <summary>
+    /// R136: the order Vorgang began with its first position; its TSE
+    /// transaction is finished here with the Bestellung-V1 data, and the start
+    /// is stored for BON_START.
+    /// </summary>
+    public async Task SignInVorgangAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        if (string.IsNullOrEmpty(vorgangId) || Vorgaenge is not { } vorgaenge)
+        {
+            await SignAsync(order, actor, ct);
+            return;
+        }
+
+        if (startedAt is { } started)
+        {
+            await vorgaenge.RecordOrderStartAsync(order.Id, started, ct);
+            order.VorgangStartedAt = started;
+        }
+
+        var result = await vorgaenge.FinishAsync(
+            vorgangId,
+            FiscalProcessData.BestellungProcessType,
+            FiscalProcessData.BestellungText(order),
+            actor,
+            $"ORDER:{order.Id}",
+            ct);
+        await ApplyAsync(order, result, ct);
+    }
+
     public async Task SignAsync(ParkedReceipt order, string actor, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(order);
@@ -97,7 +130,8 @@ public sealed class OrderFiscalSigningService
             finishResult.SignatureCounter.ToString(),
             finishResult.SerialNumber,
             finishResult.SignatureBase64,
-            finishResult.LogTime);
+            finishResult.LogTime,
+            startResult.LogTime);
 
         await ApplyAsync(order, result, ct);
     }
@@ -119,6 +153,7 @@ public sealed class OrderFiscalSigningService
         order.TseSerialNumber = result.SerialNumber;
         order.TseSignature = result.Signature;
         order.TseLogTime = result.LogTime;
+        order.TseStartLogTime = result.StartLogTime;
         order.TseOutage = !result.Signed;
     }
 }

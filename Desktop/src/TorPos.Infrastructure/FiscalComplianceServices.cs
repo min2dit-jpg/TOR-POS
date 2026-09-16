@@ -247,10 +247,11 @@ public async Task RecordTseResultAsync(long movementId, SaleTseResult result, Ca
         q.CommandText = """
             INSERT INTO cash_movement_tse_signatures(
               movement_id,client_id,transaction_number,signature_counter,serial_number,
-              signature,log_time,outage,outage_reason,created_at)
-            VALUES($id,$client,$tanr,$sigz,$serial,$sig,$log,$outage,$reason,$at);
+              signature,log_time,outage,outage_reason,created_at,start_log_time)
+            VALUES($id,$client,$tanr,$sigz,$serial,$sig,$log,$outage,$reason,$at,$startlog);
             """;
         q.Parameters.AddWithValue("$id", movementId);
+        q.Parameters.AddWithValue("$startlog", result.StartLogTime?.ToString("O") ?? "");
         q.Parameters.AddWithValue("$client", result.ClientId);
         q.Parameters.AddWithValue("$tanr", result.TransactionNumber);
         q.Parameters.AddWithValue("$sigz", result.SignatureCounter);

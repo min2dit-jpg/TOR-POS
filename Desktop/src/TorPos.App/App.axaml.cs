@@ -69,7 +69,7 @@ public partial class App : Avalonia.Application
             var sales = new SaleRepository(db);
             var cardRefundLocks = new CardRefundLockRepository(db, audit);
             var parkedReceipts = new ParkedReceiptRepository(db);
-            var dailyClosingGuard = new DailyClosingGuard(parkedReceipts);
+            var dailyClosingGuard = new DailyClosingGuard(parkedReceipts, db);
             var catalog = new ProductCatalogCache(repo, perf);
             var settings = new SettingsRepository(db);
             await TorUpdateService.CleanupCacheAsync(settings);
@@ -112,14 +112,18 @@ public partial class App : Avalonia.Application
                 tseProvider,
                 tseOutages,
                 audit);
+            // R136: the TSE transaction starts with the first position of a Vorgang.
+            var tseVorgaenge = new TseVorgangService(db, tseFailSafe, settings);
             var fiscalSigning = new SaleFiscalSigningService(
                 tseFailSafe,
                 settings,
-                sales);
+                sales)
+            { Vorgaenge = tseVorgaenge };
             var orderFiscalSigning = new OrderFiscalSigningService(
                 tseFailSafe,
                 settings,
-                parkedReceipts);
+                parkedReceipts)
+            { Vorgaenge = tseVorgaenge };
 
             var preflight =
                 new StartupPreflightService(

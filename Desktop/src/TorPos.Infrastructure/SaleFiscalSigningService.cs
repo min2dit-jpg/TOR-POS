@@ -42,6 +42,43 @@ public sealed class SaleFiscalSigningService
         _sales = sales;
     }
 
+    /// <summary>
+    /// R136: the open TSE transactions of the till. Null where no Vorgang is
+    /// tracked (tests, tools); a sale is then signed as one transaction.
+    /// </summary>
+    public TseVorgangService? Vorgaenge { get; init; }
+
+    /// <summary>
+    /// R136: ends the Vorgang whose TSE transaction was started with the first
+    /// position of the cart. Without a tracked Vorgang the sale is signed as
+    /// before, start and finish together.
+    /// </summary>
+    public async Task SignInVorgangAsync(Sale sale, string vorgangId, string actor, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sale);
+        if (string.IsNullOrEmpty(vorgangId) || Vorgaenge is not { } vorgaenge)
+        {
+            await SignAsync(sale, actor, ct);
+            return;
+        }
+
+        var reference = $"SALE:{sale.Id}";
+        string processData;
+        try
+        {
+            processData = FiscalProcessData.KassenbelegText(sale);
+        }
+        catch (UnsupportedVatRateException ex)
+        {
+            await vorgaenge.CloseUnsignedAsync(vorgangId, reference, ct);
+            await ReportOutageAsync(sale, ex.Message, actor, ct);
+            return;
+        }
+
+        var result = await vorgaenge.FinishAsync(vorgangId, FiscalProcessData.KassenbelegProcessType, processData, actor, reference, ct);
+        await ApplyAsync(sale, result, ct);
+    }
+
     public async Task SignAsync(Sale sale, string actor, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sale);
@@ -120,7 +157,8 @@ public sealed class SaleFiscalSigningService
             finishResult.SignatureCounter.ToString(),
             finishResult.SerialNumber,
             finishResult.SignatureBase64,
-            finishResult.LogTime);
+            finishResult.LogTime,
+            startResult.LogTime);
 
         await ApplyAsync(sale, result, ct);
     }
@@ -151,6 +189,7 @@ public sealed class SaleFiscalSigningService
         sale.TseSerialNumber = result.SerialNumber;
         sale.TseSignature = result.Signature;
         sale.TseLogTime = result.LogTime;
+        sale.TseStartLogTime = result.StartLogTime;
         sale.TseOutage = !result.Signed;
     }
 }

@@ -67,6 +67,12 @@ public static class FiscalProcessData
         return $"{Vorgangstyp(sale)}^{gross}^{string.Join("_", payments)}";
     }
 
+    /// <summary>
+    /// R136: an aborted Vorgang. Anhang I example "Vorgang wird abgebrochen":
+    /// <c>AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^</c> - no turnover, no payment.
+    /// </summary>
+    public const string BelegabbruchText = "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^";
+
     /// <summary>R135: the transaction type of a training sale.</summary>
     public const string TrainingTransactionType = "TRAINING";
     public const string VorgangstypTraining = "AVTraining";

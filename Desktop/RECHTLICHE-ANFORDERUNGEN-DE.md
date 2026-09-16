@@ -64,8 +64,10 @@ TSE-Exportformat bereitgestellt werden.
 
 Stand R131: Der Export schreibt je Kassenabschluss alle 20 Dateien mit der unveränderten
 offiziellen index.xml des BZSt und prüft jeden Wert gegen deren Beschreibung. Was TOR
-noch nicht erfasst (Vorgangsbeginn, TSE-Stammdaten, Training, TSE-Absicherung von
-Einlagen/Entnahmen u. a.), wird im Export-Protokoll ausdrücklich genannt. Eine Abnahme mit
+noch nicht erfasst, wird im Export-Protokoll ausdrücklich genannt. Seit R132-R136 erfasst:
+Stammdaten je Abschluss, TSE-Stammdaten aus dem TSE-Export, Im Haus/Außer Haus,
+Einlagen/Entnahmen mit Geschäftsvorfall und TSE, Training als AVTraining, Vorgangsbeginn
+(BON_START), TSE-Startzeit (TSE_TA_START) und abgebrochene Vorgänge (AVBelegabbruch). Eine Abnahme mit
 Prüfsoftware und realer TSE steht aus.
 Quelle: https://www.bzst.de/DE/Unternehmen/Aussenpruefungen/DigitaleSchnittstelleFinV/digitaleschnittstellefinv_node.html
 
@@ -78,8 +80,12 @@ eine TSE-Transaktion erforderlich sein. Langanhaltende Vorgänge werden insbeson
 "Bestellung" oder geeigneter "SonstigerVorgang" abgesichert und später mit dem
 "Kassenbeleg" verknüpft.
 
-Deshalb blockiert TOR 0.7.19 den Produktivbetrieb, solange Parken nicht real TSE-seitig
-implementiert ist.
+Seit R136 startet TOR die TSE-Transaktion mit der ersten Position (AEAO zu § 146a
+Nr. 2.2.2). Ein geparkter Bon hält seine Transaktion offen und setzt sie beim Aufrufen fort;
+die Bestellannahme beendet sie als Bestellung-V1, das Löschen eines geparkten Bons oder
+das Leeren des Warenkorbs als AVBelegabbruch. Ein Z-Bericht ist nur ohne offenen Vorgang
+möglich (Nr. 2.2.3.3). Ob eine über lange Zeit offene Kassenbeleg-Transaktion eines
+geparkten Bons so akzeptiert wird, sollte mit dem Steuerberater bestätigt werden.
 
 ### 6. Kassensturzfähigkeit / Bargeldbewegungen
 Einlagen und Entnahmen müssen nachvollziehbar erfasst werden. Der Soll-Kassenbestand

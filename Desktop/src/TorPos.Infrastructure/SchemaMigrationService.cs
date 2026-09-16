@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 15;
+    public const int TargetSchemaVersion = 16;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1122,6 +1122,102 @@ public sealed class SchemaMigrationService
                         BEGIN SELECT RAISE(ABORT,'training TSE record is final'); END;
                         CREATE TRIGGER IF NOT EXISTS trg_training_tse_no_delete BEFORE DELETE ON training_tse_signatures
                         BEGIN SELECT RAISE(ABORT,'training TSE record cannot be deleted'); END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                16,
+                "R136_TSE_START_AT_VORGANGSBEGINN",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R136: AEAO zu § 146a Nr. 2.2.2 - the TSE transaction is started
+                        -- when the Vorgang begins (first position), not after payment.
+                        -- Operational state of the open transactions, kept across a
+                        -- restart; the fiscal records stay in the *_tse_signatures tables.
+                        CREATE TABLE IF NOT EXISTS tse_vorgaenge(
+                          id TEXT PRIMARY KEY,
+                          training INTEGER NOT NULL DEFAULT 0,
+                          started_at TEXT NOT NULL,
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          start_log_time TEXT NOT NULL DEFAULT '',
+                          start_error TEXT NOT NULL DEFAULT '',
+                          state TEXT NOT NULL CHECK(state IN ('OPEN','PARKED','FINISHED','ABORTED')),
+                          parked_receipt_id INTEGER NULL,
+                          reference TEXT NOT NULL DEFAULT '',
+                          updated_at TEXT NOT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_tse_vorgaenge_state
+                            ON tse_vorgaenge(state);
+
+                        -- R136: a Vorgang that ended without becoming a receipt
+                        -- (AEAO Nr. 1.11.1 "Belegabbrüche", DSFinV-K AVBelegabbruch).
+                        -- Append-only, like every other fiscal record.
+                        CREATE TABLE IF NOT EXISTS aborted_vorgaenge(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          vorgang_id TEXT NOT NULL UNIQUE,
+                          training INTEGER NOT NULL,
+                          started_at TEXT NOT NULL,
+                          ended_at TEXT NOT NULL,
+                          ended_at_utc TEXT GENERATED ALWAYS AS (strftime('%Y-%m-%dT%H:%M:%fZ', ended_at)) VIRTUAL,
+                          operator_name TEXT NOT NULL,
+                          discount_cents INTEGER NOT NULL,
+                          total_cents INTEGER NOT NULL,
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          signature_counter TEXT NOT NULL DEFAULT '',
+                          serial_number TEXT NOT NULL DEFAULT '',
+                          signature TEXT NOT NULL DEFAULT '',
+                          start_log_time TEXT NOT NULL DEFAULT '',
+                          log_time TEXT NOT NULL DEFAULT '',
+                          outage INTEGER NOT NULL DEFAULT 0,
+                          outage_reason TEXT NOT NULL DEFAULT '');
+
+                        CREATE TABLE IF NOT EXISTS aborted_vorgang_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          aborted_id INTEGER NOT NULL REFERENCES aborted_vorgaenge(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL,
+                          barcode TEXT NOT NULL,
+                          quantity REAL NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL,
+                          line_total_cents INTEGER NOT NULL,
+                          list_unit_price_cents INTEGER NOT NULL,
+                          promotion_id INTEGER NOT NULL,
+                          promotion_name TEXT NOT NULL,
+                          promotion_percent INTEGER NOT NULL,
+                          promotion_discount_unit_cents INTEGER NOT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_aborted_vorgaenge_ended_utc
+                            ON aborted_vorgaenge(ended_at_utc);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_aborted_vorgaenge_no_update BEFORE UPDATE ON aborted_vorgaenge
+                        BEGIN SELECT RAISE(ABORT,'aborted Vorgang records are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_aborted_vorgaenge_no_delete BEFORE DELETE ON aborted_vorgaenge
+                        BEGIN SELECT RAISE(ABORT,'aborted Vorgang records cannot be deleted'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_aborted_items_no_update BEFORE UPDATE ON aborted_vorgang_items
+                        BEGIN SELECT RAISE(ABORT,'aborted Vorgang items are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_aborted_items_no_delete BEFORE DELETE ON aborted_vorgang_items
+                        BEGIN SELECT RAISE(ABORT,'aborted Vorgang items cannot be deleted'); END;
+
+                        -- R136: Vorgangsbeginn (DSFinV-K BON_START) and the TSE log time
+                        -- of StartTransaction (TSE_TA_START). NULL / '' for records from
+                        -- before R136.
+                        ALTER TABLE sales ADD COLUMN started_at TEXT NULL;
+                        ALTER TABLE sale_tse_signatures ADD COLUMN start_log_time TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE cash_movement_tse_signatures ADD COLUMN start_log_time TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE training_receipts ADD COLUMN started_at TEXT NULL;
+                        ALTER TABLE training_tse_signatures ADD COLUMN start_log_time TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE parked_receipts ADD COLUMN vorgang_started_at TEXT NULL;
+                        ALTER TABLE parked_receipts ADD COLUMN tse_start_log_time TEXT NOT NULL DEFAULT '';
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);

@@ -265,9 +265,11 @@ public static class DigitalReceiptHtml
                 sb.Append("Signaturzähler: ").Append(Html(sale.TseSignatureCounter)).Append("<br>");
             if (!string.IsNullOrWhiteSpace(sale.TseSignature))
                 sb.Append("Prüfwert: ").Append(Html(sale.TseSignature)).Append("<br>");
-            // Vorgangsbeginn is the register's own timestamp shown at the top
-            // of the page; Vorgangsende is the TSE's log time and is printed
-            // only when the TSE actually produced one (R121).
+            // Vorgangsende is the TSE's log time and is printed only when the
+            // TSE actually produced one (R121). R136: Vorgangsbeginn is the TSE
+            // start log time, else the till's own start of the Vorgang.
+            var processStart = sale.TseStartLogTime ?? sale.StartedAt ?? sale.CreatedAt;
+            sb.Append("Vorgangsbeginn: ").Append(processStart.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
             if (sale.TseLogTime is not null)
                 sb.Append("Vorgangsende: ").Append(sale.TseLogTime.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
             if (sale.TseOutage)

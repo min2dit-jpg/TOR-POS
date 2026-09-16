@@ -169,6 +169,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             var tseWithoutMasterData = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             var tseWithUnknownAlgorithm = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             var salesWithoutImHaus = 0;
+            var withoutStart = 0;
             void NoteTse(string transactionNumber, string serial) =>
                 CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
             var outages = await LoadOutagesAsync(c, ct);
@@ -193,6 +194,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     saleList.Add(sale);
                     if (sale.ImHaus is null)
                         salesWithoutImHaus++;
+                    if (sale.StartedAt is null)
+                        withoutStart++;
                     NoteTse(sale.TseTransactionNumber, sale.TseSerialNumber);
                     if (!sale.TseOutage && sale.TseTransactionNumber.Length == 0)
                         anyWithoutTse.Add(sale.ReceiptNumber);
@@ -208,16 +211,30 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 var trainings = await TrainingReceiptRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
                 foreach (var training in trainings)
                 {
+                    if (training.Receipt.StartedAt is null)
+                        withoutStart++;
                     CheckVat(training.Receipt.Lines, $"Trainingsvorgang {training.Receipt.ReceiptNumber}", issues);
                     if (training.Tse is { Outage: false } signedTraining)
                         NoteTse(signedTraining.TransactionNumber, signedTraining.SerialNumber);
+                }
+
+                var aborted = await TseVorgangService.LoadAbortedInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                foreach (var vorgang in aborted)
+                {
+                    CheckVat(vorgang.Lines, $"Abgebrochener Vorgang {vorgang.Number}", issues);
+                    if (vorgang.Tse is { Outage: false } signedAbort)
+                        NoteTse(signedAbort.TransactionNumber, signedAbort.SerialNumber);
                 }
 
                 var orders = await LoadOrdersAsync(c, closing, ct);
                 anyOrder |= orders.Count > 0;
                 anyCancelledOrder |= orders.Any(o => o.Cancelled);
                 foreach (var loaded in orders)
+                {
+                    if (loaded.Order.VorgangStartedAt is null)
+                        withoutStart++;
                     NoteTse(loaded.Order.TseTransactionNumber, loaded.Order.TseSerialNumber);
+                }
 
                 foreach (var sale in saleList)
                     CheckVat(sale.Lines, $"Beleg {sale.ReceiptNumber}", issues);
@@ -231,6 +248,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     Sales = saleList,
                     CashMovements = movements,
                     Trainings = trainings,
+                    Aborted = aborted,
                     Orders = orders.Select(o => o.Order).ToList(),
                     OriginalOf = originalId => FindOriginal(c, closings, originalId),
                     OutageReasonAt = at => OutageReasonAt(outages, at),
@@ -247,7 +265,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     var rows = DsfinvkClosingBuilder.Build(input);
                     foreach (var table in OfficialTables)
                         csv[table.Name].AddRange(rows.For(table.Name).Select(row => DsfinvkCsv.Row(table, row)));
-                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count));
+                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count + aborted.Count));
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -257,7 +275,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
 
             var lastClosing = closings.Count == 0 ? null : closings[^1];
             var open = await ScalarLongAsync(c,
-                "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME'));",
+                "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME') AND fiscal_mode <> 'TEST_ONLY') + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from);",
                 lastClosing?.ToUtc ?? "", ct);
             if (open > 0)
                 issues.Add(new("OPEN_PERIOD", open == 1
@@ -269,7 +287,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
             if (withoutSnapshot.Count > 0)
                 issues.Add(new("STAMMDATEN", (withoutSnapshot.Count == 1 ? "1 Kassenabschluss stammt" : $"{withoutSnapshot.Count} Kassenabschlüsse stammen") + $" aus der Zeit vor R132 ohne eigene Stammdaten; dafür werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
-            issues.Add(new("BON_START", "Vorgangsbeginn (BON_START) und TSE-Startzeit (TSE_TA_START) werden noch nicht gespeichert; die Felder bleiben leer.", Blocking: false));
+            if (withoutStart > 0)
+                issues.Add(new("BON_START", (withoutStart == 1 ? "1 Vorgang stammt" : $"{withoutStart} Vorgänge stammen") + " aus der Zeit vor R136, als Vorgangsbeginn und TSE-Startzeit nicht gespeichert wurden; BON_START und TSE_TA_START bleiben dort leer.", Blocking: false));
             if (salesWithoutImHaus > 0)
                 issues.Add(new("INHAUS", (salesWithoutImHaus == 1 ? "1 Verkauf stammt" : $"{salesWithoutImHaus} Verkäufe stammen") + " aus der Zeit vor R133, als Im Haus/Außer Haus nicht gespeichert wurde; INHAUS bleibt dort leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
             if (tseWithoutMasterData.Count > 0)
@@ -408,7 +427,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
         q.CommandText = """
             SELECT m.id,m.created_at,m.movement_type,m.amount_cents,m.reason,m.actor,m.business_case,
                    t.movement_id,t.serial_number,t.transaction_number,t.signature_counter,t.signature,
-                   t.log_time,t.outage,t.outage_reason
+                   t.log_time,t.outage,t.outage_reason,t.start_log_time
             FROM cash_movements m
             LEFT JOIN cash_movement_tse_signatures t ON t.movement_id=m.id
             WHERE m.created_at_utc > $from AND m.created_at_utc <= $to
@@ -431,7 +450,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     r.GetString(11),
                     string.IsNullOrWhiteSpace(r.GetString(12)) ? null : DateTimeOffset.Parse(r.GetString(12), CultureInfo.InvariantCulture),
                     r.GetInt64(13) != 0,
-                    r.GetString(14));
+                    r.GetString(14),
+                    string.IsNullOrWhiteSpace(r.GetString(15)) ? null : DateTimeOffset.Parse(r.GetString(15), CultureInfo.InvariantCulture));
 
             movements.Add(new DsfinvkCashMovement(
                 r.GetInt64(0),
@@ -463,7 +483,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 SELECT id,park_number,pickup_number,created_at,updated_at,created_by,
                        discount_cents,total_cents,status,COALESCE(im_haus,0),
                        tse_client_id,tse_transaction_number,tse_signature_counter,
-                       tse_serial_number,tse_signature,tse_log_time,tse_outage
+                       tse_serial_number,tse_signature,tse_log_time,tse_outage,
+                       vorgang_started_at,COALESCE(tse_start_log_time,'')
                 FROM parked_receipts
                 WHERE COALESCE(is_training,0)=0
                   AND (tse_transaction_number<>'' OR tse_outage=1)
@@ -495,6 +516,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     TseSignature = r.GetString(14),
                     TseLogTime = string.IsNullOrWhiteSpace(r.GetString(15)) ? null : DateTimeOffset.Parse(r.GetString(15), CultureInfo.InvariantCulture),
                     TseOutage = r.GetInt64(16) != 0,
+                    VorgangStartedAt = r.IsDBNull(17) ? null : DateTimeOffset.Parse(r.GetString(17), CultureInfo.InvariantCulture),
+                    TseStartLogTime = string.IsNullOrWhiteSpace(r.GetString(18)) ? null : DateTimeOffset.Parse(r.GetString(18), CultureInfo.InvariantCulture),
                 }, r.GetString(8) == "CANCELLED"));
             }
         }

@@ -56,7 +56,8 @@ internal static class TseKassenbelegSigner
             finish.SignatureCounter.ToString(),
             finish.SerialNumber,
             finish.SignatureBase64,
-            finish.LogTime);
+            finish.LogTime,
+            start.LogTime);
     }
 }
 
