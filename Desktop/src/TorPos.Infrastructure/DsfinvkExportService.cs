@@ -134,7 +134,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
         IReadOnlyList<ClosingSummary> Closings,
         IReadOnlyDictionary<string, List<string>> Csv);
 
-    private sealed record ClosingRow(long ZNumber, DateTimeOffset CreatedAt, string FromUtc, string ToUtc);
+    private sealed record ClosingRow(long ZNumber, DateTimeOffset CreatedAt, string FromUtc, string ToUtc, DsfinvkMasterData? Master);
 
     private async Task<ExportPlan> BuildPlanAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
@@ -147,36 +147,22 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             if (to < from)
                 issues.Add(new("RANGE", "Enddatum liegt vor dem Startdatum."));
 
-            var settings = await _settings.LoadAllAsync(ct);
-            string Setting(string key) => (settings.GetValueOrDefault(key) ?? "").Trim();
-
             await using var c = _db.OpenConnection();
 
-            var serial = await ScalarTextAsync(c, "SELECT eas_serial FROM system_identity WHERE id=1;", ct);
-            var brand = await ScalarTextAsync(c, "SELECT manufacturer FROM system_identity WHERE id=1;", ct);
-            var model = await ScalarTextAsync(c, "SELECT model FROM system_identity WHERE id=1;", ct);
-
-            var master = new DsfinvkMasterData(
-                KasseId: serial,
-                CompanyName: Setting("company.name"),
-                Street: Setting("company.street"),
-                Zip: Setting("company.zip"),
-                City: Setting("company.city"),
-                Country: "DEU",
-                TaxNumber: Setting("company.tax_no"),
-                VatId: Setting("company.vat_id").Replace(" ", ""),
-                KasseBrand: brand,
-                KasseModel: model,
-                KasseSerial: serial,
-                SoftwareBrand: TorRelease.Product,
-                SoftwareVersion: $"{TorRelease.Version} ({TorRelease.Revision})");
-
-            CheckMasterData(master, issues);
+            // R132: the master data as they are now - used for closings from
+            // before R132, which did not store their own.
+            var master = await DsfinvkMasterDataStore.CurrentAsync(c, ct);
 
             var closings = await LoadClosingsAsync(c, ct);
             var inRange = closings.Where(z => z.CreatedAt >= from && z.CreatedAt <= to).ToList();
             if (inRange.Count == 0)
                 issues.Add(new("NO_CLOSING", "Im gewählten Zeitraum gibt es keinen Kassenabschluss (Z-Bericht). Exportiert werden nur abgeschlossene Zeiträume."));
+
+            var withoutSnapshot = inRange.Where(z => z.Master is null).ToList();
+            if (withoutSnapshot.Count > 0)
+                CheckMasterData(master, issues, "");
+            foreach (var closing in inRange.Where(z => z.Master is not null))
+                CheckMasterData(closing.Master!, issues, $"Z_NR {closing.ZNumber}: ");
 
             var products = await LoadProductsAsync(c, ct);
             var outages = await LoadOutagesAsync(c, ct);
@@ -220,7 +206,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 var input = new DsfinvkClosingInput
                 {
                     Closing = new DsfinvkClosing(closing.ZNumber, closing.CreatedAt),
-                    Master = master,
+                    Master = closing.Master ?? master,
                     Sales = saleList,
                     CashMovements = movements,
                     Orders = orders.Select(o => o.Order).ToList(),
@@ -258,7 +244,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             // What TOR does not record yet. Stated, not hidden.
             if (!FiscalRelease.Enabled)
                 issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
-            issues.Add(new("STAMMDATEN", "Stammdaten (Firma, Kasse, Softwareversion) werden aus den aktuellen Einstellungen gelesen, nicht je Kassenabschluss gespeichert.", Blocking: false));
+            if (withoutSnapshot.Count > 0)
+                issues.Add(new("STAMMDATEN", $"{withoutSnapshot.Count} Kassenabschlüsse stammen aus der Zeit vor R132 und haben keine eigenen Stammdaten; für sie werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
             issues.Add(new("BON_START", "Vorgangsbeginn (BON_START) und TSE-Startzeit (TSE_TA_START) werden noch nicht gespeichert; die Felder bleiben leer.", Blocking: false));
             issues.Add(new("INHAUS", "Im Haus/Außer Haus wird je Verkauf nicht gespeichert; INHAUS bleibt bei Verkäufen leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
             issues.Add(new("TRAINING", "Trainingsvorgänge werden von TOR nicht aufgezeichnet und fehlen daher als AVTraining.", Blocking: false));
@@ -288,14 +275,16 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
         });
     }
 
-    private static void CheckMasterData(DsfinvkMasterData master, List<DsfinvkPreflightIssue> issues)
+    private static void CheckMasterData(DsfinvkMasterData master, List<DsfinvkPreflightIssue> issues, string prefix)
     {
+        void Add(string message) => issues.Add(new("MASTER_DATA", prefix + message));
+
         void Required(string value, string key, string label, int maxLength)
         {
             if (value.Length == 0)
-                issues.Add(new("MASTER_DATA", $"Pflicht-Stammdatum fehlt: {label} ({key})"));
+                Add($"Pflicht-Stammdatum fehlt: {label} ({key})");
             else if (value.Length > maxLength)
-                issues.Add(new("MASTER_DATA", $"{label} ist länger als {maxLength} Zeichen ({key})."));
+                Add($"{label} ist länger als {maxLength} Zeichen ({key}).");
         }
 
         Required(master.CompanyName, "company.name", "Firmenname", 60);
@@ -305,14 +294,16 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
 
         // § 14 Abs. 4 Nr. 2 UStG, DSFinV-K Anhang E: Steuernummer or USt-IdNr.
         if (master.TaxNumber.Length == 0 && master.VatId.Length == 0)
-            issues.Add(new("MASTER_DATA", "Steuernummer (company.tax_no) oder USt-IdNr. (company.vat_id) muss angegeben sein."));
+            Add("Steuernummer (company.tax_no) oder USt-IdNr. (company.vat_id) muss angegeben sein.");
         if (master.TaxNumber.Length > 20)
-            issues.Add(new("MASTER_DATA", "Steuernummer ist länger als 20 Zeichen."));
+            Add("Steuernummer ist länger als 20 Zeichen.");
         if (master.VatId.Length > 15)
-            issues.Add(new("MASTER_DATA", "USt-IdNr. ist länger als 15 Zeichen."));
+            Add("USt-IdNr. ist länger als 15 Zeichen.");
+        if (master.SoftwareVersion.Length > 50)
+            Add("Softwareversion ist länger als 50 Zeichen.");
 
         if (master.KasseSerial.Length == 0 || master.KasseSerial.Length > 70 || master.KasseSerial.IndexOfAny(new[] { '/', '_' }) >= 0)
-            issues.Add(new("MASTER_DATA", "Seriennummer der Kasse fehlt oder enthält '/' bzw. '_' (DSFinV-K Anhang E)."));
+            Add("Seriennummer der Kasse fehlt oder enthält '/' bzw. '_' (DSFinV-K Anhang E).");
     }
 
     private static void CheckVat(IEnumerable<CartLine> lines, string where, List<DsfinvkPreflightIssue> issues)
@@ -330,7 +321,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
     {
         var closings = new List<ClosingRow>();
         await using var q = c.CreateCommand();
-        q.CommandText = "SELECT z_number,created_at,period_from,period_to FROM z_report_archive ORDER BY z_number;";
+        q.CommandText = "SELECT z_number,created_at,period_from,period_to,master_data FROM z_report_archive ORDER BY z_number;";
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
         {
@@ -338,7 +329,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 r.GetInt64(0),
                 DateTimeOffset.Parse(r.GetString(1), CultureInfo.InvariantCulture),
                 UtcText(DateTimeOffset.Parse(r.GetString(2), CultureInfo.InvariantCulture)),
-                UtcText(DateTimeOffset.Parse(r.GetString(3), CultureInfo.InvariantCulture))));
+                UtcText(DateTimeOffset.Parse(r.GetString(3), CultureInfo.InvariantCulture)),
+                DsfinvkMasterDataRules.Deserialize(r.GetString(4))));
         }
 
         return closings;
@@ -562,13 +554,6 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
     }
 
     // --------------------------------------------------------------- helpers
-
-    private static async Task<string> ScalarTextAsync(SqliteConnection c, string sql, CancellationToken ct)
-    {
-        await using var q = c.CreateCommand();
-        q.CommandText = sql;
-        return (await q.ExecuteScalarAsync(ct) as string ?? "").Trim();
-    }
 
     private static async Task<long> ScalarLongAsync(SqliteConnection c, string sql, string from, CancellationToken ct)
     {

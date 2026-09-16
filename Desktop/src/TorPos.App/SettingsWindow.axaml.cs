@@ -2880,7 +2880,16 @@ private Control TsePage()
                 }
             }
 
-            await _settings.SaveManyAsync(values);
+            // R132 (DSFinV-K 3.2): a change of the company master data while
+            // Vorgänge are waiting for a closing creates that closing first.
+            var database = new SqliteDatabase(AppPaths.DatabasePath);
+            var masterData = new DsfinvkMasterDataService(
+                database,
+                _settings,
+                new BusinessManagementService(database, _settings, _audit),
+                new DailyClosingGuard(new ParkedReceiptRepository(database)),
+                _audit);
+            var saved = await masterData.SaveSettingsAsync(values, _currentUser.Username);
             _reportSmtpPassword.Text = "";
             _reportSmtpPassword.PlaceholderText = string.IsNullOrWhiteSpace(_reportSmtpPasswordProtected)
                 ? "Google App-Passwort eingeben"
@@ -2894,7 +2903,9 @@ private Control TsePage()
                 "",
                 "Einstellungen gespeichert; keine Zugangsdaten protokolliert.");
             await RefreshLegalStatusAsync();
-            StatusText.Text = "Alle Einstellungen gespeichert";
+            StatusText.Text = saved.AutomaticClosing is { } closing
+                ? $"Alle Einstellungen gespeichert · vorher automatisch Kassenabschluss Z {closing.ZNumber:000000} erstellt (Stammdatenänderung, DSFinV-K 3.2)"
+                : "Alle Einstellungen gespeichert";
         }
         catch (Exception ex)
         {

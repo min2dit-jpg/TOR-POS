@@ -3381,6 +3381,16 @@ public async Task<IReadOnlyDictionary<string, string>> LoadAllAsync(Cancellation
         if (values.Count == 0)
             return;
         await using var c = _db.OpenConnection();
+
+        // R132 (DSFinV-K 3.2): company master data may only change when no
+        // Vorgang is waiting for a closing - otherwise that closing would be
+        // exported under data it was not recorded with. This guard is the
+        // last line; DsfinvkMasterDataService creates the closing
+        // automatically before saving.
+        var changed = await DsfinvkMasterDataStore.ChangedKeysAsync(c, values, ct);
+        if (changed.Count > 0 && await DsfinvkMasterDataStore.HasOpenVorgaengeAsync(c, ct))
+            throw new MasterDataChangeRequiresClosingException(changed);
+
         await using var tx = await c.BeginTransactionAsync(ct);
         foreach (var pair in values)
         {

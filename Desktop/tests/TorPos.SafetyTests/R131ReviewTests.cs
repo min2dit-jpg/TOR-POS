@@ -179,7 +179,7 @@ public static class R131ReviewTests
         var codes = report.Issues.Select(x => x.Code).ToHashSet();
         assert(report.Ready && report.Issues.All(x => !x.Blocking),
             $"R131 a closed period with complete company data is exportable (blocking: {string.Join(" | ", report.Issues.Where(x => x.Blocking).Select(x => x.Message))})");
-        assert(new[] { "BON_START", "TRAINING", "KASSENBEWEGUNG", "TSE_STAMMDATEN", "BESTELLUNG", "STAMMDATEN", "INHAUS" }.All(codes.Contains) &&
+        assert(new[] { "BON_START", "TRAINING", "KASSENBEWEGUNG", "TSE_STAMMDATEN", "BESTELLUNG", "INHAUS" }.All(codes.Contains) &&
                report.Issues.Single(x => x.Code == "OPEN_PERIOD").Message.StartsWith("1 "),
             "R131 what TOR does not record yet is reported, not hidden - and the one sale after the last closing is named as not included");
 
@@ -409,14 +409,37 @@ public static class R131ReviewTests
             "R131 the export is byte-identical whatever the Windows language");
 
         // ---------- what blocks ----------
-        await settings.SaveManyAsync(new Dictionary<string, string> { ["company.tax_no"] = "", ["company.vat_id"] = "" });
-        var noTaxId = await export.ValidateAsync(from, to);
+        // R132: master data can no longer change while Vorgänge wait for a
+        // closing, so a closing without a tax id is built in its own till.
+        var bareDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(dir, "r131-no-tax-id.db"));
+        var bareSettings = new SettingsRepository(bareDb);
+        await bareSettings.SaveManyAsync(new Dictionary<string, string>
+        {
+            ["company.name"] = "Ohne Steuernummer",
+            ["company.street"] = "Weg 1",
+            ["company.zip"] = "10115",
+            ["company.city"] = "Berlin",
+        });
+        await using (var c = bareDb.OpenConnection())
+        {
+            await using var q = c.CreateCommand();
+            q.CommandText = "INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents,fiscal_status,transaction_type,cash_portion_cents) VALUES(1,$at,'CASH',100,100,'TEST_FIXTURE','SALE',100); SELECT last_insert_rowid();";
+            q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+            var id = Convert.ToInt64(await q.ExecuteScalarAsync());
+            await using var item = c.CreateCommand();
+            item.CommandText = "INSERT INTO sale_items(sale_id,product_id,product_name,quantity,unit_price_cents,vat_rate,line_total_cents) VALUES($s,1,'Tee',1,100,19,100);";
+            item.Parameters.AddWithValue("$s", id);
+            await item.ExecuteNonQueryAsync();
+        }
+        await Task.Delay(15);
+        await new BusinessManagementService(bareDb, bareSettings, new AuditLogRepository(bareDb)).CreateZArchiveAsync("kasse1", "TEST");
+        var bareExport = new DsfinvkExportService(bareDb, bareSettings);
+        var noTaxId = await bareExport.ValidateAsync(from, DateTimeOffset.Now.AddMinutes(1));
         var refused = false;
-        try { await export.ExportAsync(from, to, Path.Combine(dir, "out-refused")); }
+        try { await bareExport.ExportAsync(from, DateTimeOffset.Now.AddMinutes(1), Path.Combine(dir, "out-refused")); }
         catch (InvalidOperationException) { refused = true; }
         assert(!noTaxId.Ready && noTaxId.Issues.Any(x => x.Blocking && x.Code == "MASTER_DATA") && refused && !Directory.Exists(Path.Combine(dir, "out-refused")),
             "R131 without Steuernummer or USt-IdNr. (§ 14 Abs. 4 Nr. 2 UStG) the export is refused and nothing is written");
-        await settings.SaveManyAsync(new Dictionary<string, string> { ["company.tax_no"] = "27/123/45678" });
 
         var noClosing = await export.ValidateAsync(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2000, 12, 31, 0, 0, 0, TimeSpan.Zero));
         assert(!noClosing.Ready && noClosing.Issues.Any(x => x.Blocking && x.Code == "NO_CLOSING"),

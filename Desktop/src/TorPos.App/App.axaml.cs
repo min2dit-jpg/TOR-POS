@@ -77,6 +77,20 @@ public partial class App : Avalonia.Application
             CloudSync.Start();
             var identity = new SystemIdentityRepository(db);
             var management = new BusinessManagementService(db, settings, audit);
+            // R132 (DSFinV-K 3.2): Vorgänge recorded under an older TOR
+            // version are closed under that version before anything is
+            // booked under the new one.
+            try
+            {
+                var masterData = new DsfinvkMasterDataService(db, settings, management, dailyClosingGuard, audit);
+                var updateClosing = await masterData.EnsureSoftwareVersionAsync("SYSTEM");
+                if (updateClosing is not null)
+                    CrashLog.Write($"R132 automatic closing Z {updateClosing.ZNumber} after software update");
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("R132 software version closing check", ex);
+            }
             var starterCatalog = new ImbissStarterCatalogService(db);
             var dailyBackup = new DailyBackupScheduler(backup, settings);
             dailyBackup.Start();

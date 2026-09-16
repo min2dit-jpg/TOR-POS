@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 11;
+    public const int TargetSchemaVersion = 12;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -934,6 +934,27 @@ public sealed class SchemaMigrationService
                             ADD COLUMN tse_log_time TEXT NOT NULL DEFAULT '';
                         ALTER TABLE parked_receipts
                             ADD COLUMN tse_outage INTEGER NOT NULL DEFAULT 0;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                12,
+                "R132_CLOSING_MASTER_DATA",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R132: DSFinV-K 3.2 keeps the Stammdaten once per
+                        -- Kassenabschluss. The master data (company, till,
+                        -- software version) every Z-Bericht was recorded under,
+                        -- as JSON. Closings from before R132 keep '' and the
+                        -- export falls back to the current settings for them,
+                        -- saying so.
+                        ALTER TABLE z_report_archive
+                            ADD COLUMN master_data TEXT NOT NULL DEFAULT '';
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);

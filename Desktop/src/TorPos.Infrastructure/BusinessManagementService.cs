@@ -449,6 +449,10 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
             period with { To = now },
             extra: $"Bediener: {actor} | Fiskalstatus: {fiscalStatus}");
         var snapshot = string.Join("\n", doc.Lines);
+
+        // R132: the Stammdaten this closing was recorded under (DSFinV-K 3.2).
+        var masterData = DsfinvkMasterDataRules.Serialize(
+            await DsfinvkMasterDataStore.CurrentAsync(c, ct, (SqliteTransaction)tx));
         long id;
         await using (var q = c.CreateCommand())
         {
@@ -461,7 +465,8 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
                   list_gross_cents,promotion_discount_cents,manual_discount_cents,
                   storno_cents,return_cents,
                   vat7_net_cents,vat7_tax_cents,
-                  vat19_net_cents,vat19_tax_cents)
+                  vat19_net_cents,vat19_tax_cents,
+                  master_data)
                 VALUES(
                   $z,$created,$from,$to,$operator,
                   $count,$gross,$cash,$card,
@@ -469,7 +474,8 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
                   $list,$promotion,$manual,
                   $storno,$return,
                   $v7net,$v7tax,
-                  $v19net,$v19tax);
+                  $v19net,$v19tax,
+                  $master);
                 SELECT last_insert_rowid();
                 """;
             q.Parameters.AddWithValue("$z", zNumber);
@@ -497,7 +503,22 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
             q.Parameters.AddWithValue("$v19tax", vat19?.TaxCents ?? 0);
             q.Parameters.AddWithValue("$fiscal", fiscalStatus ?? "");
             q.Parameters.AddWithValue("$snapshot", snapshot);
+            q.Parameters.AddWithValue("$master", masterData);
             id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+        }
+
+        // R132: from here on the new period is recorded under the running
+        // software version.
+        await using (var version = c.CreateCommand())
+        {
+            version.Transaction = (SqliteTransaction)tx;
+            version.CommandText = """
+                INSERT INTO app_settings(key,value) VALUES($key,$value)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+                """;
+            version.Parameters.AddWithValue("$key", DsfinvkMasterDataRules.SoftwareVersionKey);
+            version.Parameters.AddWithValue("$value", DsfinvkMasterDataStore.RunningSoftwareVersion);
+            await version.ExecuteNonQueryAsync(ct);
         }
 
         await using (var closing = c.CreateCommand())

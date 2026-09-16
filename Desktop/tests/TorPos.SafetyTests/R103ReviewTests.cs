@@ -86,6 +86,17 @@ public static class R103ReviewTests
         var sales = new SaleRepository(db);
         var settings = new SettingsRepository(db);
 
+        // R132: company data are set up before the first sale; changing them
+        // afterwards needs a closing first (DSFinV-K 3.2).
+        await settings.SaveManyAsync(new Dictionary<string, string>
+        {
+            ["company.name"] = "R103 Server GmbH",
+            // R115: the server no longer binds every interface, so the test
+            // pins it to loopback instead of depending on this machine
+            // happening to have a LAN IPv4.
+            ["receipt.digital_qr.bind_address"] = "127.0.0.1"
+        });
+
         long saleId;
         using (var c = db.OpenConnection())
         using (var q = c.CreateCommand())
@@ -102,15 +113,6 @@ public static class R103ReviewTests
             item.Parameters.AddWithValue("$sale", saleId);
             item.ExecuteNonQuery();
         }
-
-        await settings.SaveManyAsync(new Dictionary<string, string>
-        {
-            ["company.name"] = "R103 Server GmbH",
-            // R115: the server no longer binds every interface, so the test
-            // pins it to loopback instead of depending on this machine
-            // happening to have a LAN IPv4.
-            ["receipt.digital_qr.bind_address"] = "127.0.0.1"
-        });
 
         var server = new DigitalReceiptService(db, settings, sales);
         await server.StartAsync();
