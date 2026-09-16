@@ -258,8 +258,10 @@ public static class R71ReviewTests
         var x = await management.BuildXReportAsync();
         var report = string.Join("\n", x.Lines);
 
+        // German report expectations must stay fixed on English CI runners too.
+        // Keep this independent of the production formatter so a regression fails.
         static string Euro(decimal amount) =>
-            amount.ToString("0.00") + " EUR";
+            amount.ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("de-DE")) + " EUR";
 
         assert(
             report.Contains("Listenwert vor Angebot/Rabatt: " + Euro(10m)) &&
