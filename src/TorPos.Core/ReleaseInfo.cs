@@ -3,9 +3,9 @@ namespace TorPos.Core;
 public static class TorRelease
 {
     public const string Product = "TOR POS Pro";
-    public const string Version = "0.7.33.822";
-    public const string Revision = "R122";
-    public const string UserAgentVersion = "0.7.33-R122";
+    public const string Version = "0.7.33.824";
+    public const string Revision = "R124";
+    public const string UserAgentVersion = "0.7.33-R124";
 
     // Set this to the TOR/Demirkaan GmbH production code-signing certificate thumbprint
     // before enabling remote automatic updates. Empty intentionally blocks remote installs.
