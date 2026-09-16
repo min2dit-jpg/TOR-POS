@@ -145,7 +145,7 @@ public async Task<IReadOnlyList<DuplicateArticleRow>> GetDuplicatesAsync(Cancell
 
         return result;
     });
-}public Task<long> NextSimulationPickupAsync(bool training) => PickupSequence.NextSimulationAsync(_db,training,DateTimeOffset.Now);
+}public Task<long> NextSimulationPickupAsync(bool training) => PickupSequence.NextSimulationAsync(_db,training);
 public async Task SetInventoryAsync(long productId, decimal quantity, string actor, CancellationToken ct = default)
 {
     await IoQueue.RunAsync(async () =>

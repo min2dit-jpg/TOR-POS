@@ -357,8 +357,9 @@ await R118R119ReviewTests.Run(root,Assert);
 await R121ReviewTests.Run(Assert);
 await R122ReviewTests.Run(root,Assert,Reject);
 await R123ReviewTests.Run(root,Assert);
+await R124ReviewTests.Run(root,Assert);
 
-const int ExpectedSafetyChecks = 655;
+const int ExpectedSafetyChecks = 663;
 
 if (checks != ExpectedSafetyChecks)
 {

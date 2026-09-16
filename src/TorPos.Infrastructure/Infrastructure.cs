@@ -1942,13 +1942,10 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
         }
         if (edition == "IMBISS" && pickupNumber == 0 && pickupMode == "SALE")
         {
-            // Operational queue number only. It resets daily and never replaces the immutable fiscal receipt number.
-            var sequenceKey = "pickup." + PickupSequence.BusinessDay(now);
-            await using var pickup = c.CreateCommand();
-            pickup.Transaction = (SqliteTransaction)tx;
-            pickup.CommandText = "INSERT OR IGNORE INTO app_sequence(key,value) VALUES($key,0); UPDATE app_sequence SET value=value+1 WHERE key=$key; SELECT value FROM app_sequence WHERE key=$key;";
-            pickup.Parameters.AddWithValue("$key", sequenceKey);
-            pickupNumber = Convert.ToInt64(await pickup.ExecuteScalarAsync(ct));
+            // Operational queue number only - it never replaces the immutable
+            // fiscal receipt number. R124: counts per service period (since the
+            // last Tagesabschluss), no longer resetting at midnight mid-service.
+            pickupNumber = await PickupSequence.NextAsync(c, (SqliteTransaction)tx, "", ct);
         }
 
         long saleId;
@@ -2858,11 +2855,8 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
         long pickupNumber=0;
         if (assignPickupNumber)
         {
-            var sequenceKey=(training ? "pickup.training." : "pickup.")+PickupSequence.BusinessDay(now);
-            await using var pickup=c.CreateCommand(); pickup.Transaction=(SqliteTransaction)tx;
-            pickup.CommandText="INSERT OR IGNORE INTO app_sequence(key,value) VALUES($key,0); UPDATE app_sequence SET value=value+1 WHERE key=$key; SELECT value FROM app_sequence WHERE key=$key;";
-            pickup.Parameters.AddWithValue("$key",sequenceKey);
-            pickupNumber=Convert.ToInt64(await pickup.ExecuteScalarAsync(ct));
+            // R124: same service-period counter as a direct sale (see PickupSequence).
+            pickupNumber=await PickupSequence.NextAsync(c,(SqliteTransaction)tx,training ? "training." : "",ct);
         }
 
         long parkedId;

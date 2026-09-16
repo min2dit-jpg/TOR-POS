@@ -19,12 +19,19 @@ static class R48ReviewTests {
  var management=new BusinessManagementService(db,new SettingsRepository(db),new AuditLogRepository(db));
  await reject(()=>management.TrySetInventoryAsync(p.Id,10,12,"FAIL"),"Inventory audit failure rolls back count");
  using(var c=db.OpenConnection()){using var q=c.CreateCommand();q.CommandText="SELECT stock_quantity FROM products WHERE id="+p.Id;assert(Convert.ToDecimal(q.ExecuteScalar())==10,"Inventory retains original count after audit failure");}
- var at=DateTimeOffset.Parse("2026-09-08T21:00:00Z");
- assert(await PickupSequence.NextSimulationAsync(db,true,at)==1,"Training starts at 001");
- assert(await PickupSequence.NextSimulationAsync(new SqliteDatabase(path),true,at)==2,"Training counter survives reopening");
- assert(await PickupSequence.NextSimulationAsync(db,false,at)==1,"Test and training counters separated");
- assert(await PickupSequence.NextSimulationAsync(db,true,at.AddHours(2))==1,"Counter resets on Berlin midnight");
- using(var c=db.OpenConnection()){using var q=c.CreateCommand();q.CommandText="SELECT COUNT(*) FROM app_sequence WHERE key LIKE 'pickup.20%'";assert(Convert.ToInt32(q.ExecuteScalar())==0,"Simulation never consumes production counter");}
+ assert(await PickupSequence.NextSimulationAsync(db,true)==1,"Training starts at 001");
+ assert(await PickupSequence.NextSimulationAsync(new SqliteDatabase(path),true)==2,"Training counter survives reopening");
+ assert(await PickupSequence.NextSimulationAsync(db,false)==1,"Test and training counters separated");
+ // R124 CORRECTION: this line used to assert "Counter resets on Berlin midnight" -
+ // the very behaviour the audit (finding İ1) flagged: an imbiss open past
+ // midnight watched its queue jump back to 001 mid-service. The counter now
+ // restarts at the Tagesabschluss, the same boundary the Z-Bericht uses (R117).
+ await new SaleRepository(db).RecordDailyClosingAsync("r48");
+ assert(await PickupSequence.NextSimulationAsync(db,true)==1,"Counter resets at the next Tagesabschluss, not at midnight");
+ // R124 CORRECTION: the production counter's keys are no longer "pickup.<date>",
+ // so the old LIKE 'pickup.20%' would have matched nothing and passed forever
+ // whatever the simulation did. It now looks for the real key shape.
+ using(var c=db.OpenConnection()){using var q=c.CreateCommand();q.CommandText="SELECT COUNT(*) FROM app_sequence WHERE key LIKE 'pickup.period.%'";assert(Convert.ToInt32(q.ExecuteScalar())==0,"Simulation never consumes production counter");}
  await SafetyDatabase.EnsureCurrentAsync(db);assert((await repo.GetByIdAsync(p.Id))!.Sku==p.Sku,"Reopening migration preserves assigned article number");
  }
 }
