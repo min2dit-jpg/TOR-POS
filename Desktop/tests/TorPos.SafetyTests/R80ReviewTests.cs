@@ -41,8 +41,8 @@ public static class R80ReviewTests
         };
         var ordinaryProcessData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(ordinarySale));
         assert(
-            ordinaryProcessData.StartsWith("Beleg^") && !ordinaryProcessData.Contains("Referenz-Beleg-Nr"),
-            "R80 an ordinary SALE's ProcessData carries the plain Beleg marker with no storno reference");
+            ordinaryProcessData == "Beleg^10.00_0.00_0.00_0.00_0.00^10.00:Bar",
+            $"R80/R130 an ordinary SALE is a Beleg with positive amounts (actual: {ordinaryProcessData})");
 
         var stornoSale = new Sale
         {
@@ -57,9 +57,15 @@ public static class R80ReviewTests
             Lines = ordinarySale.Lines
         };
         var stornoProcessData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(stornoSale));
+        // R130 CORRECTION: this used to require "AVBelegstorno" plus a
+        // "Referenz-Beleg-Nr" tag. DSFinV-K Anhang B and I rule AVBelegstorno out
+        // for a TSE-secured till, and Anhang I has no reference field: a Storno
+        // is a Beleg with reversed signs, and its link to the original receipt
+        // is DSFinV-K Bon_Referenzen (built from OriginalSaleId, checked below).
+        // The reversed signs are what keep it from looking like a duplicate sale.
         assert(
-            stornoProcessData.StartsWith("AVBelegstorno^") && stornoProcessData.Contains("Referenz-Beleg-Nr:501"),
-            "R80 a STORNO's ProcessData is marked AVBelegstorno and references the original Beleg-Nr, not indistinguishable from a duplicate sale");
+            stornoProcessData == "Beleg^-10.00_0.00_0.00_0.00_0.00^-10.00:Bar",
+            $"R80/R130 a STORNO is a Beleg with reversed signs, never AVBelegstorno, and cannot be mistaken for a duplicate sale (actual: {stornoProcessData})");
 
         // LoadSaleAsync (exercised via ISaleRepository.GetByIdAsync) must populate
         // OriginalReceiptNumber from the self-join, not just OriginalSaleId.

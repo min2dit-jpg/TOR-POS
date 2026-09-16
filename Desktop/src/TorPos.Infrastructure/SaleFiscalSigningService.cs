@@ -76,10 +76,24 @@ public sealed class SaleFiscalSigningService
             return;
         }
 
-        var processData = FiscalProcessData.BuildKassenbeleg(sale);
+        // R130: built before the TSE is touched. A rate that has no place in
+        // the Anhang I tax containers cannot be signed correctly, and a
+        // transaction must not be opened for data that will never be valid.
+        byte[] processData;
+        try
+        {
+            processData = FiscalProcessData.BuildKassenbeleg(sale);
+        }
+        catch (UnsupportedVatRateException ex)
+        {
+            await ReportOutageAsync(sale, ex.Message, actor, ct);
+            return;
+        }
 
+        // R130: DSFinV-K Anhang I - StartTransaction carries neither
+        // processType nor processData; both are handed over at Finish.
         var (startResult, _) = await _tse.StartTransactionAsync(
-            new TseTransactionStartRequest(clientId, processData, FiscalProcessData.KassenbelegProcessType),
+            new TseTransactionStartRequest(clientId, FiscalProcessData.StartProcessData, FiscalProcessData.StartProcessType),
             actor,
             ct);
 

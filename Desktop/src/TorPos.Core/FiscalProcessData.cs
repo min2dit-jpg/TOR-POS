@@ -3,131 +3,136 @@ using System.Globalization;
 namespace TorPos.Core;
 
 /// <summary>
-/// Builds the TSE "ProcessData" payload for one completed sale, submitted as
-/// a single Start+Finish "Beleg" transaction (process type
-/// <see cref="KassenbelegProcessType"/>).
+/// Builds the TSE "processType"/"processData" of a Vorgang exactly as DSFinV-K
+/// 2.4 Anhang I prescribes (BZSt, 15.12.2023; unchanged since 2.3).
 ///
-/// IMPORTANT - draft, not yet legally validated:
-/// This follows the general field shape described by BSI TR-03153 /
-/// DSFinV-K for a Kassenbeleg process ("Beleg^Zeitstempel^Betrag-Angaben^
-/// UStKlasse-Angaben"), but has NOT been verified byte-for-byte against the
-/// official BSI TR-03153 Anlage, a real Hardware TSE 2, or the DSFinV-K test
-/// tool. Treat this as a starting point only. It must be explicitly
-/// re-verified - and this comment removed once confirmed - before
-/// FiscalComplianceService's ksichvReceiptValidated/dsfinvkImplementedAndValidated
-/// gates are ever flipped away from false.
+/// R130: until R130 this class produced a format of its own invention
+/// ("Beleg^timestamp^Betrag-Summe:...^UStNormal:...^Beleg-Nr:...") and signed a
+/// Storno as "AVBelegstorno". Neither matched Anhang I, which is binding for the
+/// data handed to the TSE, and Anhang B/I explicitly rule out AVBelegstorno for
+/// a system secured by a TSE. Every test that pinned the old format was
+/// rewritten against the official examples (see R130ReviewTests).
+///
+/// Still to be confirmed against a real certified TSE before the fiscal
+/// circuit breakers (FiscalRelease, FiscalComplianceService) may change.
 /// </summary>
 public static class FiscalProcessData
 {
     public const string KassenbelegProcessType = "Kassenbeleg-V1";
     public const string BestellungProcessType = "Bestellung-V1";
 
-    public static byte[] BuildKassenbeleg(Sale sale)
+    /// <summary>
+    /// Anhang I: "processType und processData für die StartTransaction-Operation
+    /// [sind] immer leer". The content is only handed over at FinishTransaction.
+    /// </summary>
+    public const string StartProcessType = "";
+    public static byte[] StartProcessData => Array.Empty<byte>();
+
+    /// <summary>
+    /// Kassenbeleg-V1: <c>&lt;Vorgangstyp&gt;^&lt;Brutto-Steuerumsätze&gt;^&lt;Zahlungen&gt;</c>.
+    /// </summary>
+    public static byte[] BuildKassenbeleg(Sale sale) =>
+        System.Text.Encoding.UTF8.GetBytes(KassenbelegText(sale));
+
+    public static string KassenbelegText(Sale sale)
     {
         ArgumentNullException.ThrowIfNull(sale);
 
-        // R108: must use the shared, discount-prorated calculator, not a raw
-        // per-VatRate sum of LineTotalCents - the latter ignores
-        // sale.DiscountCents entirely, so a discounted sale's VAT-class
-        // breakdown here would sum to MORE than Betrag-Summe below (which
-        // already reflects the discount via sale.TotalCents), producing an
-        // internally inconsistent TSE-signed Beleg. Same bug family as
-        // R103's digital receipt and R82's partial return, found on a
-        // review of every remaining independent VatRate-grouping site.
-        var vatGroups = VatSummaryCalculator.Compute(sale.Lines, sale.DiscountCents)
-            .OrderByDescending(x => x.Rate)
-            .Select(g => $"{VatClass(g.Rate)}:{Amount(g.GrossCents)}")
-            .ToArray();
+        // TOR stores a Storno/Retoure with positive amounts and tells them apart
+        // by transaction_type; the reports subtract them. On the Beleg and in
+        // the TSE they are a normal "Beleg" with the signs reversed (DSFinV-K
+        // 4.2.2 and 4.2.5). The link to the original receipt is not part of
+        // processData - DSFinV-K carries it in Bon_Referenzen.
+        var sign = IsReversal(sale) ? -1 : 1;
 
-        // R101: Sale.CashPortionCents/CardPortionCents are always populated
-        // (Cash=(Total,0), Card=(0,Total), Mixed=(X,Total-X)), so a split
-        // sale emits BOTH tags with their real portions instead of one
-        // amount tag for the whole total under a single tender type.
-        var paymentField = string.Join("_", new[]
-        {
-            sale.CashPortionCents > 0 ? $"Bar:{Amount(sale.CashPortionCents)}" : null,
-            sale.CardPortionCents > 0 ? $"Unbar:{Amount(sale.CardPortionCents)}" : null
-        }.Where(x => x is not null));
-        if (paymentField.Length == 0)
-            paymentField = sale.PaymentMethod == PaymentMethod.Cash ? $"Bar:{Amount(0)}" : $"Unbar:{Amount(0)}";
+        // Five tax containers in the fixed order of Anhang I. The gross per
+        // rate comes from the shared discount-prorating calculator (R108), so
+        // the containers add up to the amount actually paid.
+        var containers = new long[5];
+        foreach (var group in VatSummaryCalculator.Compute(sale.Lines, sale.DiscountCents))
+            containers[TaxContainer(group.Rate)] += group.GrossCents;
 
-        // A STORNO/RETURN must be distinguishable from an ordinary sale of the
-        // same items - both the Vorgang marker and the reference back to the
-        // original Beleg-Nr matter for later DSFinV-K classification (an
-        // AVBelegstorno without its Referenz-Beleg-Nr would be indistinguishable
-        // from a duplicate sale). This was missing from the first R78/R79 draft
-        // and only found on a later review pass.
-        var isReversal = sale.TransactionType is "STORNO" or "RETURN";
+        var gross = string.Join("_", containers.Select(c => Amount(sign * c)));
 
-        // R121: a Teilretoure used to be signed as "AVBelegabbruch", which
-        // means an ABORTED process - a receipt that was broken off before it
-        // completed, with no money moved. A Retoure is the opposite: a
-        // completed transaction that hands money back, and it is modelled as a
-        // normal Beleg carrying negative positions, not as an abort. Signing
-        // it as an abort would misclassify every partial return.
-        //
-        // The Referenz-Beleg-Nr below still links it to the original receipt,
-        // which is what makes the negative booking traceable.
-        var vorgang = sale.TransactionType switch
-        {
-            "STORNO" => "AVBelegstorno",
-            "RETURN" => "Beleg",
-            _ => "Beleg"
-        };
+        // Only "Bar" and "Unbar", cash first, zero payments left out. R101's
+        // Effective* portions also cover sales from before the split columns.
+        var payments = new List<string>(2);
+        if (sale.EffectiveCashPortionCents != 0)
+            payments.Add($"{Amount(sign * sale.EffectiveCashPortionCents)}:Bar");
+        if (sale.EffectiveCardPortionCents != 0)
+            payments.Add($"{Amount(sign * sale.EffectiveCardPortionCents)}:Unbar");
 
-        var fields = new List<string>
-        {
-            vorgang,
-            sale.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss.fffK", CultureInfo.InvariantCulture),
-            $"Betrag-Summe:{Amount(sale.TotalCents)}_{paymentField}",
-            vatGroups.Length > 0 ? string.Join("_", vatGroups) : $"{VatClass(19m)}:{Amount(0)}",
-            $"Beleg-Nr:{sale.ReceiptNumber}",
-        };
-
-        if (isReversal && sale.OriginalReceiptNumber is long originalReceipt)
-            fields.Add($"Referenz-Beleg-Nr:{originalReceipt}");
-
-        return System.Text.Encoding.UTF8.GetBytes(string.Join("^", fields));
+        return $"{VorgangstypBeleg}^{gross}^{string.Join("_", payments)}";
     }
 
     /// <summary>
-    /// R83: ProcessData for accepting an IMBISS ORDER, signed as its own
-    /// "Bestellung-V1" Vorgang - separate from the "Kassenbeleg-V1" signed
-    /// later at payment (BuildKassenbeleg, via SaleFiscalSigningService).
-    /// Same DRAFT caveat as BuildKassenbeleg applies.
+    /// Bestellung-V1: one line per position, <c>&lt;Menge&gt;;"&lt;Bezeichnung&gt;";&lt;Preis&gt;</c>,
+    /// lines separated by CR (U+000D). The price is the gross unit price.
     /// </summary>
-    public static byte[] BuildBestellung(ParkedReceipt order)
+    public static byte[] BuildBestellung(ParkedReceipt order) =>
+        System.Text.Encoding.UTF8.GetBytes(BestellungText(order));
+
+    public static string BestellungText(ParkedReceipt order)
     {
         ArgumentNullException.ThrowIfNull(order);
 
-        // R108: same fix as BuildKassenbeleg - use the shared calculator so a
-        // discounted parked order's VAT-class breakdown stays consistent
-        // with Betrag-Summe below, not just a raw per-VatRate sum.
-        var vatGroups = VatSummaryCalculator.Compute(order.Lines, order.DiscountCents)
-            .OrderByDescending(x => x.Rate)
-            .Select(g => $"{VatClass(g.Rate)}:{Amount(g.GrossCents)}")
-            .ToArray();
-
-        var fields = new[]
-        {
-            "Bestellung",
-            order.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss.fffK", CultureInfo.InvariantCulture),
-            $"Betrag-Summe:{Amount(order.TotalCents)}",
-            vatGroups.Length > 0 ? string.Join("_", vatGroups) : $"{VatClass(19m)}:{Amount(0)}",
-            $"Park-Nr:{order.ParkNumber}",
-        };
-
-        return System.Text.Encoding.UTF8.GetBytes(string.Join("^", fields));
+        return string.Join("\r", order.Lines.Select(line =>
+            $"{Quantity(line.Quantity)};\"{LineText(line).Replace("\"", "\"\"")}\";{Amount(line.UnitPriceCents)}"));
     }
 
-    private static string Amount(long cents) =>
+    /// <summary>The Vorgangstyp every TOR sale, Storno and Retoure is recorded under.</summary>
+    public const string VorgangstypBeleg = "Beleg";
+
+    /// <summary>
+    /// The article text of a line, the same way the printed and the digital
+    /// receipt show it. Shared so the TSE data and the DSFinV-K export name a
+    /// position identically.
+    /// </summary>
+    public static string LineText(CartLine line) =>
+        string.IsNullOrWhiteSpace(line.VariantName)
+            ? line.ProductName
+            : $"{line.ProductName} · {line.VariantName}";
+
+    public static bool IsReversal(Sale sale) =>
+        sale.TransactionType is "STORNO" or "RETURN";
+
+    /// <summary>
+    /// Index of the Anhang I tax container: 0 allgemeiner Steuersatz, 1
+    /// ermäßigter Steuersatz, 2 and 3 the § 24 UStG averages (not used by
+    /// TOR), 4 the 0 % container. TOR only offers 19 % and 7 % (plus 0 %);
+    /// any other rate cannot be placed without knowing its legal basis, so it
+    /// is refused rather than guessed.
+    /// </summary>
+    public static int TaxContainer(decimal rate) => rate switch
+    {
+        19m => 0,
+        7m => 1,
+        0m => 4,
+        _ => throw new UnsupportedVatRateException(rate)
+    };
+
+    /// <summary>
+    /// Amounts: "." as decimal separator, exactly two decimals, leading "-" for
+    /// negative values, no "+", no thousands separator.
+    /// </summary>
+    public static string Amount(long cents) =>
         (cents / 100m).ToString("0.00", CultureInfo.InvariantCulture);
 
-    private static string VatClass(decimal rate) => rate switch
+    /// <summary>
+    /// Quantity with as few decimals as possible ("1", "0.5", "0.451"),
+    /// at most three, cut off rather than rounded.
+    /// </summary>
+    public static string Quantity(decimal quantity) =>
+        (Math.Truncate(quantity * 1000m) / 1000m).ToString("0.###", CultureInfo.InvariantCulture);
+}
+
+public sealed class UnsupportedVatRateException : InvalidOperationException
+{
+    public UnsupportedVatRateException(decimal rate)
+        : base($"MwSt-Satz {rate.ToString(CultureInfo.InvariantCulture)} % ist keinem Steuersatz nach DSFinV-K Anhang I zugeordnet (erlaubt: 19 %, 7 %, 0 %).")
     {
-        19m => "UStNormal",
-        7m => "UStErmaessigt",
-        0m => "UStNull",
-        _ => "UStSonstige"
-    };
+        Rate = rate;
+    }
+
+    public decimal Rate { get; }
 }

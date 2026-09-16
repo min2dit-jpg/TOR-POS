@@ -67,8 +67,10 @@ public sealed class OrderFiscalSigningService
 
         var processData = FiscalProcessData.BuildBestellung(order);
 
+        // R130: DSFinV-K Anhang I - StartTransaction carries neither
+        // processType nor processData; both are handed over at Finish.
         var (startResult, _) = await _tse.StartTransactionAsync(
-            new TseTransactionStartRequest(clientId, processData, FiscalProcessData.BestellungProcessType),
+            new TseTransactionStartRequest(clientId, FiscalProcessData.StartProcessData, FiscalProcessData.StartProcessType),
             actor,
             ct);
 

@@ -38,12 +38,15 @@ public static class R83ReviewTests
             Lines = new[] { new CartLine { ProductName = "Döner", Quantity = 1, UnitPriceCents = 1250, VatRate = 19m } }
         };
         var processData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildBestellung(sampleOrder));
+        // R130: Bestellung-V1 per DSFinV-K Anhang I is one CSV line per
+        // position - Menge;"Bezeichnung";Preis - with no marker, total or
+        // Park-Nr of TOR's own making.
         assert(
-            processData.StartsWith("Bestellung^") && processData.Contains("12.50") && processData.Contains("Park-Nr:777"),
-            "R83 the Bestellung ProcessData carries its own marker, the order total and the Park-Nr");
+            processData == "1;\"Döner\";12.50",
+            $"R83/R130 the Bestellung-V1 ProcessData lists the position as Menge;\"Bezeichnung\";Preis (actual: {processData})");
         assert(
-            !processData.Contains("Beleg-Nr") && !processData.Contains("AVBelegstorno"),
-            "R83 an order acceptance's ProcessData is never mistaken for a Kassenbeleg or a Storno");
+            !processData.Contains('^') && !processData.Contains("Beleg"),
+            "R83/R130 an order acceptance's ProcessData has none of the Kassenbeleg-V1 structure");
 
         var settings = new SettingsRepository(db);
         var audit = new AuditLogRepository(db);

@@ -42,10 +42,13 @@ public static class R121ReviewTests
             !retoureData.Contains("AVBelegabbruch"),
             "R121 the AVBelegabbruch marker - an aborted receipt with no money moved - is never used for a Retoure");
         assert(
-            retoureData.Contains("Referenz-Beleg-Nr:120500"),
-            "R121 the Retoure still references the original receipt, which is what makes the negative booking traceable");
+            retoureData == "Beleg^-10.00_0.00_0.00_0.00_0.00^-10.00:Bar",
+            $"R121/R130 the Retoure carries negative amounts; its link to the original receipt is DSFinV-K Bon_Referenzen, since Anhang I has no reference field (actual: {retoureData})");
 
-        // A full Storno keeps its own, correct marker.
+        // R130 CORRECTION: R121 claimed a full Storno "genuinely is"
+        // AVBelegstorno. DSFinV-K Anhang B and I say the opposite for a till
+        // secured by a TSE: every receipt is already signed before it could be
+        // flagged, so a Storno is a second Beleg with reversed signs.
         var storno = new Sale
         {
             Id = 2,
@@ -61,8 +64,8 @@ public static class R121ReviewTests
         };
         var stornoData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(storno));
         assert(
-            stornoData.StartsWith("AVBelegstorno^") && stornoData.Contains("Referenz-Beleg-Nr:120500"),
-            "R121 a full BON STORNO keeps AVBelegstorno - cancelling an issued receipt genuinely is that process type");
+            stornoData == "Beleg^-10.00_0.00_0.00_0.00_0.00^-10.00:Bar",
+            $"R121/R130 a full BON STORNO is a Beleg with reversed signs - AVBelegstorno may not be used once a TSE secures the till (actual: {stornoData})");
 
         // An ordinary sale is unaffected by the change.
         var plain = new Sale
@@ -77,8 +80,8 @@ public static class R121ReviewTests
         };
         var plainData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(plain));
         assert(
-            plainData.StartsWith("Beleg^") && !plainData.Contains("Referenz-Beleg-Nr"),
-            "R121 an ordinary sale is still a plain Beleg with no reversal reference");
+            plainData == "Beleg^10.00_0.00_0.00_0.00_0.00^10.00:Bar",
+            "R121/R130 an ordinary sale is a plain Beleg with positive amounts");
 
         // ---- F4: Vorgangsende must not be fabricated ----
         // The receipt job models it as nullable, and the validator only demands

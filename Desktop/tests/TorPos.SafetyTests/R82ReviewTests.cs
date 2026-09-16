@@ -30,8 +30,8 @@ public static class R82ReviewTests
                 "R82 schema migration V10 adds original_sale_item_id to sale_items");
         }
 
-        // FiscalProcessData already distinguishes STORNO (R80); verify RETURN gets
-        // its own distinct marker too, not silently reusing "Beleg" or "AVBelegstorno".
+        // A RETURN is a Beleg with negative amounts (DSFinV-K 4.2.5); R130 moved
+        // the processData to the official Anhang I form.
         var returnSale = new Sale
         {
             Id = 99,
@@ -52,8 +52,8 @@ public static class R82ReviewTests
         // negative positions. The reference to the original receipt is what
         // makes it traceable, and that part was always right.
         assert(
-            returnProcessData.StartsWith("Beleg^") && returnProcessData.Contains("Referenz-Beleg-Nr:555"),
-            "R82/R121 a partial RETURN is signed as a normal Beleg referencing the original Beleg-Nr, not as an aborted receipt");
+            returnProcessData == "Beleg^-5.00_0.00_0.00_0.00_0.00^-5.00:Bar",
+            $"R82/R121/R130 a partial RETURN is signed as a normal Beleg with negative amounts, not as an aborted receipt (actual: {returnProcessData})");
         assert(
             !returnProcessData.Contains("AVBelegabbruch"),
             "R121 a Retoure is never signed as AVBelegabbruch - that marker means the process was aborted, not reversed");

@@ -87,8 +87,8 @@ public static class R101ReviewTests
         };
         var processData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(mixedSale));
         assert(
-            processData.Contains("Bar:4.00") && processData.Contains("Unbar:6.00"),
-            $"R101 FiscalProcessData emits both the Bar and Unbar portions of a Mixed sale (actual: {processData})");
+            processData.EndsWith("^4.00:Bar_6.00:Unbar"),
+            $"R101/R130 FiscalProcessData emits both portions of a Mixed sale, cash first, as Betrag:Zahlart per DSFinV-K Anhang I (actual: {processData})");
 
         // 4) Kassensturz (GetExpectedCashCentsAsync): a Mixed sale's cash
         // portion counts toward the drawer, its card portion never does -

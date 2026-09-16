@@ -38,8 +38,11 @@ public static class R78ReviewTests
             }
         };
         var processData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(sampleSale));
-        assert(processData.StartsWith("Beleg^") && processData.Contains("19.99") && processData.Contains("UStNormal") && processData.Contains("UStErmaessigt"),
-            "R78 ProcessData draft carries the Beleg marker, total and both VAT classes");
+        // R130: the first draft checked for tags ("UStNormal", "UStErmaessigt")
+        // that DSFinV-K Anhang I does not have. The official Kassenbeleg-V1 form
+        // is Vorgangstyp ^ five gross tax containers ^ payments.
+        assert(processData == "Beleg^16.99_3.00_0.00_0.00_0.00^19.99:Bar",
+            $"R78/R130 ProcessData is Kassenbeleg-V1 per DSFinV-K Anhang I - Beleg, 19 % and 7 % gross in their containers, cash payment (actual: {processData})");
         assert(FiscalProcessData.BuildKassenbeleg(sampleSale).SequenceEqual(FiscalProcessData.BuildKassenbeleg(sampleSale)),
             "R78 ProcessData is deterministic for the same sale");
 

@@ -19,6 +19,11 @@ using TorPos.Core;
 // internally inconsistent signed fiscal document. Fixed by using the same
 // shared TorPos.Core.VatSummaryCalculator.Compute both other fixes already
 // use.
+//
+// R130: the "Betrag-Summe"/"UStNormal" tags described above were TOR's own
+// invention and no longer exist; processData now follows DSFinV-K Anhang I.
+// The point of R108 carries over unchanged - the tax containers must add up to
+// what was actually paid.
 public static class R108ReviewTests
 {
     public static Task Run(Action<bool, string> assert)
@@ -35,11 +40,14 @@ public static class R108ReviewTests
         };
         var processData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(discountedSale));
         assert(
-            processData.Contains("UStNormal:107.10") && !processData.Contains("UStNormal:119.00"),
-            $"R108 FiscalProcessData.BuildKassenbeleg's VAT-class tag reflects the discount (107,10 EUR), not the raw pre-discount gross (119,00 EUR) - actual: {processData}");
+            processData == "Beleg^107.10_0.00_0.00_0.00_0.00^107.10:Bar",
+            $"R108/R130 the 19 % tax container reflects the discount (107,10 EUR), not the raw pre-discount gross (119,00 EUR) - actual: {processData}");
+        decimal Sum(IEnumerable<string> amounts) =>
+            amounts.Sum(a => decimal.Parse(a, System.Globalization.CultureInfo.InvariantCulture));
+        var parts = processData.Split('^');
         assert(
-            processData.Contains("Betrag-Summe:107.10"),
-            "R108 the discounted sale's Betrag-Summe and its own VAT-class tag now agree (both 107,10 EUR), not internally inconsistent");
+            Sum(parts[1].Split('_')) == Sum(parts[2].Split('_').Select(p => p.Split(':')[0])),
+            "R108/R130 the tax containers of a discounted sale add up to its payments, not internally inconsistent");
 
         // A Bon with NO discount must be completely unaffected - the fix
         // must never change an ordinary (undiscounted) sale's payload.
@@ -51,7 +59,7 @@ public static class R108ReviewTests
         };
         var undiscountedProcessData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(undiscountedSale));
         assert(
-            undiscountedProcessData.Contains("UStNormal:119.00") && undiscountedProcessData.Contains("Betrag-Summe:119.00"),
+            undiscountedProcessData == "Beleg^119.00_0.00_0.00_0.00_0.00^119.00:Bar",
             "R108 an undiscounted sale's ProcessData is unaffected by the fix");
 
         // Same fix, same scenario, for BuildBestellung (IMBISS order
@@ -65,9 +73,12 @@ public static class R108ReviewTests
             Lines = new[] { line }
         };
         var orderProcessData = System.Text.Encoding.UTF8.GetString(FiscalProcessData.BuildBestellung(discountedOrder));
+        // R130: Bestellung-V1 lists positions at their unit price and carries no
+        // tax totals, so an order discount can no longer make it inconsistent;
+        // the discount is part of the Kassenbeleg signed at payment.
         assert(
-            orderProcessData.Contains("UStNormal:107.10") && !orderProcessData.Contains("UStNormal:119.00"),
-            $"R108 FiscalProcessData.BuildBestellung's VAT-class tag also reflects a discounted parked order's real total - actual: {orderProcessData}");
+            orderProcessData == "1;\"R108 Artikel\";119.00",
+            $"R108/R130 BuildBestellung lists the position itself and no tax total that a discount could contradict - actual: {orderProcessData}");
 
         return Task.CompletedTask;
     }
