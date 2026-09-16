@@ -1792,7 +1792,9 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         return result;
     }
 
-    private static string Money(long cents) => $"{cents / 100m:0.00} EUR";
+    // German report amounts must not depend on the Windows account culture.
+    private static string Money(long cents) =>
+        (cents / 100m).ToString("0.00", CultureInfo.GetCultureInfo("de-DE")) + " EUR";
 
     // Matches the format produced by the generated created_at_utc column
     // (strftime('%Y-%m-%dT%H:%M:%fZ', ...)) exactly, so a plain text WHERE
