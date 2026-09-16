@@ -16,6 +16,13 @@ dotnet build "tests\TorPos.SafetyTests\TorPos.SafetyTests.csproj" -c Release -m:
 if not "%ERRORLEVEL%"=="0" (popd & goto :failed_desktop_build)
 dotnet run --project "tests\TorPos.SafetyTests\TorPos.SafetyTests.csproj" -c Release --no-build
 if not "%ERRORLEVEL%"=="0" (popd & goto :failed_desktop)
+REM R127: once more under en-US - the culture of the GitHub test runner.
+REM A test that only passes on a German Windows would otherwise first fail there.
+set TOR_TEST_CULTURE=en-US
+dotnet run --project "tests\TorPos.SafetyTests\TorPos.SafetyTests.csproj" -c Release --no-build
+set "RC=%ERRORLEVEL%"
+set TOR_TEST_CULTURE=
+if not "%RC%"=="0" (popd & goto :failed_desktop)
 popd
 
 echo.

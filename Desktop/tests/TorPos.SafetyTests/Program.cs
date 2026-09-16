@@ -3,6 +3,21 @@ using TorPos.Core;
 using TorPos.Infrastructure;
 using TorPos.App;
 
+// R127: TOR_TEST_CULTURE runs the whole suite under another Windows culture.
+// The GitHub runner is en-US while the development PC is de-DE, and a test
+// that builds its expectation with the current culture passed here and failed
+// there (R71 after R123 - fixed in PR #3). Run with en-US and tr-TR before
+// pushing; tr-TR also catches the Turkish dotted/dotless I casing trap.
+if (Environment.GetEnvironmentVariable("TOR_TEST_CULTURE") is { Length: > 0 } testCulture)
+{
+    var culture = System.Globalization.CultureInfo.GetCultureInfo(testCulture);
+    System.Globalization.CultureInfo.DefaultThreadCurrentCulture = culture;
+    System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = culture;
+    System.Globalization.CultureInfo.CurrentCulture = culture;
+    System.Globalization.CultureInfo.CurrentUICulture = culture;
+    Console.WriteLine($"Test culture: {culture.Name}");
+}
+
 var checks=0;
 void Assert(bool condition,string title){if(!condition)throw new Exception("FAIL: "+title);Console.WriteLine("PASS: "+title);checks++;}
 async Task Reject(Func<Task> action,string title){try{await action();}catch{Assert(true,title);return;}throw new Exception("FAIL: "+title);}
