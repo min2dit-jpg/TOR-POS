@@ -2122,16 +2122,27 @@ public partial class MainWindow:Window
 
         try
         {
+            // R134: a real booking is a fiscal Vorgang and is signed by the
+            // TSE (AEAO zu § 146a Nr. 1.10.2); in test mode it stays a test entry.
+            var production = !IsSimulation;
             var movement = await _cashMovements.AddAsync(
-                request,
+                request with { Production = production },
                 _currentUser.Username);
+
+            var tseNote = "";
+            if (production)
+            {
+                var signed = await new CashMovementFiscalSigningService(_tseFailSafe, _settings, _cashMovements)
+                    .SignAsync(movement, _currentUser.Username);
+                tseNote = signed.Signed ? " · TSE-signiert" : " · TSE-AUSFALL dokumentiert";
+            }
 
             var opening = _settingsCache.GetInt("cash.start.cents", 0);
             var expected = await _cashMovements.GetExpectedCashCentsAsync(opening);
 
             ScannerStatus.Text =
-                $"{movement.Kind}: {Formatting.Money(movement.AmountCents)} gebucht · " +
-                $"Soll-Kassenbestand TEST: {Formatting.Money(expected)}";
+                $"{movement.Kind} ({movement.BusinessCase}): {Formatting.Money(movement.AmountCents)} gebucht{tseNote} · " +
+                $"Soll-Kassenbestand{(production ? "" : " TEST")}: {Formatting.Money(expected)}";
         }
         catch (Exception ex)
         {

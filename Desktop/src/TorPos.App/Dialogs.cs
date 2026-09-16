@@ -1015,6 +1015,19 @@ public sealed class CashMovementWindow : Window
         MinHeight = 42
     };
 
+    // R134: what the movement is (AEAO zu § 146a Nr. 1.10.2) - Geldtransit,
+    // Privateinlage/-entnahme, Lohnzahlung or another cash flow.
+    private readonly ComboBox _businessCase = new()
+    {
+        MinHeight = 42
+    };
+
+    private readonly TextBlock _hint = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        Opacity = 0.75
+    };
+
     private readonly TextBox _amount = new()
     {
         FontSize = 20,
@@ -1026,11 +1039,29 @@ public sealed class CashMovementWindow : Window
         PlaceholderText = "Grund / Belegtext"
     };
 
+    private sealed record CaseItem(CashBusinessCase Case, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    private CashMovementKind SelectedKind =>
+        _type.SelectedIndex == 1 ? CashMovementKind.Entnahme : CashMovementKind.Einlage;
+
+    private void RefreshBusinessCases()
+    {
+        var kind = SelectedKind;
+        _businessCase.ItemsSource = CashBusinessCases.For(kind)
+            .Select(c => new CaseItem(c, CashBusinessCases.Label(c, kind)))
+            .ToArray();
+        _businessCase.SelectedIndex = -1;
+        _hint.Text = "Bitte die Art wählen.";
+    }
+
     public CashMovementWindow()
     {
         Title = "Kassenbewegung";
-        Width = 500;
-        Height = 340;
+        Width = 520;
+        Height = 440;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
@@ -1065,11 +1096,13 @@ public sealed class CashMovementWindow : Window
                 },
                 new TextBlock
                 {
-                    Text = "Einlagen und Entnahmen müssen mit Grund nachvollziehbar erfasst werden.",
+                    Text = "Einlagen und Entnahmen sind Geschäftsvorfälle: Art und Grund werden erfasst und von der TSE abgesichert.",
                     TextWrapping = TextWrapping.Wrap,
                     Opacity = 0.65
                 },
                 _type,
+                _businessCase,
+                _hint,
                 _amount,
                 _reason,
                 new StackPanel
@@ -1082,25 +1115,32 @@ public sealed class CashMovementWindow : Window
             }
         };
 
+        _type.SelectionChanged += (_, _) => RefreshBusinessCases();
+        _businessCase.SelectionChanged += (_, _) => _hint.Text = "";
+        RefreshBusinessCases();
+
         Opened += (_, _) => _amount.Focus();
     }
 
     private void Save()
     {
+        if (_businessCase.SelectedItem is not CaseItem chosen)
+        {
+            _hint.Text = "Bitte die Art der Kassenbewegung wählen.";
+            return;
+        }
+
         if (!Formatting.TryParseMoney(_amount.Text, out var cents))
             return;
 
         if (cents <= 0 || string.IsNullOrWhiteSpace(_reason.Text))
             return;
 
-        var kind = _type.SelectedIndex == 1
-            ? CashMovementKind.Entnahme
-            : CashMovementKind.Einlage;
-
         Close((CashMovementRequest?)new CashMovementRequest(
-            kind,
+            SelectedKind,
             cents,
-            _reason.Text.Trim()));
+            _reason.Text.Trim(),
+            chosen.Case));
     }
 }
 

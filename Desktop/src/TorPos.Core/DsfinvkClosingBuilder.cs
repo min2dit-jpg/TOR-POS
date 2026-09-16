@@ -28,7 +28,19 @@ public sealed record DsfinvkCashMovement(
     CashMovementKind Kind,
     long AmountCents,
     string Reason,
-    string Actor);
+    string Actor,
+    CashBusinessCase? BusinessCase = null,
+    DsfinvkTseResult? Tse = null);
+
+/// <summary>R134: a stored TSE result (signature or outage with its reason).</summary>
+public sealed record DsfinvkTseResult(
+    string SerialNumber,
+    string TransactionNumber,
+    string SignatureCounter,
+    string Signature,
+    DateTimeOffset? LogTime,
+    bool Outage,
+    string OutageReason);
 
 /// <summary>Where the receipt a Storno or Retoure refers to was closed.</summary>
 public sealed record DsfinvkOriginalReference(long ZNumber, DateTimeOffset ZCreatedAt, string BonId);
@@ -230,12 +242,20 @@ public static class DsfinvkClosingBuilder
             var cents = inflow ? movement.AmountCents : -movement.AmountCents;
             var name = inflow ? "Einlage" : "Entnahme";
 
+            // R134: the business case the cashier chose is the GV_TYP. A
+            // movement from before R134 has none and stays a generic
+            // Einzahlung/Auszahlung (Anhang C).
+            var gvType = movement.BusinessCase?.ToString() ?? (inflow ? "Einzahlung" : "Auszahlung");
+            var bonName = movement.BusinessCase is CashBusinessCase chosen
+                ? DsfinvkCsv.Fit(CashBusinessCases.Label(chosen, movement.Kind), 60)
+                : name;
+
             Add("Bonkopf", new()
             {
                 ["BON_ID"] = bonId,
                 ["BON_NR"] = movement.Id,
                 ["BON_TYP"] = FiscalProcessData.VorgangstypBeleg,
-                ["BON_NAME"] = name,
+                ["BON_NAME"] = bonName,
                 ["BON_STORNO"] = "0",
                 ["BON_ENDE"] = DsfinvkCsv.Timestamp(movement.CreatedAt),
                 ["BEDIENER_ID"] = DsfinvkCsv.Fit(movement.Actor, 50),
@@ -256,17 +276,22 @@ public static class DsfinvkClosingBuilder
             Payment(bonId, "Bar", "Bar", cents, beleg: true);
 
             var text = string.IsNullOrWhiteSpace(movement.Reason) ? name : movement.Reason;
-            Position(bonId, 1, text, inflow ? "Einzahlung" : "Auszahlung", name, null, null, 1m, cents, inHaus: null);
-            PositionVat(bonId, 1, VatKeyNotTaxable, 0m, cents, inflow ? "Einzahlung" : "Auszahlung", name, beleg: true);
+            Position(bonId, 1, text, gvType, name, null, null, 1m, cents, inHaus: null);
+            PositionVat(bonId, 1, VatKeyNotTaxable, 0m, cents, gvType, name, beleg: true);
 
-            // TOR does not secure cash movements with the TSE yet (open
-            // decision, see ROADMAP). The record says so instead of the
-            // movement simply having no transaction.
-            Add("TSE_Transaktionen", new()
-            {
-                ["BON_ID"] = bonId,
-                ["TSE_TA_FEHLER"] = "Kassenbewegung ohne TSE-Absicherung erfasst",
-            });
+            var tse = movement.Tse;
+            WriteTse(
+                bonId,
+                tse?.SerialNumber ?? "",
+                tse?.TransactionNumber ?? "",
+                tse?.SignatureCounter ?? "",
+                tse?.Signature ?? "",
+                tse?.LogTime,
+                tse?.Outage ?? false,
+                FiscalProcessData.KassenbelegProcessType,
+                () => FiscalProcessData.CashMovementText(new CashMovement(movement.Id, movement.CreatedAt, movement.Kind, movement.AmountCents, movement.Reason, movement.Actor, CashMovement.ProductionMode, movement.BusinessCase)),
+                movement.CreatedAt,
+                tse?.OutageReason);
         }
 
         private void WriteOrder(ParkedReceipt order)
@@ -482,7 +507,8 @@ public static class DsfinvkClosingBuilder
 
         private void WriteTse(
             string bonId, string serial, string transactionNumber, string signatureCounter, string signature,
-            DateTimeOffset? logTime, bool outage, string processType, Func<string> processData, DateTimeOffset at)
+            DateTimeOffset? logTime, bool outage, string processType, Func<string> processData, DateTimeOffset at,
+            string? storedOutageReason = null)
         {
             var row = new Dictionary<string, object?> { ["BON_ID"] = bonId };
 
@@ -504,7 +530,7 @@ public static class DsfinvkClosingBuilder
             }
             else if (outage)
             {
-                var reason = _input.OutageReasonAt(at);
+                var reason = string.IsNullOrWhiteSpace(storedOutageReason) ? _input.OutageReasonAt(at) : storedOutageReason;
                 row["TSE_TA_FEHLER"] = DsfinvkCsv.Fit(reason.Length == 0 ? "TSE-Ausfall" : "TSE-Ausfall: " + reason, 200);
             }
             else

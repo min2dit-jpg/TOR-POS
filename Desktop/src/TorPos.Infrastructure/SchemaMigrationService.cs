@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 13;
+    public const int TargetSchemaVersion = 14;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -999,6 +999,54 @@ public sealed class SchemaMigrationService
                         -- where the choice was not stored.
                         ALTER TABLE sales
                             ADD COLUMN im_haus INTEGER NULL;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                14,
+                "R134_CASH_MOVEMENT_BUSINESS_CASE_AND_TSE",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R134: AEAO zu § 146a Nr. 1.10.2 - Geldtransit, Privateinlage,
+                        -- Privatentnahme, Lohnzahlung ... are Geschäftsvorfälle. The
+                        -- DSFinV-K GV_TYP of every Einlage/Entnahme; '' for movements
+                        -- from before R134.
+                        ALTER TABLE cash_movements
+                            ADD COLUMN business_case TEXT NOT NULL DEFAULT '';
+
+                        -- R134: the TSE result of a production Einlage/Entnahme, one
+                        -- final record per movement - the same rule as
+                        -- sale_tse_signatures (R122/R129). The outage reason is kept
+                        -- with the record.
+                        CREATE TABLE IF NOT EXISTS cash_movement_tse_signatures(
+                          movement_id INTEGER PRIMARY KEY,
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          signature_counter TEXT NOT NULL DEFAULT '',
+                          serial_number TEXT NOT NULL DEFAULT '',
+                          signature TEXT NOT NULL DEFAULT '',
+                          log_time TEXT NOT NULL DEFAULT '',
+                          outage INTEGER NOT NULL DEFAULT 0,
+                          outage_reason TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY(movement_id) REFERENCES cash_movements(id));
+
+                        CREATE TRIGGER IF NOT EXISTS trg_cash_movement_tse_no_update
+                        BEFORE UPDATE ON cash_movement_tse_signatures
+                        BEGIN
+                          SELECT RAISE(ABORT,'cash movement TSE record is final');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_cash_movement_tse_no_delete
+                        BEFORE DELETE ON cash_movement_tse_signatures
+                        BEGIN
+                          SELECT RAISE(ABORT,'cash movement TSE record cannot be deleted');
+                        END;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);

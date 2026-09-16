@@ -66,6 +66,26 @@ public static class FiscalProcessData
     }
 
     /// <summary>
+    /// R134: Einlage / Entnahme as Kassenbeleg-V1. They carry no VAT, so the
+    /// amount goes into the 0 % container, and they move cash. These are the
+    /// Anhang I examples "Privateinlage 100 bar" (Beleg^0.00_0.00_0.00_0.00_100.00^100.00:Bar)
+    /// and "Privatentnahme 100" / "Einzahlung ... auf das Geschäftsbankkonto"
+    /// (Beleg^0.00_0.00_0.00_0.00_-100.00^-100.00:Bar).
+    /// </summary>
+    public static byte[] BuildCashMovement(CashMovement movement) =>
+        System.Text.Encoding.UTF8.GetBytes(CashMovementText(movement));
+
+    public static string CashMovementText(CashMovement movement)
+    {
+        ArgumentNullException.ThrowIfNull(movement);
+        if (movement.Kind is not (CashMovementKind.Einlage or CashMovementKind.Entnahme))
+            throw new InvalidOperationException("Nur Einlagen und Entnahmen werden als Kassenbeleg abgesichert.");
+
+        var amount = Amount(movement.SignedCents);
+        return $"{VorgangstypBeleg}^0.00_0.00_0.00_0.00_{amount}^{amount}:Bar";
+    }
+
+    /// <summary>
     /// Bestellung-V1: one line per position, <c>&lt;Menge&gt;;"&lt;Bezeichnung&gt;";&lt;Preis&gt;</c>,
     /// lines separated by CR (U+000D). The price is the gross unit price.
     /// </summary>

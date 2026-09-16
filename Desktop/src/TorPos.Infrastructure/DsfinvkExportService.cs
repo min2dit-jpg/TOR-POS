@@ -175,7 +175,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
             var sales = new SaleRepository(_db);
 
-            var anyUnsignedCash = false;
+            var movementsWithoutCase = 0;
+            var movementsWithoutTse = 0;
             var anyOrder = false;
             var anyCancelledOrder = false;
             var anyWithoutTse = new List<long>();
@@ -198,7 +199,11 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 }
 
                 var movements = await LoadCashMovementsAsync(c, closing, ct);
-                anyUnsignedCash |= movements.Count > 0;
+                movementsWithoutCase += movements.Count(m => m.BusinessCase is null);
+                movementsWithoutTse += movements.Count(m => m.Tse is null);
+                foreach (var movement in movements)
+                    if (movement.Tse is { Outage: false } signedMovement)
+                        NoteTse(signedMovement.TransactionNumber, signedMovement.SerialNumber);
 
                 var orders = await LoadOrdersAsync(c, closing, ct);
                 anyOrder |= orders.Count > 0;
@@ -263,8 +268,10 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 issues.Add(new("TSE_STAMMDATEN", $"Für TSE {string.Join(", ", tseWithoutMasterData)} liegen Zertifikat, öffentlicher Schlüssel, Signaturalgorithmus und Zeitformat nicht vor. Bitte einen TSE-Export (TAR) erstellen - TOR übernimmt die Daten daraus.", Blocking: false));
             if (tseWithUnknownAlgorithm.Count > 0)
                 issues.Add(new("TSE_ALGORITHMUS", $"Der Signaturalgorithmus von TSE {string.Join(", ", tseWithUnknownAlgorithm)} ist keinem Namen aus DSFinV-K Anhang E zugeordnet; TSE_SIG_ALGO bleibt leer.", Blocking: false));
-            if (anyUnsignedCash)
-                issues.Add(new("KASSENBEWEGUNG", "Einlagen/Entnahmen sind nicht TSE-gesichert und nur als allgemeine Einzahlung/Auszahlung klassifiziert (nicht Geldtransit/Privatentnahme usw.).", Blocking: false));
+            if (movementsWithoutCase > 0)
+                issues.Add(new("KASSENBEWEGUNG", $"{movementsWithoutCase} Einlage(n)/Entnahme(n) aus der Zeit vor R134 ohne Geschäftsvorfall-Art; sie erscheinen als allgemeine Einzahlung/Auszahlung.", Blocking: false));
+            if (movementsWithoutTse > 0)
+                issues.Add(new("KASSENBEWEGUNG_TSE", $"{movementsWithoutTse} Einlage(n)/Entnahme(n) ohne gespeichertes TSE-Ergebnis (vor R134 wurden sie nicht abgesichert).", Blocking: false));
             if (anyOrder)
                 issues.Add(new("BESTELLUNG", "Bestellungen werden mit ihrem zuletzt gespeicherten Positionsstand exportiert; Änderungen nach der TSE-Signierung sind nicht einzeln nachvollziehbar.", Blocking: false));
             if (anyCancelledOrder)
@@ -388,25 +395,45 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
     {
         var movements = new List<DsfinvkCashMovement>();
         await using var q = c.CreateCommand();
+        // R134: only fiscal movements. Test entries (fiscal_mode TEST_ONLY)
+        // never reach a closing, as for R132's closing guard.
         q.CommandText = """
-            SELECT id,created_at,movement_type,amount_cents,reason,actor
-            FROM cash_movements
-            WHERE created_at_utc > $from AND created_at_utc <= $to
-              AND movement_type IN ('EINLAGE','ENTNAHME')
-            ORDER BY id;
+            SELECT m.id,m.created_at,m.movement_type,m.amount_cents,m.reason,m.actor,m.business_case,
+                   t.movement_id,t.serial_number,t.transaction_number,t.signature_counter,t.signature,
+                   t.log_time,t.outage,t.outage_reason
+            FROM cash_movements m
+            LEFT JOIN cash_movement_tse_signatures t ON t.movement_id=m.id
+            WHERE m.created_at_utc > $from AND m.created_at_utc <= $to
+              AND m.movement_type IN ('EINLAGE','ENTNAHME')
+              AND m.fiscal_mode <> 'TEST_ONLY'
+            ORDER BY m.id;
             """;
         q.Parameters.AddWithValue("$from", closing.FromUtc);
         q.Parameters.AddWithValue("$to", closing.ToUtc);
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
         {
+            CashBusinessCase? businessCase = Enum.TryParse<CashBusinessCase>(r.GetString(6), out var parsed) ? parsed : null;
+            var tse = r.IsDBNull(7)
+                ? null
+                : new DsfinvkTseResult(
+                    r.GetString(8),
+                    r.GetString(9),
+                    r.GetString(10),
+                    r.GetString(11),
+                    string.IsNullOrWhiteSpace(r.GetString(12)) ? null : DateTimeOffset.Parse(r.GetString(12), CultureInfo.InvariantCulture),
+                    r.GetInt64(13) != 0,
+                    r.GetString(14));
+
             movements.Add(new DsfinvkCashMovement(
                 r.GetInt64(0),
                 DateTimeOffset.Parse(r.GetString(1), CultureInfo.InvariantCulture),
                 r.GetString(2) == "EINLAGE" ? CashMovementKind.Einlage : CashMovementKind.Entnahme,
                 r.GetInt64(3),
                 r.GetString(4),
-                r.GetString(5)));
+                r.GetString(5),
+                businessCase,
+                tse));
         }
 
         return movements;

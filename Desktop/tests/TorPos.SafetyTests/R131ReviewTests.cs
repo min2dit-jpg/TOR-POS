@@ -144,7 +144,16 @@ public static class R131ReviewTests
         provider.FailStart = false;
         var sale4 = await SaleAsync("CASH", 800, 0, new CartLine { ProductName = "Pommes", Quantity = 2, UnitPriceCents = 400, VatRate = 7m });
         await Task.Delay(15);
-        await cash.AddAsync(new CashMovementRequest(CashMovementKind.Entnahme, 5000, "Bankeinzahlung"), "kasse1");
+        // R134: a fiscal cash movement from before R134 - no business case,
+        // no TSE result. (AddAsync refuses production entries while the fiscal
+        // circuit breaker is off, so it is written directly.)
+        await using (var c = db.OpenConnection())
+        {
+            await using var q = c.CreateCommand();
+            q.CommandText = "INSERT INTO cash_movements(created_at,movement_type,amount_cents,reason,actor,fiscal_mode) VALUES($at,'ENTNAHME',5000,'Bankeinzahlung','kasse1','PRODUCTION');";
+            q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+            await q.ExecuteNonQueryAsync();
+        }
         await Task.Delay(15);
         var order = await orders.ParkAsync(new[] { new CartLine { ProductName = "Burger", Quantity = 1, UnitPriceCents = 1100, VatRate = 19m } }, 0, "kasse1", assignPickupNumber: true);
         await orderSigning.SignAsync(order, "kasse1");
@@ -331,8 +340,8 @@ public static class R131ReviewTests
                tseStorno["TSE_VORGANGSDATEN"] == "Beleg^-2.75_-17.00_0.00_0.00_0.00^-19.75:Bar",
             "R131 a signed Beleg carries its TSE transaction, the log time in the Anhang E format and exactly the Anhang I processData that was signed");
         assert(tse2["TSE_TANR"] == "" && tse2["TSE_TA_FEHLER"] == "TSE-Ausfall: Fake TSE Start failed" &&
-               tseRows.Single(t => t["BON_ID"].StartsWith("KB-"))["TSE_TA_FEHLER"].Contains("ohne TSE"),
-            "R131 a Beleg from a TSE outage is listed with the documented reason in TSE_TA_FEHLER, neither left out nor signed afterwards (R129); an unsecured cash movement says so");
+               tseRows.Single(t => t["BON_ID"].StartsWith("KB-"))["TSE_TA_FEHLER"] == "Kein TSE-Ergebnis gespeichert",
+            "R131 a Beleg from a TSE outage is listed with the documented reason in TSE_TA_FEHLER, neither left out nor signed afterwards (R129); a cash movement without TSE result says so");
 
         var orderHead = heads.Single(h => h["BON_ID"].StartsWith("BE-"));
         var groups = T("Bonkopf_AbrKreis");

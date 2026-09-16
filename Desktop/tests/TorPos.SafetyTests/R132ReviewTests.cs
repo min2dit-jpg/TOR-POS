@@ -165,7 +165,7 @@ public static class R132ReviewTests
         var testDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(dir, "r132-test-mode.db"));
         var testSettings = new SettingsRepository(testDb);
         var testAudit = new AuditLogRepository(testDb);
-        await new CashMovementRepository(testDb, testAudit).AddAsync(new CashMovementRequest(CashMovementKind.Einlage, 10000, "Wechselgeld"), "kasse1");
+        await new CashMovementRepository(testDb, testAudit).AddAsync(new CashMovementRequest(CashMovementKind.Einlage, 10000, "Wechselgeld", CashBusinessCase.Geldtransit), "kasse1");
         await testSettings.SaveManyAsync(new Dictionary<string, string> { ["company.name"] = "Testbetrieb" });
         var testService = new DsfinvkMasterDataService(testDb, testSettings, new BusinessManagementService(testDb, testSettings, testAudit), new DailyClosingGuard(new ParkedReceiptRepository(testDb)), testAudit);
         var firstStart = await testService.EnsureSoftwareVersionAsync("SYSTEM");

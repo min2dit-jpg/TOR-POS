@@ -181,6 +181,26 @@ public async Task<CashMovement> AddAsync(CashMovementRequest request, string act
             throw new InvalidOperationException("Betrag darf nicht negativ sein.");
         if (string.IsNullOrWhiteSpace(request.Reason))
             throw new InvalidOperationException("Grund ist erforderlich.");
+
+        // R134: an Einlage/Entnahme has to say what it is (AEAO zu § 146a
+        // Nr. 1.10.2); a Kassensturz count is not a cash flow and has no type.
+        if (request.Kind is CashMovementKind.Einlage or CashMovementKind.Entnahme)
+        {
+            if (request.BusinessCase is not CashBusinessCase businessCase)
+                throw new InvalidOperationException("Art der Kassenbewegung fehlt (z. B. Geldtransit, Privatentnahme).");
+            if (!CashBusinessCases.Allowed(request.Kind, businessCase))
+                throw new InvalidOperationException($"{businessCase} passt nicht zu einer {request.Kind}.");
+        }
+        else if (request.BusinessCase is not null)
+        {
+            throw new InvalidOperationException("Ein Kassensturz hat keine Geschäftsvorfall-Art.");
+        }
+
+        // A production movement is a fiscal Vorgang - the same circuit
+        // breaker as every real sale.
+        if (request.Production)
+            FiscalRelease.RequireProduction();
+        var fiscalMode = request.Production ? CashMovement.ProductionMode : CashMovement.TestMode;
         var now = DateTimeOffset.Now;
         var type = request.Kind switch
         {
@@ -192,18 +212,55 @@ public async Task<CashMovement> AddAsync(CashMovementRequest request, string act
         await using var q = c.CreateCommand();
         q.CommandText = """
             INSERT INTO cash_movements(
-              created_at,movement_type,amount_cents,reason,actor,fiscal_mode)
-            VALUES($time,$type,$amount,$reason,$actor,'TEST_ONLY');
+              created_at,movement_type,amount_cents,reason,actor,fiscal_mode,business_case)
+            VALUES($time,$type,$amount,$reason,$actor,$mode,$case);
             SELECT last_insert_rowid();
             """;
+        q.Parameters.AddWithValue("$mode", fiscalMode);
+        q.Parameters.AddWithValue("$case", request.BusinessCase?.ToString() ?? "");
         q.Parameters.AddWithValue("$time", now.ToString("O"));
         q.Parameters.AddWithValue("$type", type);
         q.Parameters.AddWithValue("$amount", request.AmountCents);
         q.Parameters.AddWithValue("$reason", request.Reason.Trim());
         q.Parameters.AddWithValue("$actor", actor);
         var id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
-        await _audit.WriteAsync(actor, "CASH_MOVEMENT", "CASH_MOVEMENT", id.ToString(), $"{type}; amount_cents={request.AmountCents}; reason={request.Reason.Trim()}", ct);
-        return new CashMovement(id, now, request.Kind, request.AmountCents, request.Reason.Trim(), actor, "TEST_ONLY");
+        await _audit.WriteAsync(actor, "CASH_MOVEMENT", "CASH_MOVEMENT", id.ToString(), $"{type}; case={request.BusinessCase}; mode={fiscalMode}; amount_cents={request.AmountCents}; reason={request.Reason.Trim()}", ct);
+        return new CashMovement(id, now, request.Kind, request.AmountCents, request.Reason.Trim(), actor, fiscalMode, request.BusinessCase);
+    });
+}
+
+public async Task RecordTseResultAsync(long movementId, SaleTseResult result, CancellationToken ct = default)
+{
+    await IoQueue.RunAsync(async () =>
+    {
+        await using var c = _db.OpenConnection();
+        await using (var existing = c.CreateCommand())
+        {
+            existing.CommandText = "SELECT COUNT(*) FROM cash_movement_tse_signatures WHERE movement_id=$id;";
+            existing.Parameters.AddWithValue("$id", movementId);
+            if (Convert.ToInt64(await existing.ExecuteScalarAsync(ct)) > 0)
+                throw new InvalidOperationException(
+                    $"Für Kassenbewegung {movementId} existiert bereits ein endgültiger TSE-Eintrag. Ein nachträgliches Signieren ist nicht vorgesehen (R129).");
+        }
+
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            INSERT INTO cash_movement_tse_signatures(
+              movement_id,client_id,transaction_number,signature_counter,serial_number,
+              signature,log_time,outage,outage_reason,created_at)
+            VALUES($id,$client,$tanr,$sigz,$serial,$sig,$log,$outage,$reason,$at);
+            """;
+        q.Parameters.AddWithValue("$id", movementId);
+        q.Parameters.AddWithValue("$client", result.ClientId);
+        q.Parameters.AddWithValue("$tanr", result.TransactionNumber);
+        q.Parameters.AddWithValue("$sigz", result.SignatureCounter);
+        q.Parameters.AddWithValue("$serial", result.SerialNumber);
+        q.Parameters.AddWithValue("$sig", result.Signature);
+        q.Parameters.AddWithValue("$log", result.LogTime?.ToString("O") ?? "");
+        q.Parameters.AddWithValue("$outage", result.Signed ? 0 : 1);
+        q.Parameters.AddWithValue("$reason", result.OutageMessage);
+        q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+        await q.ExecuteNonQueryAsync(ct);
     });
 }// R92: same bug family as R88/R90/R91, found on the same sweep - counted
 // a cash BON STORNO/Teilretoure's total_cents as MORE cash coming in,

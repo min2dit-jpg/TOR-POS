@@ -30,10 +30,61 @@ public enum CashMovementKind
     CashCount
 }
 
+/// <summary>
+/// R134: what an Einlage or Entnahme is. AEAO zu § 146a Nr. 1.10.2 names
+/// Privatentnahme, Privateinlage, Wechselgeld-Einlage, Lohnzahlung aus der Kasse
+/// and Geldtransit as Geschäftsvorfälle - each has to be recorded as what it is
+/// and secured by the TSE. The names are the DSFinV-K GV_TYP values (Anhang C).
+/// </summary>
+public enum CashBusinessCase
+{
+    /// <summary>Cash to or from the bank, the safe or another till - also the change float put in.</summary>
+    Geldtransit,
+    Privateinlage,
+    Privatentnahme,
+    Lohnzahlung,
+    /// <summary>Any other inflow that none of the types above describes.</summary>
+    Einzahlung,
+    /// <summary>Any other outflow, e.g. a small purchase paid from the till.</summary>
+    Auszahlung
+}
+
+public static class CashBusinessCases
+{
+    public static IReadOnlyList<CashBusinessCase> For(CashMovementKind kind) => kind switch
+    {
+        CashMovementKind.Einlage => new[] { CashBusinessCase.Geldtransit, CashBusinessCase.Privateinlage, CashBusinessCase.Einzahlung },
+        CashMovementKind.Entnahme => new[] { CashBusinessCase.Geldtransit, CashBusinessCase.Privatentnahme, CashBusinessCase.Lohnzahlung, CashBusinessCase.Auszahlung },
+        _ => Array.Empty<CashBusinessCase>()
+    };
+
+    public static string Label(CashBusinessCase businessCase, CashMovementKind kind) => businessCase switch
+    {
+        CashBusinessCase.Geldtransit => kind == CashMovementKind.Einlage
+            ? "Geldtransit (Wechselgeld / aus Bank oder Tresor)"
+            : "Geldtransit (zur Bank oder in den Tresor)",
+        CashBusinessCase.Privateinlage => "Privateinlage",
+        CashBusinessCase.Privatentnahme => "Privatentnahme",
+        CashBusinessCase.Lohnzahlung => "Lohnzahlung aus der Kasse",
+        CashBusinessCase.Einzahlung => "Sonstige Einzahlung",
+        CashBusinessCase.Auszahlung => "Sonstige Auszahlung (ohne USt)",
+        _ => businessCase.ToString()
+    };
+
+    public static bool Allowed(CashMovementKind kind, CashBusinessCase businessCase) => For(kind).Contains(businessCase);
+}
+
+/// <summary>
+/// R134: <paramref name="Production"/> is set by the till only when a real
+/// (non-simulation) booking is allowed; such a movement is a fiscal Vorgang
+/// and is signed by the TSE. Everything else stays a test entry.
+/// </summary>
 public sealed record CashMovementRequest(
     CashMovementKind Kind,
     long AmountCents,
-    string Reason);
+    string Reason,
+    CashBusinessCase? BusinessCase = null,
+    bool Production = false);
 
 public sealed record CashMovement(
     long Id,
@@ -42,7 +93,15 @@ public sealed record CashMovement(
     long AmountCents,
     string Reason,
     string Actor,
-    string FiscalMode);
+    string FiscalMode,
+    CashBusinessCase? BusinessCase = null)
+{
+    public const string ProductionMode = "PRODUCTION";
+    public const string TestMode = "TEST_ONLY";
+
+    /// <summary>Signed amount: an Einlage adds to the drawer, an Entnahme takes out.</summary>
+    public long SignedCents => Kind == CashMovementKind.Entnahme ? -AmountCents : AmountCents;
+}
 
 public interface ISystemIdentityRepository
 {
@@ -127,5 +186,11 @@ public interface ICashMovementRepository
 
     Task<long> GetExpectedCashCentsAsync(
         long openingBalanceCents,
+        CancellationToken ct = default);
+
+    /// <summary>R134: the TSE result of a production cash movement, written once.</summary>
+    Task RecordTseResultAsync(
+        long movementId,
+        SaleTseResult result,
         CancellationToken ct = default);
 }
