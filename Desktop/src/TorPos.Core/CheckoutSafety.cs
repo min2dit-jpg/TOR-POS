@@ -55,6 +55,17 @@ public static class SaleModePolicy
         bool fiscalReleaseEnabled,
         bool productionAllowed) =>
         isTraining && licenseActive && fiscalReleaseEnabled && productionAllowed;
+
+    /// <summary>
+    /// R142: whether this till secures the Vorgänge of the current user - order
+    /// acceptance, change and cancellation included. A regular user on a till
+    /// that books for real; a training user when training is recorded
+    /// (DSFinV-K Anhang B, AVTraining: "Alle Handlungen des Trainingsmodus
+    /// müssen dokumentiert, gesondert gekennzeichnet und mittels der DSFinV-K
+    /// abgebildet werden"). A test till secures nothing.
+    /// </summary>
+    public static bool SecuresVorgaenge(bool isTraining, bool recordsTrainingFiscally, bool canCommitProductionSale) =>
+        isTraining ? recordsTrainingFiscally : canCommitProductionSale;
 }
 
 /// <param name="TseVorgangId">R136: the TSE Vorgang started with the first position (empty when none was started).</param>

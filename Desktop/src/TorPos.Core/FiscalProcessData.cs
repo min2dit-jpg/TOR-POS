@@ -73,6 +73,15 @@ public static class FiscalProcessData
     /// </summary>
     public const string BelegabbruchText = "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^";
 
+    /// <summary>
+    /// R142: an aborted Vorgang of a training user. Anhang B: every action in
+    /// training mode is marked AVTraining - also one that did not end in a
+    /// training sale; no turnover, no payment.
+    /// </summary>
+    public const string TrainingAbortText = "AVTraining^0.00_0.00_0.00_0.00_0.00^";
+
+    public static string AbortText(bool training) => training ? TrainingAbortText : BelegabbruchText;
+
     /// <summary>R135: the transaction type of a training sale.</summary>
     public const string TrainingTransactionType = "TRAINING";
     public const string VorgangstypTraining = "AVTraining";

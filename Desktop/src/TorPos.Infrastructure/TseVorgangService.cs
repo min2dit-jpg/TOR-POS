@@ -188,7 +188,7 @@ public sealed class TseVorgangService
         if (TryTransaction(vorgang, out var transaction))
         {
             var (finish, _) = await _tse.FinishTransactionAsync(
-                new TseTransactionFinishRequest(vorgang.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(FiscalProcessData.BelegabbruchText), FiscalProcessData.KassenbelegProcessType),
+                new TseTransactionFinishRequest(vorgang.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(FiscalProcessData.AbortText(vorgang.Training)), FiscalProcessData.KassenbelegProcessType),
                 actor,
                 ct);
             result = finish.Success

@@ -151,7 +151,8 @@ public sealed class OrderBestellungRepository
         {
             q.CommandText = """
                 SELECT b.id,p.park_number,p.pickup_number,b.sequence,b.kind,b.started_at,b.created_at,b.operator_name,b.im_haus,
-                       b.serial_number,b.transaction_number,b.signature_counter,b.signature,b.log_time,b.outage,b.outage_reason,b.start_log_time
+                       b.serial_number,b.transaction_number,b.signature_counter,b.signature,b.log_time,b.outage,b.outage_reason,b.start_log_time,
+                       COALESCE(p.is_training,0)
                 FROM order_bestellungen b
                 JOIN parked_receipts p ON p.id=b.parked_receipt_id
                 WHERE b.created_at_utc > $from AND b.created_at_utc <= $to
@@ -174,7 +175,8 @@ public sealed class OrderBestellungRepository
                     r.GetString(7),
                     r.GetInt64(8) != 0,
                     Array.Empty<CartLine>(),
-                    new DsfinvkTseResult(r.GetString(9), r.GetString(10), r.GetString(11), r.GetString(12), Time(13), r.GetInt64(14) != 0, r.GetString(15), Time(16))));
+                    new DsfinvkTseResult(r.GetString(9), r.GetString(10), r.GetString(11), r.GetString(12), Time(13), r.GetInt64(14) != 0, r.GetString(15), Time(16)),
+                    r.GetInt64(17) != 0));
             }
         }
 

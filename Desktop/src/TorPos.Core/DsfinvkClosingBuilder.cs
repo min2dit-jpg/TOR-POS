@@ -69,7 +69,8 @@ public sealed record DsfinvkOrderRecord(
     string Operator,
     bool ImHaus,
     IReadOnlyList<CartLine> Lines,
-    DsfinvkTseResult? Tse);
+    DsfinvkTseResult? Tse,
+    bool Training = false);
 
 /// <summary>Where the receipt a Storno or Retoure refers to was closed.</summary>
 public sealed record DsfinvkOriginalReference(long ZNumber, DateTimeOffset ZCreatedAt, string BonId);
@@ -407,7 +408,8 @@ public static class DsfinvkClosingBuilder
             {
                 ["BON_ID"] = bonId,
                 ["BON_NR"] = aborted.Number,
-                ["BON_TYP"] = "AVBelegabbruch",
+                // R142: an action in training mode is marked AVTraining (Anhang B).
+                ["BON_TYP"] = aborted.Training ? FiscalProcessData.VorgangstypTraining : "AVBelegabbruch",
                 ["BON_NAME"] = aborted.Training ? "Abbruch (Training)" : "Abbruch",
                 ["BON_STORNO"] = "0",
                 ["BON_START"] = DsfinvkCsv.Timestamp(aborted.StartedAt),
@@ -437,7 +439,7 @@ public static class DsfinvkClosingBuilder
                 tse?.LogTime,
                 tse?.Outage ?? false,
                 FiscalProcessData.KassenbelegProcessType,
-                () => FiscalProcessData.BelegabbruchText,
+                () => FiscalProcessData.AbortText(aborted.Training),
                 aborted.EndedAt,
                 tse?.OutageReason,
                 tse?.StartLogTime);
@@ -507,13 +509,14 @@ public static class DsfinvkClosingBuilder
             {
                 ["BON_ID"] = bonId,
                 ["BON_NR"] = record.Id,
-                ["BON_TYP"] = "AVBestellung",
+                // R142: an order of a training user is marked AVTraining (Anhang B).
+                ["BON_TYP"] = record.Training ? FiscalProcessData.VorgangstypTraining : "AVBestellung",
                 ["BON_NAME"] = record.Kind switch
                 {
                     OrderBestellungKind.Aenderung => "Bestelländerung",
                     OrderBestellungKind.Storno => "Bestellstorno",
                     _ => "Bestellung",
-                },
+                } + (record.Training ? " (Training)" : ""),
                 ["BON_STORNO"] = record.Kind == OrderBestellungKind.Storno ? "1" : "0",
                 ["BON_START"] = DsfinvkCsv.Timestamp(record.StartedAt),
                 ["BON_ENDE"] = DsfinvkCsv.Timestamp(record.CreatedAt),

@@ -1593,7 +1593,7 @@ public partial class MainWindow:Window
             // R137: an order the TSE has secured is cancelled as its own
             // Bestellung-V1 record with reversed sign (DSFinV-K 4.2.3), not as an
             // aborted cart. Read before the cancellation closes it.
-            var securedOrder = parkedId is long orderId && !IsSimulation
+            var securedOrder = parkedId is long orderId && SecuresVorgaengeFiscally()
                 ? await _parkedReceipts.GetOpenByIdAsync(orderId, training: _currentUser.IsTraining)
                 : null;
             if (securedOrder is not null && !await _orderFiscalSigning.IsSecuredAsync(securedOrder))
@@ -2018,7 +2018,8 @@ public partial class MainWindow:Window
             if (_activeParkedReceiptId is long parkedId)
             {
                 // R138: every parked receipt is an order in the TSE, not only in ORDER mode.
-                var before = !_currentUser.IsTraining && !IsSimulation
+                // R142: training orders too, marked as training in the export.
+                var before = SecuresVorgaengeFiscally()
                     ? await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining)
                     : null;
                 await _parkedReceipts.UpdateAsync(
@@ -2077,11 +2078,12 @@ public partial class MainWindow:Window
                 // BMF Kassen-FAQ: a Vorgang that is not completed is secured as an
                 // order and linked to its receipt - no Kassenbeleg transaction
                 // stays open while a receipt waits, however long it waits.
-                if (!_currentUser.IsTraining && !IsSimulation)
+                if (SecuresVorgaengeFiscally())
                 {
                     try
                     {
                         // R136: ends the Vorgang started with the first position.
+                        // R142: a training order is secured the same way (AVTraining).
                         await _tseVorgangWork;
                         await _orderFiscalSigning.SignInVorgangAsync(parked, vorgangId ?? "", vorgangStartedAt, _currentUser.Username);
                     }
@@ -2166,7 +2168,7 @@ public partial class MainWindow:Window
                 if (open.FirstOrDefault(x => x.Id == selection.Id) is { } deleted)
                 {
                     var actor = _currentUser.Username;
-                    if (!IsSimulation && await _orderFiscalSigning.IsSecuredAsync(deleted))
+                    if (SecuresVorgaengeFiscally() && await _orderFiscalSigning.IsSecuredAsync(deleted))
                     {
                         // R137: DSFinV-K 4.2.3 - a cancelled order is a new record
                         // with reversed sign, secured on its own.
@@ -2535,6 +2537,8 @@ public partial class MainWindow:Window
                     try
                     {
                         var trainings = new TrainingReceiptRepository(new SqliteDatabase(AppPaths.DatabasePath));
+                        // R142: a training order paid with other positions is changed first.
+                        await SecurePaidOrderChangeAsync(snapshot);
                         var training = await trainings.RecordAsync(snapshot);
                         await _tseVorgangWork;
                         await new TrainingFiscalSigningService(_tseFailSafe, _settings, trainings) { Vorgaenge = Vorgaenge }
@@ -2676,34 +2680,41 @@ public partial class MainWindow:Window
         finally { SetCheckoutBusy(false); _checkoutWithoutPrinterAccepted = false; }
     }
 
-    private async Task CommitCheckoutAsync(CheckoutSnapshot snapshot, CashPaymentResult? cash=null)
+    /// <summary>
+    /// R137: DSFinV-K 4.2.3 - when the positions paid differ from what the
+    /// order secured (a position left out at pickup, one added, another
+    /// discount), that change of the order is secured first, so orders and
+    /// receipt account for each other. The payment has already happened here; a
+    /// failure is logged and never stops the booking. Repeated after a crash,
+    /// the difference is already secured and nothing is signed twice.
+    /// R142: for a training order too.
+    /// </summary>
+    private async Task SecurePaidOrderChangeAsync(CheckoutSnapshot snapshot)
     {
-        // R137: DSFinV-K 4.2.3 - when the positions paid differ from what the
-        // order secured (a position left out at pickup, one added), that change
-        // of the order is secured first, so orders and receipt account for each
-        // other. The payment has already happened here; a failure is logged and
-        // never stops the booking. Repeated after a crash, the difference is
-        // already secured and nothing is signed twice.
-        if (snapshot.ParkedReceiptId is long paidOrderId && !IsSimulation)
+        if (snapshot.ParkedReceiptId is not long paidOrderId || !SecuresVorgaengeFiscally())
+            return;
+        try
         {
-            try
+            if (await _parkedReceipts.GetOpenByIdAsync(paidOrderId, training: _currentUser.IsTraining) is { } paidOrder &&
+                await _orderFiscalSigning.IsSecuredAsync(paidOrder))
             {
-                if (await _parkedReceipts.GetOpenByIdAsync(paidOrderId, training: _currentUser.IsTraining) is { } paidOrder &&
-                    await _orderFiscalSigning.IsSecuredAsync(paidOrder))
-                {
-                    var orderedLines = paidOrder.Lines;
-                    paidOrder.Lines = snapshot.Lines.ToList();
-                    paidOrder.ImHaus = snapshot.ImHaus;
-                    paidOrder.DiscountCents = snapshot.DiscountCents;
-                    await _tseVorgangWork;
-                    await _orderFiscalSigning.SecureChangeAsync(paidOrder, orderedLines, "", null, _currentUser.Username);
-                }
-            }
-            catch (Exception ex)
-            {
-                CrashLog.WriteException("Fiscal signing order change at payment " + paidOrderId, ex);
+                var orderedLines = paidOrder.Lines;
+                paidOrder.Lines = snapshot.Lines.ToList();
+                paidOrder.ImHaus = snapshot.ImHaus;
+                paidOrder.DiscountCents = snapshot.DiscountCents;
+                await _tseVorgangWork;
+                await _orderFiscalSigning.SecureChangeAsync(paidOrder, orderedLines, "", null, _currentUser.Username);
             }
         }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Fiscal signing order change at payment " + paidOrderId, ex);
+        }
+    }
+
+    private async Task CommitCheckoutAsync(CheckoutSnapshot snapshot, CashPaymentResult? cash=null)
+    {
+        await SecurePaidOrderChangeAsync(snapshot);
 
         Sale sale;
         using (_perf.Measure("checkout.database_commit"))
@@ -4820,6 +4831,10 @@ public partial class MainWindow:Window
     /// sale". The rule itself lives in TorPos.Core.SaleModePolicy so it can be
     /// asserted in the safety suite without constructing a window.
     /// </summary>
+    /// <summary>R142: see SaleModePolicy.SecuresVorgaenge.</summary>
+    private bool SecuresVorgaengeFiscally() =>
+        SaleModePolicy.SecuresVorgaenge(_currentUser.IsTraining, RecordsTrainingFiscally(), !IsSimulation);
+
     /// <summary>R135: see SaleModePolicy.RecordsTrainingFiscally.</summary>
     private bool RecordsTrainingFiscally()
     {
