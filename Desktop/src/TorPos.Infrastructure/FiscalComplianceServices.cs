@@ -190,6 +190,9 @@ public async Task<CashMovement> AddAsync(CashMovementRequest request, string act
                 throw new InvalidOperationException("Art der Kassenbewegung fehlt (z. B. Geldtransit, Privatentnahme).");
             if (!CashBusinessCases.Allowed(request.Kind, businessCase))
                 throw new InvalidOperationException($"{businessCase} passt nicht zu einer {request.Kind}.");
+            // R139: a difference only comes from a Kassensturz (BookCashCountAsync).
+            if (businessCase == CashBusinessCase.DifferenzSollIst)
+                throw new InvalidOperationException("Eine Kassendifferenz wird nur beim Kassensturz gebucht.");
         }
         else if (request.BusinessCase is not null)
         {
@@ -263,7 +266,166 @@ public async Task RecordTseResultAsync(long movementId, SaleTseResult result, Ca
         q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
         await q.ExecuteNonQueryAsync(ct);
     });
-}// R92: same bug family as R88/R90/R91, found on the same sweep - counted
+}
+
+// R139: the cash of the period sold in cash - a Storno/Retoure paid back in cash
+// takes it out again (R92). Pre-R101 rows derive the split from the method.
+private const string CashSalesSum = """
+    COALESCE(SUM(
+      CASE
+        WHEN COALESCE(transaction_type,'SALE')='SALE' THEN
+          CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
+               WHEN payment_method='CASH' THEN total_cents ELSE 0 END
+        WHEN transaction_type IN ('STORNO','RETURN') THEN
+          -(CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
+                 WHEN payment_method='CASH' THEN total_cents ELSE 0 END)
+        ELSE 0
+      END),0)
+    """;
+
+/// <summary>
+/// R139: the calculated cash in the drawer, without a break at a closing.
+/// DSFinV-K Anhang C (Anfangsbestand): cash taken out at a closing is booked
+/// (Geldtransit); the next Anfangsbestand is what is left. The Z-Bericht moves no
+/// money, so resetting the calculated cash to a fixed start amount at every
+/// closing - as the Kassensturz did until R139 - made an unbooked removal look
+/// like a correct drawer and cash left in the drawer look like a surplus. The
+/// origin is the last confirmed Kassensturz of the same mode.
+/// </summary>
+public Task<CashBalance> GetCashBalanceAsync(long initialBalanceCents, bool production, CancellationToken ct = default) =>
+    IoQueue.RunAsync(async () =>
+    {
+        await using var c = _db.OpenConnection();
+        return await BalanceAsync(c, null, initialBalanceCents, production, ct);
+    });
+
+/// <summary>
+/// R139: a confirmed Kassensturz. In one database transaction: the calculated
+/// cash, the difference booked as DifferenzSollIst (a surplus as Einlage, a
+/// shortfall as Entnahme), and the count itself as the new origin. A real
+/// booking is a fiscal Vorgang behind the same circuit breaker as a sale; the
+/// caller signs the difference with the TSE.
+/// </summary>
+public Task<CashCountBooking> BookCashCountAsync(long countedCents, long initialBalanceCents, string note, bool production, string actor, CancellationToken ct = default) =>
+    IoQueue.RunAsync(async () =>
+    {
+        if (countedCents < 0)
+            throw new InvalidOperationException("Der gezählte Bestand darf nicht negativ sein.");
+        if (production)
+            FiscalRelease.RequireProduction();
+
+        var mode = production ? CashMovement.ProductionMode : CashMovement.TestMode;
+        var text = string.IsNullOrWhiteSpace(note) ? "Kassensturz" : note.Trim();
+
+        CashBalance balance;
+        CashMovement? difference = null;
+        CashMovement count;
+        await using (var c = _db.OpenConnection())
+        {
+            await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct);
+            balance = await BalanceAsync(c, tx, initialBalanceCents, production, ct);
+            var cents = countedCents - balance.ExpectedCents;
+            if (cents != 0)
+            {
+                var kind = cents > 0 ? CashMovementKind.Einlage : CashMovementKind.Entnahme;
+                difference = await InsertAsync(c, tx, kind, Math.Abs(cents), $"Kassendifferenz · {text}", actor, mode, CashBusinessCase.DifferenzSollIst, ct);
+            }
+
+            count = await InsertAsync(c, tx, CashMovementKind.CashCount, countedCents, text, actor, mode, null, ct);
+            await tx.CommitAsync(ct);
+        }
+
+        await _audit.WriteAsync(actor, "CASH_COUNT", "CASH_MOVEMENT", count.Id.ToString(),
+            $"mode={mode}; soll_cents={balance.ExpectedCents}; ist_cents={countedCents}; differenz_cents={countedCents - balance.ExpectedCents}; " +
+            $"differenz_bewegung={difference?.Id.ToString() ?? "-"}; notiz={text}", ct);
+        return new CashCountBooking(balance.ExpectedCents, countedCents, difference, count);
+    });
+
+private static async Task<CashBalance> BalanceAsync(SqliteConnection c, SqliteTransaction? tx, long initialBalanceCents, bool production, CancellationToken ct)
+{
+    var testMode = production ? 0 : 1;
+    long originId = 0;
+    var originUtc = "";
+    var baseCents = initialBalanceCents;
+    DateTimeOffset? countedAt = null;
+
+    await using (var q = c.CreateCommand())
+    {
+        q.Transaction = tx;
+        q.CommandText = """
+            SELECT id,created_at,created_at_utc,amount_cents FROM cash_movements
+            WHERE movement_type='CASH_COUNT' AND (fiscal_mode='TEST_ONLY')=$test
+            ORDER BY id DESC LIMIT 1;
+            """;
+        q.Parameters.AddWithValue("$test", testMode);
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (await r.ReadAsync(ct))
+        {
+            originId = r.GetInt64(0);
+            countedAt = DateTimeOffset.Parse(r.GetString(1), System.Globalization.CultureInfo.InvariantCulture);
+            originUtc = r.GetString(2);
+            baseCents = r.GetInt64(3);
+        }
+    }
+
+    // Sales are only ever booked for real; a test till has none.
+    long sales = 0;
+    if (production)
+    {
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = $"SELECT {CashSalesSum} FROM sales WHERE created_at_utc > $since;";
+        q.Parameters.AddWithValue("$since", originUtc);
+        sales = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+    }
+
+    long movements;
+    await using (var q = c.CreateCommand())
+    {
+        q.Transaction = tx;
+        q.CommandText = """
+            SELECT COALESCE(SUM(CASE WHEN movement_type='EINLAGE' THEN amount_cents
+                                     WHEN movement_type='ENTNAHME' THEN -amount_cents ELSE 0 END),0)
+            FROM cash_movements
+            WHERE id > $origin AND (fiscal_mode='TEST_ONLY')=$test;
+            """;
+        q.Parameters.AddWithValue("$origin", originId);
+        q.Parameters.AddWithValue("$test", testMode);
+        movements = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+    }
+
+    return new CashBalance(baseCents + sales + movements, countedAt, baseCents);
+}
+
+private static async Task<CashMovement> InsertAsync(
+    SqliteConnection c, SqliteTransaction tx, CashMovementKind kind, long cents, string reason, string actor,
+    string mode, CashBusinessCase? businessCase, CancellationToken ct)
+{
+    var now = DateTimeOffset.Now;
+    await using var q = c.CreateCommand();
+    q.Transaction = tx;
+    q.CommandText = """
+        INSERT INTO cash_movements(created_at,movement_type,amount_cents,reason,actor,fiscal_mode,business_case)
+        VALUES($time,$type,$amount,$reason,$actor,$mode,$case);
+        SELECT last_insert_rowid();
+        """;
+    q.Parameters.AddWithValue("$time", now.ToString("O"));
+    q.Parameters.AddWithValue("$type", kind switch
+    {
+        CashMovementKind.Einlage => "EINLAGE",
+        CashMovementKind.Entnahme => "ENTNAHME",
+        _ => "CASH_COUNT"
+    });
+    q.Parameters.AddWithValue("$amount", cents);
+    q.Parameters.AddWithValue("$reason", reason);
+    q.Parameters.AddWithValue("$actor", actor);
+    q.Parameters.AddWithValue("$mode", mode);
+    q.Parameters.AddWithValue("$case", businessCase?.ToString() ?? "");
+    var id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+    return new CashMovement(id, now, kind, cents, reason, actor, mode, businessCase);
+}
+
+// R92: same bug family as R88/R90/R91, found on the same sweep - counted
 // a cash BON STORNO/Teilretoure's total_cents as MORE cash coming in,
 // when real cash was actually handed back to the customer. This feeds the
 // Kassensturz "erwarteter Bestand" the cashier compares against the

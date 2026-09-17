@@ -2376,7 +2376,8 @@ public partial class MainWindow:Window
             }
 
             var opening = _settingsCache.GetInt("cash.start.cents", 0);
-            var expected = await _cashMovements.GetExpectedCashCentsAsync(opening);
+            // R139: the same running cash position the Kassensturz compares against.
+            var expected = (await _cashMovements.GetCashBalanceAsync(opening, production)).ExpectedCents;
 
             ScannerStatus.Text =
                 $"{movement.Kind} ({movement.BusinessCase}): {Formatting.Money(movement.AmountCents)} gebucht{tseNote} · " +
@@ -3697,39 +3698,70 @@ public partial class MainWindow:Window
         if (!RequireFinancialReport("KASSENSTURZ"))
             return;
 
-        var counted = await new MoneyInputWindow("Kassensturz", "Gezählter Bargeldbestand in €")
-            .ShowDialog<long?>(this);
-        if (counted is null)
-            return;
-
         try
         {
+            // R139: the calculated cash runs on from the last confirmed
+            // Kassensturz (DSFinV-K Anfangsbestand/Geldtransit); the difference
+            // found is booked as DifferenzSollIst and, on a till that books for
+            // real, secured by the TSE like any Einlage/Entnahme (R134).
+            var production = !IsSimulation;
             var opening = long.TryParse(_settingsCache.GetText("cash.start.cents", "0"), out var start)
                 ? start
                 : 0;
-            var expected = await _cashMovements.GetExpectedCashCentsAsync(opening);
-            var difference = counted.Value - expected;
 
-            await _cashMovements.AddAsync(
-                new CashMovementRequest(
-                    CashMovementKind.CashCount,
-                    counted.Value,
-                    "Kassensturz / gezählter Bestand"),
-                _currentUser.Username);
+            CashCountBooking? booking = null;
+            string note = "";
+            while (booking is null)
+            {
+                var counted = await new MoneyInputWindow("Kassensturz", "Gezählter Bargeldbestand in €")
+                    .ShowDialog<long?>(this);
+                if (counted is null)
+                    return;
 
-            var report = new ReportDocument(
-                "KASSENSTURZ",
-                new[]
+                var balance = await _cashMovements.GetCashBalanceAsync(opening, production);
+                var decision = await new CashCountConfirmWindow(balance.ExpectedCents, counted.Value, production)
+                    .ShowDialog<CashCountDecision?>(this);
+                if (decision is null)
                 {
-                    $"Datum / Zeit: {DateTime.Now:dd.MM.yyyy HH:mm:ss}",
-                    $"Bediener: {_currentUser.Username}",
-                    // R123: printable report - German amounts regardless of Windows culture.
-                    $"Soll-Bargeld: {GermanFormat.Eur(expected)}",
-                    $"Ist-Bargeld: {GermanFormat.Eur(counted.Value)}",
-                    $"Differenz: {GermanFormat.Eur(difference)}"
-                },
-                DateTimeOffset.Now);
+                    // Nothing is booked, but the count that was seen is documented.
+                    await _audit.WriteAsync(_currentUser.Username, "CASH_COUNT_ABANDONED", "CASH_MOVEMENT", "",
+                        $"soll_cents={balance.ExpectedCents}; ist_cents={counted.Value}; production={production}");
+                    return;
+                }
+                if (decision.Recount)
+                    continue;
 
+                note = decision.Note;
+                booking = await _cashMovements.BookCashCountAsync(counted.Value, opening, note, production, _currentUser.Username);
+            }
+
+            var tseNote = "";
+            if (booking.Difference is { } differenceMovement && production)
+            {
+                var signed = await new CashMovementFiscalSigningService(_tseFailSafe, _settings, _cashMovements)
+                    .SignAsync(differenceMovement, _currentUser.Username);
+                tseNote = signed.Signed ? " · TSE-signiert" : " · TSE-AUSFALL dokumentiert";
+                await RefreshTseOutageBadgeAsync();
+            }
+
+            var lines = new List<string>
+            {
+                $"Datum / Zeit: {DateTime.Now:dd.MM.yyyy HH:mm:ss}",
+                $"Bediener: {_currentUser.Username}",
+                // R123: printable report - German amounts regardless of Windows culture.
+                $"Soll-Bargeld: {GermanFormat.Eur(booking.ExpectedCents)}",
+                $"Ist-Bargeld: {GermanFormat.Eur(booking.CountedCents)}",
+                $"Differenz: {GermanFormat.Eur(booking.DifferenceCents)}",
+                booking.Difference is { } booked
+                    ? $"Gebucht: {CashBusinessCases.Label(CashBusinessCase.DifferenzSollIst, booked.Kind)}{tseNote}"
+                    : "Keine Differenz"
+            };
+            if (!string.IsNullOrWhiteSpace(note))
+                lines.Add($"Bemerkung: {note.Trim()}");
+            if (!production)
+                lines.Add("TESTBETRIEB - keine fiskalische Buchung");
+
+            var report = new ReportDocument("KASSENSTURZ", lines.ToArray(), DateTimeOffset.Now);
             await new TextReportWindow(_management, report, _receiptPrinter, _settings).ShowDialog(this);
         }
         catch (Exception ex)

@@ -103,7 +103,11 @@ Eine Testkasse sichert keine Bestellungen ab.
 Einlagen und Entnahmen müssen nachvollziehbar erfasst werden. Der Soll-Kassenbestand
 muss mit dem Ist-Bestand vergleichbar sein.
 
-TOR 0.7.19 enthält eine append-only Test-Erfassung für EINLAGE / ENTNAHME.
+Seit R134 werden Einlagen/Entnahmen mit Geschäftsvorfall-Art erfasst und TSE-gesichert.
+Seit R139 läuft der Soll-Bestand ab dem letzten bestätigten Kassensturz ohne Rücksetzen beim
+Z-Bericht weiter (DSFinV-K Anhang C: Anfangsbestand, Geldtransit); eine beim Kassensturz
+festgestellte Differenz wird als Geschäftsvorfall "DifferenzSollIst" gebucht und TSE-gesichert.
+Bargeld, das zur Bank oder in den Tresor geht, ist vorher als Entnahme "Geldtransit" zu buchen.
 
 ### 7. TSE-Ausfall
 Ausfallzeit und Grund müssen dokumentiert werden. Ein TSE-Ausfall darf nicht heimlich als

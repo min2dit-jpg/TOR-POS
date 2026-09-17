@@ -1664,6 +1664,81 @@ public sealed class PartialReturnWindow : Window
     }
 }
 
+/// <summary>R139: what the cashier decided after seeing Soll, Ist and the difference.</summary>
+public sealed record CashCountDecision(bool Recount, string Note);
+
+/// <summary>
+/// R139: a Kassensturz is confirmed before it is recorded. A difference is booked
+/// as DifferenzSollIst (DSFinV-K Anhang C) - so the cashier can count again
+/// first, and is reminded that cash taken out without a booking (e.g. to the
+/// bank) is booked as Entnahme/Geldtransit, not as a difference.
+/// </summary>
+public sealed class CashCountConfirmWindow : Window
+{
+    public CashCountConfirmWindow(long expectedCents, long countedCents, bool production)
+    {
+        Title = "Kassensturz bestätigen";
+        Width = 640;
+        Height = 520;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+        var difference = countedCents - expectedCents;
+        var note = new TextBox { PlaceholderText = "Bemerkung (optional), z. B. Zählfehler Wechselgeld", FontSize = 16 };
+
+        var cancel = new Button { Content = "ABBRECHEN", MinWidth = 140, MinHeight = 52 };
+        cancel.Click += (_, _) => Close(null);
+        var recount = new Button { Content = "NEU ZÄHLEN", MinWidth = 150, MinHeight = 52 };
+        recount.Click += (_, _) => Close(new CashCountDecision(true, ""));
+        var book = new Button
+        {
+            Content = difference == 0 ? "BESTÄTIGEN" : "DIFFERENZ BUCHEN",
+            MinWidth = 200,
+            MinHeight = 52,
+            Background = difference == 0 ? AppTheme.SuccessGreen : AppTheme.DangerRed,
+            Foreground = Brushes.White,
+            FontWeight = FontWeight.Bold
+        };
+        book.Click += (_, _) => Close(new CashCountDecision(false, note.Text ?? ""));
+
+        var text = difference == 0
+            ? "Soll und Ist stimmen überein. Der gezählte Bestand wird als Kassensturz festgehalten."
+            : (difference > 0 ? "Überschuss" : "Fehlbetrag") +
+              " - die Differenz wird als Geschäftsvorfall \"DifferenzSollIst\" gebucht" +
+              (production ? " und von der TSE abgesichert." : " (Testbetrieb, keine TSE).") +
+              " Wurde Bargeld ohne Buchung entnommen (z. B. zur Bank), zuerst eine Entnahme " +
+              "\"Geldtransit\" buchen und dann neu zählen.";
+
+        Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(28),
+            Spacing = 14,
+            Children =
+            {
+                new TextBlock { Text = "Kassensturz", FontSize = 24, FontWeight = FontWeight.Bold },
+                new TextBlock
+                {
+                    Text = $"Soll-Bestand (errechnet): {GermanFormat.Eur(expectedCents)}\n" +
+                           $"Ist-Bestand (gezählt): {GermanFormat.Eur(countedCents)}\n" +
+                           $"Differenz: {GermanFormat.Eur(difference)}",
+                    FontSize = 20
+                },
+                difference == 0
+                    ? new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 15 }
+                    : AppTheme.WarningBanner(text),
+                note,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 10,
+                    Children = { cancel, recount, book }
+                }
+            }
+        };
+    }
+}
+
 public sealed class LicenseDeactivateConfirmWindow : Window
 {
     public LicenseDeactivateConfirmWindow(string licenseId, string customerNumber)

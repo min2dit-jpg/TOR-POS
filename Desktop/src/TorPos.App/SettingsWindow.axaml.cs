@@ -389,7 +389,9 @@ public partial class SettingsWindow : Window
         var misc = Section("Weitere Kassenlogik");
         Form(misc, "Währung", Text("currency.name"));
         Form(misc, "Abkürzung", Text("currency.symbol"));
-        Form(misc, "Startgeld in Cent", Text("cash.start.cents"));
+        // R139: the cash in the drawer before the first Kassensturz; afterwards
+        // every confirmed Kassensturz is the starting point.
+        Form(misc, "Anfangsbestand in Cent (bis zum ersten Kassensturz)", Text("cash.start.cents"));
         misc.Children.Add(ToggleRow(Check("function.operator_on_receipt", "Bediener auf Bon anzeigen")));
         misc.Children.Add(ToggleRow(Check("function.options_on_receipt", "Varianten / Optionen auf Bon anzeigen")));
         misc.Children.Add(ToggleRow(Check("function.drawer_on_receipt", "Kassenlade beim Bondruck öffnen")));

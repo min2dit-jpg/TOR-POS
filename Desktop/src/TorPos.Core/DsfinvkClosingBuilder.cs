@@ -290,7 +290,9 @@ public static class DsfinvkClosingBuilder
             var bonId = CashMovementBonId(movement.Id);
             var inflow = movement.Kind == CashMovementKind.Einlage;
             var cents = inflow ? movement.AmountCents : -movement.AmountCents;
-            var name = inflow ? "Einlage" : "Entnahme";
+            var name = movement.BusinessCase == CashBusinessCase.DifferenzSollIst
+                ? "Kassendifferenz"
+                : inflow ? "Einlage" : "Entnahme";
 
             // R134: the business case the cashier chose is the GV_TYP. A
             // movement from before R134 has none and stays a generic
