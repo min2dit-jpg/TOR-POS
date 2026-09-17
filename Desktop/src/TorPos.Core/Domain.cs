@@ -300,6 +300,9 @@ public sealed class Sale
     /// with the payment only if this time is also printed on the receipt.
     /// </summary>
     public DateTimeOffset? OrderStartedAt { get; set; }
+
+    /// <summary>R143: positions cancelled during capture, before payment (DSFinV-K 4.2.3).</summary>
+    public IReadOnlyList<CartLine> CancelledLines { get; set; } = Array.Empty<CartLine>();
 }
 
 /// <summary>

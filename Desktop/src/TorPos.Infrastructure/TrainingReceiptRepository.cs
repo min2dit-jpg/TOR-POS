@@ -72,6 +72,8 @@ public sealed class TrainingReceiptRepository
 
             foreach (var line in snapshot.Lines)
                 await InsertLineAsync(c, tx, id, line, ct);
+            // R143: positions cancelled during capture belong to the training record too.
+            await CancelledPositionStore.InsertAsync(c, tx, CancelledPositionStore.Trainings, id, snapshot.CancelledLines, ct);
 
             await tx.CommitAsync(ct);
             return (await LoadAsync(c, id, ct))!.Value.Sale;
@@ -221,6 +223,7 @@ public sealed class TrainingReceiptRepository
         }
 
         sale.Lines = lines;
+        sale.CancelledLines = await CancelledPositionStore.LoadAsync(c, CancelledPositionStore.Trainings, id, ct);
         return (sale, tse);
     }
 

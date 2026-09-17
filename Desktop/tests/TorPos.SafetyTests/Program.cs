@@ -387,8 +387,9 @@ await R139ReviewTests.Run(root,Assert);
 await R140ReviewTests.Run(root,Assert);
 await R141ReviewTests.Run(root,Assert);
 await R142ReviewTests.Run(root,Assert);
+await R143ReviewTests.Run(root,Assert);
 
-const int ExpectedSafetyChecks = 820;
+const int ExpectedSafetyChecks = 827;
 
 if (checks != ExpectedSafetyChecks)
 {

@@ -252,7 +252,9 @@ public static class DsfinvkClosingBuilder
             if (_input.AllocationGroupBySaleId.TryGetValue(sale.Id, out var group))
                 Add("Bonkopf_AbrKreis", new() { ["BON_ID"] = bonId, ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(group, 50) });
 
-            WritePositions(bonId, sale.Lines, sale.DiscountCents, sign, inHaus: sale.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null, beleg: true);
+            var saleInHaus = sale.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null;
+            var lastRow = WritePositions(bonId, sale.Lines, sale.DiscountCents, sign, inHaus: saleInHaus, beleg: true);
+            WriteCancelledPositions(bonId, sale.CancelledLines, lastRow, saleInHaus);
 
             if (FiscalProcessData.IsReversal(sale))
             {
@@ -376,7 +378,9 @@ public static class DsfinvkClosingBuilder
             WriteHeaderVat(bonId, receipt.Lines, receipt.DiscountCents, 1);
             Payment(bonId, "Bar", "Bar", receipt.EffectiveCashPortionCents, beleg: false);
             Payment(bonId, "Unbar", "Karte", receipt.EffectiveCardPortionCents, beleg: false);
-            WritePositions(bonId, receipt.Lines, receipt.DiscountCents, 1, inHaus: receipt.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null, beleg: false);
+            var trainingInHaus = receipt.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null;
+            var lastTrainingRow = WritePositions(bonId, receipt.Lines, receipt.DiscountCents, 1, inHaus: trainingInHaus, beleg: false);
+            WriteCancelledPositions(bonId, receipt.CancelledLines, lastTrainingRow, trainingInHaus);
 
             var tse = training.Tse;
             WriteTse(
@@ -607,9 +611,9 @@ public static class DsfinvkClosingBuilder
             }
         }
 
-        private void WritePositions(string bonId, IReadOnlyList<CartLine> lines, long discountCents, int sign, string? inHaus, bool beleg)
+        private int WritePositions(string bonId, IReadOnlyList<CartLine> lines, long discountCents, int sign, string? inHaus, bool beleg, int startRow = 0)
         {
-            var row = 0;
+            var row = startRow;
             foreach (var line in lines)
             {
                 var key = VatKey(line.VatRate);
@@ -644,13 +648,13 @@ public static class DsfinvkClosingBuilder
             }
 
             if (discountCents <= 0)
-                return;
+                return row;
 
             var discounted = VatSummaryCalculator.Compute(lines, discountCents).ToDictionary(g => g.Rate, g => g.GrossCents);
             var undiscounted = lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => g.Sum(l => l.LineTotalCents));
             var appliedDiscount = undiscounted.Values.Sum() - discounted.Values.Sum();
             if (appliedDiscount == 0)
-                return;
+                return row;
 
             row++;
             Position(bonId, row, "Rabatt", "Rabatt", null, null, null, sign * 1m, -appliedDiscount, inHaus);
@@ -660,6 +664,22 @@ public static class DsfinvkClosingBuilder
                 if (share != 0)
                     PositionVat(bonId, row, VatKey(rate), rate, sign * share, "Rabatt", null, beleg);
             }
+
+            return row;
+        }
+
+        /// <summary>
+        /// R143: DSFinV-K 4.2.3 - positions cancelled during capture follow the
+        /// receipt's own positions as the captured position and "ein zusätzlicher
+        /// Positionsdatensatz …, bei dem MENGE mit negiertem Vorzeichen dargestellt
+        /// wird" (P_STORNO stays 0). They add up to nothing, so the receipt totals
+        /// and the TSE data are unchanged. They are no turnover, so they are kept
+        /// out of the closing totals.
+        /// </summary>
+        private void WriteCancelledPositions(string bonId, IReadOnlyList<CartLine> cancelled, int afterRow, string? inHaus)
+        {
+            if (cancelled.Count > 0)
+                WritePositions(bonId, TseVorgangCartTracker.CancellationPairs(cancelled), 0, 1, inHaus, beleg: false, afterRow);
         }
 
         private void Position(

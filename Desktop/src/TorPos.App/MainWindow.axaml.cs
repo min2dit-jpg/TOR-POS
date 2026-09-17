@@ -125,6 +125,8 @@ public partial class MainWindow:Window
         // R136: the TSE Vorgang of the recovered cart continues.
         public string TseVorgangId { get; set; } = "";
         public DateTimeOffset? VorgangStartedAt { get; set; }
+        // R143: positions cancelled during capture so far.
+        public List<CartLine> CancelledLines { get; set; } = new();
     }
 
     // Touch-Oberfläche: sichtbare Waren-/Artikel-Tasten werden in den
@@ -482,7 +484,9 @@ public partial class MainWindow:Window
                 QueueTseVorgangWork(v => v.StartAsync(action.VorgangId, training, action.StartedAt, actor));
                 break;
             case TseVorgangActionKind.Abort:
-                QueueTseVorgangWork(v => v.AbortAsync(action.VorgangId, action.Lines, action.DiscountCents, actor, actor));
+                // R143: the aborted positions and those cancelled before, as pairs.
+                var abortLines = action.Lines.Concat(TseVorgangCartTracker.CancellationPairs(action.CancelledLines)).ToArray();
+                QueueTseVorgangWork(v => v.AbortAsync(action.VorgangId, abortLines, action.DiscountCents, actor, actor));
                 break;
         }
     }
@@ -509,10 +513,10 @@ public partial class MainWindow:Window
         }
     }
 
-    private void AdoptTseVorgang(string vorgangId, DateTimeOffset? startedAt)
+    private void AdoptTseVorgang(string vorgangId, DateTimeOffset? startedAt, IReadOnlyList<CartLine>? cancelled = null)
     {
         if (!string.IsNullOrEmpty(vorgangId) && startedAt is { } started)
-            _tseVorgang.Adopt(vorgangId, started, _engine.Cart, _engine.DiscountCents, _imHaus);
+            _tseVorgang.Adopt(vorgangId, started, _engine.Cart, _engine.DiscountCents, _imHaus, cancelled);
     }
 
     /// <summary>R136: a parked receipt that is taken up again continues its own Vorgang.</summary>
@@ -558,7 +562,8 @@ public partial class MainWindow:Window
             OperationId = _operationId, SavedAt=DateTimeOffset.Now, OperatorName=_currentUser.Username,
             DiscountCents=_engine.DiscountCents, ActiveParkedReceiptId=_activeParkedReceiptId,
             ActiveParkNumber=_activeParkNumber, Lines=CheckoutSnapshot.CopyLines(_engine.Cart).ToList(),
-            ImHaus=_imHaus, TseVorgangId=_tseVorgang.VorgangId ?? "", VorgangStartedAt=_tseVorgang.StartedAt
+            ImHaus=_imHaus, TseVorgangId=_tseVorgang.VorgangId ?? "", VorgangStartedAt=_tseVorgang.StartedAt,
+            CancelledLines=CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines).ToList()
         };
         _recoveryWrite = SaveRecoverySafelyAsync(OpenCartRecoveryPath(),
             snapshot.Lines.Count==0 ? null : JsonSerializer.Serialize(snapshot));
@@ -592,7 +597,7 @@ public partial class MainWindow:Window
                 _engine.Restore(saved.Lines,saved.DiscountCents);
                 _activeParkedReceiptId=saved.ParkedReceiptId;
                 _imHaus=saved.ImHaus;
-                AdoptTseVorgang(saved.TseVorgangId, saved.StartedAt);
+                AdoptTseVorgang(saved.TseVorgangId, saved.StartedAt, saved.CancelledLines);
                 UpdateCart();
                 ScannerStatus.Text="ZAHLUNG OFFEN / UNGEKLÄRT · KASSE → ZAHLUNG PRÜFEN · NICHT ERNEUT KASSIEREN";
                 return;
@@ -614,7 +619,7 @@ public partial class MainWindow:Window
             _engine.Restore(snapshot.Lines,snapshot.DiscountCents);
             _activeParkedReceiptId=snapshot.ActiveParkedReceiptId; _activeParkNumber=snapshot.ActiveParkNumber;
             _imHaus=snapshot.ImHaus;
-            AdoptTseVorgang(snapshot.TseVorgangId, snapshot.VorgangStartedAt);
+            AdoptTseVorgang(snapshot.TseVorgangId, snapshot.VorgangStartedAt, snapshot.CancelledLines);
             if (string.IsNullOrEmpty(snapshot.OperationId) && snapshot.Lines.Count>0 && !IsSimulation)
             {
                 var legacy=CaptureCheckout(PaymentMethod.Card);
@@ -1103,9 +1108,13 @@ public partial class MainWindow:Window
             if (_activeParkedReceiptId is long parkedId &&
                 _engine.Cart.Count == 1)
             {
+                // R143: a secured order is cancelled as its own record (R137).
+                var securedOrder = await SecuredOrderAsync(parkedId);
                 await _parkedReceipts.CancelAsync(
                     parkedId,
                     actor: _currentUser.Username);
+                if (securedOrder is not null)
+                    await SecureOrderCancellationAsync(securedOrder);
 
                 _activeParkedReceiptId = null;
                 _activeParkNumber = null;
@@ -1687,6 +1696,28 @@ public partial class MainWindow:Window
         }
     }
 
+    /// <summary>R143: the open parked receipt if the TSE has secured it as an order, read before it is cancelled.</summary>
+    private async Task<ParkedReceipt?> SecuredOrderAsync(long parkedId)
+    {
+        if (!SecuresVorgaengeFiscally())
+            return null;
+        var order = await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining);
+        return order is not null && await _orderFiscalSigning.IsSecuredAsync(order) ? order : null;
+    }
+
+    private async Task SecureOrderCancellationAsync(ParkedReceipt order)
+    {
+        try
+        {
+            await _tseVorgangWork;
+            await _orderFiscalSigning.SecureCancellationAsync(order, "", null, _currentUser.Username);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Fiscal signing order cancellation " + order.ParkNumber, ex);
+        }
+    }
+
     private async Task<bool> CancelActiveParkedReceiptIfEmptyAsync(string trigger)
     {
         if (_activeParkedReceiptId is not long parkedId || _engine.Cart.Count != 0)
@@ -1695,7 +1726,12 @@ public partial class MainWindow:Window
         var parkedNumber = _activeParkNumber;
         try
         {
+            // R143: a secured order emptied position by position is cancelled like
+            // with C - as its own Bestellung-V1 record (R137, DSFinV-K 4.2.3).
+            var securedOrder = await SecuredOrderAsync(parkedId);
             await _parkedReceipts.CancelAsync(parkedId);
+            if (securedOrder is not null)
+                await SecureOrderCancellationAsync(securedOrder);
             await _audit.WriteAsync(
                 _currentUser.Username,
                 "PARK_CANCEL",
@@ -2429,7 +2465,9 @@ public partial class MainWindow:Window
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
         _operationId, CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus), _engine.DiscountCents,
         method, _currentUser.Username, _activeParkedReceiptId, _imHaus, cashPortionCents,
-        _tseVorgang.VorgangId ?? "", _tseVorgang.StartedAt);
+        _tseVorgang.VorgangId ?? "", _tseVorgang.StartedAt,
+        // R143: what was cancelled during capture goes with the receipt.
+        _tseVorgang.CancelledLines.Count == 0 ? null : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines));
 
     private async void OnMixedPaymentClick(object? sender, RoutedEventArgs e)
     {

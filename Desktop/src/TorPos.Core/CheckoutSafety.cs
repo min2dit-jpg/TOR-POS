@@ -70,11 +70,13 @@ public static class SaleModePolicy
 
 /// <param name="TseVorgangId">R136: the TSE Vorgang started with the first position (empty when none was started).</param>
 /// <param name="StartedAt">R136: when that Vorgang began at the till.</param>
+/// <param name="CancelledLines">R143: positions cancelled during capture (DSFinV-K 4.2.3).</param>
 public sealed record CheckoutSnapshot(
     string OperationId, CartLine[] Lines, long DiscountCents,
     PaymentMethod Method, string OperatorName, long? ParkedReceiptId,
     bool ImHaus = false, long CashPortionCents = 0,
-    string TseVorgangId = "", DateTimeOffset? StartedAt = null)
+    string TseVorgangId = "", DateTimeOffset? StartedAt = null,
+    CartLine[]? CancelledLines = null)
 {
     public long TotalCents => Math.Max(0, Lines.Sum(x => x.LineTotalCents) - DiscountCents);
 

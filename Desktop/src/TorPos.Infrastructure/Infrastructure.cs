@@ -2075,6 +2075,9 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             }
         }
 
+        // R143: the positions cancelled during capture, with the receipt.
+        await CancelledPositionStore.InsertAsync(c, (SqliteTransaction)tx, CancelledPositionStore.Sales, saleId, snapshot.CancelledLines, ct);
+
         if (snapshot.ParkedReceiptId is long parkedId)
         {
             await using var park = c.CreateCommand();
@@ -2323,6 +2326,7 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
         }
 
         sale.Lines = lines;
+        sale.CancelledLines = await CancelledPositionStore.LoadAsync(c, CancelledPositionStore.Sales, saleId, ct);
 
         if (sale.ListSubtotalCents <= 0)
             sale.ListSubtotalCents = lines.Sum(x => x.ListLineTotalCents);

@@ -7,12 +7,14 @@ public enum TseVorgangActionKind
     Abort
 }
 
+/// <param name="CancelledLines">R143: positions cancelled during capture before the abort.</param>
 public sealed record TseVorgangAction(
     TseVorgangActionKind Kind,
     string VorgangId,
     DateTimeOffset StartedAt,
     CartLine[] Lines,
-    long DiscountCents)
+    long DiscountCents,
+    CartLine[]? CancelledLines = null)
 {
     public static readonly TseVorgangAction None =
         new(TseVorgangActionKind.None, "", default, Array.Empty<CartLine>(), 0);
@@ -32,6 +34,10 @@ public sealed record TseVorgangAction(
 /// or - when the cart becomes empty without any of those - as an aborted
 /// Vorgang (AVBelegabbruch, AEAO Nr. 1.11.1 "Belegabbrüche").
 ///
+/// R143: it also collects the positions cancelled during capture - a removed
+/// line (SOFORT STORNO), a lowered quantity (-1, MENGE ×) - so the receipt can
+/// document them (DSFinV-K 4.2.3).
+///
 /// The Vorgang has its own id, separate from the checkout operation id, which
 /// changes during one customer (a declined card, a reviewed payment).
 /// </summary>
@@ -40,9 +46,14 @@ public sealed class TseVorgangCartTracker
     private CartLine[] _lines = Array.Empty<CartLine>();
     private long _discountCents;
     private string? _baseline;
+    private Dictionary<PositionKey, (CartLine Line, decimal Quantity)> _captured = new();
+    private readonly List<CartLine> _cancelled = new();
 
     public string? VorgangId { get; private set; }
     public DateTimeOffset? StartedAt { get; private set; }
+
+    /// <summary>R143: positions cancelled during capture in this Vorgang (copies, positive quantities).</summary>
+    public IReadOnlyList<CartLine> CancelledLines => _cancelled;
 
     /// <summary>
     /// Call after every change of the cart. <paramref name="fiscal"/> is true
@@ -53,6 +64,8 @@ public sealed class TseVorgangCartTracker
     {
         if (cart.Count > 0)
         {
+            CollectCancellations(cart, imHaus);
+
             // A copy: cart lines are mutable, and an abort documents the
             // positions as they were when the cart was emptied.
             _lines = CheckoutSnapshot.CopyLines(cart, imHaus);
@@ -75,11 +88,11 @@ public sealed class TseVorgangCartTracker
 
         if (VorgangId is not { } open)
         {
-            _baseline = null;
+            Clear();
             return TseVorgangAction.None;
         }
 
-        var aborted = new TseVorgangAction(TseVorgangActionKind.Abort, open, StartedAt ?? now, _lines, _discountCents);
+        var aborted = new TseVorgangAction(TseVorgangActionKind.Abort, open, StartedAt ?? now, _lines, _discountCents, _cancelled.ToArray());
         Clear();
         return aborted;
     }
@@ -98,17 +111,75 @@ public sealed class TseVorgangCartTracker
     /// </summary>
     public void SetBaseline(IReadOnlyList<CartLine> cart, long discountCents)
     {
-        if (VorgangId is null)
-            _baseline = Signature(cart, discountCents);
+        if (VorgangId is not null)
+            return;
+        _baseline = Signature(cart, discountCents);
+        _captured = Capture(cart);
+        _cancelled.Clear();
     }
 
     /// <summary>Continues a Vorgang started earlier (a recalled parked receipt, a recovered cart).</summary>
-    public void Adopt(string vorgangId, DateTimeOffset startedAt, IReadOnlyList<CartLine> cart, long discountCents, bool imHaus)
+    public void Adopt(string vorgangId, DateTimeOffset startedAt, IReadOnlyList<CartLine> cart, long discountCents, bool imHaus,
+        IReadOnlyList<CartLine>? cancelled = null)
     {
         VorgangId = vorgangId;
         StartedAt = startedAt;
         _lines = CheckoutSnapshot.CopyLines(cart, imHaus);
         _discountCents = discountCents;
+        _captured = Capture(cart);
+        _cancelled.Clear();
+        if (cancelled is not null)
+            _cancelled.AddRange(CheckoutSnapshot.CopyLines(cancelled, imHaus: false));
+    }
+
+    /// <summary>
+    /// R143: DSFinV-K 4.2.3 - a position cancelled during capture is documented
+    /// by "ein zusätzlicher Positionsdatensatz …, bei dem MENGE mit negiertem
+    /// Vorzeichen dargestellt wird". A cancelled position therefore appears as the
+    /// captured position and its cancellation: +quantity and -quantity, which add
+    /// up to nothing.
+    /// </summary>
+    public static IReadOnlyList<CartLine> CancellationPairs(IEnumerable<CartLine>? cancelled) =>
+        (cancelled ?? Array.Empty<CartLine>())
+            .Where(l => l.Quantity != 0)
+            .SelectMany(l => new[]
+            {
+                OrderBestellungDelta.WithQuantity(l, l.Quantity),
+                OrderBestellungDelta.WithQuantity(l, -l.Quantity)
+            })
+            .ToList();
+
+    private void CollectCancellations(IReadOnlyList<CartLine> cart, bool imHaus)
+    {
+        var now = Capture(cart);
+        foreach (var (key, (line, quantity)) in _captured)
+        {
+            var remaining = now.TryGetValue(key, out var current) ? current.Quantity : 0m;
+            if (remaining < quantity)
+            {
+                var copy = CheckoutSnapshot.CopyLines(new[] { line }, imHaus)[0];
+                _cancelled.Add(OrderBestellungDelta.WithQuantity(copy, quantity - remaining));
+            }
+        }
+
+        _captured = now;
+    }
+
+    // Im Haus changes the rate, not the position, so the rate is not part of it.
+    private readonly record struct PositionKey(long ProductId, string Name, string Variant, long UnitPrice, long Pfand, long PromotionId);
+
+    private static Dictionary<PositionKey, (CartLine Line, decimal Quantity)> Capture(IReadOnlyList<CartLine> cart)
+    {
+        var captured = new Dictionary<PositionKey, (CartLine Line, decimal Quantity)>();
+        foreach (var line in cart)
+        {
+            var key = new PositionKey(line.ProductId, line.ProductName, line.VariantName, line.UnitPriceCents, line.PfandCents, line.PromotionId);
+            captured[key] = captured.TryGetValue(key, out var existing)
+                ? (existing.Line, existing.Quantity + line.Quantity)
+                : (OrderBestellungDelta.WithQuantity(line, line.Quantity), line.Quantity);
+        }
+
+        return captured;
     }
 
     private void Clear()
@@ -118,6 +189,8 @@ public sealed class TseVorgangCartTracker
         _lines = Array.Empty<CartLine>();
         _discountCents = 0;
         _baseline = null;
+        _captured = new();
+        _cancelled.Clear();
     }
 
     private static string Signature(IReadOnlyList<CartLine> cart, long discountCents) =>

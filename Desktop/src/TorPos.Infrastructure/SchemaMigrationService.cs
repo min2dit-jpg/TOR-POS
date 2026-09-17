@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 17;
+    public const int TargetSchemaVersion = 18;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1287,6 +1287,68 @@ public sealed class SchemaMigrationService
                         BEGIN SELECT RAISE(ABORT,'order record items are immutable'); END;
                         CREATE TRIGGER IF NOT EXISTS trg_order_bestellung_items_no_delete BEFORE DELETE ON order_bestellung_items
                         BEGIN SELECT RAISE(ABORT,'order record items cannot be deleted'); END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                18,
+                "R143_CANCELLED_POSITIONS",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R143: DSFinV-K 4.2.3 - positions cancelled during capture
+                        -- (SOFORT STORNO, a lowered quantity) belong to the Einzelaufzeichnung
+                        -- of the receipt; AEAO zu § 146a Nr. 1.11.1 names the Sofort-Stornierung.
+                        -- Stored once with the receipt, immutable.
+                        CREATE TABLE IF NOT EXISTS sale_cancelled_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          sale_id INTEGER NOT NULL REFERENCES sales(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL,
+                          barcode TEXT NOT NULL,
+                          quantity REAL NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL,
+                          list_unit_price_cents INTEGER NOT NULL,
+                          promotion_id INTEGER NOT NULL,
+                          promotion_name TEXT NOT NULL,
+                          promotion_percent INTEGER NOT NULL,
+                          promotion_discount_unit_cents INTEGER NOT NULL);
+
+                        CREATE TABLE IF NOT EXISTS training_cancelled_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          training_id INTEGER NOT NULL REFERENCES training_receipts(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL,
+                          barcode TEXT NOT NULL,
+                          quantity REAL NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL,
+                          list_unit_price_cents INTEGER NOT NULL,
+                          promotion_id INTEGER NOT NULL,
+                          promotion_name TEXT NOT NULL,
+                          promotion_percent INTEGER NOT NULL,
+                          promotion_discount_unit_cents INTEGER NOT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_sale_cancelled_items_sale ON sale_cancelled_items(sale_id);
+                        CREATE INDEX IF NOT EXISTS ix_training_cancelled_items_training ON training_cancelled_items(training_id);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_sale_cancelled_items_no_update BEFORE UPDATE ON sale_cancelled_items
+                        BEGIN SELECT RAISE(ABORT,'cancelled positions are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_sale_cancelled_items_no_delete BEFORE DELETE ON sale_cancelled_items
+                        BEGIN SELECT RAISE(ABORT,'cancelled positions cannot be deleted'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_cancelled_items_no_update BEFORE UPDATE ON training_cancelled_items
+                        BEGIN SELECT RAISE(ABORT,'cancelled positions are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_cancelled_items_no_delete BEFORE DELETE ON training_cancelled_items
+                        BEGIN SELECT RAISE(ABORT,'cancelled positions cannot be deleted'); END;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);
