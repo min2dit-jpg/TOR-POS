@@ -53,6 +53,38 @@ public sealed class SaleFiscalSigningService
     /// position of the cart. Without a tracked Vorgang the sale is signed as
     /// before, start and finish together.
     /// </summary>
+    /// <summary>
+    /// R138: a sale that was booked while its TSE transaction was never ended
+    /// (the till stopped in between) is not an aborted Vorgang. AEAO zu § 146a
+    /// Nr. 2.2.2 / 2.2.3.3: the transaction is ended when the Vorgang ends - so it
+    /// is ended now with the data of that sale. A sale whose TSE record already
+    /// exists only has its Vorgang closed. Runs before open Vorgänge without a
+    /// cart are aborted (start-up, Z-Bericht).
+    /// </summary>
+    public async Task<int> FinishCommittedVorgaengeAsync(string actor, CancellationToken ct = default)
+    {
+        if (Vorgaenge is not { } vorgaenge)
+            return 0;
+
+        var count = 0;
+        foreach (var (vorgangId, saleId, signed) in await vorgaenge.CommittedSalesWithOpenVorgangAsync(ct))
+        {
+            if (signed)
+            {
+                await vorgaenge.CloseUnsignedAsync(vorgangId, $"SALE:{saleId}", ct);
+                count++;
+                continue;
+            }
+
+            if (await _sales.GetByIdAsync(saleId, ct) is not { } sale)
+                continue;
+            await SignInVorgangAsync(sale, vorgangId, actor, ct);
+            count++;
+        }
+
+        return count;
+    }
+
     public async Task SignInVorgangAsync(Sale sale, string vorgangId, string actor, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sale);

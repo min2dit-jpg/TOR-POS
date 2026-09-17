@@ -82,11 +82,16 @@ eine TSE-Transaktion erforderlich sein. Langanhaltende Vorgänge werden insbeson
 "Kassenbeleg" verknüpft.
 
 Seit R136 startet TOR die TSE-Transaktion mit der ersten Position (AEAO zu § 146a
-Nr. 2.2.2). Ein geparkter Bon hält seine Transaktion offen und setzt sie beim Aufrufen fort;
-die Bestellannahme beendet sie als Bestellung-V1, das Löschen eines geparkten Bons oder
-das Leeren des Warenkorbs als AVBelegabbruch. Ein Z-Bericht ist nur ohne offenen Vorgang
-möglich (Nr. 2.2.3.3). Ob eine über lange Zeit offene Kassenbeleg-Transaktion eines
-geparkten Bons so akzeptiert wird, sollte mit dem Steuerberater bestätigt werden.
+Nr. 2.2.2); das Leeren des Warenkorbs beendet sie als AVBelegabbruch. Ein Z-Bericht ist nur
+ohne offenen Vorgang möglich (Nr. 2.2.3.3).
+
+Seit R138 wird jeder geparkte Bon - wie eine Bestellung - beim Parken als Bestellung-V1
+abgesichert (AEAO zu § 146a Nr. 2.2.3.6.2; BMF Kassen-FAQ: nicht abgeschlossene
+Geschäftsvorfälle "als Bestellungen in eigenen Transaktionen", verknüpft über den
+Abrechnungskreis). Keine Kassenbeleg-Transaktion bleibt offen, solange ein Bon wartet; die
+Zahlung wird als Kassenbeleg abgesichert, der Bon zeigt den Bestellbeginn (DSFinV-K 2.7.2).
+Ein bereits gebuchter Verkauf, dessen Transaktion wegen eines Absturzes offen blieb, wird mit
+seinen eigenen Belegdaten beendet - nie als Abbruch.
 
 Seit R137 ist jede Änderung einer angenommenen Bestellung eine eigene Bestellung-V1-Transaktion
 mit der Differenz, eine Stornierung ein neuer Datensatz mit umgekehrtem Vorzeichen

@@ -104,11 +104,15 @@ public sealed class OrderFiscalSigningService
             (count, secured) = await records.SecuredAsync(order.Id, ct);
         }
 
-        // The positions with the VAT rate that applies to them (Im Haus).
-        var target = CheckoutSnapshot.CopyLines(orderLines, order.ImHaus);
+        // The positions with the VAT rate that applies to them (Im Haus), and
+        // the receipt discount as positions (R138), so the records add up to
+        // the gross amount that is paid (BMF Kassen-FAQ).
+        var target = OrderBestellungDelta.WithDiscount(
+            CheckoutSnapshot.CopyLines(orderLines, order.ImHaus),
+            order.DiscountCents);
         var kind = count == 0
             ? OrderBestellungKind.Annahme
-            : target.Length == 0 ? OrderBestellungKind.Storno : OrderBestellungKind.Aenderung;
+            : target.Count == 0 ? OrderBestellungKind.Storno : OrderBestellungKind.Aenderung;
         var delta = kind == OrderBestellungKind.Storno
             ? OrderBestellungDelta.Reverse(secured)
             : OrderBestellungDelta.Compute(kind == OrderBestellungKind.Annahme ? Array.Empty<CartLine>() : secured, target);

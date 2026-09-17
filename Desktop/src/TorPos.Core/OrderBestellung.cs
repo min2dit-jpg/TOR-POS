@@ -26,6 +26,54 @@ public enum OrderBestellungKind
 public static class OrderBestellungDelta
 {
     /// <summary>
+    /// R138: technical product id of a discount position in an order record.
+    /// BMF Kassen-FAQ: "Alle Veränderungen müssen nachvollziehbar in Form einer
+    /// Bestellung abgebildet werden. Die Summe aus der Menge multipliziert mit
+    /// dem Bruttopreis aller Bestellungen muss dem Gesamtbruttobetrag der
+    /// entsprechenden Rechnungen entsprechen." A manual discount on the receipt
+    /// therefore is a position of the order, one per VAT rate.
+    /// </summary>
+    public const long DiscountProductId = -9_000_000;
+
+    public const string DiscountName = "Rabatt";
+
+    public static bool IsDiscount(CartLine line) => line.ProductId == DiscountProductId;
+
+    /// <summary>
+    /// R138: the positions of an order together with its receipt discount, split
+    /// by VAT rate exactly as the receipt splits it (VatSummaryCalculator), so the
+    /// positions add up to the gross amount that is paid.
+    /// </summary>
+    public static IReadOnlyList<CartLine> WithDiscount(IReadOnlyList<CartLine> lines, long discountCents)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (discountCents == 0 || lines.Count == 0)
+            return lines;
+
+        var undiscounted = lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => g.Sum(l => l.LineTotalCents));
+        var result = lines.ToList();
+        foreach (var group in VatSummaryCalculator.Compute(lines, discountCents))
+        {
+            var share = group.GrossCents - undiscounted[group.Rate];
+            if (share == 0)
+                continue;
+
+            result.Add(new CartLine
+            {
+                ProductId = DiscountProductId,
+                ProductName = DiscountName,
+                Quantity = 1,
+                UnitPriceCents = share,
+                ListUnitPriceCents = share,
+                VatRate = group.Rate,
+                ImHausApplicable = false,
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// The positions to secure so that the secured records add up to
     /// <paramref name="current"/>. Nothing secured yet: the order's positions as
     /// they are (acceptance). Otherwise one line per changed position with the

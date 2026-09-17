@@ -226,10 +226,17 @@ public partial class MainWindow:Window
             // R136: a TSE Vorgang left open by a crash whose cart did not come
             // back is ended as aborted. A training login leaves them for the
             // next regular one, which may still restore its cart.
+            // R138: but one whose sale was already booked is no abort - it is
+            // ended first with the data of that sale.
             if (!_currentUser.IsTraining)
             {
                 var keep = _tseVorgang.VorgangId;
-                QueueTseVorgangWork(v => v.AbortOrphansAsync(keep, _currentUser.Username));
+                var actor = _currentUser.Username;
+                QueueTseVorgangWork(async v =>
+                {
+                    await _fiscalSigning.FinishCommittedVorgaengeAsync(actor);
+                    await v.AbortOrphansAsync(keep, actor);
+                });
             }
             // R126: the button states were last computed while recovery was
             // still pending (CartLocked), and nothing recomputed them once it
@@ -2007,7 +2014,8 @@ public partial class MainWindow:Window
             var vorgangStartedAt = _tseVorgang.StartedAt;
             if (_activeParkedReceiptId is long parkedId)
             {
-                var before = orderMode && !_currentUser.IsTraining && !IsSimulation
+                // R138: every parked receipt is an order in the TSE, not only in ORDER mode.
+                var before = !_currentUser.IsTraining && !IsSimulation
                     ? await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining)
                     : null;
                 await _parkedReceipts.UpdateAsync(
@@ -2017,8 +2025,9 @@ public partial class MainWindow:Window
                 var updated=await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining);
                 if (before is not null && updated is not null)
                 {
-                    // R137: DSFinV-K 4.2.3 - the change of an accepted order is
-                    // its own Bestellung-V1 record holding only the difference.
+                    // R137: DSFinV-K 4.2.3 - the change of an accepted order (R138:
+                    // or parked receipt) is its own Bestellung-V1 record holding
+                    // only the difference.
                     try
                     {
                         await _tseVorgangWork;
@@ -2030,7 +2039,14 @@ public partial class MainWindow:Window
                     }
                 }
                 else if (vorgangId is not null)
-                    QueueTseVorgangWork(v => v.ParkAsync(vorgangId, parkedId));
+                {
+                    // Training or a till that stopped booking for real while the
+                    // receipt was open: nothing is secured, the Vorgang ends as aborted.
+                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus);
+                    var discount = _engine.DiscountCents;
+                    var actor = _currentUser.Username;
+                    QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
+                }
                 ScannerStatus.Text = orderMode && updated?.PickupNumber>0
                     ? $"BESTELLUNG {updated.PickupNumber:000} aktualisiert und wieder geöffnet gespeichert."
                     : $"Geparkter Bon P{_activeParkNumber:000000} aktualisiert.";
@@ -2053,11 +2069,16 @@ public partial class MainWindow:Window
                 // till records nothing fiscal (as for sales R113, cash movements
                 // R134, training R135). Before, a test till signed every order,
                 // logged a TSE outage for it and later forced an automatic closing.
-                if (orderMode && !_currentUser.IsTraining && !IsSimulation)
+                // R138: every parked receipt, in ORDER mode or not, ends its
+                // Vorgang as Bestellung-V1. AEAO zu § 146a Nr. 2.2.3.6.2 and the
+                // BMF Kassen-FAQ: a Vorgang that is not completed is secured as an
+                // order and linked to its receipt - no Kassenbeleg transaction
+                // stays open while a receipt waits, however long it waits.
+                if (!_currentUser.IsTraining && !IsSimulation)
                 {
                     try
                     {
-                        // R136: ends the order Vorgang started with its first position.
+                        // R136: ends the Vorgang started with the first position.
                         await _tseVorgangWork;
                         await _orderFiscalSigning.SignInVorgangAsync(parked, vorgangId ?? "", vorgangStartedAt, _currentUser.Username);
                     }
@@ -2066,19 +2087,15 @@ public partial class MainWindow:Window
                         CrashLog.WriteException("Fiscal signing order " + parked.ParkNumber, ex);
                     }
                 }
-                else if (vorgangId is not null && orderMode)
+                else if (vorgangId is not null)
                 {
-                    // A training order stays a simulation (R135): its Vorgang
-                    // does not become a record and ends as aborted.
+                    // A training order stays a simulation (R135), and a till that
+                    // stopped booking for real secures nothing: the Vorgang does
+                    // not become a record and ends as aborted.
                     var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus);
                     var discount = _engine.DiscountCents;
                     var actor = _currentUser.Username;
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
-                }
-                else if (vorgangId is not null)
-                {
-                    var parkedReceiptId = parked.Id;
-                    QueueTseVorgangWork(v => v.ParkAsync(vorgangId, parkedReceiptId));
                 }
 
                 ScannerStatus.Text = orderMode && parked.PickupNumber>0
@@ -2257,6 +2274,7 @@ public partial class MainWindow:Window
         {
             try
             {
+                await _fiscalSigning.FinishCommittedVorgaengeAsync(_currentUser.Username);
                 await openVorgaenge.AbortOrphansAsync(null, _currentUser.Username);
             }
             catch (Exception ex)
@@ -2639,7 +2657,13 @@ public partial class MainWindow:Window
             try
             {
                 _pendingCheckout=(await _checkoutJournal.GetOpenAsync()).FirstOrDefault();
-                if(await _checkoutJournal.FindSaleAsync(snapshot.OperationId) is not null) ClearCompletedCart();
+                if(await _checkoutJournal.FindSaleAsync(snapshot.OperationId) is not null)
+                {
+                    ClearCompletedCart();
+                    // R138: the sale is booked; its TSE transaction is ended with its data.
+                    var actor=_currentUser.Username;
+                    QueueTseVorgangWork(_ => _fiscalSigning.FinishCommittedVorgaengeAsync(actor));
+                }
             }
             catch { _recoveryFault=true; }
             var id=ReportOperationalError("ZAHLUNG","Verarbeitung prüfen. Keine automatische Wiederholung.",ex);
@@ -2666,6 +2690,7 @@ public partial class MainWindow:Window
                     var orderedLines = paidOrder.Lines;
                     paidOrder.Lines = snapshot.Lines.ToList();
                     paidOrder.ImHaus = snapshot.ImHaus;
+                    paidOrder.DiscountCents = snapshot.DiscountCents;
                     await _tseVorgangWork;
                     await _orderFiscalSigning.SecureChangeAsync(paidOrder, orderedLines, "", null, _currentUser.Username);
                 }

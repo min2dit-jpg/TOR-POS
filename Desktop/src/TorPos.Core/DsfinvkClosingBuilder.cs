@@ -616,8 +616,10 @@ public static class DsfinvkClosingBuilder
                 var articleTotal = line.LineTotalCents - pfandTotal;
 
                 row++;
-                Position(bonId, row, text, "Umsatz", null, product, line.Barcode, sign * line.Quantity, line.UnitPriceCents - line.PfandCents, inHaus);
-                PositionVat(bonId, row, key, line.VatRate, sign * articleTotal, "Umsatz", null, beleg);
+                // R138: a discount position of an order record is GV_TYP Rabatt.
+                var gvType = OrderBestellungDelta.IsDiscount(line) ? "Rabatt" : "Umsatz";
+                Position(bonId, row, text, gvType, null, product, line.Barcode, sign * line.Quantity, line.UnitPriceCents - line.PfandCents, inHaus);
+                PositionVat(bonId, row, key, line.VatRate, sign * articleTotal, gvType, null, beleg);
 
                 if (line.HasPromotion)
                 {

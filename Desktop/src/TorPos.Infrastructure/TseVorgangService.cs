@@ -141,7 +141,11 @@ public sealed class TseVorgangService
 
     // ------------------------------------------------------------ park/resume
 
-    /// <summary>A parked receipt keeps its Vorgang - and the TSE transaction - open.</summary>
+    /// <summary>
+    /// A parked receipt keeps its Vorgang - and the TSE transaction - open.
+    /// R138: the till no longer does this; parking secures the receipt as an
+    /// order (Bestellung-V1). Kept for Vorgänge parked under R136.
+    /// </summary>
     public Task ParkAsync(string vorgangId, long parkedReceiptId, CancellationToken ct = default) =>
         ExecuteAsync("UPDATE tse_vorgaenge SET state='PARKED',parked_receipt_id=$parked,updated_at=$now WHERE id=$id AND state IN ('OPEN','PARKED');", q =>
         {
@@ -327,6 +331,21 @@ public sealed class TseVorgangService
                 r.IsDBNull(8) ? null : r.GetInt64(8)), ct);
         return rows.Count == 0 ? null : rows[0];
     }
+
+    /// <summary>
+    /// R138: Vorgänge still OPEN although their sale was booked - the till
+    /// stopped between the sale commit and the end of the TSE transaction.
+    /// <c>Signed</c>: the sale already has its final TSE record.
+    /// </summary>
+    public Task<List<(string VorgangId, long SaleId, bool Signed)>> CommittedSalesWithOpenVorgangAsync(CancellationToken ct = default) =>
+        QueryAsync("""
+            SELECT v.id, o.sale_id,
+                   EXISTS (SELECT 1 FROM sale_tse_signatures t WHERE t.sale_id=o.sale_id)
+            FROM tse_vorgaenge v
+            JOIN checkout_operations o ON json_extract(o.snapshot,'$.TseVorgangId')=v.id
+            WHERE v.state='OPEN' AND o.sale_id IS NOT NULL
+            ORDER BY v.started_at;
+            """, _ => { }, r => (r.GetString(0), r.GetInt64(1), r.GetInt64(2) != 0), ct);
 
     /// <summary>R136: when the Vorgang of an accepted order began (BON_START of the AVBestellung).</summary>
     public Task RecordOrderStartAsync(long parkedReceiptId, DateTimeOffset startedAt, CancellationToken ct = default) =>
