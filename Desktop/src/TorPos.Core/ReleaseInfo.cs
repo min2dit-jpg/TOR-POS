@@ -6,10 +6,10 @@ public static class TorRelease
     // From R145 on a release carries a name chosen by the owner. The numeric
     // Version stays for what needs digits: installer, file version, update
     // comparison and the DSFinV-K software version.
-    public const string ReleaseName = "Merd-A";
-    public const string Version = "0.7.33.848";
-    public const string Revision = "R148";
-    public const string UserAgentVersion = "0.7.33-R148";
+    public const string ReleaseName = "Merd-M";
+    public const string Version = "0.7.33.849";
+    public const string Revision = "R149";
+    public const string UserAgentVersion = "0.7.33-R149";
 
     public static string DisplayName => $"{Product} {ReleaseName}";
 
