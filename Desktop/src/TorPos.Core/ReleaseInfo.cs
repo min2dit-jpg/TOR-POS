@@ -3,9 +3,15 @@ namespace TorPos.Core;
 public static class TorRelease
 {
     public const string Product = "TOR POS Pro";
-    public const string Version = "0.7.33.844";
-    public const string Revision = "R144";
-    public const string UserAgentVersion = "0.7.33-R144";
+    // From R145 on a release carries a name chosen by the owner. The numeric
+    // Version stays for what needs digits: installer, file version, update
+    // comparison and the DSFinV-K software version.
+    public const string ReleaseName = "Merd";
+    public const string Version = "0.7.33.845";
+    public const string Revision = "R145";
+    public const string UserAgentVersion = "0.7.33-R145";
+
+    public static string DisplayName => $"{Product} {ReleaseName}";
 
     // Set this to the TOR/Demirkaan GmbH production code-signing certificate thumbprint
     // before enabling remote automatic updates. Empty intentionally blocks remote installs.

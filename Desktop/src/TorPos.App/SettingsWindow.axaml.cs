@@ -2633,8 +2633,8 @@ private Control TsePage()
             "Version, Lizenzlaufzeit und Updates ohne technische Server-Einstellungen prüfen.");
 
         var installed = Section("Installierte TOR-POS-Version");
-        installed.Children.Add(ReadOnlyRow("Version", $"{TorRelease.Product} {TorRelease.Version}"));
-        installed.Children.Add(ReadOnlyRow("Revision", TorRelease.Revision));
+        installed.Children.Add(ReadOnlyRow("Version", TorRelease.DisplayName));
+        installed.Children.Add(ReadOnlyRow("Build", $"{TorRelease.Version} · {TorRelease.Revision}"));
         installed.Children.Add(ReadOnlyRow("Edition", InstallationEdition.ReadLocked() ?? "NICHT FESTGELEGT"));
         page.Children.Add(installed);
 
@@ -2721,7 +2721,7 @@ private Control TsePage()
             "Technische Informationen für Installation, Service und Diagnose.");
 
         var section = Section("Installation");
-        section.Children.Add(ReadOnlyRow("Version", $"{TorRelease.Product} {TorRelease.Version} · {TorRelease.Revision}"));
+        section.Children.Add(ReadOnlyRow("Version", $"{TorRelease.DisplayName} · {TorRelease.Version} · {TorRelease.Revision}"));
         section.Children.Add(ReadOnlyRow("Datenordner", AppPaths.DataDirectory));
         section.Children.Add(ReadOnlyRow("Datenbank", AppPaths.DatabasePath));
         section.Children.Add(ReadOnlyRow(

@@ -2,7 +2,9 @@
 ; R121: had drifted to 0.7.33.751 while TorRelease.Version was already .820 -
 ; the installer's "Programme und Features" entry showed a version the app did
 ; not report. Keep this in step with TorPos.Core.TorRelease.Version.
-#define MyAppVersion "0.7.33.844"
+#define MyAppVersion "0.7.33.845"
+; R145: releases carry a name; shown in the wizard and in Programme und Features.
+#define MyAppReleaseName "Merd"
 #define MyAppPublisher "TOR Kassensysteme"
 #define MyAppExeName "TorPos.App.exe"
 
@@ -10,13 +12,14 @@
 AppId={{7F8D13C7-86D8-4A3B-A44A-0C20E8E5931B}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppReleaseName}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\TOR POS Pro
 UsePreviousAppDir=yes
 DefaultGroupName=TOR POS Pro
 DisableProgramGroupPage=yes
 LicenseFile=NUTZUNGSBEDINGUNGEN-DE.txt
-UninstallDisplayName={#MyAppName}
+UninstallDisplayName={#MyAppName} {#MyAppReleaseName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=installer-output
 OutputBaseFilename=TOR-POS-Pro-Setup

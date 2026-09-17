@@ -991,7 +991,7 @@ public async Task<ReportDocument> BuildKassenmeldungAsync(CancellationToken ct =
             "Art: Elektronisches oder computergestütztes Kassensystem",
             "Anzahl in dieser Betriebsstätte: jede Kasse einzeln melden (dieses Protokoll je Kasse erstellen)",
             $"Seriennummer: {serial}",
-            $"Hersteller / Software: {manufacturer} {model} · TOR POS Pro {TorRelease.Version}",
+            $"Hersteller / Software: {manufacturer} {model} · {TorRelease.DisplayName} ({TorRelease.Version})",
             $"Datum der Anschaffung: {Or(Get(s, "legal.kassenmeldung.anschaffung"), "FEHLT - bitte unter Recht & Freigabe eintragen (bei Leasing/Leihe: Beginn)")}",
             $"Datum der Außerbetriebnahme: {Or(Get(s, "legal.kassenmeldung.ausserbetriebnahme"), "- (in Betrieb)")}",
             "",
