@@ -191,7 +191,8 @@ Fiskalische Produktion bleibt bis realer TSE-/DSFinV-K-End-to-End-Abnahme gesper
 [x] R112: Nutzerwunsch "etwas mehr neon" - Kacheln/Logo/KASSIEREN/GEMISCHT leuchten jetzt in ihrer jeweiligen Akzentfarbe, stärker beim Hover/Pressed; Header/Panels auf farbige statt schwarze Ambient-Glows umgestellt. Lehrreicher Build-Fehler unterwegs: BoxShadow existiert nur auf Border, nicht auf Button - via Effect/DropShadowEffect gelöst
 [x] R78: direkter Kassenverkauf (KIOSK/IMBISS SALE) ruft TSE Start+Finish als ein Beleg auf; ProcessData-Format ist Entwurf, noch nicht gegen BSI TR-03153 verifiziert
 [ ] Produktiver Z-Abschluss
-[ ] Pfand-Steuerlogik fachlich final validieren
+[x] R148: Pfand der PFAND/LEERGUT-Taste im DSFinV-K-Export als Geschäftsvorfall Pfand statt Umsatz (Anhang C), Kassenabschluss trennt Pfand vom Umsatz
+[ ] Pfand-Steuerlogik fachlich final validieren - offen: Leergut-Rücknahme (PfandRueckzahlung) nicht erfassbar; Flaschenpfand der Taste immer 19 % (bei 7-%-Ware falsch)
 [ ] End-to-End Kassen-Nachschau Test
 
 

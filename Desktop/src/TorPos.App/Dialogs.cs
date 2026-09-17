@@ -653,11 +653,11 @@ public sealed class PfandSelectionWindow : Window
     {
         _options =
         [
-            new(-8008, "PFAND · 8 CENT", Math.Max(0, pfand8)),
-            new(-8015, "PFAND · 15 CENT", Math.Max(0, pfand15)),
-            new(-8025, "PFAND · 25 CENT", Math.Max(0, pfand25)),
-            new(-8150, "LEERGUT KISTE · LEER", Math.Max(0, crateEmpty)),
-            new(-8330, "LEERGUT KISTE · VOLL", Math.Max(0, crateFull))
+            new(PfandProducts.Bottle8, "PFAND · 8 CENT", Math.Max(0, pfand8)),
+            new(PfandProducts.Bottle15, "PFAND · 15 CENT", Math.Max(0, pfand15)),
+            new(PfandProducts.Bottle25, "PFAND · 25 CENT", Math.Max(0, pfand25)),
+            new(PfandProducts.CrateEmpty, "LEERGUT KISTE · LEER", Math.Max(0, crateEmpty)),
+            new(PfandProducts.CrateFull, "LEERGUT KISTE · VOLL", Math.Max(0, crateFull))
         ];
         Title = "Pfand / Leergut";
         Width = 560;

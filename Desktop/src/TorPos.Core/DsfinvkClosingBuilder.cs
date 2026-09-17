@@ -633,7 +633,10 @@ public static class DsfinvkClosingBuilder
 
                 row++;
                 // R138: a discount position of an order record is GV_TYP Rabatt.
-                var gvType = OrderBestellungDelta.IsDiscount(line) ? "Rabatt" : "Umsatz";
+                // R148: a position of the PFAND / LEERGUT key is GV_TYP Pfand (Anhang C).
+                var gvType = OrderBestellungDelta.IsDiscount(line) ? "Rabatt"
+                    : PfandProducts.IsDeposit(line.ProductId) ? "Pfand"
+                    : "Umsatz";
                 Position(bonId, row, text, gvType, null, product, line.Barcode, sign * line.Quantity, line.UnitPriceCents - line.PfandCents, inHaus);
                 PositionVat(bonId, row, key, line.VatRate, sign * articleTotal, gvType, null, beleg);
 
