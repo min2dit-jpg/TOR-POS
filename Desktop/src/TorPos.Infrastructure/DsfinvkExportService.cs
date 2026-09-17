@@ -174,6 +174,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
             var outages = await LoadOutagesAsync(c, ct);
             var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
+            var allocationByTraining = await TrainingReceiptRepository.LoadAllocationGroupsAsync(c, ct);
             var sales = new SaleRepository(_db);
 
             var movementsWithoutCase = 0;
@@ -262,6 +263,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     OriginalOf = originalId => FindOriginal(c, closings, originalId),
                     OutageReasonAt = at => OutageReasonAt(outages, at),
                     AllocationGroupBySaleId = allocationBySale,
+                    AllocationGroupByTrainingId = allocationByTraining,
                     ProductOf = productId => products.TryGetValue(productId, out var p) ? p : null,
                     TseMasterDataOf = serial => tseMasterData.TryGetValue(serial, out var tse) ? tse : null,
                 };

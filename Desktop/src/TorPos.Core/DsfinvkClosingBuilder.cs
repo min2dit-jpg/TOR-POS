@@ -104,6 +104,9 @@ public sealed class DsfinvkClosingInput
     /// <summary>Sale id → Abrechnungskreis of the order it was cashed from.</summary>
     public IReadOnlyDictionary<long, string> AllocationGroupBySaleId { get; init; } = new Dictionary<long, string>();
 
+    /// <summary>R147: training receipt id → Abrechnungskreis of the training order it paid.</summary>
+    public IReadOnlyDictionary<long, string> AllocationGroupByTrainingId { get; init; } = new Dictionary<long, string>();
+
     public Func<long, DsfinvkProductInfo?> ProductOf { get; init; } = _ => null;
 
     /// <summary>R133: Stamm_TSE data by TSE serial number, null if not on record.</summary>
@@ -378,6 +381,10 @@ public static class DsfinvkClosingBuilder
             WriteHeaderVat(bonId, receipt.Lines, receipt.DiscountCents, 1);
             Payment(bonId, "Bar", "Bar", receipt.EffectiveCashPortionCents, beleg: false);
             Payment(bonId, "Unbar", "Karte", receipt.EffectiveCardPortionCents, beleg: false);
+
+            // R147: DSFinV-K 2.7.1 - linked to its training order records like a real receipt.
+            if (_input.AllocationGroupByTrainingId.TryGetValue(receipt.Id, out var group))
+                Add("Bonkopf_AbrKreis", new() { ["BON_ID"] = bonId, ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(group, 50) });
             var trainingInHaus = receipt.ImHaus is bool imHaus ? (imHaus ? "1" : "0") : null;
             var lastTrainingRow = WritePositions(bonId, receipt.Lines, receipt.DiscountCents, 1, inHaus: trainingInHaus, beleg: false);
             WriteCancelledPositions(bonId, receipt.CancelledLines, lastTrainingRow, trainingInHaus);

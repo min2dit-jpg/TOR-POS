@@ -74,6 +74,8 @@ public sealed class TrainingReceiptRepository
                 await InsertLineAsync(c, tx, id, line, ct);
             // R143: positions cancelled during capture belong to the training record too.
             await CancelledPositionStore.InsertAsync(c, tx, CancelledPositionStore.Trainings, id, snapshot.CancelledLines, ct);
+            // R147: the training order it paid.
+            await LinkOrderAsync(c, tx, id, snapshot.ParkedReceiptId, ct);
 
             await tx.CommitAsync(ct);
             return (await LoadAsync(c, id, ct))!.Value.Sale;
@@ -112,6 +114,45 @@ public sealed class TrainingReceiptRepository
             q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
             await q.ExecuteNonQueryAsync(ct);
         });
+
+    /// <summary>
+    /// R147: DSFinV-K 2.7.1 - which training order a training receipt paid, so the
+    /// export can give both the same Abrechnungskreis. A real receipt is linked
+    /// through parked_receipts.cashed_sale_id; a training order is only marked
+    /// SIMULATED and had no link at all.
+    /// </summary>
+    public static async Task LinkOrderAsync(SqliteConnection c, SqliteTransaction tx, long trainingId, long? parkedReceiptId, CancellationToken ct = default)
+    {
+        if (parkedReceiptId is not long orderId)
+            return;
+
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = "INSERT INTO training_receipt_orders(training_id,parked_receipt_id) VALUES($t,$p);";
+        q.Parameters.AddWithValue("$t", trainingId);
+        q.Parameters.AddWithValue("$p", orderId);
+        await q.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>
+    /// R147: training receipt id → Abrechnungskreis of the secured training order
+    /// it paid (the same name the order records carry).
+    /// </summary>
+    internal static async Task<Dictionary<long, string>> LoadAllocationGroupsAsync(SqliteConnection c, CancellationToken ct)
+    {
+        var groups = new Dictionary<long, string>();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT l.training_id,p.park_number FROM training_receipt_orders l
+            JOIN parked_receipts p ON p.id=l.parked_receipt_id
+            WHERE p.tse_transaction_number<>'' OR p.tse_outage=1
+               OR EXISTS (SELECT 1 FROM order_bestellungen b WHERE b.parked_receipt_id=p.id);
+            """;
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+            groups[r.GetInt64(0)] = DsfinvkClosingBuilder.OrderAllocationGroup(new ParkedReceipt { ParkNumber = r.GetInt64(1) });
+        return groups;
+    }
 
     /// <summary>Training sales in a closing window (UTC text bounds as the Z-Bericht), with their TSE records.</summary>
     internal static async Task<List<DsfinvkTraining>> LoadInPeriodAsync(SqliteConnection c, string fromUtc, string toUtc, CancellationToken ct)

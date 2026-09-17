@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 18;
+    public const int TargetSchemaVersion = 19;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1349,6 +1349,30 @@ public sealed class SchemaMigrationService
                         BEGIN SELECT RAISE(ABORT,'cancelled positions are immutable'); END;
                         CREATE TRIGGER IF NOT EXISTS trg_training_cancelled_items_no_delete BEFORE DELETE ON training_cancelled_items
                         BEGIN SELECT RAISE(ABORT,'cancelled positions cannot be deleted'); END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                19,
+                "R147_TRAINING_ORDER_LINK",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R147: DSFinV-K 2.7.1 - the order a training receipt paid, so
+                        -- its Abrechnungskreis links it to the training order records
+                        -- as a real receipt is linked through cashed_sale_id. Immutable.
+                        CREATE TABLE IF NOT EXISTS training_receipt_orders(
+                          training_id INTEGER PRIMARY KEY REFERENCES training_receipts(id),
+                          parked_receipt_id INTEGER NOT NULL REFERENCES parked_receipts(id));
+
+                        CREATE TRIGGER IF NOT EXISTS trg_training_receipt_orders_no_update BEFORE UPDATE ON training_receipt_orders
+                        BEGIN SELECT RAISE(ABORT,'training order links are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_training_receipt_orders_no_delete BEFORE DELETE ON training_receipt_orders
+                        BEGIN SELECT RAISE(ABORT,'training order links cannot be deleted'); END;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);

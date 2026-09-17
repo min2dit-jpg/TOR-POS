@@ -390,9 +390,10 @@ await R143ReviewTests.Run(root,Assert);
 await R144ReviewTests.Run(root,Assert);
 await R145ReviewTests.Run(root,Assert);
 await R146ReviewTests.Run(root,Assert);
+await R147ReviewTests.Run(root,Assert);
 
 // R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
-const int ExpectedSafetyChecks = 836;
+const int ExpectedSafetyChecks = 839;
 
 if (checks != ExpectedSafetyChecks)
 {
