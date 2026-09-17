@@ -640,9 +640,22 @@ public sealed record PfandOption(
     string Name,
     long PriceCents);
 
+/// <summary>R149: what the PFAND / LEERGUT key takes back, at which VAT rate.</summary>
+public sealed record PfandReturnSelection(PfandOption Option, decimal VatRate);
+
+/// <summary>
+/// R149: returned empties (Leergut). The customer receives the deposit, so the
+/// position is negative - never a sale. A bottle's deposit takes the rate of the
+/// drink it held (Warenumschließung): 19 % for beverages, 7 % for milk and milk
+/// drinks; a crate is a Transporthilfsmittel and always 19 % (DSFinV-K Anhang C,
+/// § 12 Abs. 1 UStG).
+/// </summary>
 public sealed class PfandSelectionWindow : Window
 {
     private readonly PfandOption[] _options;
+    private bool _reducedRate;
+    private readonly Button _beverages;
+    private readonly Button _milk;
 
     public PfandSelectionWindow(
         long pfand8 = 8,
@@ -653,22 +666,36 @@ public sealed class PfandSelectionWindow : Window
     {
         _options =
         [
-            new(PfandProducts.Bottle8, "PFAND · 8 CENT", Math.Max(0, pfand8)),
-            new(PfandProducts.Bottle15, "PFAND · 15 CENT", Math.Max(0, pfand15)),
-            new(PfandProducts.Bottle25, "PFAND · 25 CENT", Math.Max(0, pfand25)),
-            new(PfandProducts.CrateEmpty, "LEERGUT KISTE · LEER", Math.Max(0, crateEmpty)),
-            new(PfandProducts.CrateFull, "LEERGUT KISTE · VOLL", Math.Max(0, crateFull))
+            new(PfandProducts.Bottle8, "PFAND-RÜCKGABE · 8 CENT", Math.Max(0, pfand8)),
+            new(PfandProducts.Bottle15, "PFAND-RÜCKGABE · 15 CENT", Math.Max(0, pfand15)),
+            new(PfandProducts.Bottle25, "PFAND-RÜCKGABE · 25 CENT", Math.Max(0, pfand25)),
+            new(PfandProducts.CrateEmpty, "LEERGUT KISTE LEER", Math.Max(0, crateEmpty)),
+            new(PfandProducts.CrateFull, "LEERGUT KISTE VOLL", Math.Max(0, crateFull))
         ];
-        Title = "Pfand / Leergut";
-        Width = 560;
-        Height = 500;
+        Title = "Pfand-Rückgabe / Leergut";
+        Width = 600;
+        Height = 660;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+        _beverages = RateButton("GETRÄNKE · 19 %");
+        _milk = RateButton("MILCH / MILCHGETRÄNK · 7 %");
+        _beverages.Click += (_, _) => SelectRate(false);
+        _milk.Click += (_, _) => SelectRate(true);
+
+        var rates = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            ColumnSpacing = 10
+        };
+        Grid.SetColumn(_milk, 1);
+        rates.Children.Add(_beverages);
+        rates.Children.Add(_milk);
 
         var optionGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*"),
-            RowDefinitions = new RowDefinitions("72,72,72"),
+            RowDefinitions = new RowDefinitions("80,80,80"),
             ColumnSpacing = 10,
             RowSpacing = 10
         };
@@ -676,41 +703,56 @@ public sealed class PfandSelectionWindow : Window
         for (var index = 0; index < _options.Length; index++)
         {
             var option = _options[index];
-            var button = new Button
+            var content = new StackPanel
             {
-                Tag = option,
-                MinHeight = 72,
-                Background = AppTheme.ButtonNeutral,
-                BorderBrush = new SolidColorBrush(Color.Parse("#5B7893")),
-                BorderThickness = new Avalonia.Thickness(1),
-                CornerRadius = new Avalonia.CornerRadius(10),
-                Content = new StackPanel
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Spacing = 2,
+                Children =
                 {
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Spacing = 2,
-                    Children =
+                    new TextBlock
                     {
-                        new TextBlock
-                        {
-                            Text = option.Name,
-                            FontSize = 14,
-                            FontWeight = FontWeight.Bold,
-                            TextAlignment = TextAlignment.Center
-                        },
-                        new TextBlock
-                        {
-                            Text = Formatting.Money(option.PriceCents),
-                            FontSize = 18,
-                            FontWeight = FontWeight.Bold,
-                            Foreground = AppTheme.AccentTeal,
-                            HorizontalAlignment = HorizontalAlignment.Center
-                        }
+                        Text = option.Name,
+                        FontSize = 14,
+                        FontWeight = FontWeight.Bold,
+                        TextAlignment = TextAlignment.Center
+                    },
+                    new TextBlock
+                    {
+                        Text = Formatting.Money(-option.PriceCents),
+                        FontSize = 18,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = AppTheme.WarningAmber,
+                        HorizontalAlignment = HorizontalAlignment.Center
                     }
                 }
             };
+            if (PfandProducts.IsCrate(option.ProductId))
+                content.Children.Add(new TextBlock
+                {
+                    Text = "Kiste: immer 19 %",
+                    FontSize = 11,
+                    Foreground = AppTheme.TextMuted,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                });
 
-            button.Click += (_, _) => Close((PfandOption?)option);
+            var button = new Button
+            {
+                Tag = option,
+                MinHeight = 80,
+                Background = AppTheme.ButtonNeutral,
+                BorderBrush = AppTheme.ButtonNeutralBorder,
+                BorderThickness = new Avalonia.Thickness(1),
+                CornerRadius = new Avalonia.CornerRadius(10),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Content = content
+            };
+
+            button.Click += (_, _) => Close((PfandReturnSelection?)new PfandReturnSelection(
+                option, PfandProducts.RateFor(option.ProductId, _reducedRate)));
             Grid.SetColumn(button, index % 2);
             Grid.SetRow(button, index / 2);
             optionGrid.Children.Add(button);
@@ -720,30 +762,120 @@ public sealed class PfandSelectionWindow : Window
         {
             Content = "ABBRECHEN",
             MinHeight = 50,
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center
         };
-        cancel.Click += (_, _) => Close((PfandOption?)null);
+        cancel.Click += (_, _) => Close((PfandReturnSelection?)null);
 
         Content = new StackPanel
         {
             Margin = new Avalonia.Thickness(24),
-            Spacing = 14,
+            Spacing = 12,
             Children =
             {
                 new TextBlock
                 {
-                    Text = "PFAND / LEERGUT",
+                    Text = "LEERGUT ZURÜCKNEHMEN",
                     FontSize = 23,
                     FontWeight = FontWeight.Bold
                 },
                 new TextBlock
                 {
-                    Text = "Betrag auswählen. Der gewählte Pfandwert wird dem aktuellen Verkauf hinzugefügt.",
+                    Text = "Der Kunde gibt Leergut zurück. Der Pfandbetrag wird abgezogen; ist er höher als der Einkauf, wird die Differenz bar ausgezahlt. Menge vorher über die Zifferntasten eingeben.",
                     TextWrapping = TextWrapping.Wrap,
-                    Opacity = 0.68
+                    Opacity = 0.75
                 },
+                new TextBlock
+                {
+                    Text = "Flaschenpfand: Steuersatz des Getränks",
+                    FontSize = 13,
+                    FontWeight = FontWeight.Bold
+                },
+                rates,
                 optionGrid,
                 cancel
+            }
+        };
+
+        SelectRate(false);
+    }
+
+    private static Button RateButton(string text) => new()
+    {
+        Content = text,
+        MinHeight = 48,
+        FontWeight = FontWeight.Bold,
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        HorizontalContentAlignment = HorizontalAlignment.Center,
+        VerticalContentAlignment = VerticalAlignment.Center,
+        BorderThickness = new Avalonia.Thickness(2),
+        CornerRadius = new Avalonia.CornerRadius(10)
+    };
+
+    private void SelectRate(bool reduced)
+    {
+        _reducedRate = reduced;
+        foreach (var (button, selected) in new[] { (_beverages, !reduced), (_milk, reduced) })
+        {
+            button.Background = selected ? AppTheme.InfoBlue : AppTheme.ButtonNeutral;
+            button.BorderBrush = selected ? AppTheme.InfoBlueBorder : AppTheme.ButtonNeutralBorder;
+            button.Foreground = Brushes.White;
+        }
+    }
+}
+
+/// <summary>
+/// R149: the returned deposit exceeds the purchase - the difference is paid out in
+/// cash. Booked as a receipt with a negative total (PfandRueckzahlung).
+/// </summary>
+public sealed class DepositPayoutWindow : Window
+{
+    public DepositPayoutWindow(long payoutCents)
+    {
+        Title = "Pfand auszahlen";
+        Width = 560;
+        Height = 360;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+        var cancel = new Button { Content = "ABBRECHEN", MinWidth = 160, MinHeight = 60, HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
+        cancel.Click += (_, _) => Close(false);
+        var paid = new Button
+        {
+            Content = "AUSGEZAHLT",
+            MinWidth = 220,
+            MinHeight = 60,
+            FontWeight = FontWeight.Bold,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = AppTheme.SuccessGreen,
+            BorderBrush = AppTheme.SuccessGreenBorder,
+            Foreground = Brushes.White,
+            IsDefault = true
+        };
+        paid.Click += (_, _) => Close(true);
+
+        Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(28),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = "PFAND AUSZAHLEN", FontSize = 24, FontWeight = FontWeight.Bold },
+                new TextBlock { Text = Formatting.Money(payoutCents), FontSize = 40, FontWeight = FontWeight.Bold, Foreground = AppTheme.WarningAmber },
+                new TextBlock
+                {
+                    Text = "Diesen Betrag bar an den Kunden auszahlen. Gebucht wird er als Pfand-Rückzahlung.",
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 15
+                },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 10,
+                    Children = { cancel, paid }
+                }
             }
         };
     }
@@ -1553,7 +1685,8 @@ public sealed class PartialReturnWindow : Window
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
 
         var rows = new StackPanel { Spacing = 6 };
-        foreach (var line in sale.Lines)
+        // R149: returned deposit was paid out and is not handed back as a Retoure.
+        foreach (var line in sale.Lines.Where(l => !PfandProducts.IsDepositReturn(l)))
         {
             var qty = new TextBox { Text = "0", Width = 90, MinHeight = 40 };
             _quantityByLine[line.SaleItemId] = qty;

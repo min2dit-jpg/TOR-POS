@@ -192,7 +192,7 @@ Fiskalische Produktion bleibt bis realer TSE-/DSFinV-K-End-to-End-Abnahme gesper
 [x] R78: direkter Kassenverkauf (KIOSK/IMBISS SALE) ruft TSE Start+Finish als ein Beleg auf; ProcessData-Format ist Entwurf, noch nicht gegen BSI TR-03153 verifiziert
 [ ] Produktiver Z-Abschluss
 [x] R148: Pfand der PFAND/LEERGUT-Taste im DSFinV-K-Export als Geschäftsvorfall Pfand statt Umsatz (Anhang C), Kassenabschluss trennt Pfand vom Umsatz
-[ ] Pfand-Steuerlogik fachlich final validieren - offen: Leergut-Rücknahme (PfandRueckzahlung) nicht erfassbar; Flaschenpfand der Taste immer 19 % (bei 7-%-Ware falsch)
+[x] R149: PFAND/LEERGUT-Taste nimmt Leergut zurück (Entscheidung des Inhabers) - negative Position, Flaschenpfand 19 % Getränke / 7 % Milch, Kiste immer 19 % (Transporthilfsmittel), Auszahlung nur bar mit Bestätigung, kein Rabatt auf demselben Bon, Export PfandRueckzahlung mit negativer MENGE (DSFinV-K 4.2.5). BUG behoben: TOR Cloud lehnte jeden Verkauf einer echt buchenden Kasse ab (discount_cents fehlte, MIXED unbekannt) - Vertragsdatei sale-completed-kasse.json auf beiden Seiten
 [ ] End-to-End Kassen-Nachschau Test
 
 

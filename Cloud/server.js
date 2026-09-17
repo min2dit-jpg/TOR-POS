@@ -63,10 +63,10 @@ if(RECEIPT_URL_SETTING){
   let parsed;
   try{parsed=new URL(RECEIPT_URL_SETTING);}catch{throw new Error('TOR_CLOUD_RECEIPT_URL ist keine gültige URL.');}
   if(!['http:','https:'].includes(parsed.protocol)||parsed.pathname!=='/'||parsed.search||parsed.hash||parsed.username||parsed.password)
-    throw new Error('TOR_CLOUD_RECEIPT_URL enthält nur Schema und Domain, z. B. https://bon.tor-pos.de');
+    throw new Error('TOR_CLOUD_RECEIPT_URL enthält nur Schema und Domain, z. B. https://bon.torpos.de');
   if(!DEMO&&parsed.protocol!=='https:')throw new Error('TOR_CLOUD_RECEIPT_URL muss im Livebetrieb HTTPS (TLS) verwenden.');
   if(CLOUD_PUBLIC_URL&&hostOf(CLOUD_PUBLIC_URL)===parsed.hostname.toLowerCase())
-    throw new Error('Der digitale Kassenbon braucht eine eigene Domain, getrennt von TOR_CLOUD_PUBLIC_URL (z. B. bon.tor-pos.de neben api.tor-pos.de).');
+    throw new Error('Der digitale Kassenbon braucht eine eigene Domain, getrennt von TOR_CLOUD_PUBLIC_URL (z. B. bon.torpos.de neben api.torpos.de).');
   RECEIPT_ORIGIN=parsed.origin;
 }
 const RECEIPT_HOST=RECEIPT_ORIGIN?hostOf(RECEIPT_ORIGIN):'';

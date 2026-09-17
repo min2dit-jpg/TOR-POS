@@ -53,7 +53,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 3 receipt dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 5 dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -150,11 +150,15 @@ async Task RunAsync()
     // R145: the receipt choice after a sale and the digital receipt window.
     await SnapshotDialogAsync(new ReceiptChoiceWindow(1500, testReceipt: false), "receipt-choice", check, failures, output);
     var link = new DigitalReceiptWindow();
-    link.ShowLink("https://bon.tor-pos.de/r/f07QSoPVMkkp77T5cS1uM2J2FMSTIoeTGM3gwlUFBVA", new DateTimeOffset(2026, 12, 16, 10, 0, 6, TimeSpan.Zero));
+    link.ShowLink("https://bon.torpos.de/r/f07QSoPVMkkp77T5cS1uM2J2FMSTIoeTGM3gwlUFBVA", new DateTimeOffset(2026, 12, 16, 10, 0, 6, TimeSpan.Zero));
     await SnapshotDialogAsync(link, "digital-receipt-link", check, failures, output);
     var failed = new DigitalReceiptWindow();
     failed.ShowFailure("TOR Cloud ist nicht erreichbar.", "Der Papierbeleg wird ausgegeben.");
     await SnapshotDialogAsync(failed, "digital-receipt-failure", check, failures, output);
+
+    // R149: returned empties and the cash payout.
+    await SnapshotDialogAsync(new PfandSelectionWindow(), "pfand-return", check, failures, output);
+    await SnapshotDialogAsync(new DepositPayoutWindow(50), "deposit-payout", check, failures, output);
 }
 
 // R145: a dialog at its own fixed size; every visible button must be inside it.

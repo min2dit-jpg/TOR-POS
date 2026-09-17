@@ -26,7 +26,8 @@ public static class VatSummaryCalculator
     public static IReadOnlyList<VatGroupSummary> Compute(IEnumerable<CartLine> lines, long discountCents)
     {
         var subtotal = lines.Sum(x => x.LineTotalCents);
-        var targetGross = Math.Max(0L, subtotal - discountCents);
+        // R149: returned deposit can make a receipt negative (ReceiptTotals).
+        var targetGross = ReceiptTotals.Total(subtotal, discountCents);
 
         var groups = lines
             .GroupBy(x => x.VatRate)

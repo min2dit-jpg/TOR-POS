@@ -52,7 +52,7 @@ function hostRequest(route,{host='localhost',method='GET'}={}){
 function openDb(){const db=new DatabaseSync(dbPath);db.exec('PRAGMA busy_timeout=5000;');return db;}
 
 before(async()=>{
- child=spawn(process.execPath,['server.js'],{cwd:path.join(__dirname,'..'),env:{...process.env,PORT:'0',HOST:'127.0.0.1',TOR_CLOUD_DB:dbPath,TOR_CLOUD_UPDATES:path.join(root,'updates'),TOR_CLOUD_CLEANUP_INTERVAL_MS:'300',TOR_CLOUD_DEMO:'true',TOR_CLOUD_PUBLIC_URL:'http://127.0.0.1:9999',TOR_CLOUD_RECEIPT_URL:'http://localhost:9998',TOR_CLOUD_IMPRINT_URL:'https://tor-pos.de/impressum',TOR_CLOUD_PRIVACY_URL:'https://tor-pos.de/datenschutz',TOR_CLOUD_TRUST_PROXY:'',TOR_CLOUD_BACKUP_DIR:''}});
+ child=spawn(process.execPath,['server.js'],{cwd:path.join(__dirname,'..'),env:{...process.env,PORT:'0',HOST:'127.0.0.1',TOR_CLOUD_DB:dbPath,TOR_CLOUD_UPDATES:path.join(root,'updates'),TOR_CLOUD_CLEANUP_INTERVAL_MS:'300',TOR_CLOUD_DEMO:'true',TOR_CLOUD_PUBLIC_URL:'http://127.0.0.1:9999',TOR_CLOUD_RECEIPT_URL:'http://localhost:9998',TOR_CLOUD_IMPRINT_URL:'https://torpos.de/impressum',TOR_CLOUD_PRIVACY_URL:'https://torpos.de/datenschutz',TOR_CLOUD_TRUST_PROXY:'',TOR_CLOUD_BACKUP_DIR:''}});
  base=await new Promise((resolve,reject)=>{let log='';child.stdout.on('data',d=>{log+=d;const m=log.match(/http:\/\/127\.0\.0\.1:(\d+)/);if(m)resolve(m[0]);});child.once('exit',()=>reject(new Error('server exited')));setTimeout(()=>reject(new Error('startup timeout')),10000).unref();});
  port=Number(new URL(base).port);
  const db=openDb();
@@ -84,7 +84,7 @@ test('R145 the till publishes a receipt; the customer reads it on the bon domain
  assert.equal(page.headers['x-frame-options'],'DENY');
  assert.match(page.headers['content-security-policy'],/default-src 'none'; script-src 'self'/);
  assert.equal(page.headers['set-cookie'],undefined,'no cookies on the receipt domain');
- assert.ok(html.includes('<a href="https://tor-pos.de/impressum" rel="noopener noreferrer">Impressum</a>')&&html.includes('Datenschutz</a>'),'Impressum and privacy notice of the operator are linked');
+ assert.ok(html.includes('<a href="https://torpos.de/impressum" rel="noopener noreferrer">Impressum</a>')&&html.includes('Datenschutz</a>'),'Impressum and privacy notice of the operator are linked');
 
  const pdf=await hostRequest(link.pathname+'/pdf');
  assert.equal(pdf.status,200);

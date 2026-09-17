@@ -3,7 +3,7 @@
 ## 1. Public HTTPS adresi
 TOR POS Cloud, telefondan erişilebilen gerçek bir HTTPS alan adı altında yayınlanmalıdır. Örnek:
 
-`https://cloud.tor-pos.de`
+`https://cloud.torpos.de`
 
 `TOR_CLOUD_PUBLIC_URL` tam olarak bu origin olmalıdır; sonuna `/` koymayın.
 
@@ -20,7 +20,7 @@ TOR POS Cloud, telefondan erişilebilen gerçek bir HTTPS alan adı altında yay
 Örnek (değerleri kendi gerçek değerlerinizle değiştirin):
 
 ```text
-TOR_CLOUD_PUBLIC_URL=https://cloud.tor-pos.de
+TOR_CLOUD_PUBLIC_URL=https://cloud.torpos.de
 TOR_GOOGLE_OAUTH_CLIENT_ID=1234567890-....apps.googleusercontent.com
 TOR_GOOGLE_OAUTH_CLIENT_SECRET=...
 TOR_CLOUD_GOOGLE_TOKEN_KEY=<en-az-32-karakter-rastgele-gizli-deger>

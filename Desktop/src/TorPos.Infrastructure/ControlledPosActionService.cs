@@ -289,9 +289,9 @@ public sealed class ControlledPosActionService
         Required(request.Reason, nameof(request.Reason));
         Required(request.EntityType, nameof(request.EntityType));
 
-        if (request.BeforeTotalCents < 0 ||
-            request.AfterTotalCents < 0 ||
-            request.AmountCents < 0)
+        // R149: a cart with returned deposit can have a negative total, and the
+        // log records it as it was; the amount of an action stays a magnitude.
+        if (request.AmountCents < 0)
         {
             throw new InvalidOperationException(
                 "Audit-Beträge dürfen nicht negativ sein.");

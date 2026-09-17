@@ -14,6 +14,8 @@
 // the data are well-formed and consistent and lays them out as page and PDF.
 
 const { buildPdf, wrap, width, COLUMNS } = require('./receipt-pdf');
+// R149: the till's total rule (returned deposit can make a receipt negative).
+const { receiptTotal } = require('./validation');
 
 const FORMAT = 'TOR-DIGITALBON-1';
 const MAX_CENTS = 1_000_000_000;
@@ -123,7 +125,7 @@ function validateReceipt(raw) {
   // falls back to paper.
   if (doc.lines.reduce((sum, line) => sum + line.line_total_cents, 0) !== doc.subtotal_cents) fail('Die Positionen ergeben nicht die Zwischensumme.');
   if (doc.discount_cents < 0) fail('discount_cents darf nicht negativ sein.');
-  if (doc.total_cents !== Math.max(0, doc.subtotal_cents - doc.discount_cents)) fail('Gesamtbetrag passt nicht zu Zwischensumme und Rabatt.');
+  if (doc.total_cents !== receiptTotal(doc.subtotal_cents, doc.discount_cents)) fail('Gesamtbetrag passt nicht zu Zwischensumme und Rabatt.');
   for (const group of doc.vat) {
     if (group.net_cents + group.tax_cents !== group.gross_cents) fail(`MwSt. ${group.rate}%: Netto und Steuer ergeben nicht den Bruttobetrag.`);
   }

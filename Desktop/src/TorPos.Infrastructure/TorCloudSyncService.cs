@@ -74,7 +74,9 @@ public sealed class TorCloudOutbox
             list_subtotal_cents=s.Lines.Sum(x=>x.ListLineTotalCents),
             promotion_discount_cents=s.Lines.Sum(x=>x.PromotionDiscountCents),
             subtotal_cents=s.Lines.Sum(x=>x.LineTotalCents),
-            manual_discount_cents=s.DiscountCents,total_cents=s.TotalCents,
+            // R149: TOR Cloud reads discount_cents (the name it has always validated);
+            // manual_discount_cents stays for older Cloud versions.
+            discount_cents=s.DiscountCents,manual_discount_cents=s.DiscountCents,total_cents=s.TotalCents,
             operator_name=s.OperatorName,item_count=s.Lines.Length,
             items=s.Lines.Select((x,i)=>new {position_no=i+1,product_key=x.ProductId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 name=x.ProductName+(string.IsNullOrEmpty(x.VariantName)?"":" · "+x.VariantName),quantity=x.Quantity,

@@ -90,7 +90,7 @@ public static class R145ReviewTests
         var settings = new SettingsRepository(db);
 
         const string token = "f07QSoPVMkkp77T5cS1uM2J2FMSTIoeTGM3gwlUFBVA";
-        var link = $"https://bon.tor-pos.de/r/{token}";
+        var link = $"https://bon.torpos.de/r/{token}";
         string Answer(string url) =>
             $$"""{"ok":true,"receipt_id":"4XolblWHTfOto0sS","url":"{{url}}","created_at":"2026-09-17T10:00:06.000Z","expires_at":"2026-12-16T10:00:06.000Z","reissued":false}""";
         static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
@@ -156,11 +156,11 @@ public static class R145ReviewTests
         var refusedLinks = 0;
         foreach (var bad in new[]
                  {
-                     $"http://bon.tor-pos.de/r/{token}",
-                     $"https://bon.tor-pos.de/login/{token}",
-                     $"https://user:pw@bon.tor-pos.de/r/{token}",
-                     $"https://bon.tor-pos.de/r/{token}?next=x",
-                     "https://bon.tor-pos.de/r/short",
+                     $"http://bon.torpos.de/r/{token}",
+                     $"https://bon.torpos.de/login/{token}",
+                     $"https://user:pw@bon.torpos.de/r/{token}",
+                     $"https://bon.torpos.de/r/{token}?next=x",
+                     "https://bon.torpos.de/r/short",
                      ""
                  })
         {

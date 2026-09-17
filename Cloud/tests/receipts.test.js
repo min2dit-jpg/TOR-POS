@@ -127,3 +127,39 @@ test('R145 the document a till sends is accepted unchanged (the same file Deskto
  assert.deepEqual(validateReceipt(fixture.receipt),fixture.receipt);
  assertPdfStructure(renderReceiptPdf(validateReceipt(fixture.receipt)));
 });
+
+// R149: the sale event of a real till. Until R149 TOR Cloud required discount_cents
+// (the till sent manual_discount_cents) and refused MIXED - every sale of a till in
+// real operation was rejected and the till's outbox stuck at its first sale.
+const {normalizeEvent}=require('../validation');
+function saleEvent(payload){return {event_id:'r149-sale',type:'sale.completed',occurred_at:'2026-09-17T12:00:05+02:00',payload};}
+
+test('R149 the sale event a till queues is accepted - including returned deposit paid out in cash',()=>{
+ const fixture=JSON.parse(readFileSync(path.join(__dirname,'fixtures','sale-completed-kasse.json'),'utf8'));
+ const accepted=normalizeEvent(saleEvent(structuredClone(fixture.payload)));
+ assert.equal(accepted.payload.total_cents,-50);
+ assert.equal(accepted.payload.items[1].line_total_cents,-300);
+});
+
+test('R149 MIXED and an older till without discount_cents are accepted; a payout on card is not',()=>{
+ const fixture=JSON.parse(readFileSync(path.join(__dirname,'fixtures','sale-completed-kasse.json'),'utf8'));
+ const purchase=p=>({...structuredClone(fixture.payload),...p});
+ const items=[{position_no:1,product_key:'1',name:'Cola 0,5l',quantity:2,unit_price_cents:250,line_total_cents:500,vat_rate:19}];
+ assert.doesNotThrow(()=>normalizeEvent(saleEvent(purchase({payment_method:'MIXED',items,item_count:1,subtotal_cents:500,total_cents:500,cash_portion_cents:200,card_portion_cents:300,stock_consumption:[]}))));
+ const older=purchase({items,item_count:1,subtotal_cents:500,total_cents:450,discount_cents:undefined,manual_discount_cents:50,stock_consumption:[]});
+ delete older.discount_cents;
+ assert.equal(normalizeEvent(saleEvent(older)).payload.discount_cents,50);
+ assert.throws(()=>normalizeEvent(saleEvent(purchase({payment_method:'CARD'}))),/nur bar/);
+ assert.throws(()=>normalizeEvent(saleEvent(purchase({total_cents:0}))),/Gesamt/);
+});
+
+test('R149 a digital receipt of returned deposit paid out is accepted as it adds up',()=>{
+ const payout=validateReceipt(receipt({
+  lines:[{name:'Cola 0,5l',quantity:'1',unit_price_cents:250,line_total_cents:250,vat_rate:'19'},
+         {name:'PFAND-RÜCKGABE · 25 CENT',quantity:'12',unit_price_cents:-25,line_total_cents:-300,vat_rate:'19'}],
+  subtotal_cents:-50,discount_cents:0,total_cents:-50,
+  vat:[{rate:'19',net_cents:-42,tax_cents:-8,gross_cents:-50}],
+  payments:[{label:'Bar',amount_cents:-50}]}));
+ assert.equal(payout.total_cents,-50);
+ assert.ok(renderReceiptPage(payout,{token:'A'.repeat(43),expiresAt:'2026-12-16T11:00:05.000Z'}).includes('-0,50 €'));
+});

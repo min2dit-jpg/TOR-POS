@@ -123,9 +123,23 @@ public static class FiscalProcessData
     }
 
     /// <summary>R137: the positions of one order record - a change or cancellation carries negative quantities (DSFinV-K 4.2.3).</summary>
+    /// R149: returned deposit is written with negative quantity and positive
+    /// price, as DSFinV-K 4.2.5 represents a negative position.
     public static string BestellungText(IEnumerable<CartLine> lines) =>
         string.Join("\r", lines.Select(line =>
-            $"{Quantity(line.Quantity)};\"{LineText(line).Replace("\"", "\"\"")}\";{Amount(line.UnitPriceCents)}"));
+        {
+            var (quantity, price) = SignedQuantity(line);
+            return $"{Quantity(quantity)};\"{LineText(line).Replace("\"", "\"\"")}\";{Amount(price)}";
+        }));
+
+    /// <summary>
+    /// R149: DSFinV-K 4.2.5 - with a negative position "lediglich das Vorzeichen für
+    /// das Feld MENGE ändert sich". TOR keeps returned deposit as a positive count at a
+    /// negative price; for the TSE data and the export the sign moves to the quantity.
+    /// A discount position (R138) keeps quantity 1 at a negative price.
+    /// </summary>
+    public static (decimal Quantity, long UnitPriceCents) SignedQuantity(CartLine line) =>
+        PfandProducts.IsDepositReturn(line) ? (-line.Quantity, -line.UnitPriceCents) : (line.Quantity, line.UnitPriceCents);
 
     /// <summary>The Vorgangstyp every TOR sale, Storno and Retoure is recorded under.</summary>
     public const string VorgangstypBeleg = "Beleg";

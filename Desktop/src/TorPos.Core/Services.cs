@@ -241,7 +241,41 @@ public sealed class SaleEngine
     public long ListSubtotalCents => _cart.Sum(x => x.ListLineTotalCents);
     public long PromotionDiscountCents => _cart.Sum(x => x.PromotionDiscountCents);
     public long SubtotalCents => _cart.Sum(x => x.LineTotalCents);
-    public long TotalCents => Math.Max(0, SubtotalCents - DiscountCents);
+    public long TotalCents => ReceiptTotals.Total(SubtotalCents, DiscountCents);
+
+    /// <summary>R149: the cart holds returned deposit (Leergut).</summary>
+    public bool HasDepositReturns => _cart.Any(PfandProducts.IsDepositReturn);
+
+    /// <summary>
+    /// R149: returned empties - a position with a negative amount at the rate of
+    /// the deposit (PfandProducts.RateFor). Not combined with a manual discount.
+    /// </summary>
+    public bool AddDepositReturn(long productId, string name, long depositCents, decimal vatRate, decimal quantity = 1m)
+    {
+        if (IsReadOnly || quantity <= 0m || depositCents <= 0 || DiscountCents > 0 || !PfandProducts.IsDeposit(productId))
+            return false;
+
+        var price = -depositCents;
+        var existing = _cart.FirstOrDefault(x => x.ProductId == productId && x.UnitPriceCents == price && x.VatRate == vatRate);
+        if (existing is not null)
+        {
+            existing.Quantity += quantity;
+            return true;
+        }
+
+        _cart.Add(new CartLine
+        {
+            ProductId = productId,
+            ProductName = name,
+            Quantity = quantity,
+            UnitPriceCents = price,
+            ListUnitPriceCents = price,
+            VatRate = vatRate,
+            // The rate of returned deposit follows the goods, not Im Haus.
+            ImHausApplicable = false,
+        });
+        return true;
+    }
 
     public void Add(
         Product product,
@@ -343,7 +377,8 @@ public sealed class SaleEngine
         if (index >= 0 && index < _cart.Count) _cart.RemoveAt(index);
     }
 
-    public void SetDiscount(long cents) { if (!IsReadOnly) DiscountCents = Math.Max(0, cents); }
+    // R149: no manual discount on a receipt with returned deposit.
+    public void SetDiscount(long cents) { if (!IsReadOnly && !(cents > 0 && HasDepositReturns)) DiscountCents = Math.Max(0, cents); }
 
     public void Restore(IReadOnlyList<CartLine> lines, long discountCents)
     {

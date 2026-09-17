@@ -1874,7 +1874,13 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
         var listSubtotal = lines.Sum(x => x.ListLineTotalCents);
         var promotionDiscount = lines.Sum(x => x.PromotionDiscountCents);
         var subtotal = lines.Sum(x => x.LineTotalCents);
-        var total = Math.Max(0, subtotal - discountCents);
+        var total = ReceiptTotals.Total(subtotal, discountCents);
+        // R149: returned deposit is never combined with a manual discount, and a
+        // payout (negative total) leaves the till only as cash.
+        if (discountCents > 0 && lines.Any(PfandProducts.IsDepositReturn))
+            throw new InvalidOperationException("Rabatt und Pfand-Rückgabe können nicht auf einem Bon kombiniert werden.");
+        if (total < 0 && paymentMethod != PaymentMethod.Cash)
+            throw new InvalidOperationException("Eine Pfand-Auszahlung ist nur bar möglich.");
         var now = DateTimeOffset.Now;
         operatorName = (operatorName ?? "").Trim();
         await using var c = _db.OpenConnection();
@@ -2603,6 +2609,9 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
         {
             if (!originalLinesById.ContainsKey(request.SaleItemId))
                 throw new InvalidOperationException($"Position {request.SaleItemId} gehört nicht zu diesem Bon.");
+            // R149: returned deposit was paid out; it is not handed back as a Retoure.
+            if (PfandProducts.IsDepositReturn(originalLinesById[request.SaleItemId]))
+                throw new InvalidOperationException("Eine Pfand-Rückgabe kann nicht retourniert werden.");
         }
 
         // Same build-level circuit breaker every other real fiscal booking
@@ -2879,7 +2888,7 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
             throw new InvalidOperationException("Leerer Bon kann nicht geparkt werden.");
         var now = DateTimeOffset.Now;
         var subtotal = lines.Sum(x => x.LineTotalCents);
-        var total = Math.Max(0, subtotal - discountCents);
+        var total = ReceiptTotals.Total(subtotal, discountCents);
         await using var c = _db.OpenConnection();
         await using var tx = await c.BeginTransactionAsync(ct);
         long parkNumber;
@@ -2956,7 +2965,7 @@ public async Task<ParkedReceipt> ParkAsync(IReadOnlyList<CartLine> lines, long d
         if (lines.Count == 0)
             throw new InvalidOperationException("Leerer Bon kann nicht geparkt werden.");
         var subtotal = lines.Sum(x => x.LineTotalCents);
-        var total = Math.Max(0, subtotal - discountCents);
+        var total = ReceiptTotals.Total(subtotal, discountCents);
         var now = DateTimeOffset.Now;
         await using var c = _db.OpenConnection();
         await using var tx = await c.BeginTransactionAsync(ct);

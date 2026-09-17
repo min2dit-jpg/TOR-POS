@@ -10,6 +10,9 @@ function number(v,name,min=-1e12,max=1e12,integer=false){
   return v;
 }
 function cents(v,name,min=-1e12){return number(v,name,min,1e12,true);}
+// R149: the till's rule (TorPos.Core.ReceiptTotals) - a discount never makes a
+// purchase negative; returned deposit can make the subtotal itself negative.
+function receiptTotal(subtotal,discount){return subtotal<0?subtotal-Math.max(0,discount):Math.max(0,subtotal-discount);}
 function canonical(value){
   if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';
   if(value && typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}';
@@ -32,9 +35,14 @@ function normalizeEvent(raw){
   if(type==='sale.completed'){
     cents(p.receipt_number,'receipt_number',1);
     if(p.pickup_number!=null)number(p.pickup_number,'pickup_number',0,999999,true);
-    if(!['CASH','CARD'].includes(p.payment_method))fail('Zahlart muss CASH oder CARD sein');
-    cents(p.subtotal_cents,'subtotal_cents',0);cents(p.discount_cents,'discount_cents',0);cents(p.total_cents,'total_cents',0);
-    if(p.subtotal_cents-p.discount_cents!==p.total_cents)fail('Zwischensumme, Rabatt und Gesamt stimmen nicht überein');
+    // R149: MIXED is the R101 cash/card split the till has always sent, and the
+    // discount arrives as discount_cents (older tills: manual_discount_cents only).
+    if(!['CASH','CARD','MIXED'].includes(p.payment_method))fail('Zahlart muss CASH, CARD oder MIXED sein');
+    if(p.discount_cents==null&&p.manual_discount_cents!=null)p.discount_cents=p.manual_discount_cents;
+    // R149: returned deposit (Leergut) can make a receipt negative - money paid out.
+    cents(p.subtotal_cents,'subtotal_cents');cents(p.discount_cents,'discount_cents',0);cents(p.total_cents,'total_cents');
+    if(receiptTotal(p.subtotal_cents,p.discount_cents)!==p.total_cents)fail('Zwischensumme, Rabatt und Gesamt stimmen nicht überein');
+    if(p.total_cents<0&&p.payment_method!=='CASH')fail('Eine Pfand-Auszahlung ist nur bar möglich');
     text(p.operator_name,'operator_name',200,true);
     if(!Array.isArray(p.items)||p.items.length<1||p.items.length>5000)fail('1 bis 5000 Bonpositionen erforderlich');
     const positions=new Set();let sum=0;
@@ -80,4 +88,4 @@ function normalizeEvent(raw){
   }else fail('Unbekannter Ereignistyp');
   return {eventId,type,occurredAt,payload:p};
 }
-module.exports={normalizeEvent,canonical,berlinParts};
+module.exports={normalizeEvent,canonical,berlinParts,receiptTotal};

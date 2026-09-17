@@ -78,7 +78,7 @@ public sealed record CheckoutSnapshot(
     string TseVorgangId = "", DateTimeOffset? StartedAt = null,
     CartLine[]? CancelledLines = null)
 {
-    public long TotalCents => Math.Max(0, Lines.Sum(x => x.LineTotalCents) - DiscountCents);
+    public long TotalCents => ReceiptTotals.Total(Lines.Sum(x => x.LineTotalCents), DiscountCents);
 
     // R101: the single source of truth for how much of this sale is cash
     // vs. card, valid for ALL three PaymentMethod values - callers should
@@ -89,7 +89,8 @@ public sealed record CheckoutSnapshot(
     public long EffectiveCashPortionCents => Method switch
     {
         PaymentMethod.Cash => TotalCents,
-        PaymentMethod.Mixed => Math.Clamp(CashPortionCents, 0, TotalCents),
+        // R149: a payout (negative total) is only ever cash.
+        PaymentMethod.Mixed => TotalCents <= 0 ? TotalCents : Math.Clamp(CashPortionCents, 0, TotalCents),
         _ => 0
     };
     public long EffectiveCardPortionCents => TotalCents - EffectiveCashPortionCents;

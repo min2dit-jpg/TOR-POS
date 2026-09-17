@@ -915,6 +915,9 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
             Text($"GESAMT: {Money(job.TotalCents)}", title);
             Text($"Zahlart: {job.PaymentLabel}", normal);
+            // R149: returned deposit exceeding the purchase was paid out.
+            if (job.TotalCents < 0)
+                Text($"PFAND-AUSZAHLUNG BAR: {Money(-job.TotalCents)}", bold);
             if (job.TenderedCents > 0)
             {
                 Text($"Gegeben: {Money(job.TenderedCents)}", normal);

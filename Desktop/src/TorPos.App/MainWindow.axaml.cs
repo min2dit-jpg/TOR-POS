@@ -1773,6 +1773,16 @@ public partial class MainWindow:Window
             return;
         }
 
+        // R149: a receipt with returned deposit takes no manual discount.
+        if (_engine.HasDepositReturns)
+        {
+            await RecordControlledDeniedAsync(
+                "DISCOUNT_SET",
+                "DEPOSIT_RETURN");
+            ScannerStatus.Text = "RABATT GESPERRT · Der Bon enthält eine Pfand-Rückgabe.";
+            return;
+        }
+
         if (_engine.PromotionDiscountCents > 0 &&
             !_settingsCache.GetBool(
                 "promotion.allow_manual_discount",
@@ -1930,42 +1940,46 @@ public partial class MainWindow:Window
                 ? Math.Max(0, value)
                 : fallback;
 
-        var option =
+        var selection =
             await new PfandSelectionWindow(
                 ReadPfand("pfand.direct.8.cent", 8),
                 ReadPfand("pfand.direct.15.cent", 15),
                 ReadPfand("pfand.direct.25.cent", 25),
                 ReadPfand("pfand.crate.empty.cent", 150),
                 ReadPfand("pfand.crate.full.cent", 330))
-                .ShowDialog<PfandOption?>(this);
+                .ShowDialog<PfandReturnSelection?>(this);
 
-        if (option is null)
+        if (selection is null)
             return;
 
         if (CartLocked) return;
-        _engine.Add(
-            new Product
-            {
-                Id = option.ProductId,
-                Name = option.Name,
-                BasePriceCents = option.PriceCents,
-                VatRate = 19m,
-                PfandCents = 0,
-                Unit = "Stück"
-            },
-            quantity: ConsumePendingQuantity());
+        // R149: the key takes back empties - money leaves the till, a negative
+        // position at the rate of the deposit, never a sale.
+        if (_engine.DiscountCents > 0)
+        {
+            ScannerStatus.Text = "PFAND-RÜCKGABE: Zuerst den Rabatt entfernen - beides auf einem Bon ist nicht möglich.";
+            return;
+        }
+
+        var option = selection.Option;
+        var quantity = ConsumePendingQuantity();
+        if (!_engine.AddDepositReturn(option.ProductId, option.Name, option.PriceCents, selection.VatRate, quantity))
+        {
+            ScannerStatus.Text = "PFAND-RÜCKGABE nicht möglich.";
+            return;
+        }
 
         UpdateCart();
 
         await _audit.WriteAsync(
             _currentUser.Username,
-            "PFAND_ITEM_ADDED",
+            "PFAND_RETURN_ADDED",
             "CURRENT_CART",
             option.ProductId.ToString(),
-            $"name={option.Name}; cents={option.PriceCents}");
+            $"name={option.Name}; cents=-{option.PriceCents}; quantity={quantity}; vat={selection.VatRate}");
 
         ScannerStatus.Text =
-            $"{option.Name} · {Formatting.Money(option.PriceCents)} hinzugefügt.";
+            $"{option.Name} · {quantity:0.###} × {Formatting.Money(-option.PriceCents)} · {selection.VatRate:0.#} %";
     }
 
     private async Task AddExtraAsync()
@@ -2478,6 +2492,12 @@ public partial class MainWindow:Window
     {
         if (CartLocked || _engine.Cart.Count == 0 || !CanCompleteSale()) return;
         var total = CaptureCheckout(PaymentMethod.Mixed).TotalCents;
+        // R149: a payout of returned deposit is only ever cash.
+        if (total <= 0)
+        {
+            ScannerStatus.Text = "GEMISCHT nicht möglich · Pfand-Auszahlung nur BAR.";
+            return;
+        }
         var cashPortion = await new MixedPaymentWindow(total).ShowDialog<long?>(this);
         if (cashPortion is null) return;
         await CheckoutAsync(PaymentMethod.Mixed, invokedByQuickCheckout: false, cashPortionCents: cashPortion.Value);
@@ -2514,6 +2534,12 @@ public partial class MainWindow:Window
     {
         if (CartLocked || _engine.Cart.Count==0 || !CanCompleteSale()) return;
         var snapshot=CaptureCheckout(method, cashPortionCents);
+        // R149: returned deposit exceeding the purchase is paid out - in cash only.
+        if (snapshot.TotalCents < 0 && method != PaymentMethod.Cash)
+        {
+            ScannerStatus.Text = "Pfand-Auszahlung nur BAR möglich.";
+            return;
+        }
         CashPaymentResult? cash=null;
         SetCheckoutBusy(true);
         try
@@ -2537,7 +2563,15 @@ public partial class MainWindow:Window
                 ScannerStatus.Text = "ZAHLUNG ABGEBROCHEN · Bondrucker nicht erkannt";
                 return;
             }
-            if (method==PaymentMethod.Cash)
+            if (method==PaymentMethod.Cash && snapshot.TotalCents <= 0)
+            {
+                // R149: nothing to tender. A payout is confirmed once the money is handed over.
+                if (snapshot.TotalCents < 0 &&
+                    !await new DepositPayoutWindow(-snapshot.TotalCents).ShowDialog<bool>(this))
+                    return;
+                cash = new CashPaymentResult(0, 0);
+            }
+            else if (method==PaymentMethod.Cash)
             {
                 if (QuickCheckoutPolicy.UseExactCashWithoutDialog(
                     _settingsCache,
@@ -2879,6 +2913,8 @@ public partial class MainWindow:Window
         }
         foreach(var line in lines)
         {
+            // R149: deposit is nothing the kitchen prepares.
+            if(PfandProducts.IsDeposit(line.ProductId)) continue;
             var display=line.ProductName + (string.IsNullOrWhiteSpace(line.VariantName) ? "" : " · " + line.VariantName);
             var product=_catalog.Products.FirstOrDefault(x=>x.Id==line.ProductId);
             var category=product is null ? null : _catalog.Categories.FirstOrDefault(x=>x.Id==product.CategoryId);
@@ -4807,8 +4843,9 @@ public partial class MainWindow:Window
                 Reason = reason,
                 EntityType = entityType,
                 EntityId = entityId,
-                BeforeTotalCents = Math.Max(0, beforeTotalCents),
-                AfterTotalCents = Math.Max(0, afterTotalCents),
+                // R149: with returned deposit a cart total can be negative.
+                BeforeTotalCents = beforeTotalCents,
+                AfterTotalCents = afterTotalCents,
                 AmountCents = Math.Max(0, amountCents),
                 Details = details
             });

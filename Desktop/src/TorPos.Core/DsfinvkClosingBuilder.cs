@@ -633,11 +633,14 @@ public static class DsfinvkClosingBuilder
 
                 row++;
                 // R138: a discount position of an order record is GV_TYP Rabatt.
-                // R148: a position of the PFAND / LEERGUT key is GV_TYP Pfand (Anhang C).
+                // R148: a position of the PFAND / LEERGUT key is deposit (Anhang C);
+                // R149: returned deposit is PfandRueckzahlung.
                 var gvType = OrderBestellungDelta.IsDiscount(line) ? "Rabatt"
-                    : PfandProducts.IsDeposit(line.ProductId) ? "Pfand"
+                    : PfandProducts.IsDeposit(line.ProductId) ? (line.UnitPriceCents < 0 ? "PfandRueckzahlung" : "Pfand")
                     : "Umsatz";
-                Position(bonId, row, text, gvType, null, product, line.Barcode, sign * line.Quantity, line.UnitPriceCents - line.PfandCents, inHaus);
+                // R149: DSFinV-K 4.2.5 - a negative position carries its sign in MENGE.
+                var (quantity, unitPrice) = FiscalProcessData.SignedQuantity(line);
+                Position(bonId, row, text, gvType, null, product, line.Barcode, sign * quantity, unitPrice - line.PfandCents, inHaus);
                 PositionVat(bonId, row, key, line.VatRate, sign * articleTotal, gvType, null, beleg);
 
                 if (line.HasPromotion)
