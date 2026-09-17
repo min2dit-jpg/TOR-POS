@@ -110,10 +110,13 @@ public static class FiscalProcessData
     public static string BestellungText(ParkedReceipt order)
     {
         ArgumentNullException.ThrowIfNull(order);
-
-        return string.Join("\r", order.Lines.Select(line =>
-            $"{Quantity(line.Quantity)};\"{LineText(line).Replace("\"", "\"\"")}\";{Amount(line.UnitPriceCents)}"));
+        return BestellungText(order.Lines);
     }
+
+    /// <summary>R137: the positions of one order record - a change or cancellation carries negative quantities (DSFinV-K 4.2.3).</summary>
+    public static string BestellungText(IEnumerable<CartLine> lines) =>
+        string.Join("\r", lines.Select(line =>
+            $"{Quantity(line.Quantity)};\"{LineText(line).Replace("\"", "\"\"")}\";{Amount(line.UnitPriceCents)}"));
 
     /// <summary>The Vorgangstyp every TOR sale, Storno and Retoure is recorded under.</summary>
     public const string VorgangstypBeleg = "Beleg";

@@ -226,6 +226,14 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                         NoteTse(signedAbort.TransactionNumber, signedAbort.SerialNumber);
                 }
 
+                var orderRecords = await OrderBestellungRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                foreach (var record in orderRecords)
+                {
+                    CheckVat(record.Lines, $"Bestellung P{record.ParkNumber:000000} ({record.Sequence})", issues);
+                    if (record.Tse is { Outage: false } signedRecord)
+                        NoteTse(signedRecord.TransactionNumber, signedRecord.SerialNumber);
+                }
+
                 var orders = await LoadOrdersAsync(c, closing, ct);
                 anyOrder |= orders.Count > 0;
                 anyCancelledOrder |= orders.Any(o => o.Cancelled);
@@ -249,6 +257,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     CashMovements = movements,
                     Trainings = trainings,
                     Aborted = aborted,
+                    OrderRecords = orderRecords,
                     Orders = orders.Select(o => o.Order).ToList(),
                     OriginalOf = originalId => FindOriginal(c, closings, originalId),
                     OutageReasonAt = at => OutageReasonAt(outages, at),
@@ -265,7 +274,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     var rows = DsfinvkClosingBuilder.Build(input);
                     foreach (var table in OfficialTables)
                         csv[table.Name].AddRange(rows.For(table.Name).Select(row => DsfinvkCsv.Row(table, row)));
-                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count + aborted.Count));
+                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count + aborted.Count + orderRecords.Count));
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -275,7 +284,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
 
             var lastClosing = closings.Count == 0 ? null : closings[^1];
             var open = await ScalarLongAsync(c,
-                "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME') AND fiscal_mode <> 'TEST_ONLY') + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from);",
+                "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME') AND fiscal_mode <> 'TEST_ONLY') + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from) + (SELECT COUNT(*) FROM order_bestellungen WHERE created_at_utc > $from);",
                 lastClosing?.ToUtc ?? "", ct);
             if (open > 0)
                 issues.Add(new("OPEN_PERIOD", open == 1
@@ -300,9 +309,9 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             if (movementsWithoutTse > 0)
                 issues.Add(new("KASSENBEWEGUNG_TSE", $"{movementsWithoutTse} Einlage(n)/Entnahme(n) ohne gespeichertes TSE-Ergebnis (vor R134 wurden sie nicht abgesichert).", Blocking: false));
             if (anyOrder)
-                issues.Add(new("BESTELLUNG", "Bestellungen werden mit ihrem zuletzt gespeicherten Positionsstand exportiert; Änderungen nach der TSE-Signierung sind nicht einzeln nachvollziehbar.", Blocking: false));
+                issues.Add(new("BESTELLUNG", "Bestellungen aus der Zeit vor R137 werden mit ihrem zuletzt gespeicherten Positionsstand exportiert; ihre Änderungen nach der TSE-Signierung sind nicht einzeln nachvollziehbar.", Blocking: false));
             if (anyCancelledOrder)
-                issues.Add(new("BESTELLSTORNO", "Stornierte Bestellungen sind nicht als eigene TSE-gesicherte Gegenbuchung erfasst (DSFinV-K 4.2.3).", Blocking: false));
+                issues.Add(new("BESTELLSTORNO", "Stornierte Bestellungen aus der Zeit vor R137 sind nicht als eigene TSE-gesicherte Gegenbuchung erfasst (DSFinV-K 4.2.3).", Blocking: false));
             if (anyWithoutTse.Count > 0)
                 issues.Add(new("OHNE_TSE", $"{anyWithoutTse.Count} Belege ohne gespeichertes TSE-Ergebnis (z. B. Beleg {anyWithoutTse[0]}).", Blocking: false));
 
@@ -488,6 +497,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 FROM parked_receipts
                 WHERE COALESCE(is_training,0)=0
                   AND (tse_transaction_number<>'' OR tse_outage=1)
+                  AND status<>'SIMULATED'
+                  AND NOT EXISTS (SELECT 1 FROM order_bestellungen b WHERE b.parked_receipt_id=parked_receipts.id)
                 ORDER BY park_number;
                 """;
             await using var r = await q.ExecuteReaderAsync(ct);
@@ -568,7 +579,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             SELECT cashed_sale_id,park_number FROM parked_receipts
             WHERE cashed_sale_id IS NOT NULL
               AND COALESCE(is_training,0)=0
-              AND (tse_transaction_number<>'' OR tse_outage=1);
+              AND (tse_transaction_number<>'' OR tse_outage=1
+                   OR EXISTS (SELECT 1 FROM order_bestellungen b WHERE b.parked_receipt_id=parked_receipts.id));
             """;
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))

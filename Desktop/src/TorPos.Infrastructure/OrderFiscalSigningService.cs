@@ -39,6 +39,111 @@ public sealed class OrderFiscalSigningService
     public TseVorgangService? Vorgaenge { get; init; }
 
     /// <summary>
+    /// R137: the immutable order records (acceptance, change, cancellation).
+    /// Null where they are not kept (tests, tools); an acceptance is then only
+    /// signed, as before R137.
+    /// </summary>
+    public OrderBestellungRepository? Bestellungen { get; init; }
+
+    /// <summary>R137: the TSE has secured positions of this order - records, or a signature from before R137.</summary>
+    public async Task<bool> IsSecuredAsync(ParkedReceipt order, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        if (order.TseTransactionNumber.Length > 0 || order.TseOutage)
+            return true;
+        return Bestellungen is not null && (await Bestellungen.SecuredAsync(order.Id, ct)).Count > 0;
+    }
+
+    /// <summary>
+    /// R137: an accepted order was changed (DSFinV-K 4.2.3). The difference
+    /// between the secured positions and the order as it is now becomes its own
+    /// Bestellung-V1 transaction - finishing the Vorgang that began with the
+    /// first change. No difference: nothing is signed, and a Vorgang begun for
+    /// the change ends as aborted. <paramref name="previousLines"/> are the
+    /// positions before the change; for an order accepted before R137 they are
+    /// written down as its acceptance record first.
+    /// </summary>
+    public Task<DsfinvkOrderRecord?> SecureChangeAsync(ParkedReceipt order, IReadOnlyList<CartLine> previousLines, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default) =>
+        SecureAsync(order, order.Lines, previousLines, vorgangId, startedAt, actor, ct);
+
+    /// <summary>
+    /// R137: an accepted order was cancelled. DSFinV-K 4.2.3: "ein neuer
+    /// Datensatz mit umgekehrtem Vorzeichen, der wiederum abgesichert werden
+    /// muss" - everything secured so far, negated, as its own transaction.
+    /// </summary>
+    public Task<DsfinvkOrderRecord?> SecureCancellationAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default) =>
+        SecureAsync(order, Array.Empty<CartLine>(), order.Lines, vorgangId, startedAt, actor, ct);
+
+    private async Task<DsfinvkOrderRecord?> SecureAsync(
+        ParkedReceipt order,
+        IReadOnlyList<CartLine> orderLines,
+        IReadOnlyList<CartLine>? legacyLines,
+        string vorgangId,
+        DateTimeOffset? startedAt,
+        string actor,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        if (Bestellungen is not { } records)
+            throw new InvalidOperationException("Bestelländerungen können ohne Bestellaufzeichnung nicht abgesichert werden.");
+
+        var (count, secured) = await records.SecuredAsync(order.Id, ct);
+        if (count == 0 && (order.TseTransactionNumber.Length > 0 || order.TseOutage))
+        {
+            // An order accepted before R137 has no records. Its acceptance is
+            // written down first - with the TSE result it received then and the
+            // positions it had before this change - so that every later record,
+            // a cancellation too, accounts for it.
+            var accepted = new SaleTseResult(
+                !order.TseOutage, order.TseClientId, order.TseTransactionNumber, order.TseSignatureCounter,
+                order.TseSerialNumber, order.TseSignature, order.TseLogTime,
+                order.TseOutage ? "TSE-Ausfall bei der Bestellannahme (vor R137)" : "", order.TseStartLogTime);
+            await records.InsertAsync(
+                order, OrderBestellungKind.Annahme, order.VorgangStartedAt ?? order.CreatedAt, order.CreatedBy,
+                CheckoutSnapshot.CopyLines(legacyLines ?? order.Lines, order.ImHaus), accepted, ct, createdAt: order.CreatedAt);
+            (count, secured) = await records.SecuredAsync(order.Id, ct);
+        }
+
+        // The positions with the VAT rate that applies to them (Im Haus).
+        var target = CheckoutSnapshot.CopyLines(orderLines, order.ImHaus);
+        var kind = count == 0
+            ? OrderBestellungKind.Annahme
+            : target.Length == 0 ? OrderBestellungKind.Storno : OrderBestellungKind.Aenderung;
+        var delta = kind == OrderBestellungKind.Storno
+            ? OrderBestellungDelta.Reverse(secured)
+            : OrderBestellungDelta.Compute(kind == OrderBestellungKind.Annahme ? Array.Empty<CartLine>() : secured, target);
+
+        if (delta.Count == 0)
+        {
+            if (!string.IsNullOrEmpty(vorgangId) && Vorgaenge is { } open)
+                await open.AbortAsync(vorgangId, Array.Empty<CartLine>(), 0, actor, actor, ct);
+            return null;
+        }
+
+        var processData = FiscalProcessData.BestellungText(delta);
+        var result = Vorgaenge is { } vorgaenge
+            ? await vorgaenge.FinishAsync(vorgangId ?? "", FiscalProcessData.BestellungProcessType, processData, actor, $"ORDER:{order.Id}", ct)
+            : await TseKassenbelegSigner.SignAsync(_tse, _settings, processData, "Bestellung", actor, ct, FiscalProcessData.BestellungProcessType);
+
+        var record = await records.InsertAsync(order, kind, startedAt ?? DateTimeOffset.Now, actor, delta, result, ct);
+
+        if (kind == OrderBestellungKind.Annahme)
+        {
+            // The order row keeps its acceptance as before, for the order's own views.
+            if (startedAt is { } started)
+            {
+                if (Vorgaenge is { } withStart)
+                    await withStart.RecordOrderStartAsync(order.Id, started, ct);
+                order.VorgangStartedAt = started;
+            }
+
+            await ApplyAsync(order, result, ct);
+        }
+
+        return record;
+    }
+
+    /// <summary>
     /// R136: the order Vorgang began with its first position; its TSE
     /// transaction is finished here with the Bestellung-V1 data, and the start
     /// is stored for BON_START.
@@ -46,6 +151,14 @@ public sealed class OrderFiscalSigningService
     public async Task SignInVorgangAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(order);
+
+        // R137: with the order records kept, the acceptance is their first record.
+        if (Bestellungen is not null)
+        {
+            await SecureAsync(order, order.Lines, null, vorgangId, startedAt, actor, ct);
+            return;
+        }
+
         if (string.IsNullOrEmpty(vorgangId) || Vorgaenge is not { } vorgaenge)
         {
             await SignAsync(order, actor, ct);

@@ -1850,7 +1850,7 @@ public sealed class CardRefundLockRepository : ICardRefundLockRepository
                 throw new InvalidOperationException("Diese Kartenerstattung wurde bereits geklärt oder existiert nicht mehr.");
         }
         await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "CARD_REFUND_RESOLVED", "CARD_REFUND_ATTEMPT", attemptId, note, ct);
+        await _audit.WriteAsync(actor, "CARD_REFUND_RESOLVED", "CARD_REFUND_ATTEMPT", attemptId, note ?? "", ct);
     }
 }
 
@@ -2226,7 +2226,14 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        COALESCE(s.card_portion_cents,0),
                        s.im_haus,
                        s.started_at,
-                       COALESCE(t.start_log_time,'')
+                       COALESCE(t.start_log_time,''),
+                       COALESCE(
+                         (SELECT COALESCE(NULLIF(b.start_log_time,''), b.started_at)
+                          FROM order_bestellungen b JOIN parked_receipts op ON op.id=b.parked_receipt_id
+                          WHERE op.cashed_sale_id=s.id ORDER BY b.sequence LIMIT 1),
+                         (SELECT COALESCE(NULLIF(op.tse_start_log_time,''), op.vorgang_started_at, op.created_at)
+                          FROM parked_receipts op
+                          WHERE op.cashed_sale_id=s.id AND (op.tse_transaction_number<>'' OR op.tse_outage=1) LIMIT 1))
                 FROM sales s
                 LEFT JOIN sale_operators o ON o.sale_id=s.id
                 LEFT JOIN sale_tse_signatures t ON t.sale_id=s.id
@@ -2270,7 +2277,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                 CardPortionCents = r.GetInt64(21),
                 ImHaus = r.IsDBNull(22) ? null : r.GetInt64(22) != 0,
                 StartedAt = r.IsDBNull(23) ? null : DateTimeOffset.Parse(r.GetString(23)),
-                TseStartLogTime = string.IsNullOrWhiteSpace(r.GetString(24)) ? null : DateTimeOffset.Parse(r.GetString(24))
+                TseStartLogTime = string.IsNullOrWhiteSpace(r.GetString(24)) ? null : DateTimeOffset.Parse(r.GetString(24)),
+                OrderStartedAt = r.IsDBNull(25) ? null : DateTimeOffset.Parse(r.GetString(25))
             };
         }
 

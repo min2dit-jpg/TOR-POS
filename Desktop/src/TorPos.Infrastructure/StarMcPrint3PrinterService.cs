@@ -962,6 +962,10 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                     Text($"Vorgangsbeginn: {processStart.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
                 if (job.ProcessEnd is { } processEnd)
                     Text($"Vorgangsende: {processEnd.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
+                // R137: DSFinV-K 2.7.2 - a receipt for an order shows when the
+                // first order transaction started.
+                if (job.OrderStart is { } orderStart)
+                    Text($"Bestellbeginn: {orderStart.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
 
                 if (job.TseOutage)
                 {

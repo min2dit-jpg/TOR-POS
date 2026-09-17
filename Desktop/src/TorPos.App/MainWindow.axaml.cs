@@ -515,6 +515,11 @@ public partial class MainWindow:Window
             await _tseVorgangWork;
             if (await vorgaenge.ResumeParkedAsync(parked.Id) is { } vorgang)
                 _tseVorgang.Adopt(vorgang.Id, vorgang.StartedAt, parked.Lines, parked.DiscountCents, parked.ImHaus);
+            else
+                // R137: an accepted order (or a receipt parked before R136) that
+                // is only looked at starts no Vorgang; the first change or the
+                // payment does (DSFinV-K 2.7.2).
+                _tseVorgang.SetBaseline(_engine.Cart, _engine.DiscountCents);
         }
         catch (Exception ex)
         {
@@ -1575,6 +1580,15 @@ public partial class MainWindow:Window
 
         try
         {
+            // R137: an order the TSE has secured is cancelled as its own
+            // Bestellung-V1 record with reversed sign (DSFinV-K 4.2.3), not as an
+            // aborted cart. Read before the cancellation closes it.
+            var securedOrder = parkedId is long orderId && !IsSimulation
+                ? await _parkedReceipts.GetOpenByIdAsync(orderId, training: _currentUser.IsTraining)
+                : null;
+            if (securedOrder is not null && !await _orderFiscalSigning.IsSecuredAsync(securedOrder))
+                securedOrder = null;
+
             // Durable parked receipt cancellation happens before the in-memory
             // cart is cleared. A DB failure therefore leaves the cashier's cart intact.
             if (parkedId is long id)
@@ -1584,8 +1598,26 @@ public partial class MainWindow:Window
                     actor: _currentUser.Username);
             }
 
+            // A change begun on the recalled order ends as the cancellation
+            // record, so the emptied cart is no abort.
+            var cancelStartedAt = securedOrder is null ? null : _tseVorgang.StartedAt;
+            var cancelVorgang = securedOrder is null ? null : _tseVorgang.Release();
+
             _engine.Clear();
             UpdateCart();
+
+            if (securedOrder is not null)
+            {
+                try
+                {
+                    await _tseVorgangWork;
+                    await _orderFiscalSigning.SecureCancellationAsync(securedOrder, cancelVorgang ?? "", cancelStartedAt, _currentUser.Username);
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException("Fiscal signing order cancellation " + securedOrder.ParkNumber, ex);
+                }
+            }
             CartList.SelectedIndex = -1;
 
             _activeParkedReceiptId = null;
@@ -1975,13 +2007,30 @@ public partial class MainWindow:Window
             var vorgangStartedAt = _tseVorgang.StartedAt;
             if (_activeParkedReceiptId is long parkedId)
             {
+                var before = orderMode && !_currentUser.IsTraining && !IsSimulation
+                    ? await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining)
+                    : null;
                 await _parkedReceipts.UpdateAsync(
                     parkedId,
                     _engine.Cart.ToArray(),
                     _engine.DiscountCents, orderPrint: orderMode, actor:_currentUser.Username, imHaus: _imHaus);
-                if (vorgangId is not null)
-                    QueueTseVorgangWork(v => v.ParkAsync(vorgangId, parkedId));
                 var updated=await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining);
+                if (before is not null && updated is not null)
+                {
+                    // R137: DSFinV-K 4.2.3 - the change of an accepted order is
+                    // its own Bestellung-V1 record holding only the difference.
+                    try
+                    {
+                        await _tseVorgangWork;
+                        await _orderFiscalSigning.SecureChangeAsync(updated, before.Lines, vorgangId ?? "", vorgangStartedAt, _currentUser.Username);
+                    }
+                    catch (Exception ex)
+                    {
+                        CrashLog.WriteException("Fiscal signing order change " + updated.ParkNumber, ex);
+                    }
+                }
+                else if (vorgangId is not null)
+                    QueueTseVorgangWork(v => v.ParkAsync(vorgangId, parkedId));
                 ScannerStatus.Text = orderMode && updated?.PickupNumber>0
                     ? $"BESTELLUNG {updated.PickupNumber:000} aktualisiert und wieder geöffnet gespeichert."
                     : $"Geparkter Bon P{_activeParkNumber:000000} aktualisiert.";
@@ -2000,7 +2049,11 @@ public partial class MainWindow:Window
                 // R78's Kassenbeleg-Signierung nach dem Sale-Commit - ein
                 // TSE-Ausfall darf eine bereits angenommene Bestellung nie
                 // rückgängig machen oder blockieren.
-                if (orderMode && !_currentUser.IsTraining)
+                // R137: only a till that books for real secures orders - a test
+                // till records nothing fiscal (as for sales R113, cash movements
+                // R134, training R135). Before, a test till signed every order,
+                // logged a TSE outage for it and later forced an automatic closing.
+                if (orderMode && !_currentUser.IsTraining && !IsSimulation)
                 {
                     try
                     {
@@ -2090,11 +2143,28 @@ public partial class MainWindow:Window
             try
             {
                 await _parkedReceipts.CancelAsync(selection.Id,orderPrint:orderMode,actor:_currentUser.Username);
-                // R136: the Vorgang of a deleted parked receipt ends as aborted.
                 if (open.FirstOrDefault(x => x.Id == selection.Id) is { } deleted)
                 {
                     var actor = _currentUser.Username;
-                    QueueTseVorgangWork(v => v.AbortParkedAsync(deleted.Id, deleted.Lines, deleted.DiscountCents, actor, actor));
+                    if (!IsSimulation && await _orderFiscalSigning.IsSecuredAsync(deleted))
+                    {
+                        // R137: DSFinV-K 4.2.3 - a cancelled order is a new record
+                        // with reversed sign, secured on its own.
+                        try
+                        {
+                            await _tseVorgangWork;
+                            await _orderFiscalSigning.SecureCancellationAsync(deleted, "", null, actor);
+                        }
+                        catch (Exception ex)
+                        {
+                            CrashLog.WriteException("Fiscal signing order cancellation " + deleted.ParkNumber, ex);
+                        }
+                    }
+                    else
+                    {
+                        // R136: the Vorgang of a deleted parked receipt ends as aborted.
+                        QueueTseVorgangWork(v => v.AbortParkedAsync(deleted.Id, deleted.Lines, deleted.DiscountCents, actor, actor));
+                    }
                 }
                 ScannerStatus.Text = "Geparkter Bon gelöscht.";
                 await RefreshParkedCountAsync();
@@ -2580,6 +2650,32 @@ public partial class MainWindow:Window
 
     private async Task CommitCheckoutAsync(CheckoutSnapshot snapshot, CashPaymentResult? cash=null)
     {
+        // R137: DSFinV-K 4.2.3 - when the positions paid differ from what the
+        // order secured (a position left out at pickup, one added), that change
+        // of the order is secured first, so orders and receipt account for each
+        // other. The payment has already happened here; a failure is logged and
+        // never stops the booking. Repeated after a crash, the difference is
+        // already secured and nothing is signed twice.
+        if (snapshot.ParkedReceiptId is long paidOrderId && !IsSimulation)
+        {
+            try
+            {
+                if (await _parkedReceipts.GetOpenByIdAsync(paidOrderId, training: _currentUser.IsTraining) is { } paidOrder &&
+                    await _orderFiscalSigning.IsSecuredAsync(paidOrder))
+                {
+                    var orderedLines = paidOrder.Lines;
+                    paidOrder.Lines = snapshot.Lines.ToList();
+                    paidOrder.ImHaus = snapshot.ImHaus;
+                    await _tseVorgangWork;
+                    await _orderFiscalSigning.SecureChangeAsync(paidOrder, orderedLines, "", null, _currentUser.Username);
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("Fiscal signing order change at payment " + paidOrderId, ex);
+            }
+        }
+
         Sale sale;
         using (_perf.Measure("checkout.database_commit"))
             sale = await _sales.CommitAsync(snapshot);
@@ -2912,7 +3008,9 @@ public partial class MainWindow:Window
             // R101: opens for Mixed too whenever real cash actually changed
             // hands, not only for a pure Cash sale.
             (method == PaymentMethod.Cash || (method == PaymentMethod.Mixed && sale.CashPortionCents > 0)) && !isCopy &&
-                _settingsCache.GetBool("printer.drawer_kick.enabled", true));
+                _settingsCache.GetBool("printer.drawer_kick.enabled", true),
+            // R137: DSFinV-K 2.7.2 - start of the first order transaction.
+            sale.OrderStartedAt);
     }
 
     private async Task PrintReceiptAndReportAsync(

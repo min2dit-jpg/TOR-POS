@@ -57,6 +57,20 @@ public sealed record DsfinvkAbortedVorgang(
     DsfinvkTseResult? Tse,
     bool Training = false);
 
+/// <summary>R137: one secured order record (Bestellung-V1): acceptance, change or cancellation.</summary>
+public sealed record DsfinvkOrderRecord(
+    long Id,
+    long ParkNumber,
+    long PickupNumber,
+    int Sequence,
+    OrderBestellungKind Kind,
+    DateTimeOffset StartedAt,
+    DateTimeOffset CreatedAt,
+    string Operator,
+    bool ImHaus,
+    IReadOnlyList<CartLine> Lines,
+    DsfinvkTseResult? Tse);
+
 /// <summary>Where the receipt a Storno or Retoure refers to was closed.</summary>
 public sealed record DsfinvkOriginalReference(long ZNumber, DateTimeOffset ZCreatedAt, string BonId);
 
@@ -68,6 +82,9 @@ public sealed class DsfinvkClosingInput
     public required DsfinvkMasterData Master { get; init; }
     public IReadOnlyList<Sale> Sales { get; init; } = Array.Empty<Sale>();
     public IReadOnlyList<DsfinvkCashMovement> CashMovements { get; init; } = Array.Empty<DsfinvkCashMovement>();
+
+    /// <summary>R137: secured order records - acceptance, change, cancellation - each its own AVBestellung.</summary>
+    public IReadOnlyList<DsfinvkOrderRecord> OrderRecords { get; init; } = Array.Empty<DsfinvkOrderRecord>();
 
     /// <summary>R136: aborted Vorgänge (AVBelegabbruch).</summary>
     public IReadOnlyList<DsfinvkAbortedVorgang> Aborted { get; init; } = Array.Empty<DsfinvkAbortedVorgang>();
@@ -146,6 +163,8 @@ public static class DsfinvkClosingBuilder
     public static string TrainingBonId(long trainingNumber) => $"TR-{trainingNumber.ToString(CultureInfo.InvariantCulture)}";
     public static string AbortedBonId(long number) => $"AB-{number.ToString(CultureInfo.InvariantCulture)}";
     public static string OrderAllocationGroup(ParkedReceipt order) => $"Bestellung {order.DisplayNumber}";
+    public static string OrderRecordBonId(long parkNumber, int sequence) =>
+        $"BE-{parkNumber.ToString(CultureInfo.InvariantCulture)}-{sequence.ToString(CultureInfo.InvariantCulture)}";
 
     /// <summary>
     /// DSFinV-K Anlage 2: ID 1 the general and ID 2 the reduced rate valid when
@@ -189,6 +208,8 @@ public static class DsfinvkClosingBuilder
                 vorgaenge.Add((order.CreatedAt, 2, OrderBonId(order.ParkNumber), () => WriteOrder(order)));
             foreach (var training in _input.Trainings)
                 vorgaenge.Add((training.Receipt.CreatedAt, 3, TrainingBonId(training.Receipt.ReceiptNumber), () => WriteTraining(training)));
+            foreach (var record in _input.OrderRecords)
+                vorgaenge.Add((record.CreatedAt, 2, OrderRecordBonId(record.ParkNumber, record.Sequence), () => WriteOrderRecord(record)));
             foreach (var aborted in _input.Aborted)
                 vorgaenge.Add((aborted.EndedAt, 4, AbortedBonId(aborted.Number), () => WriteAborted(aborted)));
 
@@ -466,6 +487,100 @@ public static class DsfinvkClosingBuilder
                 () => FiscalProcessData.BestellungText(order),
                 order.CreatedAt,
                 startLogTime: order.TseStartLogTime);
+        }
+
+        /// <summary>
+        /// R137: one secured order record. DSFinV-K 4.2.3 - a change holds only
+        /// the difference, a cancellation reverses everything secured before and
+        /// is marked BON_STORNO 1 with a reference to the acceptance (Tz. 4.2.2
+        /// for TSE-secured systems). No payment, no effect on the closing
+        /// (Anhang B), linked to its receipt through the Abrechnungskreis (2.7.1).
+        /// </summary>
+        private void WriteOrderRecord(DsfinvkOrderRecord record)
+        {
+            var bonId = OrderRecordBonId(record.ParkNumber, record.Sequence);
+            var total = record.Lines.Sum(l => l.LineTotalCents);
+
+            Add("Bonkopf", new()
+            {
+                ["BON_ID"] = bonId,
+                ["BON_NR"] = record.Id,
+                ["BON_TYP"] = "AVBestellung",
+                ["BON_NAME"] = record.Kind switch
+                {
+                    OrderBestellungKind.Aenderung => "Bestelländerung",
+                    OrderBestellungKind.Storno => "Bestellstorno",
+                    _ => "Bestellung",
+                },
+                ["BON_STORNO"] = record.Kind == OrderBestellungKind.Storno ? "1" : "0",
+                ["BON_START"] = DsfinvkCsv.Timestamp(record.StartedAt),
+                ["BON_ENDE"] = DsfinvkCsv.Timestamp(record.CreatedAt),
+                ["BEDIENER_ID"] = DsfinvkCsv.Fit(record.Operator, 50),
+                ["BEDIENER_NAME"] = DsfinvkCsv.Fit(record.Operator, 50),
+                ["UMS_BRUTTO"] = new DsfinvkMoney(total),
+                ["BON_NOTIZ"] = record.PickupNumber > 0 ? $"Abholnummer {record.PickupNumber:000}" : null,
+            });
+
+            // Signed sums per rate; a change can hold added and removed positions.
+            foreach (var group in record.Lines.GroupBy(l => l.VatRate).OrderBy(g => g.Key))
+            {
+                var gross = group.Sum(l => l.LineTotalCents);
+                var key = VatKey(group.Key);
+                var (net, tax) = Split(gross, group.Key);
+                _vatKeys.Add(key);
+                Add("Bonkopf_USt", new()
+                {
+                    ["BON_ID"] = bonId,
+                    ["UST_SCHLUESSEL"] = (long)key,
+                    ["BON_BRUTTO"] = new DsfinvkMoney(gross),
+                    ["BON_NETTO"] = new DsfinvkMoney(net),
+                    ["BON_UST"] = new DsfinvkMoney(tax),
+                });
+            }
+
+            Add("Bonkopf_Zahlarten", new()
+            {
+                ["BON_ID"] = bonId,
+                ["ZAHLART_TYP"] = "Keine",
+                ["ZAHLART_NAME"] = "Keine",
+                ["BASISWAEH_BETRAG"] = new DsfinvkMoney(0),
+            });
+
+            var stub = new ParkedReceipt { ParkNumber = record.ParkNumber, PickupNumber = record.PickupNumber };
+            Add("Bonkopf_AbrKreis", new() { ["BON_ID"] = bonId, ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(OrderAllocationGroup(stub), 50) });
+
+            if (record.Kind == OrderBestellungKind.Storno &&
+                _input.OrderRecords.FirstOrDefault(r => r.ParkNumber == record.ParkNumber && r.Sequence == 1) is not null)
+            {
+                // An order cannot outlive a closing (open orders block the
+                // Z-Bericht), so its acceptance is in this closing.
+                Add("Bon_Referenzen", new()
+                {
+                    ["BON_ID"] = bonId,
+                    ["REF_TYP"] = "Transaktion",
+                    ["REF_DATUM"] = DsfinvkCsv.Timestamp(_input.Closing.CreatedAt),
+                    ["REF_Z_KASSE_ID"] = _input.Master.KasseId,
+                    ["REF_Z_NR"] = _input.Closing.ZNumber,
+                    ["REF_BON_ID"] = OrderRecordBonId(record.ParkNumber, 1),
+                });
+            }
+
+            WritePositions(bonId, record.Lines, 0, 1, inHaus: record.ImHaus ? "1" : "0", beleg: false);
+
+            var tse = record.Tse;
+            WriteTse(
+                bonId,
+                tse?.SerialNumber ?? "",
+                tse?.TransactionNumber ?? "",
+                tse?.SignatureCounter ?? "",
+                tse?.Signature ?? "",
+                tse?.LogTime,
+                tse?.Outage ?? false,
+                FiscalProcessData.BestellungProcessType,
+                () => FiscalProcessData.BestellungText(record.Lines),
+                record.CreatedAt,
+                tse?.OutageReason,
+                tse?.StartLogTime);
         }
 
         // ----------------------------------------------------------- positions

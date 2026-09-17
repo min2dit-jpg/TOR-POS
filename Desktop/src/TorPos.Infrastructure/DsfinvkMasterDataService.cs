@@ -77,8 +77,9 @@ public static class DsfinvkMasterDataStore
     /// <summary>
     /// True when a fiscal Vorgang was recorded after the last Tagesabschluss:
     /// a sale, Storno or Retoure, a cash movement that is not a test entry, or
-    /// an order handed to the TSE. Test-mode entries never reach a closing and
-    /// do not count.
+    /// a secured order record (R137). Test-mode entries never reach a closing and
+    /// do not count - for orders signed before R137, which a test till also
+    /// signed, only those paid with a real sale count.
     /// </summary>
     public static async Task<bool> HasOpenVorgaengeAsync(SqliteConnection c, CancellationToken ct, SqliteTransaction? tx = null)
     {
@@ -96,7 +97,8 @@ public static class DsfinvkMasterDataStore
                       AND movement_type IN ('EINLAGE','ENTNAHME')
                       AND fiscal_mode <> 'TEST_ONLY')
                  + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from)
-                 + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from);
+                 + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from)
+                 + (SELECT COUNT(*) FROM order_bestellungen WHERE created_at_utc > $from);
             """))
         {
             q.Parameters.AddWithValue("$from", from);
@@ -107,7 +109,9 @@ public static class DsfinvkMasterDataStore
         await using (var q = Command(c, tx, """
             SELECT created_at FROM parked_receipts
             WHERE COALESCE(is_training,0)=0
-              AND (tse_transaction_number<>'' OR tse_outage=1);
+              AND status='CASHED'
+              AND (tse_transaction_number<>'' OR tse_outage=1)
+              AND NOT EXISTS (SELECT 1 FROM order_bestellungen b WHERE b.parked_receipt_id=parked_receipts.id);
             """))
         {
             await using var r = await q.ExecuteReaderAsync(ct);

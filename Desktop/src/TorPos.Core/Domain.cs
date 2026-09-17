@@ -293,6 +293,13 @@ public sealed class Sale
 
     /// <summary>R136: TSE log time of StartTransaction; null before R136 or during an outage.</summary>
     public DateTimeOffset? TseStartLogTime { get; set; }
+
+    /// <summary>
+    /// R137: for a sale that paid a secured order, the start of the order's
+    /// first Bestellung transaction. DSFinV-K 2.7.2 lets the Kassenbeleg start
+    /// with the payment only if this time is also printed on the receipt.
+    /// </summary>
+    public DateTimeOffset? OrderStartedAt { get; set; }
 }
 
 /// <summary>

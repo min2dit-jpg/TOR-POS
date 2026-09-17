@@ -123,7 +123,11 @@ public partial class App : Avalonia.Application
                 tseFailSafe,
                 settings,
                 parkedReceipts)
-            { Vorgaenge = tseVorgaenge };
+            {
+                Vorgaenge = tseVorgaenge,
+                // R137: acceptance, change and cancellation of an order, each secured.
+                Bestellungen = new OrderBestellungRepository(db),
+            };
 
             var preflight =
                 new StartupPreflightService(

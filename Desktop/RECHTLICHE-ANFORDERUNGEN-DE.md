@@ -67,7 +67,8 @@ offiziellen index.xml des BZSt und prüft jeden Wert gegen deren Beschreibung. W
 noch nicht erfasst, wird im Export-Protokoll ausdrücklich genannt. Seit R132-R136 erfasst:
 Stammdaten je Abschluss, TSE-Stammdaten aus dem TSE-Export, Im Haus/Außer Haus,
 Einlagen/Entnahmen mit Geschäftsvorfall und TSE, Training als AVTraining, Vorgangsbeginn
-(BON_START), TSE-Startzeit (TSE_TA_START) und abgebrochene Vorgänge (AVBelegabbruch). Eine Abnahme mit
+(BON_START), TSE-Startzeit (TSE_TA_START), abgebrochene Vorgänge (AVBelegabbruch) und seit
+R137 jede Bestellannahme, -änderung und -stornierung als eigene AVBestellung (DSFinV-K 4.2.3). Eine Abnahme mit
 Prüfsoftware und realer TSE steht aus.
 Quelle: https://www.bzst.de/DE/Unternehmen/Aussenpruefungen/DigitaleSchnittstelleFinV/digitaleschnittstellefinv_node.html
 
@@ -86,6 +87,12 @@ die Bestellannahme beendet sie als Bestellung-V1, das Löschen eines geparkten B
 das Leeren des Warenkorbs als AVBelegabbruch. Ein Z-Bericht ist nur ohne offenen Vorgang
 möglich (Nr. 2.2.3.3). Ob eine über lange Zeit offene Kassenbeleg-Transaktion eines
 geparkten Bons so akzeptiert wird, sollte mit dem Steuerberater bestätigt werden.
+
+Seit R137 ist jede Änderung einer angenommenen Bestellung eine eigene Bestellung-V1-Transaktion
+mit der Differenz, eine Stornierung ein neuer Datensatz mit umgekehrtem Vorzeichen
+(DSFinV-K 4.2.3). Eine aufgerufene, unveränderte Bestellung wird erst bei der Zahlung als
+Kassenbeleg abgesichert; der Bon zeigt dann den Beginn der ersten Bestellung (2.7.2).
+Eine Testkasse sichert keine Bestellungen ab.
 
 ### 6. Kassensturzfähigkeit / Bargeldbewegungen
 Einlagen und Entnahmen müssen nachvollziehbar erfasst werden. Der Soll-Kassenbestand

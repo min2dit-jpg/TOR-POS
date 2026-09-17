@@ -39,6 +39,7 @@ public sealed class TseVorgangCartTracker
 {
     private CartLine[] _lines = Array.Empty<CartLine>();
     private long _discountCents;
+    private string? _baseline;
 
     public string? VorgangId { get; private set; }
     public DateTimeOffset? StartedAt { get; private set; }
@@ -60,13 +61,23 @@ public sealed class TseVorgangCartTracker
             if (VorgangId is not null || !fiscal)
                 return TseVorgangAction.None;
 
+            // R137: a recalled order that is only looked at or paid unchanged
+            // begins no Vorgang here (DSFinV-K 2.7.2: the Kassenbeleg may start
+            // with the payment); the first change does.
+            if (_baseline is not null && _baseline == Signature(cart, discountCents))
+                return TseVorgangAction.None;
+            _baseline = null;
+
             VorgangId = Guid.NewGuid().ToString("N");
             StartedAt = now;
             return new TseVorgangAction(TseVorgangActionKind.Start, VorgangId, now, _lines, discountCents);
         }
 
         if (VorgangId is not { } open)
+        {
+            _baseline = null;
             return TseVorgangAction.None;
+        }
 
         var aborted = new TseVorgangAction(TseVorgangActionKind.Abort, open, StartedAt ?? now, _lines, _discountCents);
         Clear();
@@ -79,6 +90,16 @@ public sealed class TseVorgangCartTracker
         var id = VorgangId;
         Clear();
         return id;
+    }
+
+    /// <summary>
+    /// R137: the cart now holds a recalled order whose positions are already
+    /// secured. As long as it stays exactly like this, no Vorgang is started.
+    /// </summary>
+    public void SetBaseline(IReadOnlyList<CartLine> cart, long discountCents)
+    {
+        if (VorgangId is null)
+            _baseline = Signature(cart, discountCents);
     }
 
     /// <summary>Continues a Vorgang started earlier (a recalled parked receipt, a recovered cart).</summary>
@@ -96,5 +117,13 @@ public sealed class TseVorgangCartTracker
         StartedAt = null;
         _lines = Array.Empty<CartLine>();
         _discountCents = 0;
+        _baseline = null;
     }
+
+    private static string Signature(IReadOnlyList<CartLine> cart, long discountCents) =>
+        string.Join("|", cart.Select(l => string.Join(";",
+                l.ProductId, l.ProductName, l.VariantName,
+                l.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                l.UnitPriceCents, l.VatRate.ToString(System.Globalization.CultureInfo.InvariantCulture), l.PfandCents, l.PromotionId)))
+        + "#" + discountCents;
 }

@@ -270,6 +270,9 @@ public static class DigitalReceiptHtml
             // start log time, else the till's own start of the Vorgang.
             var processStart = sale.TseStartLogTime ?? sale.StartedAt ?? sale.CreatedAt;
             sb.Append("Vorgangsbeginn: ").Append(processStart.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
+            // R137: DSFinV-K 2.7.2 - the start of the first order transaction.
+            if (sale.OrderStartedAt is { } orderStart)
+                sb.Append("Bestellbeginn: ").Append(orderStart.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
             if (sale.TseLogTime is not null)
                 sb.Append("Vorgangsende: ").Append(sale.TseLogTime.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
             if (sale.TseOutage)

@@ -81,7 +81,9 @@ public sealed record ReceiptPrintJob(
     long PickupNumber = 0,
     bool TseQrCode = false,
     bool AutoCut = true,
-    bool OpenCashDrawer = false);
+    bool OpenCashDrawer = false,
+    // R137: start of the first order transaction (DSFinV-K 2.7.2).
+    DateTimeOffset? OrderStart = null);
 
 /// <summary>
 /// Builds the compact payload for the optional QR code printed in place of

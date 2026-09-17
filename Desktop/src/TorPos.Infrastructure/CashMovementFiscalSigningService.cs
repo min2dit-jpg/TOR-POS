@@ -17,7 +17,8 @@ internal static class TseKassenbelegSigner
         string processData,
         string vorgang,
         string actor,
-        CancellationToken ct)
+        CancellationToken ct,
+        string processType = FiscalProcessData.KassenbelegProcessType)
     {
         var settings = await settingsRepository.LoadAllAsync(ct);
         var tseStatus = (settings.GetValueOrDefault("tse.status") ?? "").Trim();
@@ -44,7 +45,7 @@ internal static class TseKassenbelegSigner
             return SaleTseResult.Outage(start.Message);
 
         var (finish, _) = await tse.FinishTransactionAsync(
-            new TseTransactionFinishRequest(clientId, start.TransactionNumber, System.Text.Encoding.UTF8.GetBytes(processData), FiscalProcessData.KassenbelegProcessType),
+            new TseTransactionFinishRequest(clientId, start.TransactionNumber, System.Text.Encoding.UTF8.GetBytes(processData), processType),
             actor,
             ct);
         if (!finish.Success)

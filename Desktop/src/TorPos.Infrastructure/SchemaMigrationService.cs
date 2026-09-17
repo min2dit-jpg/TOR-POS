@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 16;
+    public const int TargetSchemaVersion = 17;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1218,6 +1218,75 @@ public sealed class SchemaMigrationService
                         ALTER TABLE training_tse_signatures ADD COLUMN start_log_time TEXT NOT NULL DEFAULT '';
                         ALTER TABLE parked_receipts ADD COLUMN vorgang_started_at TEXT NULL;
                         ALTER TABLE parked_receipts ADD COLUMN tse_start_log_time TEXT NOT NULL DEFAULT '';
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                17,
+                "R137_ORDER_CHANGES_SECURED",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R137: DSFinV-K 4.2.3 - orders are Vorgänge of their own. Every
+                        -- acceptance, change and cancellation of an order is its own
+                        -- Bestellung-V1 transaction; a change holds only the difference, a
+                        -- cancellation everything secured before with reversed sign. One
+                        -- immutable record each, with its positions and TSE result.
+                        CREATE TABLE IF NOT EXISTS order_bestellungen(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          parked_receipt_id INTEGER NOT NULL REFERENCES parked_receipts(id),
+                          sequence INTEGER NOT NULL,
+                          kind TEXT NOT NULL CHECK(kind IN ('ANNAHME','AENDERUNG','STORNO')),
+                          started_at TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          created_at_utc TEXT GENERATED ALWAYS AS (strftime('%Y-%m-%dT%H:%M:%fZ', created_at)) VIRTUAL,
+                          operator_name TEXT NOT NULL,
+                          im_haus INTEGER NOT NULL,
+                          total_cents INTEGER NOT NULL,
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          signature_counter TEXT NOT NULL DEFAULT '',
+                          serial_number TEXT NOT NULL DEFAULT '',
+                          signature TEXT NOT NULL DEFAULT '',
+                          start_log_time TEXT NOT NULL DEFAULT '',
+                          log_time TEXT NOT NULL DEFAULT '',
+                          outage INTEGER NOT NULL DEFAULT 0,
+                          outage_reason TEXT NOT NULL DEFAULT '',
+                          UNIQUE(parked_receipt_id, sequence));
+
+                        CREATE TABLE IF NOT EXISTS order_bestellung_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          bestellung_id INTEGER NOT NULL REFERENCES order_bestellungen(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL,
+                          barcode TEXT NOT NULL,
+                          quantity REAL NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL,
+                          line_total_cents INTEGER NOT NULL,
+                          list_unit_price_cents INTEGER NOT NULL,
+                          promotion_id INTEGER NOT NULL,
+                          promotion_name TEXT NOT NULL,
+                          promotion_percent INTEGER NOT NULL,
+                          promotion_discount_unit_cents INTEGER NOT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_order_bestellungen_created_utc
+                            ON order_bestellungen(created_at_utc);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_order_bestellungen_no_update BEFORE UPDATE ON order_bestellungen
+                        BEGIN SELECT RAISE(ABORT,'order records are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_order_bestellungen_no_delete BEFORE DELETE ON order_bestellungen
+                        BEGIN SELECT RAISE(ABORT,'order records cannot be deleted'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_order_bestellung_items_no_update BEFORE UPDATE ON order_bestellung_items
+                        BEGIN SELECT RAISE(ABORT,'order record items are immutable'); END;
+                        CREATE TRIGGER IF NOT EXISTS trg_order_bestellung_items_no_delete BEFORE DELETE ON order_bestellung_items
+                        BEGIN SELECT RAISE(ABORT,'order record items cannot be deleted'); END;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);
