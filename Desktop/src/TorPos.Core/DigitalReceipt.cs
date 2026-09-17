@@ -233,6 +233,11 @@ public static class DigitalReceiptHtml
             // blank. Both now ask the same function; this one still renders -
             // the customer already scanned the code - but says what is missing
             // instead of asserting compliance it cannot show.
+            // R140: AEAO zu § 146a Nr. 2.4.4 Nr. 6 - the serial the TSE logged
+            // (§ 2 Satz 2 Nr. 8 KassenSichV) is the till's client id.
+            if (!string.IsNullOrWhiteSpace(sale.TseClientId))
+                easSerial = sale.TseClientId;
+
             var missing = FiscalReceiptFields.Missing(
                 companyName,
                 companyAddress,
@@ -268,13 +273,17 @@ public static class DigitalReceiptHtml
             // Vorgangsende is the TSE's log time and is printed only when the
             // TSE actually produced one (R121). R136: Vorgangsbeginn is the TSE
             // start log time, else the till's own start of the Vorgang.
-            var processStart = sale.TseStartLogTime ?? sale.StartedAt ?? sale.CreatedAt;
-            sb.Append("Vorgangsbeginn: ").Append(processStart.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
+            // R140: TSE times unchanged, in UTC (AEAO zu § 146a Nr. 2.4.4);
+            // only the till's own start during an outage is local time.
+            var processStart = sale.TseStartLogTime is { } tseStart
+                ? TseReceiptTime.Format(tseStart)
+                : (sale.StartedAt ?? sale.CreatedAt).LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss");
+            sb.Append("Vorgangsbeginn: ").Append(processStart).Append("<br>");
             // R137: DSFinV-K 2.7.2 - the start of the first order transaction.
             if (sale.OrderStartedAt is { } orderStart)
-                sb.Append("Bestellbeginn: ").Append(orderStart.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
+                sb.Append("Bestellbeginn: ").Append(TseReceiptTime.Format(orderStart)).Append("<br>");
             if (sale.TseLogTime is not null)
-                sb.Append("Vorgangsende: ").Append(sale.TseLogTime.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss")).Append("<br>");
+                sb.Append("Vorgangsende: ").Append(TseReceiptTime.Format(sale.TseLogTime.Value)).Append("<br>");
             if (sale.TseOutage)
                 sb.Append("TSE-Ausfall zum Zeitpunkt des Verkaufs.<br>");
             sb.Append("</div>");

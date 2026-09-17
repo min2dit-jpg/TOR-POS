@@ -59,6 +59,9 @@ public partial class MainWindow:Window
     // customer so a forgotten toggle can never silently carry over.
     private bool _imHaus;
     private FiscalReadinessReport? _fiscalReadiness;
+    // R140: public key, algorithm and log time format per TSE serial, for the
+    // DSFinV-K QR code on the receipt (read from the TSE's own export, R133).
+    private IReadOnlyDictionary<string, TseMasterData> _tseMasterData = new Dictionary<string, TseMasterData>();
     private string _numericEntry = "";
     private decimal? _pendingQuantity;
     private bool _saleAllowed;
@@ -2980,6 +2983,12 @@ public partial class MainWindow:Window
             "AKTIV",
             StringComparison.OrdinalIgnoreCase);
 
+        // R140: the processData exactly as signed (R130), for the QR code.
+        string processData;
+        try { processData = FiscalProcessData.KassenbelegText(sale); }
+        catch (UnsupportedVatRateException) { processData = ""; }
+        var tseMaster = _tseMasterData.TryGetValue(sale.TseSerialNumber, out var knownTse) ? knownTse : null;
+
         return new ReceiptPrintJob(
             sale.ReceiptNumber,
             sale.CreatedAt,
@@ -3008,7 +3017,9 @@ public partial class MainWindow:Window
             sale.TotalCents,
             sale.Lines,
             _fiscalReadiness?.ProductionAllowed != true,
-            _fiscalReadiness?.EasSerial ?? "",
+            // R140: AEAO zu § 146a Nr. 2.4.4 Nr. 6 - the serial the TSE logged
+            // for this receipt (§ 2 Satz 2 Nr. 8 KassenSichV) is the client id.
+            string.IsNullOrWhiteSpace(sale.TseClientId) ? _fiscalReadiness?.EasSerial ?? "" : sale.TseClientId,
             string.IsNullOrWhiteSpace(sale.TseSerialNumber) ? _settingsCache.GetText("tse.serial","") : sale.TseSerialNumber,
             sale.TseTransactionNumber,
             long.TryParse(sale.TseSignatureCounter, out var tseCounter) ? tseCounter : 0,
@@ -3036,7 +3047,14 @@ public partial class MainWindow:Window
             (method == PaymentMethod.Cash || (method == PaymentMethod.Mixed && sale.CashPortionCents > 0)) && !isCopy &&
                 _settingsCache.GetBool("printer.drawer_kick.enabled", true),
             // R137: DSFinV-K 2.7.2 - start of the first order transaction.
-            sale.OrderStartedAt);
+            sale.OrderStartedAt,
+            TseClientId: sale.TseClientId,
+            TseProcessType: FiscalProcessData.KassenbelegProcessType,
+            TseProcessData: processData,
+            TseStartLogTime: sale.TseStartLogTime,
+            TseSignatureAlgorithm: tseMaster?.SignatureAlgorithm ?? "",
+            TseLogTimeFormat: tseMaster?.LogTimeFormat ?? "",
+            TsePublicKey: tseMaster?.PublicKeyBase64 ?? "");
     }
 
     private async Task PrintReceiptAndReportAsync(
@@ -4200,6 +4218,15 @@ public partial class MainWindow:Window
         {
             await RefreshTseOutageBadgeAsync();
             _fiscalReadiness = await _compliance.CheckAsync();
+            try
+            {
+                _tseMasterData = await new TseMasterDataRepository(new SqliteDatabase(AppPaths.DatabasePath), _audit).LoadAllAsync();
+            }
+            catch (Exception ex)
+            {
+                // Without them the receipt prints the TSE data as text.
+                CrashLog.WriteException("TSE master data for receipts", ex);
+            }
 
             if (_currentUser.IsTraining)
             {

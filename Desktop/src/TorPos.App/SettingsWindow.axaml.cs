@@ -765,7 +765,7 @@ public partial class SettingsWindow : Window
         var behavior = Section("Druckverhalten");
         behavior.Children.Add(ToggleRow(Check("receipt.auto_print", "Bon nach Verkauf automatisch drucken")));
         behavior.Children.Add(ToggleRow(Check("receipt.last_receipt_enabled", "Funktion 'Letzter Bon' aktivieren")));
-        behavior.Children.Add(ToggleRow(Check("receipt.tse_qr_code.enabled", "TSE-Angaben als QR-Code statt als Text drucken (kürzerer Bon)")));
+        behavior.Children.Add(ToggleRow(Check("receipt.tse_qr_code.enabled", "TSE-Angaben als QR-Code nach DSFinV-K statt als Text drucken (kürzerer Bon, prüfbar per App)")));
         behavior.Children.Add(InfoCard("QR-Code statt Bontext",
             "Wenn aktiviert, werden eAS, TSE-Seriennummer, Transaktionsnummer, Signaturzähler und Prüfwert als ein QR-Code gedruckt statt als fünf einzelne Textzeilen - der Bon wird dadurch kürzer. " +
             "Falls die QR-Erzeugung fehlschlägt, druckt TOR POS automatisch die Textzeilen als Rückfalllösung; die Angaben fehlen nie ersatzlos.",

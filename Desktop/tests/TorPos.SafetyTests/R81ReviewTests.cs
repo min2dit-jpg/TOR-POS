@@ -40,13 +40,22 @@ public static class R81ReviewTests
             TseSerial: "TSE-SN-2",
             TseTransactionNumber: "42",
             SignatureCounter: 7,
-            VerificationValue: "ABCDEF12");
+            ProcessEnd: new DateTimeOffset(2026, 9, 17, 10, 0, 1, TimeSpan.Zero),
+            VerificationValue: "ABCDEF12",
+            TseClientId: "KASSE-1",
+            TseProcessType: "Kassenbeleg-V1",
+            TseProcessData: "Beleg^10.00_0.00_0.00_0.00_0.00^10.00:Bar",
+            TseStartLogTime: new DateTimeOffset(2026, 9, 17, 10, 0, 0, TimeSpan.Zero),
+            TseSignatureAlgorithm: "ecdsa-plain-SHA384",
+            TseLogTimeFormat: "unixTime",
+            TsePublicKey: "BBXN");
 
+        // R140: R81 pinned a format of TOR's own ("eAS:…|TSE:…|TXN:…") that no
+        // verification tool reads; DSFinV-K Anhang I Tz. 2 defines the payload.
         var payload = TseQrCodePayload.Build(job);
         assert(
-            payload.Contains("eAS:EAS-1") && payload.Contains("TSE:TSE-SN-2") &&
-            payload.Contains("TXN:42") && payload.Contains("CTR:7") && payload.Contains("CHK:ABCDEF12"),
-            "R81 the QR payload carries all five TSE fields the text lines would otherwise print");
+            payload == "V0;KASSE-1;Kassenbeleg-V1;Beleg^10.00_0.00_0.00_0.00_0.00^10.00:Bar;42;7;2026-09-17T10:00:00.000Z;2026-09-17T10:00:01.000Z;ecdsa-plain-SHA384;unixTime;ABCDEF12;BBXN",
+            "R81/R140 the QR payload follows DSFinV-K Anhang I and carries the TSE data the text lines would otherwise print");
 
         assert(
             !new ReceiptPrintJob(0, DateTimeOffset.Now, "", "", "", "", "", "", "", 0, 0, Array.Empty<CartLine>()).TseQrCode,

@@ -55,7 +55,10 @@ Für einen produktiven Kassenbeleg sind u. a. erforderlich:
 - Prüfwert
 - Signaturzähler
 
-QR-Code ist nach BMF-FAQ aktuell nicht gesetzlich zwingend.
+QR-Code ist nach BMF-FAQ aktuell nicht gesetzlich zwingend. Wird er verwendet, muss er
+DSFinV-K Anhang I Tz. 2 entsprechen (AEAO zu § 146a Nr. 2.4.1) - seit R140 der Fall; ohne
+vollständige Daten (TSE-Ausfall, TSE-Stammdaten fehlen) druckt TOR die Angaben als Text.
+TSE-Daten werden unverändert gedruckt, Zeiten in UTC (Nr. 2.4.4).
 
 ### 4. DSFinV-K / Prüferexport
 Für Kassen-Nachschau und Außenprüfung müssen Kassendaten standardisiert bereitgestellt

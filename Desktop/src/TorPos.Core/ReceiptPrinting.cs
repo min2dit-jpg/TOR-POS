@@ -83,24 +83,74 @@ public sealed record ReceiptPrintJob(
     bool AutoCut = true,
     bool OpenCashDrawer = false,
     // R137: start of the first order transaction (DSFinV-K 2.7.2).
-    DateTimeOffset? OrderStart = null);
+    DateTimeOffset? OrderStart = null,
+    // R140: what the DSFinV-K Anhang I QR code carries - the TSE data exactly
+    // as signed, and the TSE's public key, algorithm and log time format.
+    string TseClientId = "",
+    string TseProcessType = "",
+    string TseProcessData = "",
+    DateTimeOffset? TseStartLogTime = null,
+    string TseSignatureAlgorithm = "",
+    string TseLogTimeFormat = "",
+    string TsePublicKey = "");
 
 /// <summary>
-/// Builds the compact payload for the optional QR code printed in place of
-/// the five spelled-out TSE fields (eAS/TSE/Transaktion/Signaturzähler/
-/// Prüfwert), when "receipt.tse_qr_code.enabled" is on - shortens the
-/// printed receipt.
-///
-/// DRAFT - not a certified format: there is no single mandated QR payload
-/// format for a KassenSichV Beleg. This pipe-delimited format is a
-/// reasonable, human-decodable starting point, not verified against any
-/// specific reader/auditor expectation. Re-review before relying on it.
+/// R140: TSE times on the receipt. AEAO zu § 146a Nr. 2.4.4: the data the TSE
+/// returns are printed "in dem Format …, in dem sie von der TSE an das
+/// elektronische Aufzeichnungssystem zurückgeliefert wurden. Nachträgliches
+/// Runden, Abschneiden oder Verändern dieser Daten ist unzulässig. Es wird nicht
+/// beanstandet, wenn ein als UnixTime gelieferter Zeitstempel als Coordinated
+/// Universal Time (UTC) ohne zusätzliche Zeitzone ausgegeben wird." Until R140 the
+/// receipt showed them converted to local time and cut to seconds. Printed now
+/// in UTC with milliseconds - the format of DSFinV-K Anhang I and E.
+/// </summary>
+public static class TseReceiptTime
+{
+    public static string Format(DateTimeOffset value) => DsfinvkCsv.TseTime(value);
+}
+
+/// <summary>
+/// R140: the QR code for machine-verifiable receipts, DSFinV-K Anhang I Tz. 2 -
+/// <c>V0;kassen-seriennummer;processType;processData;transaktions-nummer;signatur-zaehler;start-zeit;log-time;sig-alg;log-time-format;signatur;public-key</c>.
+/// AEAO zu § 146a Nr. 2.4.1: "Der QR-Code hat der DSFinV-K zu entsprechen";
+/// only then does it stand in for the printed TSE data (Nr. 2.4.4). Until R140
+/// TOR printed a format of its own ("eAS:…|TSE:…|TXN:…") in their place, which no
+/// verification tool can read. When a field is missing - a TSE outage, TSE
+/// master data not yet read from the TSE export - no QR code is built and the
+/// printer prints the text lines.
 /// </summary>
 public static class TseQrCodePayload
 {
-    public static string Build(ReceiptPrintJob job) =>
-        $"eAS:{job.EasSerial}|TSE:{job.TseSerial}|TXN:{job.TseTransactionNumber}|" +
-        $"CTR:{job.SignatureCounter}|CHK:{job.VerificationValue}";
+    public const string Version = "V0";
+
+    public static string Build(ReceiptPrintJob job)
+    {
+        if (job.FiscalTestMode || job.TseOutage || job.SignatureCounter <= 0 ||
+            job.TseStartLogTime is not { } start || job.ProcessEnd is not { } end)
+            return "";
+
+        var fields = new[]
+        {
+            job.TseClientId, job.TseProcessType, job.TseProcessData, job.TseTransactionNumber,
+            job.TseSignatureAlgorithm, job.TseLogTimeFormat, job.VerificationValue, job.TsePublicKey
+        };
+        if (fields.Any(string.IsNullOrWhiteSpace))
+            return "";
+
+        return string.Join(";",
+            Version,
+            job.TseClientId,
+            job.TseProcessType,
+            job.TseProcessData,
+            job.TseTransactionNumber,
+            job.SignatureCounter.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            TseReceiptTime.Format(start),
+            TseReceiptTime.Format(end),
+            job.TseSignatureAlgorithm,
+            job.TseLogTimeFormat,
+            job.VerificationValue,
+            job.TsePublicKey);
+    }
 }
 
 /// <summary>

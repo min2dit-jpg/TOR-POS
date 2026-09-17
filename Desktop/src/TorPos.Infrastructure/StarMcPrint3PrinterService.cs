@@ -947,7 +947,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             else
             {
                 Rule();
-                if (!job.TseQrCode || !QrCode(TseQrCodePayload.Build(job)))
+                // R140: DSFinV-K Anhang I recommends at least 3 cm edge length.
+                if (!job.TseQrCode || !QrCode(TseQrCodePayload.Build(job), 150f))
                 {
                     Text($"eAS: {job.EasSerial}", small);
                     Text($"TSE: {job.TseSerial}", small);
@@ -957,15 +958,19 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                 }
 
                 // R136: § 6 Satz 1 Nr. 3 KassenSichV - Vorgangsbeginn and
-                // Vorgangsende, also next to the QR code, which does not carry them.
-                if (job.ProcessStart is { } processStart)
+                // Vorgangsende. R140: TSE times as the TSE delivered them, in UTC
+                // (AEAO zu § 146a Nr. 2.4.4); only the till's own start during an
+                // outage is local time.
+                if (job.TseStartLogTime is { } tseStart)
+                    Text($"Vorgangsbeginn: {TseReceiptTime.Format(tseStart)}", small);
+                else if (job.ProcessStart is { } processStart)
                     Text($"Vorgangsbeginn: {processStart.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
                 if (job.ProcessEnd is { } processEnd)
-                    Text($"Vorgangsende: {processEnd.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
+                    Text($"Vorgangsende: {TseReceiptTime.Format(processEnd)}", small);
                 // R137: DSFinV-K 2.7.2 - a receipt for an order shows when the
-                // first order transaction started.
+                // first order transaction started, also next to a QR code.
                 if (job.OrderStart is { } orderStart)
-                    Text($"Bestellbeginn: {orderStart.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
+                    Text($"Bestellbeginn: {TseReceiptTime.Format(orderStart)}", small);
 
                 if (job.TseOutage)
                 {
