@@ -943,7 +943,75 @@ public async Task<ReportDocument> BuildStornoReportAsync(CancellationToken ct = 
 
         return new ReportDocument("STORNO- UND RETOURENJOURNAL", lines, DateTimeOffset.Now);
     });
-}public async Task<ReportDocument> BuildProgrammingProtocolAsync(ICommercialLicenseService commercialLicense, ITseProvider tseProvider, CancellationToken ct = default)
+}/// <summary>
+/// R144: the data of the notification under § 146a Abs. 4 AO, laid out as AEAO
+/// zu § 146a Nr. 1.16.2 asks for them, to be entered in Mein ELSTER. TOR does not
+/// transmit anything itself.
+/// </summary>
+public async Task<ReportDocument> BuildKassenmeldungAsync(CancellationToken ct = default)
+{
+    return await IoQueue.RunAsync(async () =>
+    {
+        var s = await _settings.LoadAllAsync(ct);
+        string easSerial = "", manufacturer = "", model = "";
+        IReadOnlyCollection<string> tseSerials;
+        await using (var c = _db.OpenConnection())
+        {
+            await using (var q = c.CreateCommand())
+            {
+                q.CommandText = "SELECT eas_serial,manufacturer,model FROM system_identity WHERE id=1;";
+                await using var r = await q.ExecuteReaderAsync(ct);
+                if (await r.ReadAsync(ct))
+                {
+                    easSerial = r.GetString(0);
+                    manufacturer = r.GetString(1);
+                    model = r.GetString(2);
+                }
+            }
+
+            tseSerials = (await TseMasterDataRepository.LoadAllAsync(c, ct)).Keys;
+        }
+
+        string Or(string value, string missing) => string.IsNullOrWhiteSpace(value) ? missing : value.Trim();
+        var serial = KassenSeriennummer.From(easSerial);
+        var tseSerial = tseSerials.Count > 0 ? string.Join(", ", tseSerials) : Get(s, "tse.serial");
+        var clientId = Get(s, "tse.client_id");
+        var lines = new List<string>
+        {
+            "MITTEILUNG NACH § 146a ABS. 4 AO",
+            "Daten zur Übernahme in Mein ELSTER (AEAO zu § 146a Nr. 1.16.2).",
+            "TOR übermittelt nichts selbst.",
+            "",
+            "STEUERPFLICHTIGER / BETRIEBSSTÄTTE (Nr. 1.16.1.4, 1.16.2.1)",
+            $"Steuernummer: {Or(Get(s, "company.tax_no"), "FEHLT - bitte unter Firma eintragen")}",
+            $"Firma: {Get(s, "company.name")}",
+            $"Betriebsstätte: {Get(s, "company.street")}, {Get(s, "company.zip")} {Get(s, "company.city")}",
+            "",
+            "ELEKTRONISCHES AUFZEICHNUNGSSYSTEM (Nr. 1.16.2.3 - 1.16.2.7)",
+            "Art: Elektronisches oder computergestütztes Kassensystem",
+            "Anzahl in dieser Betriebsstätte: jede Kasse einzeln melden (dieses Protokoll je Kasse erstellen)",
+            $"Seriennummer: {serial}",
+            $"Hersteller / Software: {manufacturer} {model} · TOR POS Pro {TorRelease.Version}",
+            $"Datum der Anschaffung: {Or(Get(s, "legal.kassenmeldung.anschaffung"), "FEHLT - bitte unter Recht & Freigabe eintragen (bei Leasing/Leihe: Beginn)")}",
+            $"Datum der Außerbetriebnahme: {Or(Get(s, "legal.kassenmeldung.ausserbetriebnahme"), "- (in Betrieb)")}",
+            "",
+            "TECHNISCHE SICHERHEITSEINRICHTUNG (Nr. 1.16.2.2)",
+            $"Zertifizierungs-ID (BSI-K-TR-nnnn-yyyy): {Or(Get(s, "tse.bsi_id"), "FEHLT - bei TSE-Aktivierung übernehmen")}",
+            $"Seriennummer der TSE: {Or(tseSerial, "FEHLT - TSE-Export (TAR) erstellen")}",
+            "",
+            "PRÜFUNG",
+            KassenSeriennummer.ClientIdMatches(clientId, easSerial)
+                ? $"TSE-Client-ID {clientId} = Seriennummer der Kasse - Bon, TSE, DSFinV-K und Mitteilung stimmen überein."
+                : $"ACHTUNG: TSE-Client-ID ist \"{clientId}\", die Seriennummer der Kasse \"{serial}\". Beide müssen gleich sein.",
+            "",
+            "Frist: innerhalb eines Monats nach Anschaffung bzw. Außerbetriebnahme (§ 146a Abs. 4 AO).",
+            "Jede Meldung enthält alle Aufzeichnungssysteme der Betriebsstätte (Nr. 1.16.1.4)."
+        };
+        return new ReportDocument("KASSENMELDUNG § 146a ABS. 4 AO", lines, DateTimeOffset.Now);
+    });
+}
+
+public async Task<ReportDocument> BuildProgrammingProtocolAsync(ICommercialLicenseService commercialLicense, ITseProvider tseProvider, CancellationToken ct = default)
 {
     return await IoQueue.RunAsync(async () =>
     {
@@ -1009,7 +1077,8 @@ public async Task<ReportDocument> BuildStornoReportAsync(CancellationToken ct = 
             $"Edition: {edition}",
             $"Kassennummer: {registerNumber}",
             $"Kassenname: {registerName}",
-            $"eAS-Seriennummer: {easSerial}",
+            $"Kassen-Seriennummer: {KassenSeriennummer.From(easSerial)}",
+            $"Interne Kassen-ID (DSFinV-K Z_KASSE_ID): {easSerial}",
             "",
             "TSE",
             $"Status: {tse.State} - {tse.Message}",

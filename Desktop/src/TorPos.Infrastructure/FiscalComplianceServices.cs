@@ -526,6 +526,9 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
     {
         var identity = await _identity.GetAsync(ct);
         var settings = await _settings.LoadAllAsync(ct);
+        // R144: the TSE has to log the till under its serial number.
+        var kassenSeriennummer = KassenSeriennummer.From(identity.EasSerial);
+        var clientIdReady = KassenSeriennummer.ClientIdMatches(settings.GetValueOrDefault("tse.client_id"), identity.EasSerial);
         var companyReady = !string.IsNullOrWhiteSpace(settings.GetValueOrDefault("company.name")) && !string.IsNullOrWhiteSpace(settings.GetValueOrDefault("company.street")) && !string.IsNullOrWhiteSpace(settings.GetValueOrDefault("company.zip")) && !string.IsNullOrWhiteSpace(settings.GetValueOrDefault("company.city"));
         var tseActive = _tse.SdkAvailable && _tse.TransactionAvailable && string.Equals(settings.GetValueOrDefault("tse.status"), "AKTIV", StringComparison.OrdinalIgnoreCase);
         var edition = settings.GetValueOrDefault("installation.edition") ?? settings.GetValueOrDefault("business.mode") ?? "KIOSK";
@@ -540,7 +543,10 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
         const bool fiscalReleaseBuild = false;
         var items = new List<FiscalReadinessItem>
         {
-            new("EAS_ID", "eAS-Seriennummer", !string.IsNullOrWhiteSpace(identity.EasSerial), identity.EasSerial),
+            new("EAS_ID", "Kassen-Seriennummer", KassenSeriennummer.IsValid(kassenSeriennummer), kassenSeriennummer),
+            new("TSE_CLIENT", "TSE-Client-ID = Kassen-Seriennummer", clientIdReady, clientIdReady
+                ? "Die TSE protokolliert die Kasse unter ihrer Seriennummer."
+                : $"Die TSE-Client-ID muss {kassenSeriennummer} lauten - dieselbe Nummer steht auf dem Bon, im DSFinV-K-Export (KASSE_SERIENNR) und in der Mitteilung nach § 146a Abs. 4 AO."),
             new("COMPANY", "Bon-Firmendaten", companyReady, companyReady ? "Vollständiger Name und Anschrift vorhanden." : "Firma, Straße, PLZ und Ort müssen vollständig sein."),
             new("TSE", "Zertifizierte TSE", tseActive, tseActive ? "Swissbit TSE ist als AKTIV erkannt." : "Swissbit SDK / reale TSE-Signierung ist noch nicht produktiv freigegeben."),
             new("DSFINVK", "DSFinV-K 2.4", dsfinvkImplementedAndValidated, "Preflight/Export-Gate ist implementiert; vollständiger DSFinV-K-Prüfdatensatz bleibt bis Z-/TSE-Datenmodell und offiziellem Descriptor gesperrt."),
@@ -551,6 +557,6 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
             new("COMMERCIAL_LICENSE", "Kommerzielle Softwarelizenz", commercialLicense.IsActive, commercialLicense.Message)
         };
         var allowed = items.Where(x => x.Mandatory).All(x => x.Ready);
-        return new FiscalReadinessReport(allowed, allowed ? "PRODUKTIV" : "TEST_ONLY", identity.EasSerial, settings.GetValueOrDefault("legal.dsfinvk.version") ?? "2.4", items);
+        return new FiscalReadinessReport(allowed, allowed ? "PRODUKTIV" : "TEST_ONLY", kassenSeriennummer, settings.GetValueOrDefault("legal.dsfinvk.version") ?? "2.4", items);
     });
 }}

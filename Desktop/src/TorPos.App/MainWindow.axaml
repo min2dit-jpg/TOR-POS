@@ -341,6 +341,7 @@
               <MenuItem Header="FINANZAMT / EXPORT">
                 <MenuItem Header="Export Buchungsdaten" Click="OnBookingExportMenuClick"/>
                 <MenuItem Header="Programmierungsprotokoll" Click="OnProgrammingProtocolMenuClick"/>
+                <MenuItem Header="Kassenmeldung § 146a Abs. 4 AO" Click="OnKassenmeldungMenuClick"/>
                 <MenuItem Header="Fiskal-Prüfung" Click="OnFiscalAuditMenuClick"/>
                 <MenuItem Header="GDPdU / GoBD Tools" Click="OnGdpduToolsMenuClick"/>
                 <MenuItem Header="DSFinV-K Export" Click="OnDsfinvkExportMenuClick"/>

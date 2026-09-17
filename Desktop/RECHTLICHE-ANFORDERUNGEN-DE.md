@@ -155,7 +155,11 @@ Das elektronische Aufzeichnungssystem ist grundsätzlich innerhalb eines Monats 
 Anschaffung bzw. Außerbetriebnahme elektronisch mitzuteilen. Das Verfahren läuft über
 Mein ELSTER oder ERiC.
 
-TOR 0.7.19 dokumentiert nur Status/Datum. Es übermittelt noch nicht an ELSTER/ERiC.
+TOR übermittelt nicht an ELSTER/ERiC. Seit R144 stellt es die Mitteilungsdaten nach AEAO zu
+§ 146a Nr. 1.16.2 zusammen (Menü Kassenmeldung): Steuernummer, Betriebsstätte, Art und
+Seriennummer der Kasse, Anschaffung/Außerbetriebnahme, BSI-Zertifizierungs-ID und Seriennummer
+der TSE. Die Seriennummer der Kasse ist dieselbe wie TSE-Client-ID, Bon und DSFinV-K
+KASSE_SERIENNR.
 
 ### 10. Aufbewahrung / Verfahrensdokumentation
 Steuerrelevante Aufzeichnungen und Organisationsunterlagen müssen entsprechend den

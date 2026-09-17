@@ -50,7 +50,9 @@ public static class DsfinvkMasterDataStore
             VatId: Get("company.vat_id").Replace(" ", ""),
             KasseBrand: brand,
             KasseModel: model,
-            KasseSerial: serial,
+            // R144: KASSE_SERIENNR is the serial the TSE logs and the tax office
+            // is told - the identity cut to the 30 characters of a client id.
+            KasseSerial: KassenSeriennummer.From(serial),
             SoftwareBrand: TorRelease.Product,
             SoftwareVersion: version.Length > 0 ? version : RunningSoftwareVersion);
     }

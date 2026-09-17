@@ -4004,6 +4004,35 @@ public partial class MainWindow:Window
         await ShowReportAsync(_management.BuildStornoReportAsync());
     }
 
+    /// <summary>R144: the data for the notification under § 146a Abs. 4 AO (Mein ELSTER).</summary>
+    private async void OnKassenmeldungMenuClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_currentUser.IsAdmin)
+        {
+            ScannerStatus.Text = "Kassenmeldung ist nur für Admin verfügbar.";
+            return;
+        }
+
+        try
+        {
+            var report = await _management.BuildKassenmeldungAsync();
+            var path = _management.CreatePdf(report);
+            await _audit.WriteAsync(_currentUser.Username, "KASSENMELDUNG_PDF_CREATED", "FISCAL_DOCUMENTATION", Path.GetFileName(path), path);
+            ScannerStatus.Text = $"Kassenmeldung erstellt: {path}";
+            await new TextReportWindow(
+                _management,
+                report,
+                _receiptPrinter,
+                _settings,
+                $"Daten für Mein ELSTER - TOR übermittelt nichts selbst. PDF gespeichert: {path}.")
+                .ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            ShowOperationalError("KASSENMELDUNG", ex);
+        }
+    }
+
     private async void OnProgrammingProtocolMenuClick(object? sender, RoutedEventArgs e)
     {
         if (!_currentUser.IsAdmin)

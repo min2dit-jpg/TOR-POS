@@ -262,7 +262,8 @@ public sealed class DigitalReceiptService : IDigitalReceiptService
             await using var c = _db.OpenConnection();
             await using var q = c.CreateCommand();
             q.CommandText = "SELECT eas_serial FROM system_identity WHERE id=1;";
-            return (await q.ExecuteScalarAsync(ct))?.ToString() ?? "";
+            // R144: the serial number of the till, as on the printed receipt.
+            return KassenSeriennummer.From((await q.ExecuteScalarAsync(ct))?.ToString() ?? "");
         }
         catch
         {

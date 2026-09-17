@@ -1114,6 +1114,9 @@ public partial class SettingsWindow : Window
             _legalMode.Foreground = report.ProductionAllowed ? AppTheme.AccentTeal : AppTheme.WarningAmber;
 
             _legalEas.Text = report.EasSerial;
+            // R144: a till without a client id yet gets its serial number proposed.
+            if (_text.TryGetValue("tse.client_id", out var clientIdBox) && string.IsNullOrWhiteSpace(clientIdBox.Text))
+                clientIdBox.Text = report.EasSerial;
 
             string State(string code)
             {
@@ -1760,7 +1763,8 @@ private Control TsePage()
         client,
         "Client-ID / Kassen-ID",
         Text("tse.client_id"),
-        "Max. 30 ASCII-Zeichen, kein Slash. Empfehlung: TOR eAS-Seriennummer oder eindeutige Kassen-ID.");
+        // R144: one serial number for TSE, receipt, DSFinV-K and the notification to the tax office.
+        "Muss die Kassen-Seriennummer sein (siehe Recht & Freigabe) - dieselbe Nummer steht auf dem Bon, im DSFinV-K-Export und in der Mitteilung nach § 146a Abs. 4 AO.");
 
     client.Children.Add(ToggleRow(Check(
         "tse.auto_connect",
@@ -2262,6 +2266,17 @@ private Control TsePage()
             "Meldedatum",
             Text("legal.kassenmeldung.date"),
             "Nur Dokumentationsfeld. Eine Eingabe löst keine Finanzamt-Übermittlung aus.");
+        // R144: AEAO zu § 146a Nr. 1.16.2.6 / 1.16.2.7 - dates the notification needs.
+        Form(
+            notification,
+            "Datum der Anschaffung",
+            Text("legal.kassenmeldung.anschaffung"),
+            "Bei Leasing oder Leihe: Beginn. Die Mitteilungsdaten stehen im Menü unter KASSENMELDUNG.");
+        Form(
+            notification,
+            "Datum der Außerbetriebnahme",
+            Text("legal.kassenmeldung.ausserbetriebnahme"),
+            "Leer lassen, solange die Kasse in Betrieb ist.");
         page.Children.Add(notification);
 
         var exportCenter = Section("Prüfungsdaten / Export");
