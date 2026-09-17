@@ -1620,6 +1620,8 @@ public partial class MainWindow:Window
             // A change begun on the recalled order ends as the cancellation
             // record, so the emptied cart is no abort.
             var cancelStartedAt = securedOrder is null ? null : _tseVorgang.StartedAt;
+            // R146: what was cancelled while the recalled order was changed belongs to its cancellation record.
+            var cancelCancelled = securedOrder is null ? null : _tseVorgang.CancelledLines.ToArray();
             var cancelVorgang = securedOrder is null ? null : _tseVorgang.Release();
 
             _engine.Clear();
@@ -1630,7 +1632,7 @@ public partial class MainWindow:Window
                 try
                 {
                     await _tseVorgangWork;
-                    await _orderFiscalSigning.SecureCancellationAsync(securedOrder, cancelVorgang ?? "", cancelStartedAt, _currentUser.Username);
+                    await _orderFiscalSigning.SecureCancellationAsync(securedOrder, cancelVorgang ?? "", cancelStartedAt, _currentUser.Username, cancelledLines: cancelCancelled);
                 }
                 catch (Exception ex)
                 {
@@ -2051,6 +2053,8 @@ public partial class MainWindow:Window
             // in the TSE while the receipt is parked.
             var vorgangId = _tseVorgang.VorgangId;
             var vorgangStartedAt = _tseVorgang.StartedAt;
+            // R146: the positions cancelled in this Vorgang belong to the record it ends in.
+            var cancelledLines = _tseVorgang.CancelledLines.ToArray();
             if (_activeParkedReceiptId is long parkedId)
             {
                 // R138: every parked receipt is an order in the TSE, not only in ORDER mode.
@@ -2071,7 +2075,7 @@ public partial class MainWindow:Window
                     try
                     {
                         await _tseVorgangWork;
-                        await _orderFiscalSigning.SecureChangeAsync(updated, before.Lines, vorgangId ?? "", vorgangStartedAt, _currentUser.Username);
+                        await _orderFiscalSigning.SecureChangeAsync(updated, before.Lines, vorgangId ?? "", vorgangStartedAt, _currentUser.Username, cancelledLines: cancelledLines);
                     }
                     catch (Exception ex)
                     {
@@ -2082,7 +2086,8 @@ public partial class MainWindow:Window
                 {
                     // Training or a till that stopped booking for real while the
                     // receipt was open: nothing is secured, the Vorgang ends as aborted.
-                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus);
+                    // R146: with its cancelled positions, as every abort (R143).
+                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus).Concat(TseVorgangCartTracker.CancellationPairs(cancelledLines)).ToArray();
                     var discount = _engine.DiscountCents;
                     var actor = _currentUser.Username;
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
@@ -2121,7 +2126,7 @@ public partial class MainWindow:Window
                         // R136: ends the Vorgang started with the first position.
                         // R142: a training order is secured the same way (AVTraining).
                         await _tseVorgangWork;
-                        await _orderFiscalSigning.SignInVorgangAsync(parked, vorgangId ?? "", vorgangStartedAt, _currentUser.Username);
+                        await _orderFiscalSigning.SignInVorgangAsync(parked, vorgangId ?? "", vorgangStartedAt, _currentUser.Username, cancelledLines: cancelledLines);
                     }
                     catch (Exception ex)
                     {
@@ -2133,7 +2138,7 @@ public partial class MainWindow:Window
                     // A training order stays a simulation (R135), and a till that
                     // stopped booking for real secures nothing: the Vorgang does
                     // not become a record and ends as aborted.
-                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus);
+                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus).Concat(TseVorgangCartTracker.CancellationPairs(cancelledLines)).ToArray();
                     var discount = _engine.DiscountCents;
                     var actor = _currentUser.Username;
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));

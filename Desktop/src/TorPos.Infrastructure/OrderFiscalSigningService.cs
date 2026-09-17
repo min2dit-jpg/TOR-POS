@@ -62,17 +62,21 @@ public sealed class OrderFiscalSigningService
     /// the change ends as aborted. <paramref name="previousLines"/> are the
     /// positions before the change; for an order accepted before R137 they are
     /// written down as its acceptance record first.
+    /// R146: <paramref name="cancelledLines"/> are the positions cancelled while the
+    /// change was captured (see <see cref="SecureAsync"/>).
     /// </summary>
-    public Task<DsfinvkOrderRecord?> SecureChangeAsync(ParkedReceipt order, IReadOnlyList<CartLine> previousLines, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default) =>
-        SecureAsync(order, order.Lines, previousLines, vorgangId, startedAt, actor, ct);
+    public Task<DsfinvkOrderRecord?> SecureChangeAsync(ParkedReceipt order, IReadOnlyList<CartLine> previousLines, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default,
+        IReadOnlyList<CartLine>? cancelledLines = null) =>
+        SecureAsync(order, order.Lines, previousLines, vorgangId, startedAt, actor, cancelledLines, ct);
 
     /// <summary>
     /// R137: an accepted order was cancelled. DSFinV-K 4.2.3: "ein neuer
     /// Datensatz mit umgekehrtem Vorzeichen, der wiederum abgesichert werden
     /// muss" - everything secured so far, negated, as its own transaction.
     /// </summary>
-    public Task<DsfinvkOrderRecord?> SecureCancellationAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default) =>
-        SecureAsync(order, Array.Empty<CartLine>(), order.Lines, vorgangId, startedAt, actor, ct);
+    public Task<DsfinvkOrderRecord?> SecureCancellationAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default,
+        IReadOnlyList<CartLine>? cancelledLines = null) =>
+        SecureAsync(order, Array.Empty<CartLine>(), order.Lines, vorgangId, startedAt, actor, cancelledLines, ct);
 
     private async Task<DsfinvkOrderRecord?> SecureAsync(
         ParkedReceipt order,
@@ -81,6 +85,7 @@ public sealed class OrderFiscalSigningService
         string vorgangId,
         DateTimeOffset? startedAt,
         string actor,
+        IReadOnlyList<CartLine>? cancelledLines,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(order);
@@ -117,13 +122,25 @@ public sealed class OrderFiscalSigningService
             ? OrderBestellungDelta.Reverse(secured)
             : OrderBestellungDelta.Compute(kind == OrderBestellungKind.Annahme ? Array.Empty<CartLine>() : secured, target);
 
+        // R146: DSFinV-K 4.2.3 - a position cancelled during capture is shown as
+        // the captured position plus "ein zusätzlicher Positionsdatensatz …, bei dem
+        // MENGE mit negiertem Vorzeichen dargestellt wird". R143 did this for
+        // receipts and aborts; the positions cancelled before an order was accepted
+        // or while it was changed were dropped. They belong to the record the
+        // Vorgang ends in, behind its positions - secured with it in Bestellung-V1,
+        // adding up to nothing, so what the records add up to is unchanged.
+        var pairs = TseVorgangCartTracker.CancellationPairs(cancelledLines);
+
         if (delta.Count == 0)
         {
+            // Nothing changed in the end: the Vorgang ends as aborted and keeps
+            // what was cancelled in it (R143).
             if (!string.IsNullOrEmpty(vorgangId) && Vorgaenge is { } open)
-                await open.AbortAsync(vorgangId, Array.Empty<CartLine>(), 0, actor, actor, ct);
+                await open.AbortAsync(vorgangId, pairs, 0, actor, actor, ct);
             return null;
         }
 
+        delta = delta.Concat(pairs).ToList();
         var processData = FiscalProcessData.BestellungText(delta);
         var result = Vorgaenge is { } vorgaenge
             ? await vorgaenge.FinishAsync(vorgangId ?? "", FiscalProcessData.BestellungProcessType, processData, actor, $"ORDER:{order.Id}", ct)
@@ -152,14 +169,16 @@ public sealed class OrderFiscalSigningService
     /// transaction is finished here with the Bestellung-V1 data, and the start
     /// is stored for BON_START.
     /// </summary>
-    public async Task SignInVorgangAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default)
+    public async Task SignInVorgangAsync(ParkedReceipt order, string vorgangId, DateTimeOffset? startedAt, string actor, CancellationToken ct = default,
+        IReadOnlyList<CartLine>? cancelledLines = null)
     {
         ArgumentNullException.ThrowIfNull(order);
 
         // R137: with the order records kept, the acceptance is their first record.
+        // R146: with the positions cancelled before the order was accepted.
         if (Bestellungen is not null)
         {
-            await SecureAsync(order, order.Lines, null, vorgangId, startedAt, actor, ct);
+            await SecureAsync(order, order.Lines, null, vorgangId, startedAt, actor, cancelledLines, ct);
             return;
         }
 
