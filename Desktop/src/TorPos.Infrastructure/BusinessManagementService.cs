@@ -1182,7 +1182,11 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         long ImmediateStornoCount,
         long ImmediateStornoCents,
         IReadOnlyList<TaxTurnoverRow> Taxes,
-        IReadOnlyList<PromotionTurnoverRow> Promotions);
+        IReadOnlyList<PromotionTurnoverRow> Promotions,
+        IReadOnlyList<CashMovementTotalRow> CashMovements);
+
+    /// <summary>R141: Einlagen/Entnahmen of the period by business case, signed.</summary>
+    private sealed record CashMovementTotalRow(string Label, long SignedCents);
 
     private async Task<OpenPeriodSummary> GetOpenPeriodAsync(
         CancellationToken ct)
@@ -1273,14 +1277,20 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
                     -- card_portion_cents; falls back to total_cents by
                     -- payment_method for a historical pre-R101 row (sales is
                     -- append-only, so such a row can never be backfilled).
-                    COALESCE(SUM(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN
+                    -- R141: a Storno/Retoure pays back in the way it was paid
+                    -- (R102) and is taken off its payment type, so Bar + Karte
+                    -- equal "Umsatz nach Storno/Retouren", as in the DSFinV-K
+                    -- Kassenabschluss (Z_Zahlart). Until R141 both counted sales only.
+                    COALESCE(SUM(
+                        CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1
+                             WHEN transaction_type IN ('STORNO','RETURN') THEN -1 ELSE 0 END *
                         CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
-                             WHEN payment_method='CASH' THEN total_cents ELSE 0 END
-                        ELSE 0 END),0),
-                    COALESCE(SUM(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN
+                             WHEN payment_method='CASH' THEN total_cents ELSE 0 END),0),
+                    COALESCE(SUM(
+                        CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1
+                             WHEN transaction_type IN ('STORNO','RETURN') THEN -1 ELSE 0 END *
                         CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN card_portion_cents
-                             WHEN payment_method='CARD' THEN total_cents ELSE 0 END
-                        ELSE 0 END),0)
+                             WHEN payment_method='CARD' THEN total_cents ELSE 0 END),0)
                 FROM sales
                 WHERE created_at_utc >= $from
                   AND created_at_utc <= $to;
@@ -1494,6 +1504,37 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         var afterReversals =
             salesGross - storno - returns;
 
+        // R141: the cash flows of the period that are not sales - Einlagen,
+        // Entnahmen, Kassendifferenzen (R134, R139) - so the Z-Bericht shows the
+        // cash of the period like the DSFinV-K Kassenabschluss does. Test
+        // entries never belong to a closing.
+        var cashMovements = new List<CashMovementTotalRow>();
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT movement_type, COALESCE(business_case,''), COALESCE(SUM(amount_cents),0)
+                FROM cash_movements
+                WHERE created_at_utc >= $from
+                  AND created_at_utc <= $to
+                  AND movement_type IN ('EINLAGE','ENTNAHME')
+                  AND fiscal_mode <> 'TEST_ONLY'
+                GROUP BY movement_type, COALESCE(business_case,'')
+                ORDER BY movement_type, COALESCE(business_case,'');
+                """;
+            q.Parameters.AddWithValue("$from", fromUtcText);
+            q.Parameters.AddWithValue("$to", toUtcText);
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                var inflow = r.GetString(0) == "EINLAGE";
+                var kind = inflow ? CashMovementKind.Einlage : CashMovementKind.Entnahme;
+                var label = Enum.TryParse<CashBusinessCase>(r.GetString(1), out var businessCase)
+                    ? CashBusinessCases.Label(businessCase, kind)
+                    : inflow ? "Einlage" : "Entnahme";
+                cashMovements.Add(new CashMovementTotalRow(label, inflow ? r.GetInt64(2) : -r.GetInt64(2)));
+            }
+        }
+
         return new OpenPeriodSummary(
             from,
             to,
@@ -1510,7 +1551,8 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             immediateStornoCount,
             immediateStornoCents,
             taxes,
-            promotions);
+            promotions,
+            cashMovements);
     }
 
     private static ReportDocument BuildTurnoverDocument(
@@ -1547,12 +1589,22 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             $"= Umsatz nach Storno/Retouren: {Money(period.GrossCents)}",
             $"Sofort-Storno vor Zahlung (Info): {period.ImmediateStornoCount} Vorgänge · {Money(period.ImmediateStornoCents)}",
             "",
-            "ZAHLARTEN",
+            "ZAHLARTEN (NACH STORNO/RETOUREN)",
             $"Bar: {Money(period.CashCents)}",
             $"Karte: {Money(period.CardCents)}",
             "",
-            "UMSATZSTEUER NACH RABATT"
+            "KASSENBEWEGUNGEN (BAR)"
         };
+
+        // R141: Einlagen, Entnahmen and Kassendifferenzen of the period, and the
+        // cash that moved in the drawer in total.
+        if (period.CashMovements.Count == 0)
+            lines.Add("Keine Einlagen / Entnahmen im Zeitraum.");
+        foreach (var movement in period.CashMovements)
+            lines.Add($"{movement.Label}: {Money(movement.SignedCents)}");
+        lines.Add($"= Bar-Saldo des Zeitraums (Bar-Umsatz + Kassenbewegungen): {Money(period.CashCents + period.CashMovements.Sum(m => m.SignedCents))}");
+        lines.Add("");
+        lines.Add("UMSATZSTEUER NACH RABATT");
 
         if (period.Taxes.Count == 0)
         {
