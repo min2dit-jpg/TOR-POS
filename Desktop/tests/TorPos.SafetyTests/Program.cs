@@ -359,13 +359,12 @@ await R99ReviewTests.Run(root,Assert,Reject);
 await R100ReviewTests.Run(root,Assert);
 await R101ReviewTests.Run(root,Assert,Reject);
 await R102ReviewTests.Run(root,Assert,Reject);
-await R103ReviewTests.Run(root,Assert,Reject);
+await R103ReviewTests.Run(Assert);
 await R106ReviewTests.Run(root,Assert,Reject);
 await R107ReviewTests.Run(root,Assert,Reject,RejectMessage);
 await R108ReviewTests.Run(Assert);
 await R113ReviewTests.Run(root,Assert,RejectMessage);
 await R114ReviewTests.Run(Assert);
-await R115ReviewTests.Run(root,Assert);
 await R116ReviewTests.Run(Assert);
 await R117ReviewTests.Run(root,Assert);
 await R118R119ReviewTests.Run(root,Assert);
@@ -389,8 +388,10 @@ await R141ReviewTests.Run(root,Assert);
 await R142ReviewTests.Run(root,Assert);
 await R143ReviewTests.Run(root,Assert);
 await R144ReviewTests.Run(root,Assert);
+await R145ReviewTests.Run(root,Assert);
 
-const int ExpectedSafetyChecks = 832;
+// R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
+const int ExpectedSafetyChecks = 831;
 
 if (checks != ExpectedSafetyChecks)
 {

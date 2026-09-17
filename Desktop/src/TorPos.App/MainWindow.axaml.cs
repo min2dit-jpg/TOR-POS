@@ -36,7 +36,7 @@ public partial class MainWindow:Window
     private readonly DatabaseBackupService _backup;
     private readonly ITseProvider _tseProvider;
     private readonly IReceiptPrinterService _receiptPrinter;
-    private readonly IDigitalReceiptService _digitalReceipts;
+    private readonly IDigitalReceiptPublisher _digitalReceipts;
     private readonly ICardRefundLockRepository _cardRefundLocks;
     private readonly ICommercialLicenseService _commercialLicense;
     private readonly IAuthenticationService _authentication;
@@ -150,7 +150,7 @@ public partial class MainWindow:Window
         DatabaseBackupService backup,
         ITseProvider tseProvider,
         IReceiptPrinterService receiptPrinter,
-        IDigitalReceiptService digitalReceipts,
+        IDigitalReceiptPublisher digitalReceipts,
         ICardRefundLockRepository cardRefundLocks,
         ICommercialLicenseService commercialLicense,
         IAuthenticationService authentication,
@@ -2622,7 +2622,19 @@ public partial class MainWindow:Window
                     : $"TEST · {Formatting.Money(snapshot.TotalCents)} · keine echte Buchung";
                 // R65: Der Testverkauf ist bereits abgeschlossen. Der optionale
                 // Windows-Druck darf die Kassenoberfläche danach nicht mehr blockieren.
-                _ = PrintSimulationAsync(testJob);
+                // R145: the digital receipt can be tried here too, marked TESTBON.
+                if (await DigitalReceiptOfferedAsync())
+                {
+                    var withoutPrinter = _checkoutWithoutPrinterAccepted;
+                    _ = OfferReceiptChoiceAsync(
+                        testJob,
+                        DigitalReceiptDocument.PaymentsFor(method, snapshot.EffectiveCashPortionCents, snapshot.EffectiveCardPortionCents),
+                        "SIMULATION",
+                        snapshot.OperationId,
+                        () => PrintSimulationAsync(testJob, withoutPrinter, explicitRequest: true));
+                }
+                else
+                    _ = PrintSimulationAsync(testJob);
                 return;
             }
             var prepared =
@@ -2801,7 +2813,28 @@ public partial class MainWindow:Window
         catch(Exception ex) {
             CrashLog.WriteException("MainWindow operation", ex); ReportOperationalError("NACHVERARBEITUNG",$"Bon {sale.ReceiptNumber} gespeichert. Nicht erneut kassieren.",ex); }
         var willAutoPrint = !_checkoutWithoutPrinterAccepted && _settingsCache.GetBool("device.receipt_printer.enabled",false) && _settingsCache.GetBool("receipt.auto_print",true);
-        if(willAutoPrint)
+        // R145: with the digital receipt switched on, the customer chooses
+        // Papierbeleg or Digitalbeleg (QR) - the sale is final and signed by now
+        // (AEAO zu § 146a Nr. 2.5.2). BON EIN/AUS applies when it is switched off.
+        if(await DigitalReceiptOfferedAsync())
+        {
+            var job = BuildReceiptPrintJob(sale,snapshot.Method,cashPayment:cash);
+            var paperPossible = !_checkoutWithoutPrinterAccepted && _settingsCache.GetBool("device.receipt_printer.enabled",false);
+            var printerName = _settingsCache.GetText("device.receipt_printer.name","");
+            _=OfferReceiptChoiceAsync(
+                job,
+                DigitalReceiptDocument.PaymentsFor(snapshot.Method,sale.EffectiveCashPortionCents,sale.EffectiveCardPortionCents,
+                    _settingsCache.GetText("pay.cash.label","Bar"),_settingsCache.GetText("pay.card.label","Karte")),
+                "SALE",
+                sale.Id.ToString(),
+                () =>
+                {
+                    if(paperPossible) return PrintReceiptAndReportAsync(job,printerName);
+                    ScannerStatus.Text+=" · KEIN BONDRUCKER: Papierbeleg nicht möglich";
+                    return Task.CompletedTask;
+                });
+        }
+        else if(willAutoPrint)
         {
             _=PrintReceiptAndReportAsync(BuildReceiptPrintJob(sale,snapshot.Method,cashPayment:cash),
                 _settingsCache.GetText("device.receipt_printer.name",""));
@@ -2809,13 +2842,6 @@ public partial class MainWindow:Window
             // when paper prints normally - no QR, just the total.
             _customerDisplayWindow?.ShowThankYou(sale.TotalCents, null);
         }
-        // R103: BON EIN/AUS off means the customer would otherwise leave
-        // with nothing at all - offer the digital/QR alternative instead,
-        // never in addition to an already-printed paper receipt. R104:
-        // when a genuine Kundendisplay is configured, the QR belongs
-        // there, in front of the customer, not on the cashier's own screen.
-        else if(_settingsCache.GetBool("receipt.digital_qr.enabled",false) && _digitalReceipts.IsRunning)
-            _=ShowDigitalReceiptAsync(sale);
         else
             _customerDisplayWindow?.ShowThankYou(sale.TotalCents, null);
 
@@ -3134,40 +3160,95 @@ public partial class MainWindow:Window
         }
     }
 
-    // R103: registers the sale for digital pickup and shows the QR - a
-    // failure here must never surface as a checkout error, since the sale
-    // itself already committed successfully; the customer just doesn't get
-    // a digital receipt this time.
-    private async Task ShowDigitalReceiptAsync(Sale sale)
+    /// <summary>R145: the digital receipt is switched on and TOR Cloud is set up on this till.</summary>
+    private async Task<bool> DigitalReceiptOfferedAsync()
     {
         try
         {
-            // R115: take the address from the running server rather than
-            // detecting it again here. The server now binds to one specific
-            // LAN address, so a second lookup could hand the customer a URL
-            // pointing at an interface nothing is listening on.
-            var ip = _digitalReceipts.BoundAddress;
-            if (ip is null)
+            return await _digitalReceipts.IsAvailableAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Digital receipt availability", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// R145: the customer chooses Papierbeleg or Digitalbeleg (QR). The choice is
+    /// recorded; choosing the digital receipt is the customer's consent (AEAO zu
+    /// § 146a Nr. 2.5.3). The sale itself is complete - nothing here can undo or
+    /// repeat it.
+    /// </summary>
+    private async Task OfferReceiptChoiceAsync(
+        ReceiptPrintJob job,
+        IReadOnlyList<DigitalReceiptPayment> payments,
+        string entityType,
+        string entityId,
+        Func<Task> printPaper)
+    {
+        try
+        {
+            _customerDisplayWindow?.ShowThankYou(job.TotalCents, null);
+            var choice = await new ReceiptChoiceWindow(job.TotalCents, job.FiscalTestMode).ShowDialog<ReceiptChoice>(this);
+            if (choice == ReceiptChoice.Digitalbeleg)
             {
-                // Server not running / no LAN address to build a reachable URL
-                // from - still give the customer the "thank you" moment if a
-                // display exists.
-                _customerDisplayWindow?.ShowThankYou(sale.TotalCents, null);
+                await IssueDigitalReceiptAsync(job, payments, entityType, entityId, printPaper);
                 return;
             }
-            var token = await _digitalReceipts.RegisterAsync(sale.Id);
-            var url = $"http://{ip}:{_digitalReceipts.Port}/r/{token}";
-            // R104: a genuine Kundendisplay is where the customer is
-            // actually looking - route the QR there instead of a popup on
-            // the cashier's own screen when one is configured.
-            if (_customerDisplayWindow is not null)
-                _customerDisplayWindow.ShowThankYou(sale.TotalCents, url);
-            else
-                new DigitalReceiptWindow(url).Show(this);
+
+            await _audit.WriteAsync(_currentUser.Username, "RECEIPT_CHANNEL", entityType, entityId, "Papierbeleg (Wahl des Kunden)");
+            await printPaper();
+        }
+        catch (Exception ex)
+        {
+            ReportOperationalError("BELEG", "Die Belegausgabe ist fehlgeschlagen. Der Verkauf ist gespeichert - nicht erneut kassieren.", ex);
+        }
+    }
+
+    /// <summary>
+    /// R145: publishes the receipt to TOR Cloud and shows the QR code. When that
+    /// is not possible the paper receipt follows at once - the receipt belongs to
+    /// the end of the Vorgang (AEAO zu § 146a Nr. 2.5.7).
+    /// </summary>
+    private async Task IssueDigitalReceiptAsync(
+        ReceiptPrintJob job,
+        IReadOnlyList<DigitalReceiptPayment> payments,
+        string entityType,
+        string entityId,
+        Func<Task> printPaper)
+    {
+        var window = new DigitalReceiptWindow();
+        window.Show(this);
+        ScannerStatus.Text = "Digitaler Kassenbon wird erstellt …";
+        try
+        {
+            var document = DigitalReceiptDocument.From(job, payments);
+            var publication = await _digitalReceipts.PublishAsync(document, DigitalReceiptDocument.ReferenceFor(job));
+            // The link itself is the key to the receipt; only its id is logged.
+            await _audit.WriteAsync(_currentUser.Username, "RECEIPT_CHANNEL", entityType, entityId,
+                $"Digitalbeleg (Wahl des Kunden, AEAO zu § 146a Nr. 2.5.3); TOR Cloud {publication.ReceiptId}; abrufbar bis {publication.ExpiresAt:O}");
+            window.ShowLink(publication.Url, publication.ExpiresAt);
+            _customerDisplayWindow?.ShowThankYou(job.TotalCents, publication.Url);
+            ScannerStatus.Text = $"Digitaler Kassenbon bereit · abrufbar bis {publication.ExpiresAt.ToLocalTime():dd.MM.yyyy}";
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("Digital receipt", ex);
+            var reason = ex is TimeoutException or HttpRequestException
+                ? "TOR Cloud ist nicht erreichbar."
+                : ex.Message;
+            try
+            {
+                await _audit.WriteAsync(_currentUser.Username, "RECEIPT_DIGITAL_FAILED", entityType, entityId, reason);
+            }
+            catch (Exception auditEx)
+            {
+                CrashLog.WriteException("Digital receipt audit", auditEx);
+            }
+            window.ShowFailure(reason, "Der Papierbeleg wird ausgegeben.");
+            ScannerStatus.Text = "Digitalbeleg nicht möglich · Papierbeleg";
+            await printPaper();
         }
     }
 

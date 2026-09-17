@@ -45,25 +45,27 @@ public static class R140ReviewTests
             "R140 a TSE time is printed in UTC with its milliseconds, not converted to local time or cut to seconds (AEAO zu § 146a Nr. 2.4.4)");
 
         // ---------- digital receipt ----------
-        var sale = new Sale
-        {
-            ReceiptNumber = 140001,
-            CreatedAt = berlin,
-            PaymentMethod = PaymentMethod.Cash,
-            TotalCents = 700,
-            Lines = new[] { new CartLine { ProductName = "Döner", Quantity = 1, UnitPriceCents = 700, VatRate = 7m } },
-            TseClientId = "KASSE-7",
-            TseSerialNumber = "SERIAL",
-            TseTransactionNumber = "140",
-            TseSignatureCounter = "281",
-            TseSignature = "c2ln",
-            TseStartLogTime = berlin.AddSeconds(-30),
-            TseLogTime = berlin,
-        };
-        var html = DigitalReceiptHtml.Render(sale, "R140 Imbiss", "Hauptstraße 1, 10115 Berlin", "27/123/45678", "", false, "TORPOS-SYSTEM-ID");
-        assert(html.Contains("eAS: KASSE-7") && !html.Contains("TORPOS-SYSTEM-ID") &&
-               html.Contains("Vorgangsbeginn: 2026-09-17T09:59:35.123Z") && html.Contains("Vorgangsende: 2026-09-17T10:00:05.123Z") &&
-               !html.Contains("Vorgangsende: 17.09.2026"),
+        // R145: built from the print job, whose serial is the client id the TSE
+        // logged (MainWindow.BuildReceiptPrintJob, as for the paper receipt).
+        var digital = DigitalReceiptDocument.From(
+            new ReceiptPrintJob(
+                140001, berlin, "R140 Imbiss", "Hauptstraße 1, 10115 Berlin", "27/123/45678", "", "", "", "Bar", 0, 700,
+                new[] { new CartLine { ProductName = "Döner", Quantity = 1, UnitPriceCents = 700, VatRate = 7m } },
+                FiscalTestMode: false,
+                EasSerial: "KASSE-7",
+                TseSerial: "SERIAL",
+                TseTransactionNumber: "140",
+                SignatureCounter: 281,
+                ProcessStart: berlin.AddSeconds(-30),
+                ProcessEnd: berlin,
+                VerificationValue: "c2ln",
+                TseClientId: "KASSE-7",
+                TseStartLogTime: berlin.AddSeconds(-30)),
+            DigitalReceiptDocument.PaymentsFor(PaymentMethod.Cash, 700, 0));
+        assert(digital.Field(DigitalReceiptDocument.SerialLabel) == "KASSE-7" &&
+               digital.Field(DigitalReceiptDocument.ProcessStartLabel) == "2026-09-17T09:59:35.123Z" &&
+               digital.Field(DigitalReceiptDocument.ProcessEndLabel) == "2026-09-17T10:00:05.123Z" &&
+               !digital.Tse.Any(field => field.Value.StartsWith("17.09.2026")),
             "R140 the digital receipt shows the client id the TSE logged as serial and the TSE times unchanged in UTC");
 
         return Task.CompletedTask;

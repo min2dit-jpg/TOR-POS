@@ -21,6 +21,15 @@ TOR POS Pro (lokal) -> Cloud Outbox -> HTTPS API -> TOR Cloud -> Kundenportal
 
 Cloud darf niemals Voraussetzung für BAR/KARTE, Bonnummer, TSE oder lokalen Datenbank-Commit sein.
 
+## Digitaler Kassenbon (R145) – zwei Sicherheitsbereiche
+- `api.<domain>`: Kasse ↔ Cloud, Portal, Updates – Authentifizierung zwingend.
+- `bon.<domain>`: Kundenkopie eines Bons hinter einem 256-Bit-Token – kein Login, keine Cookies, nichts außer Belegen.
+
+Der digitale Kassenbon ist kein Teil des Fiskalarchivs: Kassen-DB, TSE und DSFinV-K bleiben auf der Kasse und
+unterliegen den gesetzlichen Aufbewahrungsfristen; die Cloud-Kopie wird nach Ablauf gelöscht. Ist die Cloud nicht
+erreichbar, gibt die Kasse den Papierbeleg aus – auch der digitale Bon ist also nie Voraussetzung für den Verkauf.
+Details: `DIGITALER-KASSENBON.md`.
+
 ## Mandantenmodell
 - Business / Kunde
   - Branch / Filiale

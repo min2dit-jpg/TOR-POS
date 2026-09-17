@@ -12,9 +12,11 @@ const {normalizeEvent,canonical,berlinParts}=require('./validation');
 const {makeQrV6L}=require('./qr-v6');
 // R125: shared with tools/provision.js so both hash credentials identically.
 const {hashPassword,hashToken}=require('./credentials');
+// R145: the public digital receipt (TOR Digital Receipt Cloud).
+const {validateReceipt,renderReceiptPage,renderNotFoundPage,renderHomePage,renderReceiptPdf,ASSETS:RECEIPT_ASSETS}=require('./receipts');
 // R127: the version string was typed twice (startup log and /api/health) and
 // both still said R62 many revisions later. One constant now.
-const CLOUD_VERSION='0.12.0-R128';
+const CLOUD_VERSION='0.13.0-R145';
 const DEMO=process.env.TOR_CLOUD_DEMO==='true';
 const REQUIRE_OWNER_2FA = String(process.env.TOR_CLOUD_REQUIRE_OWNER_2FA ?? (!DEMO ? 'true' : 'false')).toLowerCase()==='true';
 
@@ -48,6 +50,40 @@ const GOOGLE_TOKEN_KEY = GOOGLE_TOKEN_KEY_MATERIAL ? crypto.createHash('sha256')
 const GOOGLE_OAUTH_READY = !!(CLOUD_PUBLIC_URL && GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET && GOOGLE_TOKEN_KEY && (DEMO || CLOUD_PUBLIC_URL.startsWith('https://')));
 const GOOGLE_REDIRECT_URI = CLOUD_PUBLIC_URL ? `${CLOUD_PUBLIC_URL}/google/oauth/callback` : '';
 
+// R145: TOR Digital Receipt Cloud. The customer's copy of a Kassenbon lives on
+// its own domain (bon.<domain>), a security domain of its own next to the API
+// and portal (api.<domain>): no login, no cookies, nothing but receipts behind
+// a 256-bit token. The till uploads through the authenticated device API. It is
+// not the fiscal archive - that stays in TOR POS on the till (§ 147 AO); links
+// and their content are deleted after TOR_CLOUD_RECEIPT_TTL_DAYS.
+function hostOf(value){return new URL(value).hostname.toLowerCase();}
+const RECEIPT_URL_SETTING=String(process.env.TOR_CLOUD_RECEIPT_URL||'').trim();
+let RECEIPT_ORIGIN='';
+if(RECEIPT_URL_SETTING){
+  let parsed;
+  try{parsed=new URL(RECEIPT_URL_SETTING);}catch{throw new Error('TOR_CLOUD_RECEIPT_URL ist keine gültige URL.');}
+  if(!['http:','https:'].includes(parsed.protocol)||parsed.pathname!=='/'||parsed.search||parsed.hash||parsed.username||parsed.password)
+    throw new Error('TOR_CLOUD_RECEIPT_URL enthält nur Schema und Domain, z. B. https://bon.tor-pos.de');
+  if(!DEMO&&parsed.protocol!=='https:')throw new Error('TOR_CLOUD_RECEIPT_URL muss im Livebetrieb HTTPS (TLS) verwenden.');
+  if(CLOUD_PUBLIC_URL&&hostOf(CLOUD_PUBLIC_URL)===parsed.hostname.toLowerCase())
+    throw new Error('Der digitale Kassenbon braucht eine eigene Domain, getrennt von TOR_CLOUD_PUBLIC_URL (z. B. bon.tor-pos.de neben api.tor-pos.de).');
+  RECEIPT_ORIGIN=parsed.origin;
+}
+const RECEIPT_HOST=RECEIPT_ORIGIN?hostOf(RECEIPT_ORIGIN):'';
+const RECEIPT_HTTPS=RECEIPT_ORIGIN.startsWith('https://');
+const RECEIPT_TTL_DAYS=Math.min(366,Math.max(1,Math.floor(Number(process.env.TOR_CLOUD_RECEIPT_TTL_DAYS||90))||90));
+// Impressum (§ 5 DDG) and privacy notice (Art. 13 DSGVO) of the operator of the
+// receipt domain, linked on every page there.
+function legalUrl(name){
+  const value=String(process.env[name]||'').trim();
+  if(!value)return '';
+  let parsed;
+  try{parsed=new URL(value);}catch{throw new Error(`${name} ist keine gültige URL.`);}
+  if(parsed.protocol!=='https:'&&!(DEMO&&parsed.protocol==='http:'))throw new Error(`${name} muss HTTPS verwenden.`);
+  return parsed.href;
+}
+const RECEIPT_LINKS={imprint:legalUrl('TOR_CLOUD_IMPRINT_URL'),privacy:legalUrl('TOR_CLOUD_PRIVACY_URL')};
+
 if (!['127.0.0.1','localhost','::1'].includes(HOST) && (!COOKIE_SECURE || DEMO)) throw new Error('Externer Betrieb benötigt sichere Cookies und deaktivierten Demomodus.');
 const db = new DatabaseSync(DB_PATH);
 db.function('berlin_day', x=>berlinParts(x).day);
@@ -55,7 +91,9 @@ db.function('berlin_hour', x=>berlinParts(x).hour);
 // R125: busy_timeout, because tools/provision.js now writes to this same file
 // while the server runs; without it a colliding write fails at once with
 // "database is locked" instead of waiting a few milliseconds for its turn.
-db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
+// R145: secure_delete, so a digital receipt deleted at the end of its lifetime
+// is overwritten in the database file instead of lingering in free pages.
+db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; PRAGMA secure_delete=ON;');
 
 function nowIso() { return new Date().toISOString(); }
 function randomId(bytes = 24) { return crypto.randomBytes(bytes).toString('base64url'); }
@@ -351,6 +389,24 @@ function initSchema() {
       FOREIGN KEY(register_id) REFERENCES registers(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_google_oauth_pairs_expiry ON google_oauth_pairs(expires_at);
+    -- R145: the public customer copy of a receipt. Only what the receipt shows,
+    -- only the hash of the link token, deleted entirely when it expires.
+    CREATE TABLE IF NOT EXISTS public_receipts(
+      id TEXT PRIMARY KEY,
+      business_id INTEGER NOT NULL,
+      register_id INTEGER NOT NULL,
+      receipt_ref TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      content_hash TEXT NOT NULL,
+      document_json TEXT NOT NULL,
+      pdf BLOB NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      UNIQUE(register_id,receipt_ref),
+      FOREIGN KEY(business_id) REFERENCES businesses(id),
+      FOREIGN KEY(register_id) REFERENCES registers(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_public_receipts_expiry ON public_receipts(expires_at);
   `);
 }
 
@@ -728,6 +784,79 @@ function clientIp(req){
   return req.socket.remoteAddress||'unknown';
 }
 
+// R145: the receipt domain. Every response there says: do not index, do not
+// cache, send no referrer (the link itself is the key), no framing.
+function requestHostname(req){
+  try{return new URL(`http://${String(req.headers.host||'')}`).hostname.toLowerCase();}catch{return '';}
+}
+function forwardedProto(req){
+  return TRUST_PROXY?String(req.headers['x-forwarded-proto']||'').split(',')[0].trim().toLowerCase():'';
+}
+// Receipt links are credentials; they never go into a log line.
+function redactUrl(value){return String(value||'').replace(/\/r\/[^/?#]+/g,'/r/[token]');}
+function receiptHeaders(extra={}){
+  return {
+    'Cache-Control':'private, no-store',
+    'Pragma':'no-cache',
+    'X-Robots-Tag':'noindex, nofollow, noarchive, nosnippet',
+    'Referrer-Policy':'no-referrer',
+    'X-Content-Type-Options':'nosniff',
+    'X-Frame-Options':'DENY',
+    'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'Permissions-Policy':'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy':'same-origin',
+    'Cross-Origin-Resource-Policy':'same-origin',
+    ...(RECEIPT_HTTPS?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{}),
+    ...extra
+  };
+}
+function receiptSend(req,res,status,body,type,extra={}){
+  const buf=Buffer.isBuffer(body)?body:Buffer.from(body);
+  res.writeHead(status,receiptHeaders({'Content-Type':type,'Content-Length':buf.length,...extra}));
+  res.end(req.method==='HEAD'?undefined:buf);
+}
+// A valid link always works. Only an address that keeps asking for links that
+// do not exist is slowed down - guessing a 256-bit token is hopeless anyway,
+// this just keeps such traffic cheap and visible.
+const receiptMisses=new Map();
+const RECEIPT_MISS_LIMIT=60;
+const RECEIPT_MISS_WINDOW_MS=10*60*1000;
+function receiptMissLimited(req){
+  const now=Date.now(),key=clientIp(req);
+  let entry=receiptMisses.get(key);
+  if(!entry||entry.until<=now)entry={count:0,until:now+RECEIPT_MISS_WINDOW_MS};
+  entry.count++;
+  receiptMisses.delete(key);
+  receiptMisses.set(key,entry);
+  for(const oldest of receiptMisses.keys()){if(receiptMisses.size<=50000)break;receiptMisses.delete(oldest);}
+  return entry.count>RECEIPT_MISS_LIMIT;
+}
+function handleReceiptHost(req,res,url){
+  const pathname=url.pathname;
+  if(req.method!=='GET'&&req.method!=='HEAD')return receiptSend(req,res,405,'Methode nicht erlaubt','text/plain; charset=utf-8',{Allow:'GET, HEAD'});
+  // Deliberately no Disallow: a search engine only obeys the noindex on every
+  // response if it may fetch the page. A receipt link someone posted publicly
+  // must drop out of the index entirely, not linger there as a bare URL.
+  if(pathname==='/robots.txt')return receiptSend(req,res,200,'User-agent: *\nAllow: /\n','text/plain; charset=utf-8');
+  const asset=Object.hasOwn(RECEIPT_ASSETS,pathname)?RECEIPT_ASSETS[pathname]:null;
+  if(asset)return receiptSend(req,res,200,asset.body,asset.type,{'Cache-Control':'public, max-age=3600'});
+  if(pathname==='/')return receiptSend(req,res,200,renderHomePage(RECEIPT_LINKS),'text/html; charset=utf-8');
+  const match=/^\/r\/([^/]+)(\/pdf)?$/.exec(pathname);
+  const row=match&&/^[A-Za-z0-9_-]{43}$/.test(match[1])
+    ?db.prepare(`SELECT document_json,expires_at${match[2]?',pdf':''} FROM public_receipts WHERE token_hash=? AND expires_at>?`).get(hashToken(match[1]),nowIso())
+    :null;
+  if(!row){
+    if(match&&receiptMissLimited(req))return receiptSend(req,res,429,renderNotFoundPage(RECEIPT_LINKS),'text/html; charset=utf-8',{'Retry-After':String(RECEIPT_MISS_WINDOW_MS/1000)});
+    return receiptSend(req,res,404,renderNotFoundPage(RECEIPT_LINKS),'text/html; charset=utf-8');
+  }
+  const doc=JSON.parse(row.document_json);
+  if(match[2]){
+    const name=`Kassenbon-${String(doc.receipt_number).replace(/[^A-Za-z0-9-]/g,'')||'TOR'}.pdf`;
+    return receiptSend(req,res,200,Buffer.from(row.pdf),'application/pdf',{'Content-Disposition':`attachment; filename="${name}"`});
+  }
+  return receiptSend(req,res,200,renderReceiptPage(doc,{token:match[1],expiresAt:row.expires_at,links:RECEIPT_LINKS}),'text/html; charset=utf-8');
+}
+
 const MAX_TRACKED_LOGIN_KEYS=50000;
 function loginLimited(req,email){
   const now=Date.now();
@@ -756,6 +885,17 @@ async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname;
+    // R145: behind the proxy, a request that came in over plain HTTP goes to
+    // HTTPS before anything else (Caddy redirects already; this is the second
+    // line). The target is always the configured origin, never the Host header.
+    if(forwardedProto(req)==='http'){
+      const onReceipt=!!RECEIPT_HOST&&requestHostname(req)===RECEIPT_HOST;
+      const origin=onReceipt?(RECEIPT_HTTPS?RECEIPT_ORIGIN:''):(CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
+      if(origin){res.writeHead(308,{Location:origin+pathname,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
+    }
+    // R145: the receipt domain serves receipts and nothing else; no receipt is
+    // served on any other host.
+    if(RECEIPT_HOST&&requestHostname(req)===RECEIPT_HOST)return handleReceiptHost(req,res,url);
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     if(req.method==='POST' && !pathname.startsWith('/api/v1/devices/')){
@@ -765,7 +905,7 @@ async function handler(req, res) {
     }
 
 
-    if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, {ok:true, service:'TOR POS Cloud', version:CLOUD_VERSION, demo:DEMO, google_oauth_configured:GOOGLE_OAUTH_READY, time:nowIso()});
+    if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, {ok:true, service:'TOR POS Cloud', version:CLOUD_VERSION, demo:DEMO, google_oauth_configured:GOOGLE_OAUTH_READY, digital_receipts:!!RECEIPT_ORIGIN, time:nowIso()});
 
     // R62: QR pairing + Google OAuth. The POS authenticates to TOR Cloud with its existing
     // device credentials. The phone only receives a one-time claim URL; the Gmail password
@@ -1041,6 +1181,51 @@ async function handler(req, res) {
       return json(res, 200, {ok:true, accepted:result.filter(x=>x.status==='accepted').length, duplicates:result.filter(x=>x.status==='duplicate').length, results:result, server_time:nowIso()});
     }
 
+    // R145: the till publishes the customer's digital receipt after the sale is
+    // final (TSE transaction finished, AEAO zu § 146a Nr. 2.5.2). The Cloud
+    // keeps the presentation data and the PDF under a fresh 256-bit token and
+    // returns the link for the QR code; only the token's hash is stored.
+    if (req.method === 'POST' && pathname === '/api/v1/devices/receipts') {
+      const device = requireDevice(req, res); if (!device) return;
+      if (!RECEIPT_ORIGIN) return json(res, 503, {ok:false, error:'Digitaler Kassenbon ist in dieser TOR Cloud nicht eingerichtet (TOR_CLOUD_RECEIPT_URL fehlt).'});
+      const body = await readJson(req);
+      const ref = typeof body.receipt_ref === 'string' ? body.receipt_ref : '';
+      if (!/^[A-Za-z0-9._:-]{8,120}$/.test(ref)) return json(res, 400, {ok:false, error:'receipt_ref ist ungültig.'});
+      const doc = validateReceipt(body.receipt);
+      const documentJson = JSON.stringify(doc);
+      const contentHash = crypto.createHash('sha256').update(documentJson).digest('hex');
+      const pdf = renderReceiptPdf(doc);
+      const token = crypto.randomBytes(32).toString('base64url');
+      const now = new Date();
+      const createdAt = now.toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const existing = db.prepare('SELECT id,content_hash,created_at,expires_at FROM public_receipts WHERE register_id=? AND receipt_ref=?').get(device.register_id, ref);
+        if (existing && existing.expires_at > createdAt) {
+          if (existing.content_hash !== contentHash) {
+            db.exec('ROLLBACK');
+            return json(res, 409, {ok:false, error:'Für diesen Beleg ist bereits ein anderer Inhalt veröffentlicht. Ein Kassenbon ist unveränderlich.'});
+          }
+          // The till asks again because it never received the link (timeout,
+          // lost connection). The same receipt gets a fresh token; the old one,
+          // which nobody was shown, stops working. Lifetime is not extended.
+          db.prepare('UPDATE public_receipts SET token_hash=? WHERE id=?').run(hashToken(token), existing.id);
+          db.exec('COMMIT');
+          return json(res, 200, {ok:true, receipt_id:existing.id, url:`${RECEIPT_ORIGIN}/r/${token}`, created_at:existing.created_at, expires_at:existing.expires_at, reissued:true});
+        }
+        if (existing) db.prepare('DELETE FROM public_receipts WHERE id=?').run(existing.id);
+        const id = randomId(12);
+        const expiresAt = new Date(now.getTime() + RECEIPT_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        db.prepare('INSERT INTO public_receipts(id,business_id,register_id,receipt_ref,token_hash,content_hash,document_json,pdf,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+          .run(id, device.business_id, device.register_id, ref, hashToken(token), contentHash, documentJson, pdf, createdAt, expiresAt);
+        db.exec('COMMIT');
+        return json(res, 201, {ok:true, receipt_id:id, url:`${RECEIPT_ORIGIN}/r/${token}`, created_at:createdAt, expires_at:expiresAt, reissued:false});
+      } catch (e) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw e;
+      }
+    }
+
     if (req.method === 'GET' && pathname === '/api/v1/devices/ping') {
       const device = requireDevice(req, res); if (!device) return;
       db.prepare('UPDATE registers SET last_seen_at=? WHERE id=?').run(nowIso(), device.register_id);
@@ -1059,7 +1244,7 @@ async function handler(req, res) {
     // the status code - no path, no method, no stack - which made a 500 in
     // production essentially uninvestigable.
     const status=err.statusCode||500;
-    console.error(`[${nowIso()}] ${req.method} ${req.url} -> ${status}: ${err.message}`);
+    console.error(`[${nowIso()}] ${req.method} ${redactUrl(req.url)} -> ${status}: ${err.message}`);
     if(!err.statusCode && err.stack)console.error(err.stack);
     json(res, status, {ok:false, error:err.statusCode ? err.message : 'Interner Serverfehler'});
   }
@@ -1076,7 +1261,10 @@ function cleanupExpired(){
   const sessions=Number(db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now).changes);
   const challenges=Number(db.prepare('DELETE FROM login_challenges WHERE expires_at<=?').run(now).changes);
   cleanupGooglePairs();
-  return {sessions,challenges};
+  // R145: at the end of its lifetime a digital receipt is deleted entirely -
+  // token hash, PDF and content. The fiscal records on the till are untouched.
+  const receipts=Number(db.prepare('DELETE FROM public_receipts WHERE expires_at<=?').run(now).changes);
+  return {sessions,challenges,receipts};
 }
 
 // Backups are off unless TOR_CLOUD_BACKUP_DIR is set, so a developer checkout
@@ -1113,7 +1301,7 @@ function backupIfDue(now=new Date()){
 function runHousekeeping(){
   try{
     const removed=cleanupExpired();
-    if(removed.sessions||removed.challenges)console.log(`[${nowIso()}] Aufgeräumt: ${removed.sessions} abgelaufene Sitzung(en), ${removed.challenges} 2FA-Anfrage(n).`);
+    if(removed.sessions||removed.challenges||removed.receipts)console.log(`[${nowIso()}] Aufgeräumt: ${removed.sessions} abgelaufene Sitzung(en), ${removed.challenges} 2FA-Anfrage(n), ${removed.receipts} digitale(r) Kassenbon(s).`);
   }catch(err){console.error(`[${nowIso()}] Aufräumen fehlgeschlagen: ${err.message}`);}
   try{
     const backup=backupIfDue();
@@ -1126,6 +1314,8 @@ server.listen(PORT, HOST, () => {
   console.log(`TOR POS Cloud v${CLOUD_VERSION} läuft auf http://${HOST}:${server.address().port}`);
   if(DEMO) console.log('Lokaler Demomodus aktiv. Keine echten Umsätze.');
   if(TRUST_PROXY) console.log('X-Forwarded-For wird ausgewertet (TOR_CLOUD_TRUST_PROXY=true).');
+  if(RECEIPT_ORIGIN) console.log(`Digitaler Kassenbon: ${RECEIPT_ORIGIN} (Links ${RECEIPT_TTL_DAYS} Tage abrufbar).`);
+  if(RECEIPT_ORIGIN&&!DEMO&&(!RECEIPT_LINKS.imprint||!RECEIPT_LINKS.privacy)) console.warn('WARNUNG: TOR_CLOUD_IMPRINT_URL und TOR_CLOUD_PRIVACY_URL setzen - die Bon-Domain ist ein öffentliches Angebot (Impressum, Datenschutzhinweis).');
   if(BACKUP_DIR) console.log(`Datensicherung aktiv: ${BACKUP_DIR} (alle ${BACKUP_INTERVAL_MS/3600000} h, ${BACKUP_KEEP} behalten).`);
   // R125: after the port is open, so a large database never delays startup.
   setImmediate(runHousekeeping);

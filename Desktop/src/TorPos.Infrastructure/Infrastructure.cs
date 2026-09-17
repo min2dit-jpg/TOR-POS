@@ -718,6 +718,9 @@ public async Task InitializeAsync(CancellationToken ct = default)
         // the local QR-receipt web server. Token, not receipt_number, is
         // the lookup key so a customer's Bon can't be enumerated by
         // guessing/incrementing a URL.
+        // R145: nothing reads this table any more - the digital receipt is
+        // published to TOR Cloud. It stays so the schema of existing
+        // databases does not change in this round.
         await using (var digitalReceipts = c.CreateCommand())
         {
             digitalReceipts.CommandText = """

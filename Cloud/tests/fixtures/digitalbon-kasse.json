@@ -1,0 +1,45 @@
+{
+  "_comment": "R145: the digital receipt exactly as TOR POS sends it (Desktop R145ReviewTests builds it and compares it with this file; Cloud tests/receipts.test.js checks the Cloud accepts it unchanged). Change both sides together.",
+  "receipt_ref": "bon-145-1789639205123",
+  "receipt": {
+    "format": "TOR-DIGITALBON-1",
+    "test_receipt": false,
+    "business": {
+      "name": "Imbiss am Markt",
+      "address": "Hauptstraße 1, 10115 Berlin",
+      "tax_number": "27/123/45678",
+      "vat_id": ""
+    },
+    "receipt_number": "000145",
+    "issued_at": "17.09.2026 12:00:05",
+    "pickup_number": 23,
+    "lines": [
+      { "name": "Çiğ Köfte Dürüm", "quantity": "2", "unit_price_cents": 650, "line_total_cents": 1300, "vat_rate": "7", "note": "" },
+      { "name": "Ayran · 0,25l", "quantity": "1", "unit_price_cents": 250, "line_total_cents": 250, "vat_rate": "19", "note": "Angebot: Getränke -10 %" }
+    ],
+    "subtotal_cents": 1550,
+    "discount_cents": 50,
+    "total_cents": 1500,
+    "vat": [
+      { "rate": "19", "net_cents": 203, "tax_cents": 39, "gross_cents": 242 },
+      { "rate": "7", "net_cents": 1176, "tax_cents": 82, "gross_cents": 1258 }
+    ],
+    "payments": [
+      { "label": "Bar", "amount_cents": 1000 },
+      { "label": "Karte", "amount_cents": 500 }
+    ],
+    "tse": [
+      { "label": "Seriennummer Kasse", "value": "TORPOS-538AE94ABA78A2058181215" },
+      { "label": "Seriennummer TSE", "value": "a1b2c3d4e5f60718" },
+      { "label": "Transaktionsnummer", "value": "1450" },
+      { "label": "Signaturzähler", "value": "28114" },
+      { "label": "Vorgangsbeginn", "value": "2026-09-17T09:59:35.123Z" },
+      { "label": "Vorgangsende", "value": "2026-09-17T10:00:05.123Z" },
+      { "label": "Prüfwert", "value": "MEUCIQDk3Fh0dAXGfYJp6m1gE1sL0n2n9sJ6y6oM0m3Yc3a8uAIgQ9x2Qv8b3m2V0r0fXk1c9o4mZs0v5Q1y2p7cV3n8wHk=" }
+    ],
+    "notes": [
+      "Elektronischer Beleg gem. § 6 KassenSichV.",
+      "Vielen Dank für Ihren Einkauf!"
+    ]
+  }
+}

@@ -779,19 +779,19 @@ public partial class SettingsWindow : Window
             AppTheme.InfoCardBg));
         page.Children.Add(behavior);
 
-        // R103: paperless alternative - a QR code shown on screen whenever
-        // BON EIN/AUS is off for a sale (so the customer never leaves with
-        // nothing at all), pointing at a small web page served directly
-        // from this till over the shop's own WiFi. Requires a restart to
-        // start/stop the local server after toggling.
-        var digital = Section("Digitaler Bon (QR-Code)");
-        digital.Children.Add(ToggleRow(Check("receipt.digital_qr.enabled", "Digitalen Bon per QR-Code anbieten, wenn BON EIN/AUS ausgeschaltet ist")));
-        Form(digital, "Port", Text("receipt.digital_qr.port"),
-            "Lokaler Port für die Bon-Webseite auf dieser Kasse, Standard 8099. Nach Änderung TOR POS neu starten.");
+        // R145: the digital receipt through TOR Cloud replaces the R103 page
+        // served by the till in the shop's WiFi.
+        var digital = Section("Digitaler Kassenbon (TOR Cloud)");
+        digital.Children.Add(ToggleRow(Check(CloudDigitalReceiptService.EnabledSetting, "Nach jedem Verkauf wählen lassen: Papierbeleg oder Digitalbeleg (QR-Code)")));
         digital.Children.Add(InfoCard("Wie das funktioniert",
-            "Ist BON EIN/AUS für einen Verkauf ausgeschaltet, zeigt die Kasse statt eines Papierbons einen QR-Code auf dem Bildschirm. " +
-            "Der Kunde scannt ihn mit dem Handy, während er im WLAN dieses Geschäfts ist, und sieht den Bon als Webseite - kein Papier, keine App, kein Internet außerhalb des Geschäfts nötig. " +
-            "§6 KassenSichV erlaubt einen elektronischen statt gedruckten Beleg, solange der Kunde ihn tatsächlich mitnehmen kann.",
+            "Nach dem Bezahlen wählt der Kunde Papierbeleg oder Digitalbeleg. Beim Digitalbeleg sendet die Kasse nur die Angaben des Bons an TOR Cloud; " +
+            "der Kunde scannt den QR-Code und öffnet den Bon ohne Anmeldung im Browser - lesen, als PDF herunterladen, teilen oder drucken. " +
+            "Der elektronische Beleg wird nach AEAO zu § 146a Nr. 2.5.6 in einem standardisierten Datenformat zur Verfügung gestellt; TOR bietet standardmäßig einen PDF-Download an. " +
+            "Ist TOR Cloud nicht erreichbar, gibt die Kasse sofort den Papierbeleg aus. Voraussetzung: TOR Cloud ist unter Geräte eingerichtet und aktiv.",
+            AppTheme.InfoCardBg));
+        digital.Children.Add(InfoCard("Kein Archiv",
+            "Der Link ist zeitlich begrenzt abrufbar (Standard 90 Tage); danach löscht TOR Cloud Link, PDF und Beleginhalt. " +
+            "Die aufbewahrungspflichtigen Kassendaten (Kassen-DB, TSE, DSFinV-K) bleiben unverändert auf dieser Kasse und werden davon nicht berührt.",
             AppTheme.InfoCardBg));
         page.Children.Add(digital);
 

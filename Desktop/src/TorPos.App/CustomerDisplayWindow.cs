@@ -36,7 +36,7 @@ public sealed class CustomerDisplayWindow : Window
     private readonly Image _thankYouQrImage = new() { Width = 240, Height = 240, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
     private readonly TextBlock _thankYouQrHint = new()
     {
-        Text = "Bon jetzt scannen (im WLAN dieses Geschäfts)",
+        Text = "Ihr digitaler Kassenbon - jetzt mit dem Handy scannen",
         FontSize = 16, Opacity = 0.75, HorizontalAlignment = HorizontalAlignment.Center,
         TextAlignment = TextAlignment.Center, IsVisible = false
     };
@@ -145,6 +145,8 @@ public sealed class CustomerDisplayWindow : Window
             _thankYouQrHint.IsVisible = false;
         }
 
+        // R145: a QR code needs time to be scanned.
+        _revertTimer.Interval = TimeSpan.FromSeconds(qrPayload is null ? 20 : 60);
         _revertTimer.Stop();
         _revertTimer.Start();
     }

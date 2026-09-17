@@ -141,16 +141,9 @@ public partial class App : Avalonia.Application
                 CrashLog.Write("Startup warning: " + warning);
 
             var cashMovements = new CashMovementRepository(db, audit);
-            // R103: only started when explicitly enabled in settings - a
-            // cashier-facing till listening on the network by default would
-            // be a surprising, unwanted change of behavior for every
-            // existing installation.
-            var digitalReceipts = new DigitalReceiptService(db, settings, sales);
-            if (string.Equals(await settings.GetAsync("receipt.digital_qr.enabled", "false"), "true", StringComparison.OrdinalIgnoreCase))
-            {
-                try { await digitalReceipts.StartAsync(); }
-                catch (Exception ex) { CrashLog.WriteException("Digital receipt server start", ex); }
-            }
+            // R145: the digital receipt is published to TOR Cloud with this
+            // till's device credentials; the local receipt server of R103 is gone.
+            var digitalReceipts = new CloudDigitalReceiptService(settings, CloudSync);
             var checkoutJournal = new CheckoutJournal(db);
             var paymentTerminal = new ZvtPaymentTerminalService(settings, audit, checkoutJournal);
             var dsfinvkExport =
@@ -189,7 +182,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<ISettingsRepository>(settings);
             appServices.AddSingleton<ITseProvider>(tseProvider);
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
-            appServices.AddSingleton<IDigitalReceiptService>(digitalReceipts);
+            appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);
             appServices.AddSingleton(auth);
             appServices.AddSingleton<IAuthenticationService>(auth);
@@ -268,8 +261,6 @@ public partial class App : Avalonia.Application
                 await orderPrintDispatcher.DisposeAsync();
                 try { await receiptPrinter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
                 catch(Exception ex) { CrashLog.WriteException("Printer shutdown failed",ex); }
-                try { await digitalReceipts.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
-                catch(Exception ex) { CrashLog.WriteException("Digital receipt server shutdown failed",ex); }
                 exitCleanupDone=true;
                 CrashLog.MarkCleanShutdown();
                 desktop.Shutdown();

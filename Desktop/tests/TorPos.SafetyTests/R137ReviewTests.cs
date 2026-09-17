@@ -148,10 +148,14 @@ public static class R137ReviewTests
             await q.ExecuteNonQueryAsync();
         }
         var sale = (await new SaleRepository(db).GetByIdAsync(saleId))!;
-        var html = DigitalReceiptHtml.Render(sale, "R137 Imbiss", "Hauptstraße 1, 10115 Berlin", "27/123/45678", "", false, "EAS");
+        // R145: the digital receipt is built from the print job, which carries the order start.
+        var digital = DigitalReceiptDocument.From(
+            new ReceiptPrintJob(sale.ReceiptNumber, sale.CreatedAt, "R137 Imbiss", "Hauptstraße 1, 10115 Berlin", "27/123/45678", "", "", "", "Bar",
+                sale.DiscountCents, sale.TotalCents, sale.Lines, FiscalTestMode: false, OrderStart: sale.OrderStartedAt),
+            DigitalReceiptDocument.PaymentsFor(PaymentMethod.Cash, sale.TotalCents, 0));
         assert(acceptedB is { Kind: OrderBestellungKind.Annahme } && acceptedB.Lines.Single().VatRate == 19m &&
                sale.OrderStartedAt is not null && sale.OrderStartedAt == acceptedB.Tse!.StartLogTime &&
-               html.Contains("Bestellbeginn: "),
+               digital.Field(DigitalReceiptDocument.OrderStartLabel) == TseReceiptTime.Format(sale.OrderStartedAt.Value),
             "R137 the receipt of a paid order carries the start of its first order transaction (DSFinV-K 2.7.2); the order's positions carry the Im Haus rate");
 
         // order C: signed before R137 (only on the order row), then changed

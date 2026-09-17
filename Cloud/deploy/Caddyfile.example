@@ -1,11 +1,22 @@
-# R125: HTTPS in front of TOR POS Cloud with Caddy, which obtains and renews the
-# Let's Encrypt certificate by itself. Requirements: a DNS name pointing at
-# this server and ports 80/443 open. Replace cloud.example.de.
+# R125/R145: HTTPS (TLS) in front of TOR POS Cloud with Caddy, which obtains and
+# renews the Let's Encrypt certificates by itself and redirects HTTP to HTTPS
+# automatically. Requirements: DNS names pointing at this server and ports
+# 80/443 open. Replace api.tor-pos.de / bon.tor-pos.de with the real domains and
+# set the same names in /etc/tor-pos-cloud.env (TOR_CLOUD_PUBLIC_URL,
+# TOR_CLOUD_RECEIPT_URL).
 #
 #   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# Two security domains (R145, docs/DIGITALER-KASSENBON.md):
+#   api.<domain>  till <-> Cloud, customer portal, updates - authentication required
+#   bon.<domain>  the customer's digital receipt - no login, only the receipt token
 
-cloud.example.de {
+api.tor-pos.de {
 	encode gzip
+
+	tls {
+		protocols tls1.2 tls1.3
+	}
 
 	# Overwrite, never append: with TOR_CLOUD_TRUST_PROXY=true, server.js
 	# (clientIp) uses the FIRST address in this header as the client, so a value
@@ -19,12 +30,36 @@ cloud.example.de {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"
+		-Server
 	}
 
-	# Limits what clients may SEND (sync batches, logins), not downloads such as
-	# installers. server.js rejects JSON bodies over 1 MB itself (413); this just
-	# stops an oversized upload at the edge before it reaches Node.
+	# Limits what clients may SEND (sync batches, logins, receipts), not downloads
+	# such as installers. server.js rejects JSON bodies over 1 MB itself (413);
+	# this just stops an oversized upload at the edge before it reaches Node.
 	request_body {
 		max_size 2MB
+	}
+}
+
+bon.tor-pos.de {
+	tls {
+		protocols tls1.2 tls1.3
+	}
+
+	# No "log" directive on purpose: the request path carries the receipt token,
+	# which is the key to the receipt. server.js sets the security, noindex and
+	# no-store headers on every response itself.
+	reverse_proxy 127.0.0.1:8787 {
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# The receipt domain accepts no uploads.
+	request_body {
+		max_size 16KB
 	}
 }

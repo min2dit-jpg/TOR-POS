@@ -184,14 +184,16 @@ public partial class MainWindow
         }
     }
 
-    private async Task PrintSimulationAsync(ReceiptPrintJob job)
+    /// <param name="withoutPrinterAccepted">R145: the cashier's decision at checkout, taken over when printing follows a later receipt choice.</param>
+    /// <param name="explicitRequest">R145: the customer asked for paper, so BON EIN/AUS does not suppress it.</param>
+    private async Task PrintSimulationAsync(ReceiptPrintJob job, bool? withoutPrinterAccepted = null, bool explicitRequest = false)
     {
-        if (_checkoutWithoutPrinterAccepted)
+        if (withoutPrinterAccepted ?? _checkoutWithoutPrinterAccepted)
         {
             ScannerStatus.Text += " · BONDRUCKER NICHT ERKANNT · ohne Druck fortgesetzt";
             return;
         }
-        if (!_settingsCache.GetBool("receipt.auto_print", true))
+        if (!explicitRequest && !_settingsCache.GetBool("receipt.auto_print", true))
         { ScannerStatus.Text += " · BON AUS: kein Testdruck"; return; }
         var printer = _settingsCache.GetText("device.receipt_printer.name", "");
         if (!_settingsCache.GetBool("device.receipt_printer.enabled", false) || string.IsNullOrWhiteSpace(printer))

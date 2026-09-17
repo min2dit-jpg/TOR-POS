@@ -187,54 +187,45 @@ public static class R122ReviewTests
             "R122 a truncated container is rejected as incomplete rather than read past its end");
 
         // ---------- F5: the digital receipt checks the same fields the printed one does ----------
+        // R145: the digital receipt is built from the print job itself.
         var line = new CartLine { ProductName = "R122 Artikel", Quantity = 1, UnitPriceCents = 1190, VatRate = 19m };
 
-        Sale SaleWith(string transactionNumber, bool outage, DateTimeOffset? logTime) => new()
-        {
-            Id = 1,
-            ReceiptNumber = 122001,
-            CreatedAt = DateTimeOffset.Now,
-            PaymentMethod = PaymentMethod.Cash,
-            TotalCents = 1190,
-            CashPortionCents = 1190,
-            Lines = new[] { line },
-            TseSerialNumber = outage ? "" : "TSE-122",
-            TseTransactionNumber = transactionNumber,
-            TseSignatureCounter = outage ? "" : "42",
-            TseSignature = outage ? "" : "SIG-122",
-            TseLogTime = logTime,
-            TseOutage = outage
-        };
+        DigitalReceiptDocument DocumentWith(string transactionNumber, bool outage, DateTimeOffset? logTime, string address = "Musterstr. 1, 10115 Berlin") =>
+            DigitalReceiptDocument.From(
+                new ReceiptPrintJob(
+                    122001, DateTimeOffset.Now, "R122 Laden", address, "", "", "", "", "Bar", 0, 1190, new[] { line },
+                    FiscalTestMode: false,
+                    EasSerial: "TORPOS-R122",
+                    TseSerial: outage ? "" : "TSE-122",
+                    TseTransactionNumber: transactionNumber,
+                    SignatureCounter: outage ? 0 : 42,
+                    ProcessStart: DateTimeOffset.Now.AddSeconds(-10),
+                    ProcessEnd: logTime,
+                    VerificationValue: outage ? "" : "SIG-122",
+                    TseOutage: outage),
+                DigitalReceiptDocument.PaymentsFor(PaymentMethod.Cash, 1190, 0));
 
-        var complete = DigitalReceiptHtml.Render(
-            SaleWith("4711", outage: false, logTime: DateTimeOffset.Now),
-            "R122 Laden", "Musterstr. 1, 10115 Berlin", "", "", fiscalTestMode: false, easSerial: "TORPOS-R122");
+        var complete = DocumentWith("4711", outage: false, logTime: DateTimeOffset.Now);
         assert(
-            complete.Contains("Elektronischer Beleg gem. §6 KassenSichV") && !complete.Contains("UNVOLLSTÄNDIGER BELEG"),
+            complete.MissingFields.Count == 0 && complete.Notes.Contains(DigitalReceiptDocument.CompleteNote),
             "R122 a fully signed sale still renders the §6 KassenSichV statement with no warning");
 
-        var incomplete = DigitalReceiptHtml.Render(
-            SaleWith("", outage: false, logTime: DateTimeOffset.Now),
-            "R122 Laden", "Musterstr. 1, 10115 Berlin", "", "", fiscalTestMode: false, easSerial: "TORPOS-R122");
+        var incomplete = DocumentWith("", outage: false, logTime: DateTimeOffset.Now);
         assert(
-            incomplete.Contains("UNVOLLSTÄNDIGER BELEG") && incomplete.Contains("Transaktionsnummer"),
+            incomplete.MissingFields.Contains("Transaktionsnummer"),
             "R122 a digital receipt missing its Transaktionsnummer says so instead of silently leaving the field out");
         assert(
-            !incomplete.Contains("Elektronischer Beleg gem. §6 KassenSichV"),
+            !incomplete.Notes.Contains(DigitalReceiptDocument.CompleteNote),
             "R122 ... and stops claiming §6 KassenSichV compliance it cannot show - this is the actual F5 defect");
 
-        var outageHtml = DigitalReceiptHtml.Render(
-            SaleWith("", outage: true, logTime: null),
-            "R122 Laden", "Musterstr. 1, 10115 Berlin", "", "", fiscalTestMode: false, easSerial: "TORPOS-R122");
+        var outageDocument = DocumentWith("", outage: true, logTime: null);
         assert(
-            outageHtml.Contains("TSE-Ausfall") && !outageHtml.Contains("UNVOLLSTÄNDIGER BELEG"),
+            outageDocument.Notes.Contains(DigitalReceiptDocument.OutageNote) && outageDocument.MissingFields.Count == 0,
             "R122 a genuine TSE outage is explained by the outage note, not reported as missing fields");
 
-        var missingCompanyAddress = DigitalReceiptHtml.Render(
-            SaleWith("4711", outage: false, logTime: DateTimeOffset.Now),
-            "R122 Laden", "", "", "", fiscalTestMode: false, easSerial: "TORPOS-R122");
+        var missingCompanyAddress = DocumentWith("4711", outage: false, logTime: DateTimeOffset.Now, address: "");
         assert(
-            missingCompanyAddress.Contains("Anschrift"),
+            missingCompanyAddress.MissingFields.Contains("Anschrift"),
             "R122 the digital receipt also notices a missing company address, exactly as the printer does");
 
         // Both consumers really do share one list - a field the printer demands

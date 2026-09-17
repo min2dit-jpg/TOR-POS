@@ -47,7 +47,7 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<DatabaseBackupService>(),
             _services.GetRequiredService<ITseProvider>(),
             _services.GetRequiredService<IReceiptPrinterService>(),
-            _services.GetRequiredService<IDigitalReceiptService>(),
+            _services.GetRequiredService<IDigitalReceiptPublisher>(),
             _services.GetRequiredService<ICardRefundLockRepository>(),
             _services.GetRequiredService<ICommercialLicenseService>(),
             _services.GetRequiredService<IAuthenticationService>(),

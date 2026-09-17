@@ -45,24 +45,18 @@ public static class R123ReviewTests
         });
 
         // ---------- the digital receipt ----------
-        var sale = new Sale
-        {
-            Id = 1,
-            ReceiptNumber = 123001,
-            CreatedAt = DateTimeOffset.Now,
-            PaymentMethod = PaymentMethod.Cash,
-            TotalCents = 413,
-            CashPortionCents = 413,
-            Lines = new[] { new CartLine { ProductName = "R123 Lose Ware", Quantity = 1.5m, UnitPriceCents = 275, VatRate = 5.5m } }
-        };
-        string html = "";
+        // R145: the document TOR Cloud shows, built from the print job.
+        var job = new ReceiptPrintJob(
+            123001, DateTimeOffset.Now, "R123 Laden", "Str. 1, 10115 Berlin", "", "", "", "", "Bar", 0, 413,
+            new[] { new CartLine { ProductName = "R123 Lose Ware", Quantity = 1.5m, UnitPriceCents = 275, VatRate = 5.5m } });
+        DigitalReceiptDocument? digital = null;
         WithCulture(english, () =>
-            html = DigitalReceiptHtml.Render(sale, "R123 Laden", "Str. 1, 10115 Berlin", "", "", fiscalTestMode: true));
+            digital = DigitalReceiptDocument.From(job, DigitalReceiptDocument.PaymentsFor(PaymentMethod.Cash, 413, 0)));
         assert(
-            html.Contains("1,5 ×") && html.Contains("(5,5% MwSt.)") && html.Contains("MwSt. 5,5%"),
+            digital is { } shown && shown.Lines[0].Quantity == "1,5" && shown.Lines[0].VatRate == "5,5" && shown.Vat[0].Rate == "5,5",
             "R123 the digital receipt shows quantity and VAT rate with a decimal comma under an English Windows culture");
         assert(
-            !html.Contains("1.5 ×") && !html.Contains("5.5%"),
+            digital is { } noPoint && !noPoint.Lines[0].Quantity.Contains('.') && !noPoint.Vat[0].Rate.Contains('.'),
             "R123 ... and no decimal point appears in those fields");
 
         // ---------- a report run inside the I/O queue ----------

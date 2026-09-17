@@ -36,23 +36,14 @@ public static class R106ReviewTests
             vatGroups.Count == 1 && vatGroups[0].GrossCents == 10710 && vatGroups[0].TaxCents == 1710,
             $"R106 VatSummaryCalculator correctly reduces VAT to 17,10 EUR (1710 cents) on a 119,00 EUR/19% sale with a 10% discount, not 19,00 EUR on the undiscounted gross (actual: gross={vatGroups[0].GrossCents}, tax={vatGroups[0].TaxCents})");
 
-        // 2) The digital receipt's own rendered HTML reflects the fix, not
-        // just the underlying calculator - guards against the HTML
-        // template itself reintroducing the old (buggy) inline formula.
-        var discountedSale = new Sale
-        {
-            Id = 1, ReceiptNumber = 106001, CreatedAt = DateTimeOffset.Now,
-            PaymentMethod = PaymentMethod.Cash, TotalCents = 10710, CashPortionCents = 10710,
-            DiscountCents = 1190,
-            Lines = new[] { line }
-        };
-        var html = DigitalReceiptHtml.Render(discountedSale, "R106 Laden", "", "", "", fiscalTestMode: true);
-        // Bounded on the left by '>' so "119,00 €</td>" (the line's own
-        // correct, pre-discount total) can never falsely match "19,00 €</td>"
-        // as a bare substring - a mistake in an earlier draft of this very test.
+        // 2) The digital receipt's own VAT groups reflect the fix, not just
+        // the underlying calculator - guards against a second hand-written
+        // formula creeping back in. R145: the document TOR Cloud shows.
+        var discountedJob = new ReceiptPrintJob(106001, DateTimeOffset.Now, "R106 Laden", "", "", "", "", "", "Bar", 1190, 10710, new[] { line });
+        var document = DigitalReceiptDocument.From(discountedJob, DigitalReceiptDocument.PaymentsFor(PaymentMethod.Cash, 10710, 0));
         assert(
-            html.Contains(">17,10 €</td>") && !html.Contains(">19,00 €</td>"),
-            $"R106 the rendered digital receipt shows 17,10 EUR VAT for a discounted sale, not 19,00 EUR");
+            document.Vat.Count == 1 && document.Vat[0].TaxCents == 1710 && document.Vat[0].GrossCents == 10710,
+            $"R106 the digital receipt shows 17,10 EUR VAT for a discounted sale, not 19,00 EUR (actual: {document.Vat[0].TaxCents})");
 
         // 3) DiscountProration.Prorate: a 50,00 EUR item out of a 100,00 EUR
         // Bon (subtotal) actually billed at 90,00 EUR (10 EUR discount)

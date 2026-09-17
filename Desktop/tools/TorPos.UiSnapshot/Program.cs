@@ -53,7 +53,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 3 receipt dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -92,7 +92,7 @@ async Task RunAsync()
     var fiscalSigning = new SaleFiscalSigningService(tseFailSafe, settings, sales);
     var orderFiscalSigning = new OrderFiscalSigningService(tseFailSafe, settings, parkedReceipts);
     var cashMovements = new CashMovementRepository(db, audit);
-    var digitalReceipts = new DigitalReceiptService(db, settings, sales);
+    var digitalReceipts = new CloudDigitalReceiptService(settings, null);
     var checkoutJournal = new CheckoutJournal(db);
     var paymentTerminal = new ZvtPaymentTerminalService(settings, audit, checkoutJournal);
     var dsfinvkExport = new DsfinvkExportService(db, settings);
@@ -146,6 +146,51 @@ async Task RunAsync()
         Console.WriteLine($"saved {file}");
         window.Close();
     }
+
+    // R145: the receipt choice after a sale and the digital receipt window.
+    await SnapshotDialogAsync(new ReceiptChoiceWindow(1500, testReceipt: false), "receipt-choice", check, failures, output);
+    var link = new DigitalReceiptWindow();
+    link.ShowLink("https://bon.tor-pos.de/r/f07QSoPVMkkp77T5cS1uM2J2FMSTIoeTGM3gwlUFBVA", new DateTimeOffset(2026, 12, 16, 10, 0, 6, TimeSpan.Zero));
+    await SnapshotDialogAsync(link, "digital-receipt-link", check, failures, output);
+    var failed = new DigitalReceiptWindow();
+    failed.ShowFailure("TOR Cloud ist nicht erreichbar.", "Der Papierbeleg wird ausgegeben.");
+    await SnapshotDialogAsync(failed, "digital-receipt-failure", check, failures, output);
+}
+
+// R145: a dialog at its own fixed size; every visible button must be inside it.
+static async Task SnapshotDialogAsync(Window window, string name, bool check, List<string> failures, string output)
+{
+    window.Show();
+    for (var i = 0; i < 10; i++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(30);
+    }
+
+    if (check)
+    {
+        var width = window.ClientSize.Width;
+        var height = window.ClientSize.Height;
+        foreach (var button in window.GetVisualDescendants().OfType<Button>().Where(b => b.IsVisible))
+        {
+            var topLeft = button.TranslatePoint(new Point(0, 0), window);
+            if (topLeft is null)
+            {
+                failures.Add($"{name}: button '{button.Content}' is not laid out");
+                continue;
+            }
+            if (topLeft.Value.X < -0.5 || topLeft.Value.Y < -0.5 ||
+                topLeft.Value.X + button.Bounds.Width > width + 0.5 || topLeft.Value.Y + button.Bounds.Height > height + 0.5)
+                failures.Add($"{name}: button '{button.Content}' extends past the window ({topLeft.Value.X:0},{topLeft.Value.Y:0} {button.Bounds.Width:0}x{button.Bounds.Height:0} in {width:0}x{height:0})");
+        }
+    }
+
+    var frame = window.CaptureRenderedFrame()
+        ?? throw new InvalidOperationException("No frame rendered.");
+    var file = Path.Combine(output, $"{name}.png");
+    frame.Save(file);
+    Console.WriteLine($"saved {file}");
+    window.Close();
 }
 
 // R126: the defects the HP till showed, as rules. Buttons a cashier needs to

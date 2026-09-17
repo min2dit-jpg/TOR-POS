@@ -44,6 +44,20 @@ Die echte Manipulationssicherheit ersetzt dies nicht: hierfür bleibt die TSE zw
 Der Beleg muss dem Kunden unmittelbar angeboten werden. Papier oder – mit Zustimmung –
 elektronisch ist möglich.
 
+Seit R145 wählt der Kunde nach dem abgeschlossenen Verkauf **Papierbeleg** oder
+**Digitalbeleg (QR)** (AEAO zu § 146a Nr. 2.5.2, 2.5.3; die Wahl wird im Audit-Protokoll
+festgehalten). Der Digitalbeleg öffnet sich auf dem Gerät des Kunden (Nr. 2.5.4) unter
+`bon.<domain>` ohne Anmeldung. Der elektronische Beleg wird nach AEAO zu § 146a Nr. 2.5.6
+in einem standardisierten Datenformat zur Verfügung gestellt. TOR bietet standardmäßig
+einen PDF-Download an. Ist TOR Cloud nicht erreichbar, gibt die Kasse sofort den
+Papierbeleg aus (Nr. 2.5.7).
+
+Die Cloud-Kopie ist kein Archiv: Kassen-DB, TSE und DSFinV-K bleiben auf der Kasse und
+unterliegen den Aufbewahrungsfristen des § 147 AO (je nach Unterlage 10 Jahre, 8 Jahre für
+Buchungsbelege, 6 Jahre für weitere Unterlagen). Der Link wird nach 90 Tagen gelöscht; eine
+gesetzliche 30-90-Tage-Regel dafür gibt es nicht, die Frist folgt aus der Datenminimierung
+(DSGVO). Einzelheiten: `Cloud/docs/DIGITALER-KASSENBON.md`.
+
 Für einen produktiven Kassenbeleg sind u. a. erforderlich:
 - vollständiger Unternehmername und Anschrift
 - Ausstellungsdatum

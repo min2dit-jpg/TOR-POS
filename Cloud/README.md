@@ -6,6 +6,18 @@ Start: `START-TOR-CLOUD.bat` (Windows), oder `TOR_CLOUD_DEMO=true node server.js
 Node 22.13+ mit `node:sqlite`. Standard: 127.0.0.1:8787.
 Demo: demo@torpos.local / TorDemo2026!; Gerät DEMO-KASSE-01 / tor-demo-device-token-2026.
 
+## R145 neu: Digitaler Kassenbon
+- Nach dem Verkauf wählt der Kunde an der Kasse `Papierbeleg` oder `Digitalbeleg (QR)`.
+- Die Kasse sendet nur die Angaben des Bons an `POST /api/v1/devices/receipts` (Geräte-Authentifizierung);
+  TOR Cloud erzeugt Seite und PDF und gibt den Link `https://bon.<domain>/r/<Token>` zurück (256 Bit, nur als Hash gespeichert).
+- Seite „Ihr digitaler Kassenbon“: Bon direkt lesbar, `PDF herunterladen`, `Teilen`, `Drucken`.
+  Der elektronische Beleg wird nach AEAO zu § 146a Nr. 2.5.6 in einem standardisierten Datenformat zur Verfügung gestellt;
+  TOR bietet standardmäßig einen PDF-Download an.
+- Eigene Domain (`TOR_CLOUD_RECEIPT_URL`), getrennt von API/Portal; TLS, HSTS, `noindex`, `Cache-Control: private, no-store`, keine Cookies.
+- Nach `TOR_CLOUD_RECEIPT_TTL_DAYS` (Standard 90) werden Token, PDF und Inhalt gelöscht. Das ist **kein Archiv**:
+  die aufbewahrungspflichtigen Kassendaten bleiben auf der Kasse.
+- Details, Rechtsrahmen und Betrieb: `docs/DIGITALER-KASSENBON.md`.
+
 ## R48 neu
 - Bestandssnapshots enthalten Einkaufspreis und individuellen Mindestbestand.
 - Portal zeigt VK, EK, Bestand, Mindestbestand und Einkaufs-Warenwert.
@@ -40,7 +52,7 @@ R125 - fertige Vorlagen in `deploy/`:
 |---|---|
 | `tor-pos-cloud.env.example` | alle Umgebungsvariablen für den Live-Betrieb, kommentiert |
 | `tor-pos-cloud.service` | systemd-Dienst (Neustart bei Fehler, sauberes Beenden, gehärtet) |
-| `Caddyfile.example` | HTTPS mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787` |
+| `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`, seit R145 für `api.<domain>` und `bon.<domain>` |
 
 **Datensicherung:** mit `TOR_CLOUD_BACKUP_DIR` schreibt der Server im laufenden Betrieb
 eine konsistente Kopie (`VACUUM INTO`), standardmäßig alle 24 h, die letzten 14 bleiben
@@ -77,7 +89,7 @@ Das mit Code-Signing signierte Desktop-Setup erzeugen und dann z. B.:
 `updates/manifest.json` ist in diesem Paket absichtlich `enabled=false`.
 
 ## Prüfung
-`npm run check` und `npm test`. Stand R125: 24/24 Tests.
+`npm run check` und `npm test`. Stand R145: 38/38 Tests.
 
 
 > Güvenlik notu: Canlı/uzak otomatik güncelleme, TOR/Demirkaan GmbH code-signing sertifikasının thumbprint değeri `TorRelease.UpdateSignerThumbprint` içine sabitlenmeden bilinçli olarak engellenir. Manifest içindeki thumbprint tek başına güven kaynağı değildir.
