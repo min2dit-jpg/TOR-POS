@@ -45,16 +45,8 @@ public sealed class CheckoutApplicationService
     public CheckoutApplicationService(
         IFiscalComplianceService compliance,
         ICheckoutJournal journal,
-        IPaymentTerminalService terminal)
-        : this(compliance, journal, terminal, catalog: null)
-    {
-    }
-
-    public CheckoutApplicationService(
-        IFiscalComplianceService compliance,
-        ICheckoutJournal journal,
         IPaymentTerminalService terminal,
-        IProductCatalog? catalog)
+        IProductCatalog? catalog = null)
     {
         _compliance = compliance;
         _journal = journal;
