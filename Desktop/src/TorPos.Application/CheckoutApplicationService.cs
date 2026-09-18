@@ -83,7 +83,7 @@ public sealed class CheckoutApplicationService
                         ? $"{x.MenuName}: mehrere MwSt.-Sätze ({string.Join("/", x.Allocations.Select(a => a.VatRate + "%"))})"
                         : $"{x.MenuName}: {x.Message}"));
 
-                var readiness = new FiscalReadinessReport(
+                var blockedReadiness = new FiscalReadinessReport(
                     false,
                     "TEST_ONLY",
                     "",
@@ -101,7 +101,7 @@ public sealed class CheckoutApplicationService
                     CheckoutApplicationDisposition.FiscalBlocked,
                     Operation: null,
                     TerminalResult: null,
-                    FiscalReadiness: readiness,
+                    FiscalReadiness: blockedReadiness,
                     Timings: new CheckoutApplicationTimings(null, null, null));
             }
         }
