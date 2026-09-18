@@ -14,9 +14,39 @@ public sealed record FiskaltrustMiddlewareOptions(
     string AccessToken = "",
     bool UseSaasHeaders = false)
 {
+    /// <summary>
+    /// The fiskaltrust.Portal displays local REST endpoints as rest://... .
+    /// HttpClient needs the actual transport URL, which is the same endpoint
+    /// with http://. SaaS/CloudCashbox URLs remain https://.
+    /// </summary>
+    public Uri HttpBaseUri
+    {
+        get
+        {
+            if (!BaseUri.IsAbsoluteUri)
+                throw new InvalidOperationException("fiskaltrust BaseUri muss absolut sein.");
+
+            if (string.Equals(BaseUri.Scheme, "rest", StringComparison.OrdinalIgnoreCase))
+            {
+                var builder = new UriBuilder(BaseUri)
+                {
+                    Scheme = Uri.UriSchemeHttp,
+                    Port = BaseUri.Port
+                };
+                return builder.Uri;
+            }
+
+            if (BaseUri.Scheme is not ("http" or "https"))
+                throw new InvalidOperationException(
+                    $"Nicht unterstütztes fiskaltrust REST-Schema: {BaseUri.Scheme}");
+
+            return BaseUri;
+        }
+    }
+
     public Uri Endpoint(string relative)
     {
-        var root = BaseUri.ToString().TrimEnd('/') + "/";
+        var root = HttpBaseUri.ToString().TrimEnd('/') + "/";
         return new Uri(new Uri(root), relative.TrimStart('/'));
     }
 }
