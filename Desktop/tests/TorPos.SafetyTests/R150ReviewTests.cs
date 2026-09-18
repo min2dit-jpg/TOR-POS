@@ -97,12 +97,12 @@ public static class R150ReviewTests
             terminal.PayCount == 0,
             "R150 mixed-rate menu is blocked before checkout journal and terminal side effects");
 
-        var inHouseSnapshot = snapshot with { OperationId = "r150-inhouse", ImHaus = true };
+        var inHouseSnapshot = snapshot with { OperationId = "r150-inhouse", ImHaus = true, Method = PaymentMethod.Cash };
         var allowed = await service.PrepareProductionAsync(inHouseSnapshot);
         assert(
             allowed.Disposition == CheckoutApplicationDisposition.ReadyToCommit &&
             journal.BeginCount == 1 &&
-            terminal.PayCount == 1,
+            terminal.PayCount == 0,
             "R150 same menu is not blocked when effective component rates are uniformly 19% in-house");
     }
 
