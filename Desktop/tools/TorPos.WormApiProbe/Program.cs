@@ -81,6 +81,25 @@ try
         .Where(name => !NativeLibrary.TryGetExport(library, name, out _))
         .ToArray();
 
+    // Useful for a stronger hardware acceptance/recovery workflow. These are
+    // not production requirements today, so their absence does not fail the
+    // probe. They let TOR cross-check QR/master data directly from the SDK and
+    // inspect unfinished/last transactions after a crash.
+    var recommended = new[]
+    {
+        "worm_signatureAlgorithm",
+        "worm_logTimeFormat",
+        "worm_info_tsePublicKey",
+        "worm_transaction_listStartedTransactions",
+        "worm_transaction_lastResponse",
+        "worm_export_tar_ignore_io_errors",
+        "worm_getLogMessageCertificate"
+    };
+
+    var optionalMissing = recommended
+        .Where(name => !NativeLibrary.TryGetExport(library, name, out _))
+        .ToArray();
+
     string version = "";
     if (NativeLibrary.TryGetExport(library, "worm_getVersion", out var versionExport))
     {
@@ -99,6 +118,10 @@ try
 
     foreach (var name in missing)
         Console.WriteLine($"  FEHLT: {name}");
+
+    Console.WriteLine($"Empfohlene Zusatz-Exporte: {recommended.Length - optionalMissing.Length}/{recommended.Length}");
+    foreach (var name in optionalMissing)
+        Console.WriteLine($"  OPTIONAL FEHLT: {name}");
 
     if (missing.Length == 0)
     {
