@@ -91,3 +91,26 @@ No checkout path is switched to fiskaltrust yet.
 8. Parse the returned QR/signature fields and compare them with TOR's receipt.
 9. Compare fiskaltrust DSFinV-K output with TOR's own exporter.
 10. Only after those tests consider a production provider switch.
+
+
+## Launcher package handling
+
+The portal-generated Windows launcher archive contains the CashBox credentials
+needed by the launcher to download its configuration. In particular,
+`test.cmd` and `install-service.cmd` contain an access token in clear text.
+
+Rules for TOR development:
+
+- Never commit a launcher ZIP, extracted launcher directory or access token.
+- Never write the token to TOR logs, crash reports or screenshots.
+- Keep the launcher outside the repository, e.g. `C:\fiskaltrust\TOR-POS\`.
+- Start with `test.cmd`; do not install the Windows service until the sandbox
+  connection is understood and stable.
+- Local TOR -> Middleware REST calls do not need the portal access token.
+  The token is for the launcher/configuration channel. SaaS/CloudCashbox is the
+  exception and uses `cashboxid` + `accesstoken` headers.
+- A portal REST URL such as `rest://localhost:1500/<queue-id>` is normalized
+  by TOR to `http://localhost:1500/<queue-id>` before HttpClient use.
+
+The launcher archive inspected during sandbox setup reports Launcher product
+version 1.3.52. Its binaries are not copied into the TOR repository.
