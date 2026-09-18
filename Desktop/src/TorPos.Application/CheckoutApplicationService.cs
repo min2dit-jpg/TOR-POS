@@ -40,15 +40,26 @@ public sealed class CheckoutApplicationService
     private readonly IFiscalComplianceService _compliance;
     private readonly ICheckoutJournal _journal;
     private readonly IPaymentTerminalService _terminal;
+    private readonly IProductCatalog? _catalog;
 
     public CheckoutApplicationService(
         IFiscalComplianceService compliance,
         ICheckoutJournal journal,
         IPaymentTerminalService terminal)
+        : this(compliance, journal, terminal, catalog: null)
+    {
+    }
+
+    public CheckoutApplicationService(
+        IFiscalComplianceService compliance,
+        ICheckoutJournal journal,
+        IPaymentTerminalService terminal,
+        IProductCatalog? catalog)
     {
         _compliance = compliance;
         _journal = journal;
         _terminal = terminal;
+        _catalog = catalog;
     }
 
     public async Task<CheckoutApplicationResult> PrepareProductionAsync(
@@ -59,6 +70,49 @@ public sealed class CheckoutApplicationService
 
         if (snapshot.Lines.Length == 0)
             throw new InvalidOperationException("Leerer Checkout ist nicht zulässig.");
+
+        // R150: until sale_items/TSE/DSFinV-K can persist one menu position
+        // with several VAT buckets, a mixed-rate menu must never reach a real
+        // payment. This check happens before the journal and before terminal
+        // I/O, so no external effect can occur first.
+        if (_catalog is not null)
+        {
+            var blockedMenus = MenuVatPolicy.BlockingMenus(
+                snapshot.Lines,
+                _catalog.Products,
+                snapshot.ImHaus);
+
+            if (blockedMenus.Count > 0)
+            {
+                var names = string.Join(", ", blockedMenus.Select(x => x.MenuName).Distinct());
+                var details = string.Join(
+                    " | ",
+                    blockedMenus.Select(x => x.IsValid
+                        ? $"{x.MenuName}: mehrere MwSt.-Sätze ({string.Join("/", x.Allocations.Select(a => a.VatRate + "%"))})"
+                        : $"{x.MenuName}: {x.Message}"));
+
+                var readiness = new FiscalReadinessReport(
+                    false,
+                    "TEST_ONLY",
+                    "",
+                    "2.4",
+                    new[]
+                    {
+                        new FiscalReadinessItem(
+                            "MENU_MIXED_VAT",
+                            "Menü / Combo mit gemischter MwSt.",
+                            false,
+                            $"Produktivverkauf gesperrt: {names}. {details}")
+                    });
+
+                return new CheckoutApplicationResult(
+                    CheckoutApplicationDisposition.FiscalBlocked,
+                    Operation: null,
+                    TerminalResult: null,
+                    FiscalReadiness: readiness,
+                    Timings: new CheckoutApplicationTimings(null, null, null));
+            }
+        }
 
         var fiscalWatch = Stopwatch.StartNew();
         var readiness = await _compliance.CheckAsync(ct);
