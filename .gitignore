@@ -24,3 +24,9 @@ node_modules/
 .vscode/
 Thumbs.db
 desktop.ini
+
+
+# fiskaltrust local launcher packages contain CashBox credentials/tokens.
+# Keep them outside Git; use a local folder such as C:\fiskaltrust\TOR-POS.
+fiskaltrust.service.launcher.*.zip
+.fiskaltrust/
