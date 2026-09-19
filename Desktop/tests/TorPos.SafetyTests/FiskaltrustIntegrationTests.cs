@@ -222,6 +222,23 @@ public static class FiskaltrustIntegrationTests
             receipt.FtPayLines.SequenceEqual(["MW PAY"]) &&
             receipt.FtReceiptFooter.SequenceEqual(["MW FOOTER"]),
             "fiskaltrust ReceiptResponse model preserves Middleware-added printable header/charge/pay/footer supplements");
+
+        assert(
+            FiskaltrustDeCases.ReceiptRequestFlag == 0x0000800000000000UL &&
+            FiskaltrustDeCases.WithReceiptRequest(FiskaltrustDeCases.PosReceipt) ==
+                (FiskaltrustDeCases.PosReceipt | 0x0000800000000000UL),
+            "fiskaltrust DE recovery uses the documented high ReceiptRequest flag, preventing blind duplicate fiscal actions");
+
+        assert(
+            FiskaltrustDeCases.ChargeItemCaseForVat(19m) == 0x4445000000000001UL &&
+            FiskaltrustDeCases.ChargeItemCaseForVat(7m) == 0x4445000000000002UL &&
+            FiskaltrustDeCases.ChargeItemCaseForVat(0m) == 0x4445000000000006UL,
+            "fiskaltrust DE charge-item mapping distinguishes TOR 19 %, 7 % and 0 % VAT cases");
+
+        assert(
+            FiskaltrustDeCases.DebitCardPayment != FiskaltrustDeCases.CreditCardPayment &&
+            FiskaltrustDeCases.CashPayment != FiskaltrustDeCases.DebitCardPayment,
+            "fiskaltrust DE payment constants keep cash, debit and credit card semantically distinct");
     }
 
     private sealed class FakeHandler : HttpMessageHandler
