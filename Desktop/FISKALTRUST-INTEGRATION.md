@@ -401,3 +401,21 @@ The training print job:
 
 The actual printer button remains an explicit technician action; there is no
 automatic print or production checkout wiring.
+
+
+## Middleware receipt supplements and QR-required signatures are preserved
+
+The AVTraining print projection now carries every receipt supplement that the
+Middleware adds to the request data: `ftReceiptHeader`, added
+`ftChargeItems`, `ftChargeLines`, added `ftPayItems`, `ftPayLines` and
+`ftReceiptFooter`.
+
+For German QR printing, TOR also prints the non-optional certification and TSE
+serial signature items next to the QR. If QR rendering fails, the printer falls
+back to the documented German text signature set instead of reducing the
+fallback to only a few locally chosen fields.
+
+The business-action start on the receipt is now sourced from signature type
+`0x444500000000001F` (`vorgangsbeginn`), while the TSE transaction start
+`0x...0019` remains part of the QR/text signature evidence. The receipt end
+uses the returned TSE log time `0x...001A`.
