@@ -651,6 +651,204 @@ public static class FiskaltrustIntegrationTests
             invalidResendTransitionRejected,
             "fiskaltrust journal blocks moving a COMMITTED operation back to SENT");
 
+        var acceptanceSale = new TorPos.Core.Sale
+        {
+            ReceiptNumber = 2001,
+            CreatedAt = DateTimeOffset.Parse("2026-09-19T06:35:30Z"),
+            StartedAt = DateTimeOffset.Parse("2026-09-19T06:35:00Z"),
+            PaymentMethod = TorPos.Core.PaymentMethod.Cash,
+            CashPortionCents = 1000,
+            TotalCents = 1000,
+            TransactionType = "SALE",
+            OperatorName = "TEST",
+            Lines =
+            [
+                new TorPos.Core.CartLine
+                {
+                    ProductId = 1,
+                    ProductName = "Testartikel",
+                    Quantity = 1,
+                    UnitPriceCents = 1000,
+                    VatRate = 19m
+                }
+            ]
+        };
+        var acceptanceRequest =
+            FiskaltrustSandboxRequests.SimpleCashSale(
+                acceptanceSale,
+                "ACCEPT-2001");
+        var expectedProcessData =
+            TorPos.Core.FiscalProcessData.KassenbelegText(acceptanceSale);
+
+        var acceptanceResponse = new FiskaltrustReceiptResponse
+        {
+            CbReceiptReference = "ACCEPT-2001",
+            FtQueueItemId = "queue-item-accept",
+            FtReceiptIdentification = "FT-ACCEPT-2001",
+            FtState = FiskaltrustDeState.Ready,
+            FtSignatures =
+            [
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.QrCode,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.KassenSichVQrPayload,
+                    Data = "V0;KASSE-1;Kassenbeleg-V1;" + expectedProcessData +
+                           ";100;200;2026-09-19T06:35:00.000Z;2026-09-19T06:35:31.000Z;" +
+                           "ecdsa-plain-SHA256;unixTime;SIGNATURE;PUBLICKEY"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.QrVersion,
+                    Data = "V0"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.CashRegisterSerial,
+                    Data = "KASSE-1"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessType,
+                    Data = "Kassenbeleg-V1"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessData,
+                    Data = expectedProcessData
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.TransactionNumber,
+                    Data = "100"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.SignatureCounter,
+                    Data = "200"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.TransactionStartTime,
+                    Data = "2026-09-19T06:35:00.000Z"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.SignatureLogTime,
+                    Data = "2026-09-19T06:35:31.000Z"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.SignatureAlgorithm,
+                    Data = "ecdsa-plain-SHA256"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.LogTimeFormat,
+                    Data = "unixTime"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.Signature,
+                    Data = "SIGNATURE"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text |
+                                        FiskaltrustSignatureFormats.OptionalPrintFlag,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.PublicKey,
+                    Data = "PUBLICKEY"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessStartTime,
+                    Data = "2026-09-19T06:35:00.000Z"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.CertificationIdentification,
+                    Data = "BSI-K-TR-TEST"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.TseSerialNumber,
+                    Data = "TSE-TEST-SERIAL"
+                }
+            ]
+        };
+
+        var acceptance =
+            FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
+                acceptanceSale,
+                acceptanceRequest,
+                acceptanceResponse);
+        assert(
+            acceptance.Passed &&
+            acceptance.Errors.Count == 0 &&
+            acceptance.Evidence.ProcessData == expectedProcessData,
+            "fiskaltrust physical-TSE acceptance validator passes only when QR/TSE evidence matches TOR ProcessData exactly");
+
+        var mismatchSignatures =
+            acceptanceResponse.FtSignatures
+                .Select(x =>
+                    x.FtSignatureType == FiskaltrustDeSignatureTypes.ProcessData
+                        ? x with { Data = "Beleg^WRONG" }
+                        : x)
+                .ToArray();
+        var mismatch =
+            FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
+                acceptanceSale,
+                acceptanceRequest,
+                acceptanceResponse with
+                {
+                    FtSignatures = mismatchSignatures
+                });
+        assert(
+            !mismatch.Passed &&
+            mismatch.Errors.Any(x =>
+                x.Contains("ProcessData weicht", StringComparison.Ordinal)),
+            "fiskaltrust physical-TSE acceptance validator detects Middleware/TOR ProcessData drift");
+
+        var failedState =
+            FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
+                acceptanceSale,
+                acceptanceRequest,
+                acceptanceResponse with
+                {
+                    FtState =
+                        FiskaltrustDeState.Ready |
+                        FiskaltrustDeState.TseCommunicationFailedFlag
+                });
+        assert(
+            !failedState.Passed &&
+            failedState.Errors.Any(x =>
+                x.Contains("TSE-Kommunikation", StringComparison.Ordinal)),
+            "fiskaltrust physical-TSE acceptance validator rejects a receipt returned in TSE communication-failed state");
+
         var coordinatorPath = Path.Combine(
             Path.GetTempPath(),
             "torpos-ft-coordinator-" + Guid.NewGuid().ToString("N") + ".db");
