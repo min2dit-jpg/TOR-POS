@@ -46,6 +46,28 @@ public sealed class FiskaltrustMiddlewareClient : IFiskaltrustMiddlewareClient
         if (!_options.BaseUri.IsAbsoluteUri)
             throw new ArgumentException("fiskaltrust BaseUri muss absolut sein.", nameof(options));
 
+        var httpBaseUri = _options.HttpBaseUri;
+
+        if (!string.IsNullOrEmpty(httpBaseUri.UserInfo))
+            throw new ArgumentException(
+                "Zugangsdaten dürfen nicht in der fiskaltrust URL stehen.",
+                nameof(options));
+
+        if (httpBaseUri.Scheme == Uri.UriSchemeHttp && !httpBaseUri.IsLoopback)
+        {
+            throw new ArgumentException(
+                "Unverschlüsseltes fiskaltrust HTTP ist nur auf localhost/Loopback erlaubt.",
+                nameof(options));
+        }
+
+        if (_options.UseSaasHeaders &&
+            httpBaseUri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new ArgumentException(
+                "fiskaltrust SaaS/CloudCashbox mit AccessToken erfordert HTTPS.",
+                nameof(options));
+        }
+
         if (_options.UseSaasHeaders)
         {
             if (_options.CashBoxId == Guid.Empty)
