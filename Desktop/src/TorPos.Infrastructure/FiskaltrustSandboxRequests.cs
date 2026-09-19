@@ -103,6 +103,24 @@ public static class FiskaltrustSandboxRequests
     /// separate validation (card/mixed, manual discount, reversals, cancelled
     /// positions or negative/zero lines). Production checkout never calls it.
     /// </summary>
+    /// <summary>
+    /// TSE-signed training receipt for the first real hardware acceptance run.
+    /// The DE TrainingReceipt flag maps the receipt to DSFinV-K BON_TYP
+    /// AVTraining. TOR does not create a production Sale record for this helper.
+    /// </summary>
+    public static FiskaltrustReceiptRequest TrainingSimpleCashSale(
+        Sale sale,
+        string receiptReference)
+    {
+        var request = SimpleCashSale(sale, receiptReference);
+        return request with
+        {
+            FtReceiptCase =
+                request.FtReceiptCase |
+                FiskaltrustDeCases.TrainingReceiptFlag
+        };
+    }
+
     public static FiskaltrustReceiptRequest SimpleCashSale(
         Sale sale,
         string receiptReference)
