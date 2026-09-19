@@ -31,6 +31,30 @@ internal static class VatAllocationStorage
     }
 }
 
+internal static class MenuComponentStorage
+{
+    public static string Serialize(CartLine line) =>
+        line.MenuComponents.Length == 0
+            ? ""
+            : System.Text.Json.JsonSerializer.Serialize(line.MenuComponents);
+
+    public static MenuComponentSnapshot[] Deserialize(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return Array.Empty<MenuComponentSnapshot>();
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<MenuComponentSnapshot[]>(json)
+                ?? Array.Empty<MenuComponentSnapshot>();
+        }
+        catch
+        {
+            return Array.Empty<MenuComponentSnapshot>();
+        }
+    }
+}
+
 public static class AppPaths
 {
     /// <summary>
@@ -1487,7 +1511,8 @@ public async Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationTok
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-              SELECT ci.product_id,ci.component_product_id,p.name,ci.quantity,ci.sort_order
+              SELECT ci.product_id,ci.component_product_id,p.name,ci.quantity,ci.sort_order,
+                     COALESCE(ci.choice_group,'')
               FROM product_combo_items ci
               JOIN products p ON p.id=ci.component_product_id
               WHERE p.is_active=1
@@ -1496,7 +1521,13 @@ public async Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationTok
             await using var r = await q.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
             {
-                var item = new ProductComboItem(r.GetInt64(0),r.GetInt64(1),r.GetString(2),Convert.ToDecimal(r.GetDouble(3)),r.GetInt32(4));
+                var item = new ProductComboItem(
+                    r.GetInt64(0),
+                    r.GetInt64(1),
+                    r.GetString(2),
+                    Convert.ToDecimal(r.GetDouble(3)),
+                    r.GetInt32(4),
+                    r.GetString(5));
                 if (!comboByProduct.TryGetValue(item.ProductId,out var items)) comboByProduct[item.ProductId]=items=new();
                 items.Add(item);
             }
@@ -1652,13 +1683,34 @@ private static async Task ReplaceComboItemsInTransactionAsync(SqliteConnection c
             throw new InvalidOperationException("Ungültige Menü-/Combo-Zusammenstellung.");
         if (items.Select(x => x.ComponentProductId).Distinct().Count() != items.Count)
             throw new InvalidOperationException("Ein Artikel darf im Menü nur einmal vorkommen. Menge bitte am Eintrag ändern.");
-        var previous = new List<(long Id,decimal Quantity)>();
-        await using(var read=c.CreateCommand()) {
-            read.Transaction=tx;read.CommandText="SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id ORDER BY component_product_id;";
-            read.Parameters.AddWithValue("$id",productId);await using var r=await read.ExecuteReaderAsync(ct);
-            while(await r.ReadAsync(ct))previous.Add((r.GetInt64(0),Convert.ToDecimal(r.GetDouble(1))));
+        var normalized = items
+            .Select((x,index) => x with
+            {
+                SortOrder = index,
+                ChoiceGroup = (x.ChoiceGroup ?? "").Trim().ToUpperInvariant()
+            })
+            .ToArray();
+
+        foreach (var group in normalized
+                     .Where(x => x.IsChoice)
+                     .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+        {
+            if (group.Count() < 2)
+                throw new InvalidOperationException(
+                    $"Auswahlgruppe {group.Key} benötigt mindestens zwei Artikel.");
         }
-        var recipeChanged=!previous.SequenceEqual(items.OrderBy(x=>x.ComponentProductId).Select(x=>(x.ComponentProductId,x.Quantity)));
+
+        var previous = new List<(long Id,decimal Quantity,string Group)>();
+        await using(var read=c.CreateCommand()) {
+            read.Transaction=tx;
+            read.CommandText="SELECT component_product_id,quantity,COALESCE(choice_group,'') FROM product_combo_items WHERE product_id=$id ORDER BY component_product_id;";
+            read.Parameters.AddWithValue("$id",productId);await using var r=await read.ExecuteReaderAsync(ct);
+            while(await r.ReadAsync(ct))
+                previous.Add((r.GetInt64(0),Convert.ToDecimal(r.GetDouble(1)),r.GetString(2)));
+        }
+        var recipeChanged=!previous.SequenceEqual(
+            normalized.OrderBy(x=>x.ComponentProductId)
+                .Select(x=>(x.ComponentProductId,x.Quantity,x.ChoiceGroup)));
         if(recipeChanged) {
             await using var pending=c.CreateCommand();pending.Transaction=tx;
             pending.CommandText="SELECT COUNT(*) FROM parked_receipt_items i JOIN parked_receipts p ON p.id=i.parked_receipt_id WHERE i.product_id=$id AND p.status='OPEN';";
@@ -1672,7 +1724,7 @@ private static async Task ReplaceComboItemsInTransactionAsync(SqliteConnection c
             parent.Parameters.AddWithValue("$id",productId);
             if(Convert.ToInt64(await parent.ExecuteScalarAsync(ct))>0)
                 throw new InvalidOperationException("Dieser Artikel ist bereits Menübestandteil. Verschachtelte Menüs sind nicht unterstützt.");
-            foreach(var item in items) {
+            foreach(var item in normalized) {
                 await using var component=c.CreateCommand();component.Transaction=tx;
                 component.CommandText="SELECT COUNT(*) FROM products WHERE id=$id AND is_active=1 AND NOT EXISTS(SELECT 1 FROM product_combo_items WHERE product_id=$id);";
                 component.Parameters.AddWithValue("$id",item.ComponentProductId);
@@ -1687,13 +1739,16 @@ private static async Task ReplaceComboItemsInTransactionAsync(SqliteConnection c
             del.Parameters.AddWithValue("$id",productId);
             await del.ExecuteNonQueryAsync(ct);
         }
-        for (var i=0;i<items.Count;i++)
+        for (var i=0;i<normalized.Length;i++)
         {
             await using var q=c.CreateCommand();
             q.Transaction=(SqliteTransaction)tx;
-            q.CommandText="INSERT INTO product_combo_items(product_id,component_product_id,quantity,sort_order) VALUES($p,$c,$q,$s);";
-            q.Parameters.AddWithValue("$p",productId); q.Parameters.AddWithValue("$c",items[i].ComponentProductId);
-            q.Parameters.AddWithValue("$q",Convert.ToDouble(items[i].Quantity)); q.Parameters.AddWithValue("$s",i);
+            q.CommandText="INSERT INTO product_combo_items(product_id,component_product_id,quantity,sort_order,choice_group) VALUES($p,$c,$q,$s,$g);";
+            q.Parameters.AddWithValue("$p",productId);
+            q.Parameters.AddWithValue("$c",normalized[i].ComponentProductId);
+            q.Parameters.AddWithValue("$q",Convert.ToDouble(normalized[i].Quantity));
+            q.Parameters.AddWithValue("$s",i);
+            q.Parameters.AddWithValue("$g",normalized[i].ChoiceGroup);
             await q.ExecuteNonQueryAsync(ct);
         }
 }
@@ -1703,9 +1758,15 @@ public async Task<IReadOnlyList<ProductComboItem>> GetComboItemsAsync(long produ
     {
         var result=new List<ProductComboItem>();
         await using var c=_db.OpenConnection(); await using var q=c.CreateCommand();
-        q.CommandText="SELECT ci.product_id,ci.component_product_id,p.name,ci.quantity,ci.sort_order FROM product_combo_items ci JOIN products p ON p.id=ci.component_product_id WHERE ci.product_id=$id ORDER BY ci.sort_order,ci.component_product_id;";
+        q.CommandText="SELECT ci.product_id,ci.component_product_id,p.name,ci.quantity,ci.sort_order,COALESCE(ci.choice_group,'') FROM product_combo_items ci JOIN products p ON p.id=ci.component_product_id WHERE ci.product_id=$id ORDER BY ci.sort_order,ci.component_product_id;";
         q.Parameters.AddWithValue("$id",productId); await using var r=await q.ExecuteReaderAsync(ct);
-        while(await r.ReadAsync(ct)) result.Add(new ProductComboItem(r.GetInt64(0),r.GetInt64(1),r.GetString(2),Convert.ToDecimal(r.GetDouble(3)),r.GetInt32(4)));
+        while(await r.ReadAsync(ct)) result.Add(new ProductComboItem(
+            r.GetInt64(0),
+            r.GetInt64(1),
+            r.GetString(2),
+            Convert.ToDecimal(r.GetDouble(3)),
+            r.GetInt32(4),
+            r.GetString(5)));
         return (IReadOnlyList<ProductComboItem>)result;
     });
 }
