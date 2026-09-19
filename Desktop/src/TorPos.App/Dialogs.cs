@@ -35,6 +35,209 @@ public sealed class VariantWindow:Window
     }
 }
 
+public sealed record MenuChoiceOption(
+    ProductComboItem Recipe,
+    Product Product)
+{
+    public override string ToString() =>
+        $"{Product.Name} · {Formatting.Money(Product.BasePriceCents)} · MwSt. {Product.VatRate:0}%";
+}
+
+/// <summary>
+/// R153: cashier choice for one article from each configured menu group.
+/// The customer-facing receipt remains one menu line; the chosen articles are
+/// returned only as hidden component snapshots for stock/VAT/order processing.
+/// </summary>
+public sealed class MenuChoiceWindow : Window
+{
+    private readonly Product _menu;
+    private readonly IReadOnlyDictionary<long,Product> _products;
+    private readonly List<(string Group, ComboBox Box)> _groups = new();
+    private readonly TextBlock _status = new()
+    {
+        Foreground = Brushes.OrangeRed,
+        TextWrapping = TextWrapping.Wrap
+    };
+
+    public MenuChoiceWindow(Product menu, IReadOnlyList<Product> catalog)
+    {
+        _menu = menu;
+        _products = catalog.ToDictionary(x => x.Id);
+
+        Title = menu.Name + " · Auswahl";
+        Width = 700;
+        Height = 620;
+        MinWidth = 620;
+        MinHeight = 480;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+        var body = new StackPanel
+        {
+            Spacing = 12,
+            Margin = new Avalonia.Thickness(22)
+        };
+
+        body.Children.Add(new TextBlock
+        {
+            Text = menu.Name,
+            FontSize = 25,
+            FontWeight = FontWeight.Bold,
+            Foreground = AppTheme.AccentTeal
+        });
+        body.Children.Add(new TextBlock
+        {
+            Text = $"Menüpreis: {Formatting.Money(menu.BasePriceCents)} · " +
+                   "Die Auswahl ändert keinen Aufpreis. Normalpreise der gewählten Artikel " +
+                   "werden intern für Bestand und MwSt.-Aufteilung verwendet.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = .72
+        });
+
+        var fixedItems = menu.ComboItems
+            .Where(x => !x.IsChoice)
+            .OrderBy(x => x.SortOrder)
+            .ToArray();
+
+        if (fixedItems.Length > 0)
+        {
+            var names = fixedItems.Select(x =>
+                $"{x.Quantity:0.##} × {x.ComponentName}");
+            body.Children.Add(new Border
+            {
+                Background = Brush.Parse("#102235"),
+                BorderBrush = Brush.Parse("#294765"),
+                BorderThickness = new Avalonia.Thickness(1),
+                CornerRadius = new Avalonia.CornerRadius(8),
+                Padding = new Avalonia.Thickness(12),
+                Child = new TextBlock
+                {
+                    Text = "Fest im Menü: " + string.Join(" · ", names),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+        }
+
+        foreach (var group in menu.ComboItems
+                     .Where(x => x.IsChoice)
+                     .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(x => x.Min(y => y.SortOrder)))
+        {
+            var groupName = group.Key.Trim().ToUpperInvariant();
+            var options = group
+                .OrderBy(x => x.SortOrder)
+                .Select(x => _products.TryGetValue(x.ComponentProductId, out var p)
+                    ? new MenuChoiceOption(x, p)
+                    : null)
+                .Where(x => x is not null)
+                .Cast<MenuChoiceOption>()
+                .ToArray();
+
+            var combo = new ComboBox
+            {
+                ItemsSource = options,
+                SelectedIndex = options.Length > 0 ? 0 : -1,
+                MinHeight = 46,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            _groups.Add((groupName, combo));
+
+            body.Children.Add(new TextBlock
+            {
+                Text = groupName,
+                FontSize = 14,
+                FontWeight = FontWeight.Bold,
+                Foreground = AppTheme.AccentTeal
+            });
+            body.Children.Add(combo);
+        }
+
+        body.Children.Add(_status);
+
+        var ok = new Button
+        {
+            Content = "AUSWAHL ÜBERNEHMEN",
+            MinHeight = 54,
+            MinWidth = 220,
+            FontWeight = FontWeight.Bold,
+            Background = AppTheme.SuccessGreen,
+            Foreground = Brushes.White
+        };
+        ok.Click += (_,_) => Accept();
+
+        var cancel = new Button
+        {
+            Content = "ABBRECHEN",
+            MinHeight = 54,
+            MinWidth = 140
+        };
+        cancel.Click += (_,_) => Close((MenuComponentSnapshot[]?)null);
+
+        body.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 10,
+            Children = { cancel, ok }
+        });
+
+        Content = new ScrollViewer
+        {
+            Content = body,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        Opened += (_,_) => UiLanguage.Apply(this);
+    }
+
+    private void Accept()
+    {
+        try
+        {
+            var selected = new List<MenuComponentSnapshot>();
+
+            foreach (var item in _menu.ComboItems
+                         .Where(x => !x.IsChoice)
+                         .OrderBy(x => x.SortOrder))
+            {
+                if (!_products.TryGetValue(item.ComponentProductId, out var p))
+                    throw new InvalidOperationException(
+                        $"Fester Menübestandteil {item.ComponentName} ist nicht mehr aktiv.");
+
+                selected.Add(new MenuComponentSnapshot(
+                    p.Id,
+                    p.Name,
+                    item.Quantity,
+                    p.BasePriceCents,
+                    p.VatRate,
+                    p.ImHausApplicable,
+                    ""));
+            }
+
+            foreach (var (group, box) in _groups)
+            {
+                if (box.SelectedItem is not MenuChoiceOption option)
+                    throw new InvalidOperationException(
+                        $"Bitte für {group} einen Artikel auswählen.");
+
+                var p = option.Product;
+                selected.Add(new MenuComponentSnapshot(
+                    p.Id,
+                    p.Name,
+                    option.Recipe.Quantity,
+                    p.BasePriceCents,
+                    p.VatRate,
+                    p.ImHausApplicable,
+                    group));
+            }
+
+            Close((MenuComponentSnapshot[]?)selected.ToArray());
+        }
+        catch (Exception ex)
+        {
+            _status.Text = ex.Message;
+        }
+    }
+}
+
 public sealed class MoneyInputWindow:Window
 {
     private readonly TextBox _input=new();
