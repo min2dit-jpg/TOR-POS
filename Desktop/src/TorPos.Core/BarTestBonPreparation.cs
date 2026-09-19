@@ -142,7 +142,8 @@ public static class BarTestBonPreparation
         string sentProcessData,
         string tseVorgangState,
         string qrPayload,
-        string expectedTseSerial = "")
+        string expectedTseSerial = "",
+        string expectedClientId = "")
     {
         var checks = new List<BarTestBonCheck>();
 
@@ -164,10 +165,18 @@ public static class BarTestBonPreparation
                 ? "TSE-Signatur bestätigt."
                 : result.Signed ? "TSE meldet Erfolg, aber der Prüfwert/die Signatur fehlt." : result.OutageMessage);
 
+        var clientIdOk =
+            !string.IsNullOrWhiteSpace(result.ClientId) &&
+            (string.IsNullOrWhiteSpace(expectedClientId) ||
+             string.Equals(result.ClientId, expectedClientId, StringComparison.Ordinal));
         Add(
             "TSE_CLIENT_ID",
-            !string.IsNullOrWhiteSpace(result.ClientId),
-            string.IsNullOrWhiteSpace(result.ClientId) ? "Client-ID fehlt." : result.ClientId);
+            clientIdOk,
+            string.IsNullOrWhiteSpace(result.ClientId)
+                ? "Client-ID fehlt."
+                : string.IsNullOrWhiteSpace(expectedClientId) || clientIdOk
+                    ? result.ClientId
+                    : $"Erwartet={expectedClientId} · Ist={result.ClientId}");
 
         var serialOk =
             !string.IsNullOrWhiteSpace(result.SerialNumber) &&
