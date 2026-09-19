@@ -174,7 +174,7 @@ public partial class SettingsWindow : Window
             "Erweitert / Techniker",
             "Passwortgeschützter Servicebereich. Netzwerk, Ports, Treiber, TSE, Fiskal und Systemdiagnose gehören hierher.",
             AdvancedCashPage(), PaymentTerminalPage(), TechnicalHardwarePage(), TechnicalAccountingPage(),
-            TsePage(), LegalPage(), LicensePage(), SystemPage());
+            FiskaltrustPage(), TsePage(), LegalPage(), LicensePage(), SystemPage());
     }
 
     private static string ResolveNavigationPage(string requested)
@@ -1660,6 +1660,1103 @@ public partial class SettingsWindow : Window
     }
 
 
+private Control FiskaltrustPage()
+{
+    var page = Page(
+        "fiskaltrust Diagnose / Test",
+        "Queue, SCU und Middleware direkt aus TOR POS prüfen. Produktive Verkäufe bleiben bis zur Realhardware-Abnahme getrennt.");
+
+    TextBlock Value(string text = "Nicht geprüft.") =>
+        new()
+        {
+            Text = text,
+            TextWrapping = TextWrapping.Wrap,
+            FontWeight = FontWeight.SemiBold
+        };
+
+    Control StatusRow(string label, TextBlock value)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("210,*"),
+            ColumnSpacing = 12
+        };
+        grid.Children.Add(new TextBlock
+        {
+            Text = label,
+            Opacity = 0.58
+        });
+        Grid.SetColumn(value, 1);
+        grid.Children.Add(value);
+        return ToggleRow(grid);
+    }
+
+    void SetResult(TextBlock target, bool? ok, string text)
+    {
+        target.Text = text;
+        target.Foreground = ok switch
+        {
+            true => new SolidColorBrush(Color.Parse("#57D3A0")),
+            false => new SolidColorBrush(Color.Parse("#FF8A80")),
+            _ => new SolidColorBrush(Color.Parse("#FFD166"))
+        };
+    }
+
+    FiskaltrustMiddlewareClient CreateClient(HttpClient http, bool requireIdentity)
+    {
+        var rawBaseUri = (_text.GetValueOrDefault("fiskaltrust.base_uri")?.Text ?? "").Trim();
+        if (!Uri.TryCreate(rawBaseUri, UriKind.Absolute, out var uri))
+            throw new InvalidOperationException("Gültige Queue REST-URL fehlt.");
+
+        Guid.TryParse(
+            _text.GetValueOrDefault("fiskaltrust.cashbox_id")?.Text?.Trim(),
+            out var cashBoxId);
+        Guid.TryParse(
+            _text.GetValueOrDefault("fiskaltrust.pos_system_id")?.Text?.Trim(),
+            out var posSystemId);
+        var terminalId =
+            _text.GetValueOrDefault("fiskaltrust.terminal_id")?.Text?.Trim() ?? "";
+
+        if (requireIdentity)
+        {
+            if (cashBoxId == Guid.Empty)
+                throw new InvalidOperationException("Gültige CashBox-ID fehlt.");
+            if (posSystemId == Guid.Empty)
+                throw new InvalidOperationException("Gültige POS-System-ID fehlt.");
+            if (string.IsNullOrWhiteSpace(terminalId))
+                throw new InvalidOperationException("Terminal-ID fehlt.");
+        }
+
+        return new FiskaltrustMiddlewareClient(
+            http,
+            new FiskaltrustMiddlewareOptions(
+                uri,
+                cashBoxId,
+                posSystemId,
+                terminalId));
+    }
+
+    var config = Section("Lokale Middleware / Queue");
+
+    var baseUri = Text("fiskaltrust.base_uri");
+    baseUri.PlaceholderText = "http://localhost:1500/<Queue-ID>/";
+    Form(
+        config,
+        "Queue REST-URL",
+        baseUri,
+        "Beispiel: http://localhost:1500/<Queue-ID>/. Die Queue-ID stammt aus dem fiskaltrust Portal.");
+
+    Form(
+        config,
+        "CashBox-ID",
+        Text("fiskaltrust.cashbox_id"),
+        "Für Echo nicht erforderlich. Für ZeroReceipt/Sign muss die ID gültig sein.");
+
+    Form(
+        config,
+        "POS-System-ID",
+        Text("fiskaltrust.pos_system_id"),
+        "Für Echo nicht erforderlich. Für ZeroReceipt/Sign muss die ID gültig sein.");
+
+    Form(
+        config,
+        "Terminal-ID",
+        Text("fiskaltrust.terminal_id"),
+        "Lokale Kassenkennung für fiskaltrust ReceiptRequests.");
+
+    var scuPort = Text("fiskaltrust.scu_port");
+    scuPort.PlaceholderText = "1401";
+    Form(
+        config,
+        "SCU gRPC-Port",
+        scuPort,
+        "Aktuelle lokale TOR-POS-Konfiguration: 1401. Queue REST wird aus der URL gelesen.");
+
+    config.Children.Add(ReadOnlyRow(
+        "Portal-AccessToken",
+        "Wird bei lokaler Middleware nicht in TOR POS gespeichert. Der Launcher verwaltet seinen Portalzugang separat."));
+
+    page.Children.Add(config);
+
+    var connectivity = Section("1 · Verbindung ohne Fiskalvorgang");
+    var queueStatus = Value();
+    var scuStatus = Value();
+    var echoStatus = Value();
+    var overallStatus = Value("Noch kein Verbindungstest.");
+
+    connectivity.Children.Add(StatusRow("Queue TCP", queueStatus));
+    connectivity.Children.Add(StatusRow("SCU TCP / gRPC-Port", scuStatus));
+    connectivity.Children.Add(StatusRow("Middleware Echo", echoStatus));
+    connectivity.Children.Add(StatusRow("Gesamt", overallStatus));
+
+    var connectivityButton = new Button
+    {
+        Content = "QUEUE + SCU + ECHO PRÜFEN",
+        MinWidth = 260,
+        MinHeight = 46,
+        FontWeight = FontWeight.Bold
+    };
+
+    connectivityButton.Click += async (_, _) =>
+    {
+        connectivityButton.IsEnabled = false;
+        SetResult(queueStatus, null, "wird geprüft …");
+        SetResult(scuStatus, null, "wird geprüft …");
+        SetResult(echoStatus, null, "wird geprüft …");
+        SetResult(overallStatus, null, "Diagnose läuft …");
+
+        try
+        {
+            var rawBaseUri = (baseUri.Text ?? "").Trim();
+            if (!Uri.TryCreate(rawBaseUri, UriKind.Absolute, out var uri))
+                throw new InvalidOperationException("Gültige Queue REST-URL fehlt.");
+
+            var configuredScuPort =
+                int.TryParse((scuPort.Text ?? "").Trim(), out var parsedPort)
+                    ? parsedPort
+                    : 1401;
+
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+
+            var middleware = CreateClient(http, requireIdentity: false);
+            var diagnostics =
+                new FiskaltrustDiagnosticsService(middleware);
+
+            var report = await diagnostics.CheckAsync(
+                uri,
+                "127.0.0.1",
+                configuredScuPort);
+
+            SetResult(
+                queueStatus,
+                report.QueueTcpReachable,
+                $"{report.QueueTarget} · {(report.QueueTcpReachable ? "ERREICHBAR" : "NICHT ERREICHBAR")}");
+
+            SetResult(
+                scuStatus,
+                report.ScuTcpReachable,
+                $"{report.ScuTarget} · {(report.ScuTcpReachable ? "ERREICHBAR" : "NICHT ERREICHBAR")}");
+
+            SetResult(
+                echoStatus,
+                report.EchoSucceeded,
+                report.EchoSucceeded
+                    ? $"OK · Antwort: {report.EchoMessage}"
+                    : report.Errors.FirstOrDefault(x => x.StartsWith("Echo", StringComparison.Ordinal))
+                      ?? "Echo nicht erfolgreich.");
+
+            SetResult(
+                overallStatus,
+                report.BasicConnectivityOk,
+                report.BasicConnectivityOk
+                    ? $"BEREIT · {report.CheckedAt:dd.MM.yyyy HH:mm:ss}"
+                    : string.Join(" · ", report.Errors));
+        }
+        catch (Exception ex)
+        {
+            SetResult(queueStatus, false, "Prüfung fehlgeschlagen.");
+            SetResult(scuStatus, false, "Prüfung fehlgeschlagen.");
+            SetResult(echoStatus, false, "Prüfung fehlgeschlagen.");
+            SetResult(overallStatus, false, ex.Message);
+        }
+        finally
+        {
+            connectivityButton.IsEnabled = true;
+        }
+    };
+
+    connectivity.Children.Add(connectivityButton);
+    page.Children.Add(connectivity);
+
+    var tseTest = Section("2 · Physische Swissbit TSE · ZeroReceipt + TSEInfo");
+
+    var hardwareConfirmation = new CheckBox
+    {
+        Content = new TextBlock
+        {
+            Text = "Physische Swissbit TSE ist angeschlossen und im Launcher als bereit geprüft.",
+            TextWrapping = TextWrapping.Wrap
+        },
+        Margin = new Thickness(0, 4, 0, 8)
+    };
+    tseTest.Children.Add(ToggleRow(hardwareConfirmation));
+
+    var zeroStatus = Value("Noch nicht ausgeführt.");
+    var ftState = Value();
+    var receiptIdentification = Value();
+    var tseSerial = Value();
+    var certification = Value();
+
+    tseTest.Children.Add(StatusRow("ZeroReceipt", zeroStatus));
+    tseTest.Children.Add(StatusRow("ftState", ftState));
+    tseTest.Children.Add(StatusRow("Receipt-ID", receiptIdentification));
+    tseTest.Children.Add(StatusRow("TSE-Seriennummer", tseSerial));
+    tseTest.Children.Add(StatusRow("Zertifizierung", certification));
+
+    var stateData = new TextBox
+    {
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MinHeight = 110,
+        MaxHeight = 190,
+        Text = "Noch keine ftStateData empfangen."
+    };
+    Form(
+        tseTest,
+        "ftStateData",
+        stateData,
+        "TSEInfo wird von fiskaltrust bei einem ZeroReceipt mit TSEInfo-Flag im ftStateData-Feld zurückgegeben.");
+
+    var zeroButton = new Button
+    {
+        Content = "ZERO RECEIPT + TSEINFO TESTEN",
+        MinWidth = 290,
+        MinHeight = 46,
+        FontWeight = FontWeight.Bold
+    };
+
+    zeroButton.Click += async (_, _) =>
+    {
+        if (hardwareConfirmation.IsChecked != true)
+        {
+            SetResult(
+                zeroStatus,
+                false,
+                "Nicht gestartet: zuerst bestätigen, dass die physische Swissbit TSE angeschlossen ist.");
+            return;
+        }
+
+        zeroButton.IsEnabled = false;
+        SetResult(zeroStatus, null, "ZeroReceipt wird vorbereitet …");
+        SetResult(ftState, null, "wartet …");
+        SetResult(receiptIdentification, null, "wartet …");
+        SetResult(tseSerial, null, "wartet …");
+        SetResult(certification, null, "wartet …");
+        stateData.Text = "wartet …";
+
+        try
+        {
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+
+            var middleware = CreateClient(http, requireIdentity: true);
+            var database = new SqliteDatabase(AppPaths.DatabasePath);
+            var journal = new FiskaltrustSignJournal(database);
+            await journal.InitializeAsync();
+
+            var coordinator =
+                new FiskaltrustSignCoordinator(
+                    middleware,
+                    journal);
+
+            var reference =
+                $"TOR-DIAG-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+            var request =
+                FiskaltrustSandboxRequests.ZeroReceiptWithTseInfo(
+                    reference,
+                    DateTimeOffset.Now,
+                    _currentUser.Username);
+
+            var response = await coordinator.ExecuteAsync(
+                request,
+                "DIAG:TSEINFO");
+
+            var evidence =
+                FiskaltrustGermanReceiptProjection.Extract(response);
+
+            var ready = FiskaltrustDeState.IsReady(response.FtState);
+            var hasTseInfo = response.FtStateData is not null;
+            var communicationFailed =
+                FiskaltrustDeState.HasFlag(
+                    response.FtState,
+                    FiskaltrustDeState.TseCommunicationFailedFlag);
+            var switching =
+                FiskaltrustDeState.HasFlag(
+                    response.FtState,
+                    FiskaltrustDeState.ScuSwitchingFlag);
+            var zeroOk = ready && hasTseInfo;
+
+            SetResult(
+                zeroStatus,
+                zeroOk ? true : communicationFailed || switching ? false : null,
+                zeroOk
+                    ? "ERFOLGREICH · TSE-Kommunikation bereit · TSEInfo empfangen"
+                    : communicationFailed
+                        ? "FEHLER · TSE-Kommunikation fehlgeschlagen"
+                        : switching
+                            ? "FEHLER · SCU-Wechselzustand"
+                            : ready
+                                ? "Antwort bereit, aber TSEInfo/ftStateData fehlt"
+                                : "Antwort empfangen · Status prüfen");
+
+            SetResult(
+                ftState,
+                ready,
+                $"0x{response.FtState:X16}");
+
+            SetResult(
+                receiptIdentification,
+                string.IsNullOrWhiteSpace(response.FtReceiptIdentification) ? null : true,
+                string.IsNullOrWhiteSpace(response.FtReceiptIdentification)
+                    ? "(nicht geliefert)"
+                    : response.FtReceiptIdentification);
+
+            SetResult(
+                tseSerial,
+                string.IsNullOrWhiteSpace(evidence.TseSerialNumber) ? null : true,
+                string.IsNullOrWhiteSpace(evidence.TseSerialNumber)
+                    ? "(siehe ftStateData / TSEInfo)"
+                    : evidence.TseSerialNumber);
+
+            SetResult(
+                certification,
+                string.IsNullOrWhiteSpace(evidence.CertificationIdentification) ? null : true,
+                string.IsNullOrWhiteSpace(evidence.CertificationIdentification)
+                    ? "(siehe ftStateData / TSEInfo)"
+                    : evidence.CertificationIdentification);
+
+            if (response.FtStateData is { } rawState)
+            {
+                var raw = rawState.GetRawText();
+                stateData.Text =
+                    raw.Length <= 4000
+                        ? raw
+                        : raw[..4000] + Environment.NewLine + "… gekürzt …";
+            }
+            else
+            {
+                stateData.Text = "(kein ftStateData geliefert)";
+            }
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_TSEINFO_TEST",
+                "FISKALTRUST",
+                reference,
+                $"ZeroReceipt/TSEInfo ausgeführt; ftState=0x{response.FtState:X16}; keine Zugangsdaten protokolliert.");
+        }
+        catch (FiskaltrustSignUnresolvedException ex)
+        {
+            SetResult(
+                zeroStatus,
+                false,
+                "ERGEBNIS UNKLAR · kein automatisches Neusenden. " + ex.Message);
+            stateData.Text =
+                "Der Vorgang bleibt im fiskaltrust Sign-Journal zur ReceiptRequest-Recovery gespeichert.";
+        }
+        catch (Exception ex)
+        {
+            SetResult(
+                zeroStatus,
+                false,
+                "TEST FEHLGESCHLAGEN · " + ex.Message);
+            stateData.Text = ex.Message;
+        }
+        finally
+        {
+            zeroButton.IsEnabled = true;
+        }
+    };
+
+    tseTest.Children.Add(zeroButton);
+    page.Children.Add(tseTest);
+
+    var training = Section("3 · BAR Testbon · AVTraining");
+
+    training.Children.Add(ReadOnlyRow(
+        "Testprofil",
+        "1,00 € · 1 × TOR TESTARTIKEL · 19 % MwSt. · BAR · fiskaltrust Training receipt (DSFinV-K AVTraining)."));
+
+    training.Children.Add(ReadOnlyRow(
+        "Buchung in TOR POS",
+        "KEINE · Dieser Hardwaretest erzeugt keinen normalen TOR-Verkauf und keine produktive Bonnummer."));
+
+    var trainingConfirmation = new CheckBox
+    {
+        Content = new TextBlock
+        {
+            Text = "Ich bestätige: Dieser Test sendet einen echten TSE-signierten AVTraining-Beleg an fiskaltrust.",
+            TextWrapping = TextWrapping.Wrap
+        },
+        Margin = new Thickness(0, 4, 0, 8)
+    };
+    training.Children.Add(ToggleRow(trainingConfirmation));
+
+    var trainingStatus = Value("Noch nicht ausgeführt.");
+    var trainingReceiptId = Value();
+    var trainingTransaction = Value();
+    var trainingCounter = Value();
+    var trainingTseSerial = Value();
+    var trainingProcessData = Value();
+
+    training.Children.Add(StatusRow("Acceptance", trainingStatus));
+    training.Children.Add(StatusRow("Receipt-ID", trainingReceiptId));
+    training.Children.Add(StatusRow("TSE-Transaktion", trainingTransaction));
+    training.Children.Add(StatusRow("Signaturzähler", trainingCounter));
+    training.Children.Add(StatusRow("TSE-Seriennummer", trainingTseSerial));
+    training.Children.Add(StatusRow("ProcessData", trainingProcessData));
+
+    ReceiptPrintJob? lastTrainingPrintJob = null;
+    Sale? lastTrainingSale = null;
+    FiskaltrustReceiptRequest? lastTrainingRequest = null;
+    FiskaltrustReceiptResponse? lastTrainingResponse = null;
+    var trainingLockedAfterFiscalAttempt = false;
+    var trainingPrintAttempted = false;
+
+    var trainingQr = new TextBox
+    {
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MinHeight = 95,
+        MaxHeight = 170,
+        Text = "Noch kein QR-Payload empfangen."
+    };
+    Form(
+        training,
+        "KassenSichV QR-Payload",
+        trainingQr,
+        "Wird exakt aus der fiskaltrust ReceiptResponse übernommen; TOR verändert oder trimmt die signierten Werte nicht.");
+
+    var trainingButton = new Button
+    {
+        Content = "1,00 € BAR TRAININGSBON SIGNIEREN",
+        MinWidth = 320,
+        MinHeight = 46,
+        FontWeight = FontWeight.Bold
+    };
+
+    var printTrainingButton = new Button
+    {
+        Content = "80 MM TRAININGSBON DRUCKEN",
+        MinWidth = 260,
+        MinHeight = 46,
+        IsEnabled = false
+    };
+
+    var trainingPrintStatus = Value(
+        "Druck erst nach bestandenem AVTraining-Sign-Test verfügbar.");
+    training.Children.Add(StatusRow("80 mm Druck", trainingPrintStatus));
+
+    trainingButton.Click += async (_, _) =>
+    {
+        if (hardwareConfirmation.IsChecked != true)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "Nicht gestartet: zuerst physische Swissbit TSE im Abschnitt 2 bestätigen.");
+            return;
+        }
+
+        if (trainingConfirmation.IsChecked != true)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "Nicht gestartet: AVTraining-Signierung muss ausdrücklich bestätigt werden.");
+            return;
+        }
+
+        if (trainingLockedAfterFiscalAttempt)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "In dieser Sitzung wurde bereits ein fiskaler Trainingsversuch gestartet. " +
+                "Nicht erneut signieren; zuerst Ergebnis/Recovery prüfen.");
+            return;
+        }
+
+        trainingButton.IsEnabled = false;
+        printTrainingButton.IsEnabled = false;
+        lastTrainingPrintJob = null;
+        lastTrainingSale = null;
+        lastTrainingRequest = null;
+        lastTrainingResponse = null;
+        trainingPrintAttempted = false;
+        SetResult(
+            trainingPrintStatus,
+            null,
+            "Wartet auf bestandenen Sign-/Acceptance-Test …");
+        SetResult(trainingStatus, null, "AVTraining-Beleg wird vorbereitet …");
+        SetResult(trainingReceiptId, null, "wartet …");
+        SetResult(trainingTransaction, null, "wartet …");
+        SetResult(trainingCounter, null, "wartet …");
+        SetResult(trainingTseSerial, null, "wartet …");
+        SetResult(trainingProcessData, null, "wartet …");
+        trainingQr.Text = "wartet …";
+
+        try
+        {
+            var now = DateTimeOffset.Now;
+            var sale = new Sale
+            {
+                ReceiptNumber = 0,
+                CreatedAt = now,
+                StartedAt = now.AddSeconds(-1),
+                PaymentMethod = PaymentMethod.Cash,
+                CashPortionCents = 100,
+                CardPortionCents = 0,
+                TotalCents = 100,
+                TransactionType = "SALE",
+                ImHaus = false,
+                OperatorName = _currentUser.Username,
+                Lines =
+                [
+                    new CartLine
+                    {
+                        ProductId = 0,
+                        ProductName = "TOR TESTARTIKEL",
+                        Quantity = 1m,
+                        UnitPriceCents = 100,
+                        VatRate = 19m
+                    }
+                ]
+            };
+
+            var reference =
+                $"TOR-TRAINING-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+
+            var request =
+                FiskaltrustSandboxRequests.TrainingSimpleCashSale(
+                    sale,
+                    reference);
+
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+
+            var middleware = CreateClient(http, requireIdentity: true);
+            var journal =
+                new FiskaltrustSignJournal(
+                    new SqliteDatabase(AppPaths.DatabasePath));
+            await journal.InitializeAsync();
+
+            var coordinator =
+                new FiskaltrustSignCoordinator(
+                    middleware,
+                    journal);
+
+            var response = await coordinator.ExecuteAsync(
+                request,
+                "DIAG:TRAINING:CASH");
+
+            // A definite ReceiptResponse means a real AVTraining fiscal
+            // attempt has happened. Do not let this UI send a second training
+            // receipt in the same session just because printing later fails.
+            trainingLockedAfterFiscalAttempt = true;
+            lastTrainingSale = sale;
+            lastTrainingRequest = request;
+            lastTrainingResponse = response;
+
+            var report =
+                FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
+                    sale,
+                    request,
+                    response);
+
+            var evidence = report.Evidence;
+
+            SetResult(
+                trainingStatus,
+                report.Passed,
+                report.Passed
+                    ? "BESTANDEN · QR/TSE/ProcessData stimmen mit TOR überein"
+                    : "NICHT BESTANDEN · " + string.Join(" · ", report.Errors));
+
+            SetResult(
+                trainingReceiptId,
+                string.IsNullOrWhiteSpace(response.FtReceiptIdentification) ? false : true,
+                string.IsNullOrWhiteSpace(response.FtReceiptIdentification)
+                    ? "(fehlt)"
+                    : response.FtReceiptIdentification);
+
+            SetResult(
+                trainingTransaction,
+                ulong.TryParse(evidence.TransactionNumber, out var transactionNumber) &&
+                transactionNumber > 0,
+                string.IsNullOrWhiteSpace(evidence.TransactionNumber)
+                    ? "(fehlt)"
+                    : evidence.TransactionNumber);
+
+            SetResult(
+                trainingCounter,
+                ulong.TryParse(evidence.SignatureCounter, out var signatureCounter) &&
+                signatureCounter > 0,
+                string.IsNullOrWhiteSpace(evidence.SignatureCounter)
+                    ? "(fehlt)"
+                    : evidence.SignatureCounter);
+
+            SetResult(
+                trainingTseSerial,
+                string.IsNullOrWhiteSpace(evidence.TseSerialNumber) ? false : true,
+                string.IsNullOrWhiteSpace(evidence.TseSerialNumber)
+                    ? "(fehlt)"
+                    : evidence.TseSerialNumber);
+
+            var expectedProcessData =
+                FiscalProcessData.KassenbelegText(sale);
+
+            SetResult(
+                trainingProcessData,
+                string.Equals(
+                    evidence.ProcessData,
+                    expectedProcessData,
+                    StringComparison.Ordinal),
+                string.Equals(
+                    evidence.ProcessData,
+                    expectedProcessData,
+                    StringComparison.Ordinal)
+                    ? "IDENTISCH · " + evidence.ProcessData
+                    : $"ABWEICHUNG · TOR: {expectedProcessData} · fiskaltrust: {evidence.ProcessData}");
+
+            trainingQr.Text =
+                string.IsNullOrWhiteSpace(evidence.QrPayload)
+                    ? "(QR-Payload fehlt)"
+                    : evidence.QrPayload;
+
+            if (report.Passed)
+            {
+                try
+                {
+                    var values = await _settings.LoadAllAsync();
+                    var companyName = values.GetText("company.name");
+                    var street = values.GetText("company.street");
+                    var zip = values.GetText("company.zip");
+                    var city = values.GetText("company.city");
+                    var locality = string.Join(
+                        " ",
+                        new[] { zip, city }
+                            .Where(x => !string.IsNullOrWhiteSpace(x)));
+                    var companyAddress = string.Join(
+                        ", ",
+                        new[] { street, locality }
+                            .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+                    lastTrainingPrintJob =
+                        FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                            sale,
+                            request,
+                            response,
+                            companyName,
+                            companyAddress,
+                            values.GetText("company.tax_no"),
+                            values.GetText("company.vat_id"),
+                            values.GetText("receipt.logo_path"),
+                            values.GetBool(
+                                "printer.auto_cut.enabled",
+                                fallback: true));
+
+                    printTrainingButton.IsEnabled = true;
+                    SetResult(
+                        trainingPrintStatus,
+                        true,
+                        "Bereit · signierte fiskaltrust-Daten werden unverändert als QR/TSE-Nachweis gedruckt.");
+                }
+                catch (Exception printPreparationError)
+                {
+                    // The fiscal Sign already succeeded and must never be
+                    // misreported as failed just because the local print
+                    // configuration is incomplete.
+                    lastTrainingPrintJob = null;
+                    printTrainingButton.IsEnabled = false;
+                    SetResult(
+                        trainingPrintStatus,
+                        false,
+                        "Sign/Acceptance bestanden, Druck aber noch gesperrt · " +
+                        printPreparationError.Message);
+                }
+            }
+            else
+            {
+                SetResult(
+                    trainingPrintStatus,
+                    false,
+                    "Gesperrt · Acceptance-Test ist nicht bestanden.");
+            }
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_TRAINING_CASH_TEST",
+                "FISKALTRUST",
+                reference,
+                $"AVTraining BAR 1,00 EUR; acceptance={(report.Passed ? "PASS" : "FAIL")}; ftState=0x{response.FtState:X16}; keine Zugangsdaten protokolliert.");
+        }
+        catch (FiskaltrustSignUnresolvedException ex)
+        {
+            trainingLockedAfterFiscalAttempt = true;
+            lastTrainingPrintJob = null;
+            printTrainingButton.IsEnabled = false;
+            SetResult(
+                trainingPrintStatus,
+                false,
+                "Druck gesperrt · Sign-Ergebnis ist ungeklärt.");
+            SetResult(
+                trainingStatus,
+                false,
+                "ERGEBNIS UNKLAR · kein automatisches Neusenden. " + ex.Message);
+            trainingQr.Text =
+                "Vorgang im Recovery-Journal. Zuerst Abschnitt 4 · Recovery-Journal prüfen.";
+        }
+        catch (Exception ex)
+        {
+            lastTrainingPrintJob = null;
+            printTrainingButton.IsEnabled =
+                lastTrainingSale is not null &&
+                lastTrainingRequest is not null &&
+                lastTrainingResponse is not null;
+
+            SetResult(
+                trainingPrintStatus,
+                false,
+                "Druck gesperrt · " + ex.Message);
+            SetResult(
+                trainingStatus,
+                false,
+                "TEST FEHLGESCHLAGEN · " + ex.Message);
+            trainingQr.Text = ex.Message;
+        }
+        finally
+        {
+            trainingButton.IsEnabled =
+                !trainingLockedAfterFiscalAttempt;
+        }
+    };
+
+    printTrainingButton.Click += async (_, _) =>
+    {
+        printTrainingButton.IsEnabled = false;
+        try
+        {
+            var values = await _settings.LoadAllAsync();
+
+            if (lastTrainingPrintJob is null &&
+                lastTrainingSale is { } signedSale &&
+                lastTrainingRequest is { } signedRequest &&
+                lastTrainingResponse is { } signedResponse)
+            {
+                var companyName = values.GetText("company.name");
+                var street = values.GetText("company.street");
+                var zip = values.GetText("company.zip");
+                var city = values.GetText("company.city");
+                var locality = string.Join(
+                    " ",
+                    new[] { zip, city }
+                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+                var companyAddress = string.Join(
+                    ", ",
+                    new[] { street, locality }
+                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+                lastTrainingPrintJob =
+                    FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                        signedSale,
+                        signedRequest,
+                        signedResponse,
+                        companyName,
+                        companyAddress,
+                        values.GetText("company.tax_no"),
+                        values.GetText("company.vat_id"),
+                        values.GetText("receipt.logo_path"),
+                        values.GetBool(
+                            "printer.auto_cut.enabled",
+                            fallback: true));
+            }
+
+            if (lastTrainingPrintJob is not { } printJob)
+            {
+                throw new InvalidOperationException(
+                    "Kein bestandener AVTraining-Beleg zum Drucken vorhanden.");
+            }
+            if (!values.GetBool(
+                    "device.receipt_printer.enabled",
+                    fallback: false))
+            {
+                throw new InvalidOperationException(
+                    "Bondrucker ist unter Geräte nicht aktiviert.");
+            }
+
+            var printerName =
+                values.GetText("device.receipt_printer.name").Trim();
+            if (printerName.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "Kein Bondrucker ausgewählt.");
+            }
+
+            using var probeTimeout =
+                new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            var probe =
+                await _receiptPrinter.ProbeAsync(
+                    printerName,
+                    probeTimeout.Token);
+
+            if (!probe.Success)
+            {
+                throw new InvalidOperationException(
+                    "Drucker nicht bereit: " + probe.Message);
+            }
+
+            // From this point the Windows spooler outcome can become
+            // ambiguous. Do not expose a one-click duplicate after success or
+            // timeout; the operator must inspect the physical paper/queue.
+            trainingPrintAttempted = true;
+
+            await _receiptPrinter.PrintReceiptAsync(
+                printJob,
+                printerName);
+
+            SetResult(
+                trainingPrintStatus,
+                true,
+                $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} · An Windows übergeben · Papierbon und QR-Code am Drucker kontrollieren.");
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_TRAINING_PRINT",
+                "FISKALTRUST",
+                printJob.ExternalReceiptId,
+                "Signierter AVTraining-Bon an Windows-Drucker übergeben; Kassenlade bleibt geschlossen.");
+        }
+        catch (Exception ex)
+        {
+            var uncertain =
+                ex is TimeoutException ||
+                ex.Message.Contains(
+                    "unklar",
+                    StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains(
+                    "Timeout",
+                    StringComparison.OrdinalIgnoreCase);
+
+            SetResult(
+                trainingPrintStatus,
+                false,
+                uncertain
+                    ? "Druckstatus unklar · nicht blind erneut drucken; zuerst Windows-Druckwarteschlange und Papierbeleg prüfen."
+                    : "Druck fehlgeschlagen · " + ex.Message);
+        }
+        finally
+        {
+            printTrainingButton.IsEnabled =
+                !trainingPrintAttempted &&
+                (lastTrainingPrintJob is not null ||
+                 (lastTrainingSale is not null &&
+                  lastTrainingRequest is not null &&
+                  lastTrainingResponse is not null));
+        }
+    };
+
+    training.Children.Add(
+        new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Children =
+            {
+                trainingButton,
+                printTrainingButton
+            }
+        });
+    training.Children.Add(ReadOnlyRow(
+        "Wichtig",
+        "AVTraining ist ein fiskaltrust/TSE-Trainingsbeleg. Er dient nur der Hardware-Abnahme und schaltet den produktiven Checkout nicht frei."));
+    page.Children.Add(training);
+
+    var recovery = Section("4 · Recovery-Journal");
+    var recoveryStatus = Value("Noch nicht geprüft.");
+    recovery.Children.Add(StatusRow("Offene SENT / UNKNOWN", recoveryStatus));
+
+    var recoveryButtons = new StackPanel
+    {
+        Orientation = Orientation.Horizontal,
+        Spacing = 10
+    };
+
+    var inspectRecovery = new Button
+    {
+        Content = "JOURNAL PRÜFEN",
+        MinWidth = 180,
+        MinHeight = 44
+    };
+
+    var recoverPending = new Button
+    {
+        Content = "RECEIPTREQUEST RECOVERY",
+        MinWidth = 240,
+        MinHeight = 44
+    };
+
+    inspectRecovery.Click += async (_, _) =>
+    {
+        inspectRecovery.IsEnabled = false;
+        try
+        {
+            var journal =
+                new FiskaltrustSignJournal(
+                    new SqliteDatabase(AppPaths.DatabasePath));
+            await journal.InitializeAsync();
+            var pending =
+                await journal.GetRecoveryCandidatesAsync();
+
+            if (pending.Count == 0)
+            {
+                SetResult(
+                    recoveryStatus,
+                    true,
+                    "Keine ungeklärten fiskaltrust Sign-Vorgänge.");
+            }
+            else
+            {
+                var preview = string.Join(
+                    ", ",
+                    pending
+                        .Take(4)
+                        .Select(x => $"{x.ReceiptReference}/{x.OperationKey}"));
+                if (pending.Count > 4)
+                    preview += $" · +{pending.Count - 4} weitere";
+
+                SetResult(
+                    recoveryStatus,
+                    false,
+                    $"{pending.Count} ungeklärt · {preview}");
+            }
+        }
+        catch (Exception ex)
+        {
+            SetResult(
+                recoveryStatus,
+                false,
+                "Journal-Prüfung fehlgeschlagen: " + ex.Message);
+        }
+        finally
+        {
+            inspectRecovery.IsEnabled = true;
+        }
+    };
+
+    recoverPending.Click += async (_, _) =>
+    {
+        recoverPending.IsEnabled = false;
+        SetResult(
+            recoveryStatus,
+            null,
+            "ReceiptRequest-Recovery läuft … kein ursprünglicher Sign wird erneut gesendet.");
+
+        try
+        {
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(20)
+            };
+
+            var middleware = CreateClient(http, requireIdentity: true);
+            var journal =
+                new FiskaltrustSignJournal(
+                    new SqliteDatabase(AppPaths.DatabasePath));
+            await journal.InitializeAsync();
+
+            var before =
+                await journal.GetRecoveryCandidatesAsync();
+
+            if (before.Count == 0)
+            {
+                SetResult(
+                    recoveryStatus,
+                    true,
+                    "Keine ungeklärten Vorgänge vorhanden.");
+                return;
+            }
+
+            var coordinator =
+                new FiskaltrustSignCoordinator(
+                    middleware,
+                    journal);
+
+            var unresolved =
+                await coordinator.RecoverPendingAsync();
+
+            var after =
+                await journal.GetRecoveryCandidatesAsync();
+
+            if (after.Count == 0)
+            {
+                SetResult(
+                    recoveryStatus,
+                    true,
+                    $"{before.Count} Vorgang/Vorgänge per ReceiptRequest geklärt.");
+            }
+            else
+            {
+                var preview = string.Join(
+                    ", ",
+                    after
+                        .Take(4)
+                        .Select(x => $"{x.ReceiptReference}/{x.OperationKey}"));
+
+                SetResult(
+                    recoveryStatus,
+                    false,
+                    $"{after.Count} weiterhin ungeklärt · {preview}");
+            }
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_RECOVERY",
+                "FISKALTRUST",
+                "",
+                $"ReceiptRequest-Recovery geprüft; vorher={before.Count}; danach={after.Count}; unresolved={unresolved.Count}; keine Zugangsdaten protokolliert.");
+        }
+        catch (Exception ex)
+        {
+            SetResult(
+                recoveryStatus,
+                false,
+                "Recovery fehlgeschlagen: " + ex.Message);
+        }
+        finally
+        {
+            recoverPending.IsEnabled = true;
+        }
+    };
+
+    recoveryButtons.Children.Add(inspectRecovery);
+    recoveryButtons.Children.Add(recoverPending);
+    recovery.Children.Add(recoveryButtons);
+    recovery.Children.Add(ReadOnlyRow(
+        "Regel",
+        "SENT/UNKNOWN wird ausschließlich über ReceiptRequest abgeglichen. TOR sendet den ursprünglichen Sign nicht automatisch ein zweites Mal."));
+    page.Children.Add(recovery);
+
+    var production = Section("5 · Produktive Freigabe");
+    production.Children.Add(ReadOnlyRow(
+        "Status",
+        "GESPERRT · Erst nach erfolgreichem ZeroReceipt/TSEInfo, kontrolliertem BAR-Testbon, Bon/QR-Prüfung und Restart/Recovery-Test."));
+    production.Children.Add(ReadOnlyRow(
+        "Karten / Mixed",
+        "Noch nicht freigegeben. Debit/Kredit darf nicht aus TORs generischem KARTE-Wert geraten werden."));
+    production.Children.Add(ReadOnlyRow(
+        "Pfand / Angebot / Storno",
+        "Noch nicht freigegeben. Diese Geschäftsfälle erhalten eigene fiskaltrust-Mappings und Tests."));
+    page.Children.Add(production);
+
+    page.Children.Add(InfoCard(
+        "Sicherheitsregel",
+        "QUEUE + SCU + ECHO erzeugt keinen Fiskalvorgang. ZERO RECEIPT + TSEINFO und der BAR-AVTraining-Test erzeugen dagegen bewusst fiskaltrust/TSE-Diagnosevorgänge und starten nur nach manueller Bestätigung. " +
+        "Der BAR-Test trägt den DE-Training-Flag und wird nicht als normaler TOR-Verkauf gebucht. Bei einem unklaren Ergebnis wird niemals blind erneut gesendet; TOR hält den Vorgang im Recovery-Journal.",
+        AppTheme.WarningAmberBg));
+
+    return page;
+}
+
 private Control TsePage()
 {
     var runtime = _tseProvider.GetRuntimeStatus();
@@ -2887,6 +3984,7 @@ private Control TsePage()
             NormalizeIntSetting(values, "reports.email.monthly.day", 1, 1, 28);
             NormalizeTimeSetting(values, "reports.email.monthly.time", "00:15");
             NormalizeIntSetting(values, "reports.email.smtp.port", 587, 1, 65535);
+            NormalizeIntSetting(values, "fiskaltrust.scu_port", 1401, 1, 65535);
 
             var enteredSmtpPassword = (_reportSmtpPassword.Text ?? "").Trim();
             if (ReportEmailService.LooksMaskedPassword(enteredSmtpPassword))

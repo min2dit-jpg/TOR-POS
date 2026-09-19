@@ -434,7 +434,9 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         using var document = new PrintDocument();
         document.DocumentName = isTest
             ? "TOR POS - Star mC-Print3 Test"
-            : $"TOR POS Bon {job.ReceiptNumber:000000}";
+            : job.TrainingReceipt
+                ? "TOR POS fiskaltrust Trainingsbon"
+                : $"TOR POS Bon {job.ReceiptNumber:000000}";
 
         document.PrinterSettings = new PrinterSettings
         {
@@ -795,6 +797,12 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             Text(job.Header, normal);
         }
 
+        foreach (var supplement in
+                 job.MiddlewareHeaderLines ?? Array.Empty<string>())
+        {
+            Text(supplement, small);
+        }
+
         Rule();
 
         if (isTest)
@@ -808,7 +816,21 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         }
         else
         {
-            Text(job.FiscalTestMode && job.ReceiptNumber == 0 ? "TESTBELEG - OHNE FISKALE BONNUMMER" : $"Bon: {job.ReceiptNumber:000000}", bold);
+            if (job.TrainingReceipt)
+            {
+                Center("TRAININGSBON · AVTraining", bold);
+                if (!string.IsNullOrWhiteSpace(job.ExternalReceiptId))
+                    Text($"fiskaltrust: {job.ExternalReceiptId}", small);
+            }
+            else
+            {
+                Text(
+                    job.FiscalTestMode && job.ReceiptNumber == 0
+                        ? "TESTBELEG - OHNE FISKALE BONNUMMER"
+                        : $"Bon: {job.ReceiptNumber:000000}",
+                    bold);
+            }
+
             Text($"Datum: {job.CreatedAt.LocalDateTime:dd.MM.yyyy HH:mm:ss}", normal);
             if (!string.IsNullOrWhiteSpace(job.OperatorName))
                 Text($"Bediener: {job.OperatorName}", normal);
@@ -852,6 +874,18 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
                 if (item.PfandCents > 0)
                     Text($"inkl. Pfand {Money(item.PfandCents)} · nicht rabattiert", small);
+            }
+
+            foreach (var supplement in
+                     job.MiddlewareChargeItemLines ?? Array.Empty<string>())
+            {
+                Text(supplement, normal);
+            }
+
+            foreach (var supplement in
+                     job.MiddlewareChargeLines ?? Array.Empty<string>())
+            {
+                Text(supplement, small);
             }
 
             var promotions = job.Lines
@@ -924,6 +958,18 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                 Text($"Rückgeld: {Money(job.ChangeCents)}", normal);
             }
 
+            foreach (var supplement in
+                     job.MiddlewarePayItemLines ?? Array.Empty<string>())
+            {
+                Text(supplement, normal);
+            }
+
+            foreach (var supplement in
+                     job.MiddlewarePayLines ?? Array.Empty<string>())
+            {
+                Text(supplement, small);
+            }
+
             if (!string.IsNullOrWhiteSpace(job.TaxNumber))
                 Text($"St.-Nr.: {job.TaxNumber}", small);
 
@@ -936,6 +982,13 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                 Text(
                     GermanFormat.Line($"MwSt {tax.Rate:0.##}% · Brutto {Money(tax.GrossCents)} · MwSt {Money(tax.TaxCents)}"),
                     small);
+            }
+
+            if (job.TrainingReceipt)
+            {
+                Rule();
+                Center("TRAINING · KEIN PRODUKTIVUMSATZ", bold);
+                Center("DSFinV-K BON_TYP: AVTraining", small);
             }
 
             if (job.FiscalTestMode)
@@ -951,24 +1004,54 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             {
                 Rule();
                 // R140: DSFinV-K Anhang I recommends at least 3 cm edge length.
-                if (!job.TseQrCode || !QrCode(TseQrCodePayload.Build(job), 150f))
+                var qrPrinted =
+                    job.TseQrCode &&
+                    QrCode(TseQrCodePayload.Build(job), 150f);
+
+                if (!qrPrinted)
                 {
-                    Text($"eAS: {job.EasSerial}", small);
-                    Text($"TSE: {job.TseSerial}", small);
-                    Text($"Transaktion: {job.TseTransactionNumber}", small);
-                    Text($"Signaturzaehler: {job.SignatureCounter}", small);
-                    Text($"Pruefwert: {job.VerificationValue}", small);
+                    var middlewareFallback =
+                        job.MiddlewareTextFallbackSignatureLines ??
+                        Array.Empty<string>();
+
+                    if (middlewareFallback.Count > 0)
+                    {
+                        foreach (var supplement in middlewareFallback)
+                            Text(supplement, small);
+                    }
+                    else
+                    {
+                        Text($"eAS: {job.EasSerial}", small);
+                        Text($"TSE: {job.TseSerial}", small);
+                        Text($"Transaktion: {job.TseTransactionNumber}", small);
+                        Text($"Signaturzaehler: {job.SignatureCounter}", small);
+                        Text($"Pruefwert: {job.VerificationValue}", small);
+                    }
+                }
+                else
+                {
+                    foreach (var supplement in
+                             job.MiddlewareRequiredSignatureLines ??
+                             Array.Empty<string>())
+                    {
+                        Text(supplement, small);
+                    }
                 }
 
                 // R136: § 6 Satz 1 Nr. 3 KassenSichV - Vorgangsbeginn and
                 // Vorgangsende. R140: TSE times as the TSE delivered them, in UTC
                 // (AEAO zu § 146a Nr. 2.4.4); only the till's own start during an
                 // outage is local time.
-                if (job.TseStartLogTime is { } tseStart)
+                if (!string.IsNullOrWhiteSpace(job.BusinessProcessStartRaw))
+                    Text($"Vorgangsbeginn: {job.BusinessProcessStartRaw}", small);
+                else if (job.TseStartLogTime is { } tseStart)
                     Text($"Vorgangsbeginn: {TseReceiptTime.Format(tseStart)}", small);
                 else if (job.ProcessStart is { } processStart)
                     Text($"Vorgangsbeginn: {processStart.LocalDateTime:dd.MM.yyyy HH:mm:ss}", small);
-                if (job.ProcessEnd is { } processEnd)
+
+                if (!string.IsNullOrWhiteSpace(job.BusinessProcessEndRaw))
+                    Text($"Vorgangsende: {job.BusinessProcessEndRaw}", small);
+                else if (job.ProcessEnd is { } processEnd)
                     Text($"Vorgangsende: {TseReceiptTime.Format(processEnd)}", small);
                 // R137: DSFinV-K 2.7.2 - a receipt for an order shows when the
                 // first order transaction started, also next to a QR code.
@@ -989,6 +1072,12 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         {
             Rule();
             Text(job.Footer, normal);
+        }
+
+        foreach (var supplement in
+                 job.MiddlewareFooterLines ?? Array.Empty<string>())
+        {
+            Text(supplement, small);
         }
 
         y += 20;
@@ -1071,8 +1160,11 @@ private static void ValidateFiscalReceipt(ReceiptPrintJob job)
         job.TseTransactionNumber,
         job.SignatureCounter > 0,
         job.VerificationValue,
-        job.ProcessStart is not null,
-        job.ProcessEnd is not null);
+        job.ProcessStart is not null ||
+            job.TseStartLogTime is not null ||
+            !string.IsNullOrWhiteSpace(job.BusinessProcessStartRaw),
+        job.ProcessEnd is not null ||
+            !string.IsNullOrWhiteSpace(job.BusinessProcessEndRaw));
 
     if (missing.Count > 0)
     {
