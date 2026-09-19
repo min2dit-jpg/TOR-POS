@@ -229,11 +229,21 @@ public static class FiskaltrustIntegrationTests
                 (FiskaltrustDeCases.PosReceipt | 0x0000800000000000UL),
             "fiskaltrust DE recovery uses the documented high ReceiptRequest flag, preventing blind duplicate fiscal actions");
 
+        var zeroVatBlocked = false;
+        try
+        {
+            _ = FiskaltrustDeCases.ChargeItemCaseForVat(0m);
+        }
+        catch (InvalidOperationException ex)
+        {
+            zeroVatBlocked = ex.Message.Contains("getrennte DE-Fälle", StringComparison.Ordinal);
+        }
+
         assert(
             FiskaltrustDeCases.ChargeItemCaseForVat(19m) == 0x4445000000000001UL &&
             FiskaltrustDeCases.ChargeItemCaseForVat(7m) == 0x4445000000000002UL &&
-            FiskaltrustDeCases.ChargeItemCaseForVat(0m) == 0x4445000000000006UL,
-            "fiskaltrust DE charge-item mapping distinguishes TOR 19 %, 7 % and 0 % VAT cases");
+            zeroVatBlocked,
+            "fiskaltrust DE auto-mapping handles 19/7 % and refuses to guess the legal 0 % category");
 
         assert(
             FiskaltrustDeCases.DebitCardPayment != FiskaltrustDeCases.CreditCardPayment &&
