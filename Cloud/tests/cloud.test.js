@@ -24,6 +24,8 @@ async function sync(events,auth=headers){return request('/api/v1/devices/sync',{
 before(async()=>{
  const updates=path.join(root,'updates');mkdirSync(updates,{recursive:true});const setup=Buffer.from('TOR POS fake setup for updater test');writeFileSync(path.join(updates,'TOR-POS-Pro-Setup.exe'),setup);const sha=crypto.createHash('sha256').update(setup).digest('hex').toUpperCase();
  writeFileSync(path.join(updates,'manifest.json'),JSON.stringify({enabled:true,version:'0.7.33.48',revision:'R48-Test',published_at:'2026-09-08T00:00:00Z',mandatory:false,editions:['KIOSK','IMBISS'],filename:'TOR-POS-Pro-Setup.exe',sha256:sha,signer_thumbprint:'',release_notes:'Updater test'}));
+ const demoSetup=Buffer.from('TOR POS fake seven day demo setup');const demoFile='TOR-POS-Demo-Setup.exe';writeFileSync(path.join(updates,demoFile),demoSetup);const demoSha=crypto.createHash('sha256').update(demoSetup).digest('hex').toUpperCase();
+ writeFileSync(path.join(updates,'trial-manifest.json'),JSON.stringify({enabled:true,version:'0.7.33.849',revision:'R149-Demo-Test',published_at:'2026-09-19T00:00:00Z',editions:['KIOSK','IMBISS'],filename:demoFile,sha256:demoSha,signer_thumbprint:'A'.repeat(40),trial_days:7,release_notes:'7-day demo test'}));
  // R125: four stale backups from 2020 - the startup backup must be written
  // (none is recent) and retention must cut the set down to TOR_CLOUD_BACKUP_KEEP=3.
  mkdirSync(backups,{recursive:true});for(const day of ['01','02','03','04'])writeFileSync(path.join(backups,`tor-cloud-202001${day}T000000Z.db`),'stale');
@@ -164,6 +166,43 @@ test('R62 Google QR pairing is device-authenticated and returns a scannable matr
  assert.equal((await request('/api/v1/devices/google-oauth/pair/status',{pair_id:started.body.pair_id,pair_secret:'wrong'},headers)).status,404);
  assert.equal((await request('/api/v1/devices/google-oauth/pair/start',{}, {'X-Device-Code':'DEMO-KASSE-01','X-Device-Token':'wrong'})).status,403);
  const u=new URL(started.body.display_url);const page=await fetch(base+u.pathname+u.search);assert.equal(page.status,200);assert.match(await page.text(),/MIT GOOGLE ANMELDEN/);
+});
+
+test('7-day trial is idempotent per machine fingerprint and reinstall does not reset it',async()=>{
+ const fingerprint='A'.repeat(64);
+ const first=await request('/api/v1/trial/activate',{fingerprint_sha256:fingerprint,version:'0.7.33.849',revision:'R149'});
+ assert.equal(first.status,200);assert.equal(first.body.state,'ACTIVE');assert.equal(first.body.reused,false);
+ const duration=Date.parse(first.body.expires_at)-Date.parse(first.body.started_at);
+ assert.equal(duration,7*24*60*60*1000,'first activation is exactly seven days');
+
+ const again=await request('/api/v1/trial/activate',{fingerprint_sha256:fingerprint,version:'0.7.33.999',revision:'REINSTALL'});
+ assert.equal(again.status,200);assert.equal(again.body.reused,true);
+ assert.equal(again.body.started_at,first.body.started_at,'reinstall keeps original start');
+ assert.equal(again.body.expires_at,first.body.expires_at,'reinstall keeps original expiry');
+
+ const db=new DatabaseSync(path.join(root,'db.sqlite'));db.exec('PRAGMA busy_timeout=5000;');
+ try{db.prepare('UPDATE trial_devices SET expires_at=? WHERE fingerprint_hash=?').run('2000-01-08T00:00:00.000Z',fingerprint);}finally{db.close();}
+ const expired=await request('/api/v1/trial/activate',{fingerprint_sha256:fingerprint,version:'0.7.33.849',revision:'AFTER-EXPIRY'});
+ assert.equal(expired.status,200);assert.equal(expired.body.state,'EXPIRED');assert.equal(expired.body.reused,true);
+ assert.equal(expired.body.started_at,first.body.started_at,'expired device never gets a new seven-day start');
+
+ assert.equal((await request('/api/v1/trial/activate',{fingerprint_sha256:'not-a-device'})).status,400);
+});
+
+test('public demo download uses a separate hash-verified manifest',async()=>{
+ const redirect=await fetch(base+'/api/v1/trial/download',{redirect:'manual'});
+ assert.equal(redirect.status,302);
+ const location=new URL(redirect.headers.get('location'));
+ const download=await fetch(base+location.pathname);
+ assert.equal(download.status,200);
+ assert.equal(Buffer.from(await download.arrayBuffer()).toString(),'TOR POS fake seven day demo setup');
+
+ const target=path.join(root,'updates','TOR-POS-Demo-Setup.exe');
+ const original=readFileSync(target);
+ try{
+  writeFileSync(target,Buffer.from('tampered demo'));
+  assert.equal((await fetch(base+location.pathname)).status,409,'tampered demo setup is never served');
+ }finally{writeFileSync(target,original);}
 });
 
 test('R48 update manifest and download endpoint',async()=>{
