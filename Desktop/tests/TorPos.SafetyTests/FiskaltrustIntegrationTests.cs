@@ -511,6 +511,79 @@ public static class FiskaltrustIntegrationTests
             blockedPfand,
             "fiskaltrust sandbox refuses Pfand until dedicated DSFinV-K/fiskaltrust deposit mapping exists");
 
+        var blockedPromotion = false;
+        try
+        {
+            _ = FiskaltrustSandboxRequests.SimpleCashSale(
+                new TorPos.Core.Sale
+                {
+                    PaymentMethod = TorPos.Core.PaymentMethod.Cash,
+                    CashPortionCents = 900,
+                    TotalCents = 900,
+                    TransactionType = "SALE",
+                    ImHaus = false,
+                    Lines =
+                    [
+                        new TorPos.Core.CartLine
+                        {
+                            ProductId = 88,
+                            ProductName = "Angebot",
+                            Quantity = 1,
+                            UnitPriceCents = 900,
+                            ListUnitPriceCents = 1000,
+                            VatRate = 19m,
+                            PromotionId = 1,
+                            PromotionName = "10%",
+                            PromotionPercent = 10,
+                            PromotionDiscountUnitCents = 100
+                        }
+                    ]
+                },
+                "BON-PROMO");
+        }
+        catch (InvalidOperationException ex)
+        {
+            blockedPromotion = ex.Message.Contains("Angebote/Rabatte", StringComparison.Ordinal);
+        }
+        assert(
+            blockedPromotion,
+            "fiskaltrust first cash-sale sandbox refuses promotions until discount business-case mapping is explicit");
+
+        var missingConsumptionModeBlocked = false;
+        try
+        {
+            _ = FiskaltrustSandboxRequests.SimpleCashSale(
+                new TorPos.Core.Sale
+                {
+                    PaymentMethod = TorPos.Core.PaymentMethod.Cash,
+                    CashPortionCents = 700,
+                    TotalCents = 700,
+                    TransactionType = "SALE",
+                    ImHaus = null,
+                    Lines =
+                    [
+                        new TorPos.Core.CartLine
+                        {
+                            ProductId = 89,
+                            ProductName = "Snack",
+                            Quantity = 1,
+                            UnitPriceCents = 700,
+                            VatRate = 7m,
+                            ImHausApplicable = true
+                        }
+                    ]
+                },
+                "BON-IMHAUS-UNKNOWN");
+        }
+        catch (InvalidOperationException ex)
+        {
+            missingConsumptionModeBlocked =
+                ex.Message.Contains("Im-Haus/Außer-Haus", StringComparison.Ordinal);
+        }
+        assert(
+            missingConsumptionModeBlocked,
+            "fiskaltrust first cash-sale sandbox refuses an applicable 7% item when Im-Haus/Außer-Haus state is unknown");
+
         var recoveryCashBoxId = Guid.NewGuid();
         var recoveryPosId = Guid.NewGuid();
         var recoveryHandler = new FakeHandler();
