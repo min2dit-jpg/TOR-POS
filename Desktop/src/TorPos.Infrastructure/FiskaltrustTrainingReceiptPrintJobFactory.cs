@@ -171,43 +171,67 @@ public static class FiskaltrustTrainingReceiptPrintJobFactory
         $"{GermanFormat.Number(item.Amount, "0.00")} EUR";
 
     private static IReadOnlyList<string> RequiredQrModeSignatureLines(
-        FiskaltrustReceiptResponse response) =>
-        response.FtSignatures
-            .Where(x =>
-                x.FtSignatureType is
-                    FiskaltrustDeSignatureTypes.CertificationIdentification or
-                    FiskaltrustDeSignatureTypes.TseSerialNumber)
-            .Where(x => !string.IsNullOrWhiteSpace(x.Data))
+        FiskaltrustReceiptResponse response)
+    {
+        var required =
+            FiskaltrustGermanReceiptProjection
+                .PrintableSignatures(response, preferQr: true)
+                .Where(x =>
+                    x.FtSignatureType !=
+                        FiskaltrustDeSignatureTypes.KassenSichVQrPayload)
+                .Where(x =>
+                    x.FtSignatureType !=
+                        FiskaltrustDeSignatureTypes.ProcessStartTime &&
+                    x.FtSignatureType !=
+                        FiskaltrustDeSignatureTypes.SignatureLogTime)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Data))
+                .ToArray();
+
+        EnsureTextRenderable(required, "QR-Pflichtsignatur");
+
+        return required
             .Select(FormatSignatureLine)
             .ToArray();
+    }
 
     private static IReadOnlyList<string> TextFallbackSignatureLines(
         FiskaltrustReceiptResponse response)
     {
-        var printableTypes = new HashSet<ulong>
-        {
-            FiskaltrustDeSignatureTypes.QrVersion,
-            FiskaltrustDeSignatureTypes.CashRegisterSerial,
-            FiskaltrustDeSignatureTypes.ProcessType,
-            FiskaltrustDeSignatureTypes.ProcessData,
-            FiskaltrustDeSignatureTypes.TransactionNumber,
-            FiskaltrustDeSignatureTypes.SignatureCounter,
-            FiskaltrustDeSignatureTypes.TransactionStartTime,
-            FiskaltrustDeSignatureTypes.SignatureAlgorithm,
-            FiskaltrustDeSignatureTypes.LogTimeFormat,
-            FiskaltrustDeSignatureTypes.Signature,
-            FiskaltrustDeSignatureTypes.PublicKey,
-            FiskaltrustDeSignatureTypes.CertificationIdentification,
-            FiskaltrustDeSignatureTypes.TseSerialNumber
-        };
+        var fallback =
+            FiskaltrustGermanReceiptProjection
+                .PrintableSignatures(response, preferQr: false)
+                .Where(x =>
+                    x.FtSignatureType !=
+                        FiskaltrustDeSignatureTypes.KassenSichVQrPayload)
+                .Where(x =>
+                    x.FtSignatureType !=
+                        FiskaltrustDeSignatureTypes.ProcessStartTime &&
+                    x.FtSignatureType !=
+                        FiskaltrustDeSignatureTypes.SignatureLogTime)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Data))
+                .ToArray();
 
-        // SignatureLogTime (Vorgangsende) and ProcessStartTime
-        // (Vorgangsbeginn) are printed separately with their legal labels.
-        return response.FtSignatures
-            .Where(x => printableTypes.Contains(x.FtSignatureType))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Data))
+        EnsureTextRenderable(fallback, "Text-Fallback-Signatur");
+
+        return fallback
             .Select(FormatSignatureLine)
             .ToArray();
+    }
+
+    private static void EnsureTextRenderable(
+        IReadOnlyList<FiskaltrustSignatureItem> items,
+        string context)
+    {
+        var unsupported = items.FirstOrDefault(x =>
+            FiskaltrustSignatureFormats.BaseFormat(x.FtSignatureFormat) !=
+                FiskaltrustSignatureFormats.Text);
+
+        if (unsupported is not null)
+        {
+            throw new InvalidOperationException(
+                $"Druckjob abgelehnt: {context} 0x{unsupported.FtSignatureType:X16} " +
+                $"hat ein nicht unterstütztes Format 0x{unsupported.FtSignatureFormat:X}.");
+        }
     }
 
     private static string FormatSignatureLine(
