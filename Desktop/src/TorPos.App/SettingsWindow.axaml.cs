@@ -2067,7 +2067,172 @@ private Control FiskaltrustPage()
     tseTest.Children.Add(zeroButton);
     page.Children.Add(tseTest);
 
-    var production = Section("3 · Produktive Freigabe");
+    var recovery = Section("3 · Recovery-Journal");
+    var recoveryStatus = Value("Noch nicht geprüft.");
+    recovery.Children.Add(StatusRow("Offene SENT / UNKNOWN", recoveryStatus));
+
+    var recoveryButtons = new StackPanel
+    {
+        Orientation = Orientation.Horizontal,
+        Spacing = 10
+    };
+
+    var inspectRecovery = new Button
+    {
+        Content = "JOURNAL PRÜFEN",
+        MinWidth = 180,
+        MinHeight = 44
+    };
+
+    var recoverPending = new Button
+    {
+        Content = "RECEIPTREQUEST RECOVERY",
+        MinWidth = 240,
+        MinHeight = 44
+    };
+
+    inspectRecovery.Click += async (_, _) =>
+    {
+        inspectRecovery.IsEnabled = false;
+        try
+        {
+            var journal =
+                new FiskaltrustSignJournal(
+                    new SqliteDatabase(AppPaths.DatabasePath));
+            await journal.InitializeAsync();
+            var pending =
+                await journal.GetRecoveryCandidatesAsync();
+
+            if (pending.Count == 0)
+            {
+                SetResult(
+                    recoveryStatus,
+                    true,
+                    "Keine ungeklärten fiskaltrust Sign-Vorgänge.");
+            }
+            else
+            {
+                var preview = string.Join(
+                    ", ",
+                    pending
+                        .Take(4)
+                        .Select(x => $"{x.ReceiptReference}/{x.OperationKey}"));
+                if (pending.Count > 4)
+                    preview += $" · +{pending.Count - 4} weitere";
+
+                SetResult(
+                    recoveryStatus,
+                    false,
+                    $"{pending.Count} ungeklärt · {preview}");
+            }
+        }
+        catch (Exception ex)
+        {
+            SetResult(
+                recoveryStatus,
+                false,
+                "Journal-Prüfung fehlgeschlagen: " + ex.Message);
+        }
+        finally
+        {
+            inspectRecovery.IsEnabled = true;
+        }
+    };
+
+    recoverPending.Click += async (_, _) =>
+    {
+        recoverPending.IsEnabled = false;
+        SetResult(
+            recoveryStatus,
+            null,
+            "ReceiptRequest-Recovery läuft … kein ursprünglicher Sign wird erneut gesendet.");
+
+        try
+        {
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(20)
+            };
+
+            var middleware = CreateClient(http, requireIdentity: true);
+            var journal =
+                new FiskaltrustSignJournal(
+                    new SqliteDatabase(AppPaths.DatabasePath));
+            await journal.InitializeAsync();
+
+            var before =
+                await journal.GetRecoveryCandidatesAsync();
+
+            if (before.Count == 0)
+            {
+                SetResult(
+                    recoveryStatus,
+                    true,
+                    "Keine ungeklärten Vorgänge vorhanden.");
+                return;
+            }
+
+            var coordinator =
+                new FiskaltrustSignCoordinator(
+                    middleware,
+                    journal);
+
+            var unresolved =
+                await coordinator.RecoverPendingAsync();
+
+            var after =
+                await journal.GetRecoveryCandidatesAsync();
+
+            if (after.Count == 0)
+            {
+                SetResult(
+                    recoveryStatus,
+                    true,
+                    $"{before.Count} Vorgang/Vorgänge per ReceiptRequest geklärt.");
+            }
+            else
+            {
+                var preview = string.Join(
+                    ", ",
+                    after
+                        .Take(4)
+                        .Select(x => $"{x.ReceiptReference}/{x.OperationKey}"));
+
+                SetResult(
+                    recoveryStatus,
+                    false,
+                    $"{after.Count} weiterhin ungeklärt · {preview}");
+            }
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_RECOVERY",
+                "FISKALTRUST",
+                "",
+                $"ReceiptRequest-Recovery geprüft; vorher={before.Count}; danach={after.Count}; unresolved={unresolved.Count}; keine Zugangsdaten protokolliert.");
+        }
+        catch (Exception ex)
+        {
+            SetResult(
+                recoveryStatus,
+                false,
+                "Recovery fehlgeschlagen: " + ex.Message);
+        }
+        finally
+        {
+            recoverPending.IsEnabled = true;
+        }
+    };
+
+    recoveryButtons.Children.Add(inspectRecovery);
+    recoveryButtons.Children.Add(recoverPending);
+    recovery.Children.Add(recoveryButtons);
+    recovery.Children.Add(ReadOnlyRow(
+        "Regel",
+        "SENT/UNKNOWN wird ausschließlich über ReceiptRequest abgeglichen. TOR sendet den ursprünglichen Sign nicht automatisch ein zweites Mal."));
+    page.Children.Add(recovery);
+
+    var production = Section("4 · Produktive Freigabe");
     production.Children.Add(ReadOnlyRow(
         "Status",
         "GESPERRT · Erst nach erfolgreichem ZeroReceipt/TSEInfo, kontrolliertem BAR-Testbon, Bon/QR-Prüfung und Restart/Recovery-Test."));
