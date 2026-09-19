@@ -57,6 +57,47 @@ public static class FiskaltrustSandboxRequests
     }
 
     /// <summary>
+    /// Explicit-flow START. Germany requires empty charge/pay arrays and the
+    /// same cbReceiptReference to be reused by later update/final calls.
+    /// </summary>
+    public static FiskaltrustReceiptRequest StartExplicitTransaction(
+        string receiptReference,
+        DateTimeOffset moment,
+        string user = "TOR-POS")
+    {
+        if (string.IsNullOrWhiteSpace(receiptReference))
+            throw new ArgumentException(
+                "Eine eindeutige cbReceiptReference ist erforderlich.",
+                nameof(receiptReference));
+
+        return new FiskaltrustReceiptRequest
+        {
+            CbReceiptReference = receiptReference.Trim(),
+            CbReceiptMoment = moment,
+            CbUser = user,
+            CbChargeItems = Array.Empty<FiskaltrustChargeItem>(),
+            CbPayItems = Array.Empty<FiskaltrustPayItem>(),
+            FtReceiptCase = FiskaltrustDeCases.StartTransaction
+        };
+    }
+
+    /// <summary>
+    /// Final POS receipt for an already-open explicit transaction. Reuses the
+    /// exact same business payload as the restricted cash builder but removes
+    /// the implicit-flow flag.
+    /// </summary>
+    public static FiskaltrustReceiptRequest FinishExplicitSimpleCashSale(
+        Sale sale,
+        string receiptReference)
+    {
+        var request = SimpleCashSale(sale, receiptReference);
+        return request with
+        {
+            FtReceiptCase = FiskaltrustDeCases.PosReceipt
+        };
+    }
+
+    /// <summary>
     /// First real-sale sandbox payload after ZeroReceipt: a deliberately narrow
     /// cash-only POS receipt. It refuses scenarios whose mapping still needs
     /// separate validation (card/mixed, manual discount, reversals, cancelled
