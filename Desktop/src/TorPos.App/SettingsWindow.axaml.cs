@@ -1971,6 +1971,7 @@ private Control FiskaltrustPage()
                 FiskaltrustGermanReceiptProjection.Extract(response);
 
             var ready = FiskaltrustDeState.IsReady(response.FtState);
+            var hasTseInfo = response.FtStateData is not null;
             var communicationFailed =
                 FiskaltrustDeState.HasFlag(
                     response.FtState,
@@ -1979,17 +1980,20 @@ private Control FiskaltrustPage()
                 FiskaltrustDeState.HasFlag(
                     response.FtState,
                     FiskaltrustDeState.ScuSwitchingFlag);
+            var zeroOk = ready && hasTseInfo;
 
             SetResult(
                 zeroStatus,
-                ready,
-                ready
-                    ? "ERFOLGREICH · TSE-Kommunikation bereit"
+                zeroOk ? true : communicationFailed || switching ? false : null,
+                zeroOk
+                    ? "ERFOLGREICH · TSE-Kommunikation bereit · TSEInfo empfangen"
                     : communicationFailed
                         ? "FEHLER · TSE-Kommunikation fehlgeschlagen"
                         : switching
                             ? "FEHLER · SCU-Wechselzustand"
-                            : "Antwort empfangen · Status prüfen");
+                            : ready
+                                ? "Antwort bereit, aber TSEInfo/ftStateData fehlt"
+                                : "Antwort empfangen · Status prüfen");
 
             SetResult(
                 ftState,
