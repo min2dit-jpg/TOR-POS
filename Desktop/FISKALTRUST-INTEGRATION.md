@@ -270,3 +270,23 @@ The intended sequence is:
 The journal has an immutable request trigger and a no-delete trigger. It is
 still isolated from production checkout; this is the crash-safety foundation
 that must exist before the first real Sign call is wired.
+
+
+## Crash-safe Sign coordinator prepared
+
+`FiskaltrustSignCoordinator` now composes the client and durable journal
+without touching production checkout.
+
+Its rule is conservative:
+
+- PREPARED -> persist SENT -> call Sign -> persist COMMITTED.
+- Any ambiguous Sign failure becomes UNKNOWN (or at minimum remains durable
+  SENT if writing UNKNOWN itself fails).
+- Re-entering a SENT/UNKNOWN operation calls `RecoverAsync` first.
+- A recovered ReceiptResponse is committed.
+- A null ReceiptRequest result does **not** cause an automatic resend; the
+  operation stays unresolved for an explicit later decision.
+- A COMMITTED operation returns its stored response and cannot be sent again.
+
+This is the same safety principle TOR already applies to uncertain card
+payments: an external effect is reconciled, never guessed.
