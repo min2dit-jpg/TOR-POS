@@ -1172,7 +1172,7 @@ public partial class SettingsWindow : Window
             "DATEV",
             "Standard-Datei zuerst: DATEV Kassenbuch Standard-ASCII/CSV ohne API-Kosten. Optional kann TOR die erzeugte Datei nach dem Z-Abschluss automatisch an den gespeicherten Steuerberater senden.");
 
-        var free = Section("STANDARD-DATEI · 0 € · KEINE DATEV-API");
+        var free = Section("STANDARD-DATEI · KEINE DATEV-API / KEINE API-ZUSATZKOSTEN");
         free.Children.Add(ToggleRow(Check(
             DatevKassenbuchAsciiService.SettingEnabled,
             "DATEV Kassenbuch Standard-ASCII / CSV verwenden")));
@@ -1190,6 +1190,9 @@ public partial class SettingsWindow : Window
         free.Children.Add(ReadOnlyRow(
             "DATEV-Format",
             "Standard-ASCII für Kassenbewegungen · 13 Spalten · Semikolon · Belegdatum TTMM · Währung/VorzBetrag/RechNr/Belegtext/UStSatz usw."));
+        free.Children.Add(ReadOnlyRow(
+            "DATEV-Voraussetzung",
+            "Die Dateierzeugung in TOR benötigt keine DATEV-API. Für den Import benötigt der Betrieb bzw. die Kanzlei jedoch ein passendes DATEV Kassenbuch online / Unternehmen online Vertrags- und Berechtigungssetup."));
         free.Children.Add(ReadOnlyRow(
             "Kassenbuch-Regel",
             "Nur Bargeldbewegungen werden exportiert. Reine Kartenzahlungen gehören nicht in das Kassenbuch und bleiben im Z-Bericht / DSFinV-K dokumentiert."));
@@ -1228,7 +1231,7 @@ public partial class SettingsWindow : Window
 
         page.Children.Add(InfoCard(
             "Steuerberater-Ablauf",
-            "Z-Abschluss → TOR erzeugt DATEV-Kassenbuch-CSV → optional automatische E-Mail an Steuerberater → Import in DATEV Kassenbuch online. Für die Dateierzeugung ist keine DATEV Developer-Portal API nötig.",
+            "Z-Abschluss → TOR erzeugt DATEV-Kassenbuch-CSV → optional automatische E-Mail an Steuerberater → Import in DATEV Kassenbuch online. Für die Dateierzeugung ist keine DATEV Developer-Portal API nötig; der DATEV-Vertrag des Kunden/Steuerberaters bleibt davon getrennt.",
             AppTheme.InfoCardBg));
 
         return page;
