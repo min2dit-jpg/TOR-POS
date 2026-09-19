@@ -239,6 +239,62 @@ public static class FiskaltrustIntegrationTests
             FiskaltrustDeCases.DebitCardPayment != FiskaltrustDeCases.CreditCardPayment &&
             FiskaltrustDeCases.CashPayment != FiskaltrustDeCases.DebitCardPayment,
             "fiskaltrust DE payment constants keep cash, debit and credit card semantically distinct");
+
+        var recoveryCashBoxId = Guid.NewGuid();
+        var recoveryPosId = Guid.NewGuid();
+        var recoveryHandler = new FakeHandler();
+        using (var http = new HttpClient(recoveryHandler))
+        {
+            var recoveryClient = new FiskaltrustMiddlewareClient(
+                http,
+                new FiskaltrustMiddlewareOptions(
+                    new Uri("http://localhost:1500/queue-test/"),
+                    recoveryCashBoxId,
+                    recoveryPosId,
+                    "TOR-POS-01"));
+
+            var original = new FiskaltrustReceiptRequest
+            {
+                CbReceiptReference = "BON-4711",
+                CbReceiptMoment = DateTimeOffset.Parse("2026-09-19T06:20:00Z"),
+                FtReceiptCase = FiskaltrustDeCases.PosReceipt,
+                CbChargeItems =
+                [
+                    new FiskaltrustChargeItem
+                    {
+                        Position = 1,
+                        Quantity = 1,
+                        Description = "Test",
+                        Amount = 10m,
+                        VatRate = 19m,
+                        FtChargeItemCase = FiskaltrustDeCases.StandardChargeItem
+                    }
+                ],
+                CbPayItems =
+                [
+                    new FiskaltrustPayItem
+                    {
+                        Position = 1,
+                        Quantity = 1,
+                        Description = "Bar",
+                        Amount = 10m,
+                        FtPayItemCase = FiskaltrustDeCases.CashPayment
+                    }
+                ]
+            };
+
+            _ = await recoveryClient.RecoverAsync(original);
+
+            assert(
+                recoveryHandler.LastPath == "/queue-test/json/v1/Sign" &&
+                recoveryHandler.LastBody.Contains("\"cbReceiptReference\":\"BON-4711\"", StringComparison.Ordinal) &&
+                recoveryHandler.LastBody.Contains("\"description\":\"Test\"", StringComparison.Ordinal) &&
+                recoveryHandler.LastBody.Contains(
+                    "\"ftReceiptCase\":" +
+                    FiskaltrustDeCases.WithReceiptRequest(FiskaltrustDeCases.PosReceipt),
+                    StringComparison.Ordinal),
+                "fiskaltrust recovery reuses the original reference/items and adds only the documented ReceiptRequest flag");
+        }
     }
 
     private sealed class FakeHandler : HttpMessageHandler
@@ -249,6 +305,7 @@ public static class FiskaltrustIntegrationTests
         public string CashboxHeader { get; private set; } = "";
         public bool SawAccessTokenHeader { get; private set; }
         public string AccessTokenHeader { get; private set; } = "";
+        public string LastBody { get; private set; } = "";
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -273,6 +330,7 @@ public static class FiskaltrustIntegrationTests
                 : request.Content.ReadAsStringAsync(cancellationToken)
                     .GetAwaiter()
                     .GetResult();
+            LastBody = requestedMessage;
 
             var echo = requestedMessage.Contains("SAAS", StringComparison.Ordinal)
                 ? "SAAS"
