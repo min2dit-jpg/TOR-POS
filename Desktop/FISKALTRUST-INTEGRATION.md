@@ -348,3 +348,17 @@ The sandbox request factory now also provides:
 
 This matches fiskaltrust's documented explicit-flow requirement and prepares
 the IMBISS/long-running transaction path without enabling it yet.
+
+
+## In-app connectivity diagnostics foundation
+
+A side-effect-free `FiskaltrustDiagnosticsService` now checks:
+
+- Queue TCP endpoint derived from the configured REST URL,
+- local SCU TCP endpoint,
+- Middleware Echo.
+
+It never calls Sign and never creates a fiscal receipt/TSE transaction. The
+service is covered with in-process loopback listeners so the CI verifies that
+the three-stage connectivity status is reported correctly without relying on
+external fiskaltrust infrastructure.
