@@ -40,15 +40,18 @@ public sealed class CheckoutApplicationService
     private readonly IFiscalComplianceService _compliance;
     private readonly ICheckoutJournal _journal;
     private readonly IPaymentTerminalService _terminal;
+    private readonly IProductCatalog? _catalog;
 
     public CheckoutApplicationService(
         IFiscalComplianceService compliance,
         ICheckoutJournal journal,
-        IPaymentTerminalService terminal)
+        IPaymentTerminalService terminal,
+        IProductCatalog? catalog = null)
     {
         _compliance = compliance;
         _journal = journal;
         _terminal = terminal;
+        _catalog = catalog;
     }
 
     public async Task<CheckoutApplicationResult> PrepareProductionAsync(
@@ -59,6 +62,53 @@ public sealed class CheckoutApplicationService
 
         if (snapshot.Lines.Length == 0)
             throw new InvalidOperationException("Leerer Checkout ist nicht zulässig.");
+
+        // KassenSichV/DSFinV-K guard: a commercial menu with several effective
+        // VAT rates cannot be reduced to one sale_items VAT value without
+        // falsifying the receipt/export. Refuse it BEFORE journal, terminal
+        // or TSE side effects until the immutable multi-rate representation is
+        // implemented end-to-end.
+        if (_catalog is not null)
+        {
+            var blockedMenus = MenuVatPolicy.BlockingMenus(
+                snapshot.Lines,
+                _catalog.Products,
+                snapshot.ImHaus);
+
+            if (blockedMenus.Count > 0)
+            {
+                var details = string.Join(
+                    " | ",
+                    blockedMenus.Select(x =>
+                        x.IsValid
+                            ? $"{x.MenuName}: mehrere MwSt.-Sätze ({string.Join("/", x.Allocations.Select(a => a.VatRate + "%"))})"
+                            : $"{x.MenuName}: {x.Message}"));
+
+                var blockedReadiness = new FiscalReadinessReport(
+                    false,
+                    "TEST_ONLY",
+                    "",
+                    "2.4",
+                    new[]
+                    {
+                        new FiscalReadinessItem(
+                            "MENU_MIXED_VAT",
+                            "Menü / Combo fiskal nicht eindeutig",
+                            false,
+                            "Produktivverkauf vor Zahlungs-/TSE-Nebenwirkung gesperrt: " + details)
+                    });
+
+                return new CheckoutApplicationResult(
+                    CheckoutApplicationDisposition.FiscalBlocked,
+                    Operation: null,
+                    TerminalResult: null,
+                    FiscalReadiness: blockedReadiness,
+                    Timings: new CheckoutApplicationTimings(
+                        null,
+                        null,
+                        null));
+            }
+        }
 
         var fiscalWatch = Stopwatch.StartNew();
         var readiness = await _compliance.CheckAsync(ct);
