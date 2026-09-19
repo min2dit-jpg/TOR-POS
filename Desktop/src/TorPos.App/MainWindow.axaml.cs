@@ -334,15 +334,18 @@ public partial class MainWindow:Window
             if (CartLocked) return;
 
             MenuComponentSnapshot[] menuComponents = Array.Empty<MenuComponentSnapshot>();
+            long? menuUnitPrice = null;
             if (p.IsCombo)
             {
                 if (p.ComboItems.Any(x => x.IsChoice))
                 {
                     var selected = await new MenuChoiceWindow(p, _catalog.Products)
-                        .ShowDialog<MenuComponentSnapshot[]?>(this);
+                        .ShowDialog<MenuChoiceResult?>(this);
                     if (selected is null)
                         return;
-                    menuComponents = selected;
+
+                    menuComponents = selected.Components;
+                    menuUnitPrice = selected.UnitPriceCents;
                 }
                 else
                 {
@@ -400,7 +403,8 @@ public partial class MainWindow:Window
                 variant,
                 quantity,
                 promotion,
-                menuComponents);
+                menuComponents,
+                menuUnitPrice);
 
             UpdateCart();
 
