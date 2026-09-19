@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 20;
+    public const int TargetSchemaVersion = 21;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1402,6 +1402,40 @@ public sealed class SchemaMigrationService
                             ADD COLUMN vat_allocations_json TEXT NOT NULL DEFAULT '';
                         ALTER TABLE training_cancelled_items
                             ADD COLUMN vat_allocations_json TEXT NOT NULL DEFAULT '';
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                21,
+                "R153_MENU_CHOICE_GROUPS",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        -- R153: fixed menu components keep choice_group empty.
+                        -- Rows sharing a non-empty choice_group are alternatives;
+                        -- exactly one is selected at sale time.
+                        ALTER TABLE product_combo_items
+                            ADD COLUMN choice_group TEXT NOT NULL DEFAULT '';
+
+                        -- Persist the exact selected ingredients of each commercial
+                        -- menu line. This makes stock reversal and historical replay
+                        -- independent of later recipe / Artikelstamm changes.
+                        ALTER TABLE sale_items
+                            ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE parked_receipt_items
+                            ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE training_receipt_items
+                            ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE order_bestellung_items
+                            ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE sale_cancelled_items
+                            ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE training_cancelled_items
+                            ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);
