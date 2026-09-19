@@ -686,6 +686,17 @@ public partial class MainWindow:Window
 
     private void OnGlobalScannerKeyDown(object? sender, KeyEventArgs e)
     {
+        // R145: the card menu hub replaces the cashier workspace while open.
+        // Never let scanner digits or cashier shortcuts modify the hidden cart.
+        if (MenuHubOverlay.IsVisible)
+        {
+            _scan = "";
+            if (e.Key == Key.Escape)
+                HideMenuHub();
+            e.Handled = true;
+            return;
+        }
+
         if (CartLocked) { _scan=""; return; }
         // Kassierer-Schnelltasten: funktionieren ohne Fokuswechsel und
         // beeinträchtigen den Scanner nicht, da Scanner nur Ziffern + Enter sendet.
@@ -3519,6 +3530,52 @@ public partial class MainWindow:Window
             StockWarningBadge.IsVisible = false;
         }
     }
+
+    private void ShowMenuHub(string section)
+    {
+        MenuHubOverlay.IsVisible = true;
+        GoodsHubPanel.IsVisible = section == "WAREN";
+        SettingsHubPanel.IsVisible = section == "EINSTELLUNGEN";
+        CashHubPanel.IsVisible = section == "KASSE";
+        ReportsHubPanel.IsVisible = section == "BERICHTE";
+
+        MenuHubTitleText.Text = section;
+        MenuHubSubtitleText.Text = section switch
+        {
+            "WAREN" => "Artikel · Bestand · Datenaustausch",
+            "EINSTELLUNGEN" => "Kasse · Unternehmen · System",
+            "KASSE" => "Betrieb · Bon / Abrechnung · Korrekturen",
+            "BERICHTE" => "Tageskontrolle · Verkauf / Bestand · Finanzamt",
+            _ => "Schnellzugriff"
+        };
+
+        ScannerStatus.Text = $"{section} · Schnellzugriff geöffnet";
+    }
+
+    private void HideMenuHub()
+    {
+        MenuHubOverlay.IsVisible = false;
+        GoodsHubPanel.IsVisible = false;
+        SettingsHubPanel.IsVisible = false;
+        CashHubPanel.IsVisible = false;
+        ReportsHubPanel.IsVisible = false;
+        ScannerStatus.Text = "Scanner bereit";
+    }
+
+    private void OnGoodsHubClick(object? sender, RoutedEventArgs e) =>
+        ShowMenuHub("WAREN");
+
+    private void OnSettingsHubClick(object? sender, RoutedEventArgs e) =>
+        ShowMenuHub("EINSTELLUNGEN");
+
+    private void OnCashHubClick(object? sender, RoutedEventArgs e) =>
+        ShowMenuHub("KASSE");
+
+    private void OnReportsHubClick(object? sender, RoutedEventArgs e) =>
+        ShowMenuHub("BERICHTE");
+
+    private void OnMenuHubBackClick(object? sender, RoutedEventArgs e) =>
+        HideMenuHub();
 
     private async void OnPromotionsClick(object? sender, RoutedEventArgs e)
     {
