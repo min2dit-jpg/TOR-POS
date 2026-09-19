@@ -997,19 +997,24 @@ public sealed class ProductEditorWindow : Window
                     $"{x.VatRate:0}% {Formatting.Money(x.GrossCents)}"))
                 : "FEHLER: " + analysis.Message;
 
-        var priceRange = minTotal == maxTotal
+        var marketRange = minTotal == maxTotal
             ? Formatting.Money(minTotal)
             : $"{Formatting.Money(minTotal)} – {Formatting.Money(maxTotal)}";
-        var minAdvantage = minTotal - menuPrice;
-        var maxAdvantage = maxTotal - menuPrice;
+        var maxChoiceDifference = Math.Max(0L, maxTotal - minTotal);
+        var highestMenuPrice = menuPrice + maxChoiceDifference;
+        var salePriceRange = maxChoiceDifference == 0
+            ? Formatting.Money(menuPrice)
+            : $"{Formatting.Money(menuPrice)} – {Formatting.Money(highestMenuPrice)}";
+        var advantage = minTotal - menuPrice;
 
         _comboSummary.Text =
-            $"Einzelpreise je nach Auswahl: {priceRange} · Menüpreis: {Formatting.Money(menuPrice)}\n" +
-            $"Menüvorteil: {Formatting.Money(Math.Max(0,minAdvantage))}" +
-            (minAdvantage==maxAdvantage ? "" : $" – {Formatting.Money(Math.Max(0,maxAdvantage))}") +
+            $"Einzelpreise je nach Auswahl: {marketRange}\n" +
+            $"Menü-Verkaufspreis automatisch: {salePriceRange} · " +
+            $"Menüvorteil bleibt {Formatting.Money(Math.Max(0,advantage))}\n" +
+            "Preisregel: Grundpreis = günstigste Auswahl; teurere Artikeloptionen erhöhen den Menüpreis automatisch nur um ihre echte Artikel-Preisdifferenz." +
             (groups.Length==0 ? "" : $"\nAuswahlgruppen: {string.Join(" · ",groups)}") +
-            $"\nMwSt.-Beispiel Außer Haus: {AllocationText(takeAway)}" +
-            $"\nMwSt.-Beispiel Im Haus: {AllocationText(inHouse)}";
+            $"\nMwSt.-Beispiel Außer Haus (günstigste Auswahl): {AllocationText(takeAway)}" +
+            $"\nMwSt.-Beispiel Im Haus (günstigste Auswahl): {AllocationText(inHouse)}";
 
         _comboSummary.Foreground =
             takeAway.IsValid && inHouse.IsValid && menuPrice <= minTotal
@@ -1809,6 +1814,7 @@ public sealed class ProductEditorWindow : Window
         SetImagePreview("");
         _variants.Clear();
         _comboItems.Clear();
+        _comboChoiceGroup.Text = "";
 
         RefreshInheritedVat();
         RefreshComboSummary();
@@ -1991,6 +1997,7 @@ public sealed class ProductEditorWindow : Window
                     variant.PriceCents));
         }
         _comboItems.Clear();
+        _comboChoiceGroup.Text = "";
         foreach (var item in product.ComboItems)
         {
             var component = _catalog.Products.FirstOrDefault(x => x.Id == item.ComponentProductId);
