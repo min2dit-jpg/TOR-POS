@@ -68,7 +68,7 @@ nachgewiesen werden.
 
 **Status:** IMPLEMENTIERT / FINALER PRÜFDATENSATZ NOCH ZU VALIDIEREN.
 
-Der Code-Gate `dsfinvkImplementedAndValidated` bleibt bis dahin bewusst `false`.
+Die zentrale Freigabe `FiscalRelease.DsfinvkValidated` bleibt bis dahin bewusst `false`.
 
 ## § 5 – Anforderungen an die TSE
 
@@ -141,13 +141,15 @@ TSE-Zertifizierung nicht.
 
 ## Production-Gates
 
-Folgende Gates bleiben bis zum jeweiligen Nachweis `false`:
-- `dsfinvkImplementedAndValidated`
-- `ksichvReceiptValidated`
-- `parkedOrderTseValidated`
-- `pfandTaxValidated`
-- `fiscalReleaseBuild`
-- `FiscalRelease.Enabled`
+Die Freigaben liegen zentral in `FiscalRelease` und bleiben bis zum jeweiligen Nachweis `false`:
+- `FiscalRelease.DsfinvkValidated`
+- `FiscalRelease.KassenSichVReceiptValidated`
+- `FiscalRelease.ParkedOrderTseValidated`
+- `FiscalRelease.PfandTaxValidated`
+- `FiscalRelease.PhysicalTseE2EValidated`
+- `FiscalRelease.IndependentFiscalReviewValidated`
+
+`FiscalRelease.Enabled` wird ausschließlich dann `true`, wenn **alle** Qualifikationen erfüllt sind.
 
 ## Freigabereihenfolge
 
