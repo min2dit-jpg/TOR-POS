@@ -34,7 +34,8 @@ public sealed class OrderBestellungRepository
             {
                 q.CommandText = """
                     SELECT i.product_id,i.product_name,i.variant_name,i.barcode,i.quantity,i.unit_price_cents,i.vat_rate,i.pfand_cents,
-                           i.list_unit_price_cents,i.promotion_id,i.promotion_name,i.promotion_percent,i.promotion_discount_unit_cents
+                           i.list_unit_price_cents,i.promotion_id,i.promotion_name,i.promotion_percent,i.promotion_discount_unit_cents,
+                           COALESCE(i.vat_allocations_json,'')
                     FROM order_bestellung_items i
                     JOIN order_bestellungen b ON b.id=i.bestellung_id
                     WHERE b.parked_receipt_id=$id
