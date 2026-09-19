@@ -252,9 +252,36 @@
       <Setter Property="BoxShadow" Value="0 0 12 0 #25294947"/>
     </Style>
 
+    <!-- R152: settings/cash hubs use the same visual hierarchy as the
+         simulator's card workspace: important daily work reads first,
+         destructive/correction work remains visually distinct. -->
+    <Style Selector="Border.menuhubcard.menuhubbalanced">
+      <Setter Property="MinHeight" Value="250"/>
+      <Setter Property="Padding" Value="16"/>
+    </Style>
+    <Style Selector="Border.menuhubcard.menuhubprimary">
+      <Setter Property="BorderBrush" Value="#2F705F"/>
+      <Setter Property="Background" Value="#10283A"/>
+      <Setter Property="BoxShadow" Value="0 0 14 0 #3038A88A"/>
+    </Style>
+    <Style Selector="Border.menuhubcard.menuhubfinance">
+      <Setter Property="BorderBrush" Value="#356A91"/>
+      <Setter Property="Background" Value="#11283D"/>
+    </Style>
+    <Style Selector="Border.menuhubcard.menuhubcorrection">
+      <Setter Property="BorderBrush" Value="#704650"/>
+      <Setter Property="Background" Value="#2A1E27"/>
+    </Style>
+    <Style Selector="TextBlock.menuhubsectionhint">
+      <Setter Property="Foreground" Value="#7892A8"/>
+      <Setter Property="FontSize" Value="9"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+
     <Style Selector="Button.menuhubaction">
-      <Setter Property="MinHeight" Value="48"/>
-      <Setter Property="Padding" Value="11,8"/>
+      <Setter Property="MinHeight" Value="50"/>
+      <Setter Property="Padding" Value="12,9"/>
       <Setter Property="Margin" Value="0,0,0,7"/>
       <Setter Property="Background" Value="#172C42"/>
       <Setter Property="Foreground" Value="#EEF7FF"/>
@@ -899,26 +926,29 @@
                              Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                <Border Grid.Column="0" Classes="menuhubcard">
+              <Grid ColumnDefinitions="1.05*,1*,1.15*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="menuhubcard menuhubbalanced menuhubprimary">
                   <StackPanel>
-                    <TextBlock Text="KASSE &amp; VERKAUF" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
+                    <TextBlock Text="KASSE &amp; VERKAUF" Foreground="#7FE6CB" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
+                    <TextBlock Classes="menuhubsectionhint" Text="Bedienablauf, Artikelregeln und Zahlarten"/>
                     <Button Classes="menuhubaction" Content="Kasse &amp; Bedienung" Click="OnCashOperationSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Artikel &amp; Steuern" Click="OnArticleTaxSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Zahlung" Click="OnGroupedPaymentSettingsMenuClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Classes="menuhubcard">
+                <Border Grid.Column="1" Classes="menuhubcard menuhubbalanced menuhubfinance">
                   <StackPanel>
-                    <TextBlock Text="UNTERNEHMEN" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
+                    <TextBlock Text="UNTERNEHMEN" Foreground="#9CC3FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
+                    <TextBlock Classes="menuhubsectionhint" Text="Firmendaten, Bon, Personal und Versand"/>
                     <Button Classes="menuhubaction" Content="Firma &amp; Bon" Click="OnCompanyReceiptSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Personal" Click="OnGroupedPersonnelSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Berichte &amp; E-Mail" Click="OnGroupedReportsEmailSettingsMenuClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Classes="menuhubcard">
+                <Border Grid.Column="2" Classes="menuhubcard menuhubbalanced">
                   <StackPanel>
-                    <TextBlock Text="SYSTEM" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
+                    <TextBlock Text="SYSTEM" Foreground="#9CC3FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
+                    <TextBlock Classes="menuhubsectionhint" Text="Geräte, Sicherung, Updates und Techniker"/>
                     <Button Classes="menuhubaction" Content="Geräte" Click="OnGroupedDeviceSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Datensicherung" Click="OnGroupedBackupSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Software &amp; Update" Click="OnSoftwareUpdateSettingsMenuClick"/>
@@ -938,29 +968,32 @@
                              Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                <Border Grid.Column="0" Classes="menuhubcard">
+              <Grid ColumnDefinitions="1.18*,1*,0.86*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="menuhubcard menuhubbalanced menuhubprimary">
                   <StackPanel>
-                    <TextBlock Text="BETRIEB" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
+                    <TextBlock Text="BETRIEB" Foreground="#7FE6CB" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
+                    <TextBlock Classes="menuhubsectionhint" Text="Offene Vorgänge, Bestellungen und Diagnose"/>
                     <Button Classes="menuhubaction" Content="Bestellübersicht · Vorbereitung / Abholung" Click="OnOrderBoardClick"/>
                     <Button Classes="menuhubaction" Content="Zahlung prüfen / fortsetzen" Click="OnCheckoutReviewClick"/>
                     <Button Classes="menuhubaction" Content="Druckwarteschlange prüfen" Click="OnPrinterReviewClick"/>
                     <Button Classes="menuhubaction" Content="Systemstatus / Diagnose" Click="OnDiagnosticsClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Classes="menuhubcard">
+                <Border Grid.Column="1" Classes="menuhubcard menuhubbalanced menuhubfinance">
                   <StackPanel>
-                    <TextBlock Text="BON / ABRECHNUNG" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Bon-Historie" Click="OnReceiptHistoryClick"/>
+                    <TextBlock Text="BON / ABRECHNUNG" Foreground="#9CC3FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
+                    <TextBlock Classes="menuhubsectionhint" Text="Heutige Bons, Kassenbewegung und Abschluss"/>
+                    <Button Classes="menuhubaction" Content="Bon-Historie · Heute" Click="OnReceiptHistoryClick"/>
                     <Button Classes="menuhubaction" Content="Einlage / Entnahme" Click="OnCashMovementClick"/>
                     <Button Classes="menuhubaction" Content="Z-Bericht" Click="OnZReportClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Classes="menuhubcard">
+                <Border Grid.Column="2" Classes="menuhubcard menuhubbalanced menuhubcorrection">
                   <StackPanel>
-                    <TextBlock Text="KORREKTUREN" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Bon stornieren" Click="OnBonStornoClick"/>
-                    <Button Classes="menuhubaction" Content="Teilretoure · einzelne Artikel" Click="OnPartialReturnClick"/>
+                    <TextBlock Text="KORREKTUREN" Foreground="#FFADB7" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
+                    <TextBlock Classes="menuhubsectionhint" Text="Nur für bewusste Korrektur- und Rückgabevorgänge"/>
+                    <Button Classes="menuhubaction menuhubdanger" Content="Bon stornieren" Click="OnBonStornoClick"/>
+                    <Button Classes="menuhubaction menuhubdanger" Content="Teilretoure · einzelne Artikel" Click="OnPartialReturnClick"/>
                   </StackPanel>
                 </Border>
               </Grid>
