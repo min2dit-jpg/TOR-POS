@@ -10,6 +10,10 @@ public interface IFiskaltrustMiddlewareClient
     Task<FiskaltrustReceiptResponse> SignAsync(
         FiskaltrustReceiptRequest request,
         CancellationToken ct = default);
+
+    Task<FiskaltrustReceiptResponse?> RecoverAsync(
+        FiskaltrustReceiptRequest originalRequest,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -77,6 +81,58 @@ public sealed class FiskaltrustMiddlewareClient : IFiskaltrustMiddlewareClient
         FiskaltrustReceiptRequest request,
         CancellationToken ct = default)
     {
+        var normalized = NormalizeFiscalRequest(request);
+
+        using var httpRequest = CreateRequest(
+            HttpMethod.Post,
+            _options.Endpoint("json/v1/Sign"),
+            JsonContent.Create(normalized, options: JsonOptions));
+
+        using var response = await _http.SendAsync(httpRequest, ct);
+        await EnsureSuccessAsync(response, ct);
+
+        var result = await response.Content.ReadFromJsonAsync<FiskaltrustReceiptResponse>(
+            JsonOptions,
+            ct);
+
+        return result
+            ?? throw new InvalidOperationException(
+                "fiskaltrust Sign lieferte keine lesbare ReceiptResponse.");
+    }
+
+    /// <summary>
+    /// Recovery for an ambiguous Sign outcome. fiskaltrust requires the same
+    /// cbReceiptReference and the same charge/pay items; only the documented
+    /// ReceiptRequest flag is added. A null JSON response means no matching
+    /// processed receipt was found and is deliberately returned as null.
+    /// </summary>
+    public async Task<FiskaltrustReceiptResponse?> RecoverAsync(
+        FiskaltrustReceiptRequest originalRequest,
+        CancellationToken ct = default)
+    {
+        var normalized = NormalizeFiscalRequest(originalRequest);
+        var recoveryRequest = normalized with
+        {
+            FtReceiptCase =
+                FiskaltrustDeCases.WithReceiptRequest(normalized.FtReceiptCase)
+        };
+
+        using var httpRequest = CreateRequest(
+            HttpMethod.Post,
+            _options.Endpoint("json/v1/Sign"),
+            JsonContent.Create(recoveryRequest, options: JsonOptions));
+
+        using var response = await _http.SendAsync(httpRequest, ct);
+        await EnsureSuccessAsync(response, ct);
+
+        return await response.Content.ReadFromJsonAsync<FiskaltrustReceiptResponse>(
+            JsonOptions,
+            ct);
+    }
+
+    private FiskaltrustReceiptRequest NormalizeFiscalRequest(
+        FiskaltrustReceiptRequest request)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         if (_options.CashBoxId == Guid.Empty)
@@ -104,21 +160,7 @@ public sealed class FiskaltrustMiddlewareClient : IFiskaltrustMiddlewareClient
         if (string.IsNullOrWhiteSpace(normalized.CbReceiptReference))
             throw new ArgumentException("cbReceiptReference fehlt.", nameof(request));
 
-        using var httpRequest = CreateRequest(
-            HttpMethod.Post,
-            _options.Endpoint("json/v1/Sign"),
-            JsonContent.Create(normalized, options: JsonOptions));
-
-        using var response = await _http.SendAsync(httpRequest, ct);
-        await EnsureSuccessAsync(response, ct);
-
-        var result = await response.Content.ReadFromJsonAsync<FiskaltrustReceiptResponse>(
-            JsonOptions,
-            ct);
-
-        return result
-            ?? throw new InvalidOperationException(
-                "fiskaltrust Sign lieferte keine lesbare ReceiptResponse.");
+        return normalized;
     }
 
     private HttpRequestMessage CreateRequest(
