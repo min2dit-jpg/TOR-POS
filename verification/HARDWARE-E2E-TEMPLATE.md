@@ -59,6 +59,12 @@
 
 ## BAR-Testbon – Detail
 
+- TOR-Architektur: direkte Swissbit WORM API (kein fiskaltrust / kein ftState)
+- Checkout-Journal vor Abschluss: `CASH_READY` (BAR verwendet kein `PREPARED → SENT`)
+- Erwarteter TSE-Vorgang: `OPEN → FINISHED`
+- Tatsächlicher TSE-Vorgangszustand:
+- An die TSE gesendeter processType:
+- An die TSE gesendete processData:
 - Belegnummer:
 - Steuersatz: 19 % / 7 %
 - Brutto:
