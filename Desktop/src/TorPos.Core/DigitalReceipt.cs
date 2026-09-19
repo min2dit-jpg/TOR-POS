@@ -172,17 +172,7 @@ public sealed record DigitalReceiptDocument(
         if (!job.FiscalTestMode)
         {
             // R122: the list the printer refuses to print without.
-            missing = FiscalReceiptFields.Missing(
-                job.CompanyName,
-                job.CompanyAddress,
-                job.EasSerial,
-                job.TseOutage,
-                job.TseSerial,
-                job.TseTransactionNumber,
-                job.SignatureCounter > 0,
-                job.VerificationValue,
-                job.ProcessStart is not null,
-                job.ProcessEnd is not null);
+            missing = FiscalReceiptFields.Missing(job);
 
             void Add(string label, string? value)
             {
