@@ -96,10 +96,21 @@ public sealed record ReceiptPrintJob(
     // fiskaltrust can return the already-composed German QR payload. Preserve
     // that exact string rather than rebuilding/reformatting its signed values.
     string TseQrPayloadOverride = "",
-    string TseProcessStartRaw = "",
-    string TseProcessEndRaw = "",
+    // German receipt times returned by fiskaltrust. BusinessProcessStartRaw is
+    // SignatureType 0x...001F (vorgangsbeginn), distinct from the QR's TSE
+    // transaction start time 0x...0019.
+    string BusinessProcessStartRaw = "",
+    string BusinessProcessEndRaw = "",
     bool TrainingReceipt = false,
-    string ExternalReceiptId = "");
+    string ExternalReceiptId = "",
+    IReadOnlyList<string>? MiddlewareHeaderLines = null,
+    IReadOnlyList<string>? MiddlewareChargeItemLines = null,
+    IReadOnlyList<string>? MiddlewareChargeLines = null,
+    IReadOnlyList<string>? MiddlewarePayItemLines = null,
+    IReadOnlyList<string>? MiddlewarePayLines = null,
+    IReadOnlyList<string>? MiddlewareRequiredSignatureLines = null,
+    IReadOnlyList<string>? MiddlewareTextFallbackSignatureLines = null,
+    IReadOnlyList<string>? MiddlewareFooterLines = null);
 
 /// <summary>
 /// R140: TSE times on the receipt. AEAO zu § 146a Nr. 2.4.4: the data the TSE
