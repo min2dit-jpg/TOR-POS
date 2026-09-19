@@ -35,7 +35,8 @@ public static class TrialPolicy
 {
     public const int DurationDays = 7;
     public static readonly TimeSpan ClockRollbackTolerance = TimeSpan.FromMinutes(5);
-    public const string PublicApiBaseUrl = "https://api.torpos.de";
+    // Temporary live endpoint until api.torpos.de custom-domain activation is available.
+    public const string PublicApiBaseUrl = "https://tor-pos-trial-api-xifmg0.v2.appdeploy.ai";
 }
 
 public static class TrialClockPolicy
