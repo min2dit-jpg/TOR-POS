@@ -333,6 +333,39 @@ public partial class MainWindow:Window
             }
             if (CartLocked) return;
 
+            MenuComponentSnapshot[] menuComponents = Array.Empty<MenuComponentSnapshot>();
+            if (p.IsCombo)
+            {
+                if (p.ComboItems.Any(x => x.IsChoice))
+                {
+                    var selected = await new MenuChoiceWindow(p, _catalog.Products)
+                        .ShowDialog<MenuComponentSnapshot[]?>(this);
+                    if (selected is null)
+                        return;
+                    menuComponents = selected;
+                }
+                else
+                {
+                    var selected = new List<MenuComponentSnapshot>();
+                    foreach (var item in p.ComboItems.OrderBy(x => x.SortOrder))
+                    {
+                        var component = _catalog.Products.FirstOrDefault(x => x.Id == item.ComponentProductId)
+                            ?? throw new InvalidOperationException(
+                                $"Menübestandteil {item.ComponentName} ist nicht mehr aktiv.");
+                        selected.Add(new MenuComponentSnapshot(
+                            component.Id,
+                            component.Name,
+                            item.Quantity,
+                            component.BasePriceCents,
+                            component.VatRate,
+                            component.ImHausApplicable,
+                            ""));
+                    }
+
+                    menuComponents = selected.ToArray();
+                }
+            }
+
             PromotionSnapshot? promotion;
             using (_perf.Measure("promotion.resolve"))
             {
@@ -366,7 +399,8 @@ public partial class MainWindow:Window
                 p,
                 variant,
                 quantity,
-                promotion);
+                promotion,
+                menuComponents);
 
             UpdateCart();
 
@@ -398,6 +432,13 @@ public partial class MainWindow:Window
                 (string.IsNullOrEmpty(x.VariantName)
                     ? ""
                     : " · " + x.VariantName);
+
+            var menuChoices = x.MenuComponents
+                .Where(c => !string.IsNullOrWhiteSpace(c.ChoiceGroup))
+                .Select(c => $"{c.ChoiceGroup}: {c.Name}")
+                .ToArray();
+            if (menuChoices.Length > 0)
+                name += " · " + string.Join(" · ", menuChoices);
 
             if (!x.HasPromotion)
             {
