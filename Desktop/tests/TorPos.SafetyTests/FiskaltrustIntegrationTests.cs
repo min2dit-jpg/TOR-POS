@@ -1031,6 +1031,25 @@ public static class FiskaltrustIntegrationTests
                 acceptance.Evidence.QrPayload,
             "fiskaltrust AVTraining print job keeps signed QR/times exact, uses no production bon number and never opens the cash drawer");
 
+        var incompleteTrainingPrintBlocked = false;
+        try
+        {
+            _ = FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                acceptanceSale,
+                acceptanceTrainingRequest,
+                acceptanceResponse,
+                "",
+                "");
+        }
+        catch (InvalidOperationException ex)
+        {
+            incompleteTrainingPrintBlocked =
+                ex.Message.Contains("Firmendaten", StringComparison.Ordinal);
+        }
+        assert(
+            incompleteTrainingPrintBlocked,
+            "fiskaltrust AVTraining print job is blocked before spool submission when mandatory company/fiscal receipt fields are missing");
+
         var mismatchSignatures =
             acceptanceResponse.FtSignatures
                 .Select(x =>
