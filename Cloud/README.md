@@ -111,3 +111,23 @@ Das mit Code-Signing signierte Desktop-Setup erzeugen und dann z. B.:
 R62 adds a device-authenticated QR pairing flow for `MIT GOOGLE ANMELDEN`. Production use requires a public HTTPS `TOR_CLOUD_PUBLIC_URL`, a Google OAuth **Web application** client, and `TOR_CLOUD_GOOGLE_TOKEN_KEY`. See `R62-GOOGLE-OAUTH-SETUP.md`.
 
 The Cloud stores the Google refresh token only in AES-256-GCM protected form. The POS receives short-lived access tokens; monthly report PDFs are sent directly by the POS to the Gmail API and are not uploaded through TOR POS Cloud.
+
+
+## 7-Tage Desktop-Demo
+
+Die öffentliche Windows-Demo ist vom lokalen Cloud-Demomodus zu unterscheiden.
+
+- Aktivierung: `POST /api/v1/trial/activate`
+- Download: `GET /api/v1/trial/download`
+- Laufzeit: exakt 7 Tage ab erster Serveraktivierung
+- Gerätekennung: nur lokaler SHA-256-Fingerprint; keine rohe MachineGuid/VolumeSerial im Cloud-Datensatz
+- Neuinstallation desselben PCs verlängert die Demo nicht
+- Setup-Publishing: `PUBLISH-DEMO.ps1`
+- Abschalten: `DISABLE-DEMO.ps1`
+- Manifest: `trial-manifest.json`, getrennt vom normalen `manifest.json`
+
+Das Demo-Setup wird nur ausgeliefert, wenn es vorher mit dem freigegebenen
+Code-Signing-Zertifikat geprüft und veröffentlicht wurde. Der Server prüft den
+SHA-256-Wert beim Download erneut.
+
+Details: `../Dokumentation/TORPOS-DEMO-7-TAGE.md`.
