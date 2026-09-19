@@ -260,7 +260,7 @@ public sealed class OrderFiscalSigningService
             return;
         }
 
-        var result = SaleTseResult.SignedResult(
+        var result = SaleTseResult.FromSuccessfulTse(
             clientId,
             finishResult.TransactionNumber.ToString(),
             finishResult.SignatureCounter.ToString(),
