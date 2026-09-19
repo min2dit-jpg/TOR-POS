@@ -38,6 +38,25 @@ public static class FiskaltrustSandboxRequests
     }
 
     /// <summary>
+    /// ZeroReceipt plus the DE TSE-info request flag. This is the preferred
+    /// first physical-hardware diagnostic because it asks for detailed TSE
+    /// status without also forcing self-test/time-update.
+    /// </summary>
+    public static FiskaltrustReceiptRequest ZeroReceiptWithTseInfo(
+        string receiptReference,
+        DateTimeOffset moment,
+        string user = "TOR-POS")
+    {
+        var request = ZeroReceipt(receiptReference, moment, user);
+        return request with
+        {
+            FtReceiptCase =
+                request.FtReceiptCase |
+                FiskaltrustDeCases.ZeroReceiptTseInfoFlag
+        };
+    }
+
+    /// <summary>
     /// First real-sale sandbox payload after ZeroReceipt: a deliberately narrow
     /// cash-only POS receipt. It refuses scenarios whose mapping still needs
     /// separate validation (card/mixed, manual discount, reversals, cancelled
@@ -79,6 +98,14 @@ public static class FiskaltrustSandboxRequests
             throw new InvalidOperationException(
                 "Sandbox-SimpleCashSale akzeptiert vor der Realhardware-Abnahme nur positive Verkaufspositionen.");
 
+        if (sale.Lines.Any(x =>
+                x.PfandCents != 0 ||
+                PfandProducts.IsDeposit(x.ProductId)))
+        {
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale unterstützt Pfand erst nach eigener fiskaltrust-Pfandzuordnung.");
+        }
+
         var lineTotal = sale.Lines.Sum(x => x.LineTotalCents);
         if (lineTotal != sale.TotalCents)
             throw new InvalidOperationException(
@@ -114,7 +141,12 @@ public static class FiskaltrustSandboxRequests
                         : line.Barcode,
                     Unit = "Stück",
                     UnitPrice = line.UnitPriceCents / 100m,
-                    Moment = sale.CreatedAt
+                    // For implicit flow fiskaltrust derives the overall action
+                    // start from the earliest request/item timestamp. Preserve
+                    // TOR's first-position start when available.
+                    Moment = index == 0
+                        ? sale.StartedAt ?? sale.CreatedAt
+                        : sale.CreatedAt
                 };
             })
             .ToArray();
