@@ -57,6 +57,13 @@ public sealed class MenuChoiceWindow : Window
     private readonly Product _menu;
     private readonly IReadOnlyDictionary<long,Product> _products;
     private readonly List<(string Group, ComboBox Box)> _groups = new();
+    private readonly TextBlock _pricePreview = new()
+    {
+        FontSize = 18,
+        FontWeight = FontWeight.Bold,
+        Foreground = AppTheme.AccentTeal,
+        TextWrapping = TextWrapping.Wrap
+    };
     private readonly TextBlock _status = new()
     {
         Foreground = Brushes.OrangeRed,
@@ -144,6 +151,7 @@ public sealed class MenuChoiceWindow : Window
                 MinHeight = 46,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
+            combo.SelectionChanged += (_,_) => UpdatePricePreview();
             _groups.Add((groupName, combo));
 
             body.Children.Add(new TextBlock
@@ -156,6 +164,7 @@ public sealed class MenuChoiceWindow : Window
             body.Children.Add(combo);
         }
 
+        body.Children.Add(_pricePreview);
         body.Children.Add(_status);
 
         var ok = new Button
@@ -190,14 +199,16 @@ public sealed class MenuChoiceWindow : Window
             Content = body,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
-        Opened += (_,_) => UiLanguage.Apply(this);
+        Opened += (_,_) =>
+        {
+            UiLanguage.Apply(this);
+            UpdatePricePreview();
+        };
     }
 
-    private void Accept()
+    private MenuComponentSnapshot[] BuildSelection()
     {
-        try
-        {
-            var selected = new List<MenuComponentSnapshot>();
+        var selected = new List<MenuComponentSnapshot>();
 
             foreach (var item in _menu.ComboItems
                          .Where(x => !x.IsChoice)
@@ -234,8 +245,37 @@ public sealed class MenuChoiceWindow : Window
                     group));
             }
 
-            var components = selected.ToArray();
-            var price = MenuVatPolicy.EffectiveMenuPrice(_menu, _products.Values.ToArray(), components);
+        return selected.ToArray();
+    }
+
+    private void UpdatePricePreview()
+    {
+        try
+        {
+            var components = BuildSelection();
+            var price = MenuVatPolicy.EffectiveMenuPrice(
+                _menu,
+                _products.Values.ToArray(),
+                components);
+            _pricePreview.Text = $"Menüpreis mit Auswahl: {Formatting.Money(price)}";
+            _status.Text = "";
+        }
+        catch (Exception ex)
+        {
+            _pricePreview.Text = "";
+            _status.Text = ex.Message;
+        }
+    }
+
+    private void Accept()
+    {
+        try
+        {
+            var components = BuildSelection();
+            var price = MenuVatPolicy.EffectiveMenuPrice(
+                _menu,
+                _products.Values.ToArray(),
+                components);
             Close((MenuChoiceResult?)new MenuChoiceResult(components, price));
         }
         catch (Exception ex)
