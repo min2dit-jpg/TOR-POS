@@ -314,6 +314,11 @@ public static class FiskaltrustDeCases
     public const ulong SepaTransfer = 0x4445000000000008UL;
     public const ulong OtherBankTransfer = 0x4445000000000009UL;
 
+    // Receipt-level DE flags.
+    // TrainingReceiptFlag causes DSFinV-K BON_TYP=AVTraining. It is used only
+    // for controlled hardware acceptance and never for production turnover.
+    public const ulong TrainingReceiptFlag = 0x0000000000020000UL;
+
     // Adds the Middleware's implicit start+finish flow to a receipt case.
     public const ulong ImplicitFlowFlag = 0x0000000100000000UL;
 
