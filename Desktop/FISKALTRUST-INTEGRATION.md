@@ -290,3 +290,15 @@ Its rule is conservative:
 
 This is the same safety principle TOR already applies to uncertain card
 payments: an external effect is reconciled, never guessed.
+
+
+## Transport security guard
+
+The client now permits unencrypted HTTP only for loopback/local Middleware
+endpoints. Any non-loopback HTTP endpoint is rejected. SaaS/CloudCashbox mode,
+which carries an access token header, always requires HTTPS. Credentials
+embedded directly in an endpoint URL are rejected as well.
+
+This keeps the working local `http://localhost:1500/<queue-id>/` setup while
+preventing fiscal payloads or portal credentials from being sent in clear text
+to a remote host.
