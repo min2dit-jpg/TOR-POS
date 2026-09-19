@@ -1490,137 +1490,187 @@ public sealed class ExtraSelectionWindow : Window
     }
 }
 
+public enum ReceiptHistoryAction
+{
+    PrintCopy,
+    FullStorno,
+    PartialReturn
+}
+
+public sealed record ReceiptHistorySelection(long SaleId, ReceiptHistoryAction Action);
+
 public sealed class ReceiptHistoryWindow : Window
 {
-    private readonly ListBox _list = new();
+    private readonly ISaleRepository _repository;
+    private readonly BusinessManagementService _management;
+    private readonly bool _stornoMode;
+    private readonly bool _returnMode;
+    private readonly StackPanel _rows = new() { Spacing = 7 };
+    private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly StackPanel _archiveFilters = new() { Spacing = 8, IsVisible = false };
 
-    public ReceiptHistoryWindow(ISaleRepository repository, BusinessManagementService management, bool stornoMode = false, bool returnMode = false)
+    public ReceiptHistoryWindow(
+        ISaleRepository repository,
+        BusinessManagementService management,
+        bool stornoMode = false,
+        bool returnMode = false)
     {
-        Title = stornoMode ? "BON STORNO · Bon auswählen" : returnMode ? "TEILRETOURE · Bon auswählen" : "Bon-Archiv · Suche";
-        Width = 820;
-        Height = 740;
-        MinWidth = 680;
-        MinHeight = 600;
+        _repository = repository;
+        _management = management;
+        _stornoMode = stornoMode;
+        _returnMode = returnMode;
+
+        Title = stornoMode
+            ? "BON STORNO · Heute"
+            : returnMode
+                ? "TEILRETOURE · Heute"
+                : "BON-HISTORIE · Heute";
+        Width = 1180;
+        Height = 780;
+        MinWidth = 900;
+        MinHeight = 620;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        var from = new TextBox { Text = DateTime.Today.ToString("dd.MM.yyyy"), MinWidth = 135 };
-        var to = new TextBox { Text = DateTime.Today.ToString("dd.MM.yyyy"), MinWidth = 135 };
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var from = new TextBox { Text = today.ToString("dd.MM.yyyy"), MinWidth = 135 };
+        var to = new TextBox { Text = today.ToString("dd.MM.yyyy"), MinWidth = 135 };
         var number = new TextBox { PlaceholderText = "Bonnummer (optional)", MinWidth = 180 };
-        var method = new ComboBox { ItemsSource = new[] { "Alle Zahlarten", "Bar", "Karte", "Gemischt" }, SelectedIndex = stornoMode || returnMode ? 1 : 0, MinWidth = 160 };
-        var search = new Button { Content = "SUCHEN", MinHeight = 46 };
-        var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        var filters = new StackPanel { Spacing = 8 };
-        filters.Children.Add(new TextBlock { Text = "Zeitraum einschließlich Enddatum · Datum auf dem gespeicherten Bon" });
-        filters.Children.Add(new WrapPanel { Orientation = Orientation.Horizontal, Children = {
-            new TextBlock { Text = "Von: ", VerticalAlignment = VerticalAlignment.Center }, from,
-            new TextBlock { Text = " Bis: ", VerticalAlignment = VerticalAlignment.Center }, to } });
-        filters.Children.Add(new WrapPanel { Orientation = Orientation.Horizontal, Children = { number, method, search } });
-        filters.Children.Add(status);
-        var preview = new Button { Content = "VORSCHAU / PDF", MinHeight = 52, MinWidth = 170 };
-        preview.Click += async (_, _) =>
+        var method = new ComboBox
         {
-            if (_list.SelectedItem is not ReceiptRow selected) return;
-            var sale = selected.Sale;
-            var lines = new List<string>
-            {
-                "BON-KOPIE · DATENANSICHT (kein neuer Verkauf)",
-                $"Bon {sale.ReceiptNumber:000000} · {sale.CreatedAt.LocalDateTime:dd.MM.yyyy HH:mm:ss}",
-                sale.PickupNumber > 0 ? $"Abholnummer: {sale.PickupNumber:000}" : "Abholnummer: –",
-                $"Bediener: {sale.OperatorName} · Zahlung: {sale.PaymentMethod}",
-                $"Gespeicherter Fiskalstatus: {sale.FiscalStatus}", ""
-            };
-            lines.AddRange(sale.Lines.Select(x => $"{x.Quantity} × {x.ProductName} {x.VariantName} · {Formatting.Money(x.LineTotalCents)} · MwSt {x.VatRate}%"));
-            lines.Add($"Rabatt: {Formatting.Money(sale.DiscountCents)}");
-            lines.Add($"GESAMT: {Formatting.Money(sale.TotalCents)}");
-            await new TextReportWindow(management, new ReportDocument("BON-KOPIE", lines, DateTimeOffset.Now),
-                "Datenansicht des gespeicherten Verkaufs. Keine nachträglich erzeugte TSE-Signatur.").ShowDialog(this);
+            ItemsSource = new[] { "Alle Zahlarten", "Bar", "Karte", "Gemischt" },
+            SelectedIndex = 0,
+            MinWidth = 160
         };
-        _list.DoubleTapped += (_,_) => preview.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var archiveSearch = new Button { Content = "ARCHIV SUCHEN", MinHeight = 42, MinWidth = 150 };
 
-        var copy = new Button
+        _archiveFilters.Children.Add(new TextBlock
         {
-            Content = stornoMode ? "DIESEN BON STORNIEREN" : returnMode ? "MENGEN AUSWÄHLEN" : "BON-KOPIE DRUCKEN",
-            MinWidth = 190,
-            MinHeight = 52,
-            FontWeight = FontWeight.Bold
-        };
-        if (stornoMode || returnMode)
+            Text = "ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = AppTheme.WarningAmber
+        });
+        _archiveFilters.Children.Add(new WrapPanel
         {
-            copy.Background = AppTheme.DangerRed;
-            copy.Foreground = Brushes.White;
-        }
-        copy.Click += (_,_) => Accept();
-
-        var close = new Button
-        {
-            Content = "SCHLIESSEN",
-            MinWidth = 140,
-            MinHeight = 52
-        };
-        close.Click += (_,_) => Close((long?)null);
-
-        Content = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-            Margin = new Avalonia.Thickness(22),
-            RowSpacing = 12,
+            Orientation = Orientation.Horizontal,
             Children =
             {
-                new StackPanel
+                new TextBlock { Text = "Von: ", VerticalAlignment = VerticalAlignment.Center }, from,
+                new TextBlock { Text = " Bis: ", VerticalAlignment = VerticalAlignment.Center }, to
+            }
+        });
+        _archiveFilters.Children.Add(new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { number, method, archiveSearch }
+        });
+
+        var refresh = new Button { Content = "HEUTE AKTUALISIEREN", MinHeight = 42, MinWidth = 170 };
+        refresh.Click += async (_, _) => await LoadTodayAsync();
+
+        var archiveToggle = new Button { Content = "ARCHIV / SUCHE", MinHeight = 42, MinWidth = 150 };
+        archiveToggle.Click += (_, _) =>
+        {
+            _archiveFilters.IsVisible = !_archiveFilters.IsVisible;
+            archiveToggle.Content = _archiveFilters.IsVisible ? "ARCHIV SCHLIESSEN" : "ARCHIV / SUCHE";
+        };
+
+        var close = new Button { Content = "SCHLIESSEN", MinHeight = 42, MinWidth = 130 };
+        close.Click += (_, _) => Close((ReceiptHistorySelection?)null);
+
+        var toolbar = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { refresh, archiveToggle, close }
+        };
+
+        var header = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#102235")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#294765")),
+            BorderThickness = new Avalonia.Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Avalonia.Thickness(14),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
                 {
-                    Spacing = 4,
-                    Children =
+                    new TextBlock
                     {
-                        new TextBlock
-                        {
-                            Text = stornoMode ? "BON STORNO" : returnMode ? "TEILRETOURE" : "BON-ARCHIV",
-                            FontSize = 25,
-                            FontWeight = FontWeight.Bold
-                        },
-                        new TextBlock
-                        {
-                            Text = stornoMode
-                                ? "Zu stornierenden Bon auswählen. Noch nicht stornierte Verkäufe - bei Karten-/gemischten Zahlungen wird der Karten-Anteil vor der Buchung am Terminal erstattet."
-                                : returnMode
-                                    ? "Bon für eine Teilretoure auswählen. Bei Karten-/gemischten Zahlungen wird der Karten-Anteil vor der Buchung am Terminal erstattet."
-                                    : "Gespeicherte Verkäufe auch vor Z-Abschlüssen suchen. Testverkäufe erscheinen hier nicht.",
-                            TextWrapping = TextWrapping.Wrap,
-                            Opacity = 0.68
-                        },
-                        filters
+                        Text = stornoMode ? "BON STORNO · HEUTE" : returnMode ? "TEILRETOURE · HEUTE" : "BON-HISTORIE · HEUTE",
+                        FontSize = 24,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = AppTheme.AccentTeal
+                    },
+                    new TextBlock
+                    {
+                        Text = $"Heute {today:dd.MM.yyyy} · alle gespeicherten Bons werden automatisch geladen.",
+                        FontSize = 12,
+                        Foreground = new SolidColorBrush(Color.Parse("#A9BDCF"))
+                    },
+                    new TextBlock
+                    {
+                        Text = stornoMode
+                            ? "Nur reguläre Verkäufe von heute können vollständig storniert werden."
+                            : returnMode
+                                ? "Nur reguläre Verkäufe von heute können teilweise retourniert werden."
+                                : "Direkt am Bon: ANZEIGEN · KOPIE DRUCKEN · BON STORNIEREN · TEILRETOURE.",
+                        TextWrapping = TextWrapping.Wrap,
+                        Opacity = 0.72
                     }
-                },
-                _list,
-                new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Spacing = 10,
-                    Children = { preview, copy, close }
                 }
             }
         };
 
-        Grid.SetRow(_list, 1);
-        if (Content is Grid grid)
-            Grid.SetRow(grid.Children[2], 2);
-
-        preview.IsEnabled = copy.IsEnabled = false;
-        _list.SelectionChanged += (_, _) => preview.IsEnabled = copy.IsEnabled = _list.SelectedItem is ReceiptRow;
-        async Task SearchAsync()
+        var listHeader = new Grid
         {
-            if (!search.IsEnabled) return;
-            search.IsEnabled = false; filters.IsEnabled = false;
-            _list.ItemsSource = Array.Empty<ReceiptRow>();
-            preview.IsEnabled = copy.IsEnabled = false;
-            status.Text = "Suche läuft ...";
+            ColumnDefinitions = new ColumnDefinitions("105,130,100,110,*,Auto"),
+            Margin = new Avalonia.Thickness(2, 0, 2, 3)
+        };
+        AddHeader(listHeader, 0, "BON");
+        AddHeader(listHeader, 1, "ZEIT");
+        AddHeader(listHeader, 2, "ZAHLART");
+        AddHeader(listHeader, 3, "SUMME");
+        AddHeader(listHeader, 4, "BEDIENER / STATUS");
+        AddHeader(listHeader, 5, "AKTIONEN");
+
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Content = _rows
+        };
+
+        var body = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*"),
+            Margin = new Avalonia.Thickness(18),
+            RowSpacing = 9,
+            Children = { header, toolbar, _archiveFilters, _status, new StackPanel { Spacing = 4, Children = { listHeader, scroll } } }
+        };
+        Grid.SetRow(toolbar, 1);
+        Grid.SetRow(_archiveFilters, 2);
+        Grid.SetRow(_status, 3);
+        Grid.SetRow(body.Children[4], 4);
+        Content = body;
+
+        archiveSearch.Click += async (_, _) =>
+        {
             try
             {
-                if (!DateOnly.TryParseExact(from.Text?.Trim(), "dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None, out var start) ||
-                    !DateOnly.TryParseExact(to.Text?.Trim(), "dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None, out var end))
-                    throw new ArgumentException("Datum als TT.MM.JJJJ eingeben, zum Beispiel 07.09.2026.");
+                if (!DateOnly.TryParseExact(
+                        from.Text?.Trim(),
+                        "dd.MM.yyyy",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None,
+                        out var start) ||
+                    !DateOnly.TryParseExact(
+                        to.Text?.Trim(),
+                        "dd.MM.yyyy",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None,
+                        out var end))
+                    throw new ArgumentException("Datum als TT.MM.JJJJ eingeben.");
+
                 long? receiptNumber = null;
                 if (!string.IsNullOrWhiteSpace(number.Text))
                 {
@@ -1628,6 +1678,7 @@ public sealed class ReceiptHistoryWindow : Window
                         throw new ArgumentException("Eine positive Bonnummer eingeben oder das Feld leeren.");
                     receiptNumber = value;
                 }
+
                 var payment = method.SelectedIndex switch
                 {
                     1 => PaymentMethod.Cash,
@@ -1635,34 +1686,209 @@ public sealed class ReceiptHistoryWindow : Window
                     3 => PaymentMethod.Mixed,
                     _ => (PaymentMethod?)null
                 };
-                var found = await repository.SearchHistoryAsync(start, end, receiptNumber, payment);
-                _list.ItemsSource = found.Take(200).Select(x => new ReceiptRow(x)).ToArray();
-                status.Text = found.Count == 0 ? "Keine gespeicherten Bons gefunden. Zeitraum / Filter prüfen. Testverkäufe werden nicht gespeichert." :
-                    found.Count > 200 ? "Mehr als 200 Treffer: die neuesten 200 werden gezeigt. Bitte Zeitraum oder Bonnummer eingrenzen." : $"{found.Count} Bon(s) gefunden.";
-                if (found.Count > 0) _list.SelectedIndex = 0;
+
+                _status.Text = "Archiv wird geladen ...";
+                var found = await _repository.SearchHistoryAsync(start, end, receiptNumber, payment);
+                RenderRows(found, todayOnlyActions: false);
+                _status.Text = found.Count == 0
+                    ? "Keine gespeicherten Bons für diesen Archivfilter gefunden."
+                    : $"{found.Count} Bon(s) im Archiv gefunden. Alte Bons: nur Anzeigen / Kopie.";
             }
-            catch (Exception ex) { CrashLog.WriteException("Receipt archive search", ex); status.Text = "Suche: " + ex.Message; }
-            finally { search.IsEnabled = true; filters.IsEnabled = true; }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("Receipt archive search", ex);
+                _status.Text = "ARCHIV: " + ex.Message;
+            }
+        };
+
+        Opened += async (_, _) =>
+        {
+            UiLanguage.Apply(this);
+            await LoadTodayAsync();
+        };
+    }
+
+    private static void AddHeader(Grid grid, int column, string text)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            FontSize = 9,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#8EA8BE")),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(label, column);
+        grid.Children.Add(label);
+    }
+
+    private async Task LoadTodayAsync()
+    {
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            _status.Text = "Heutige Bons werden geladen ...";
+            var found = await _repository.SearchHistoryAsync(today, today);
+            RenderRows(found, todayOnlyActions: true);
+            _status.Text = found.Count == 0
+                ? $"Heute {today:dd.MM.yyyy} wurden noch keine echten Bons gespeichert."
+                : $"HEUTE · {today:dd.MM.yyyy} · {found.Count} Bon(s) · neueste zuerst";
         }
-        search.Click += async (_, _) => await SearchAsync();
-        Opened += async (_, _) => await SearchAsync();
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Receipt history today", ex);
+            _status.Text = "BON-HISTORIE: " + ex.Message;
+        }
     }
 
-    private void Accept()
+    private void RenderRows(IReadOnlyList<Sale> sales, bool todayOnlyActions)
     {
-        if (_list.SelectedItem is ReceiptRow row)
-            Close((long?)row.Sale.Id);
+        _rows.Children.Clear();
+        var today = DateTimeOffset.Now.Date;
+
+        foreach (var sale in sales)
+        {
+            var isToday = sale.CreatedAt.Date == today;
+            var regularSale = string.Equals(sale.TransactionType, "SALE", StringComparison.OrdinalIgnoreCase);
+            var reversalAllowedByDate = todayOnlyActions && isToday && regularSale;
+
+            var row = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("105,130,100,110,*,Auto"),
+                MinHeight = 58,
+                Margin = new Avalonia.Thickness(0, 0, 0, 2),
+                Background = new SolidColorBrush(Color.Parse("#102033"))
+            };
+
+            AddCell(row, 0, $"#{sale.ReceiptNumber:000000}", FontWeight.Bold);
+            AddCell(row, 1, sale.CreatedAt.LocalDateTime.ToString("dd.MM. HH:mm:ss"));
+            AddCell(row, 2, sale.PaymentMethod switch
+            {
+                PaymentMethod.Card => "KARTE",
+                PaymentMethod.Mixed => "BAR/KARTE",
+                _ => "BAR"
+            });
+            AddCell(row, 3, Formatting.Money(sale.TotalCents), FontWeight.Bold);
+
+            var status = string.Equals(sale.TransactionType, "STORNO", StringComparison.OrdinalIgnoreCase)
+                ? "STORNO"
+                : string.Equals(sale.TransactionType, "RETURN", StringComparison.OrdinalIgnoreCase)
+                    ? "RETOURE"
+                    : "VERKAUF";
+            AddCell(
+                row,
+                4,
+                (string.IsNullOrWhiteSpace(sale.OperatorName) ? "—" : sale.OperatorName) + " · " + status,
+                status == "VERKAUF" ? FontWeight.Normal : FontWeight.Bold);
+
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 5,
+                Margin = new Avalonia.Thickness(8, 7)
+            };
+            Grid.SetColumn(actions, 5);
+
+            var view = ActionButton("ANZEIGEN");
+            view.Click += async (_, _) => await ShowPreviewAsync(sale);
+            actions.Children.Add(view);
+
+            var copy = ActionButton("KOPIE");
+            copy.Click += (_, _) => Close(new ReceiptHistorySelection(sale.Id, ReceiptHistoryAction.PrintCopy));
+            actions.Children.Add(copy);
+
+            if (!_returnMode)
+            {
+                var storno = ActionButton("STORNO", danger: true);
+                storno.IsEnabled = reversalAllowedByDate;
+                storno.Click += (_, _) => Close(new ReceiptHistorySelection(sale.Id, ReceiptHistoryAction.FullStorno));
+                actions.Children.Add(storno);
+            }
+
+            if (!_stornoMode)
+            {
+                var retoure = ActionButton("TEILRETOURE", danger: true);
+                retoure.IsEnabled = reversalAllowedByDate;
+                retoure.Click += (_, _) => Close(new ReceiptHistorySelection(sale.Id, ReceiptHistoryAction.PartialReturn));
+                actions.Children.Add(retoure);
+            }
+
+            if (_stornoMode)
+            {
+                copy.IsVisible = false;
+                view.IsVisible = true;
+            }
+            else if (_returnMode)
+            {
+                copy.IsVisible = false;
+                view.IsVisible = true;
+            }
+
+            row.Children.Add(actions);
+            _rows.Children.Add(new Border
+            {
+                BorderBrush = new SolidColorBrush(Color.Parse(
+                    status == "STORNO" ? "#7D3D47" :
+                    status == "RETOURE" ? "#775F25" : "#294765")),
+                BorderThickness = new Avalonia.Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Child = row
+            });
+        }
     }
 
-    private sealed record ReceiptRow(Sale Sale)
+    private static void AddCell(Grid grid, int column, string text, FontWeight? weight = null)
     {
-        public override string ToString() =>
-            $"Bon {Sale.ReceiptNumber:000000}" +
-            (Sale.PickupNumber > 0 ? $" · Abholnr. {Sale.PickupNumber:000}" : "") +
-            $"   {Sale.CreatedAt:dd.MM.yyyy HH:mm:ss}   " +
-            $"{(Sale.PaymentMethod switch { PaymentMethod.Card => "KARTE", PaymentMethod.Mixed => "BAR/KARTE", _ => "BAR" })}   " +
-            $"{Formatting.Money(Sale.TotalCents)}" +
-            (string.IsNullOrWhiteSpace(Sale.OperatorName) ? "" : $"   · {Sale.OperatorName}");
+        var cell = new TextBlock
+        {
+            Text = text,
+            Margin = new Avalonia.Thickness(10, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            FontWeight = weight ?? FontWeight.Normal
+        };
+        Grid.SetColumn(cell, column);
+        grid.Children.Add(cell);
+    }
+
+    private static Button ActionButton(string text, bool danger = false)
+    {
+        return new Button
+        {
+            Content = text,
+            MinHeight = 34,
+            MinWidth = text == "TEILRETOURE" ? 100 : 72,
+            Padding = new Avalonia.Thickness(8, 5),
+            FontSize = 9,
+            FontWeight = FontWeight.Bold,
+            Background = new SolidColorBrush(Color.Parse(danger ? "#54252E" : "#1C3852")),
+            Foreground = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.Parse(danger ? "#9D5260" : "#496985")),
+            BorderThickness = new Avalonia.Thickness(1),
+            CornerRadius = new CornerRadius(6)
+        };
+    }
+
+    private async Task ShowPreviewAsync(Sale sale)
+    {
+        var lines = new List<string>
+        {
+            "BON-KOPIE · DATENANSICHT (kein neuer Verkauf)",
+            $"Bon {sale.ReceiptNumber:000000} · {sale.CreatedAt.LocalDateTime:dd.MM.yyyy HH:mm:ss}",
+            sale.PickupNumber > 0 ? $"Abholnummer: {sale.PickupNumber:000}" : "Abholnummer: –",
+            $"Bediener: {sale.OperatorName} · Zahlung: {sale.PaymentMethod}",
+            $"Art: {sale.TransactionType} · Fiskalstatus: {sale.FiscalStatus}", ""
+        };
+        lines.AddRange(sale.Lines.Select(x =>
+            $"{x.Quantity} × {x.ProductName} {x.VariantName} · {Formatting.Money(x.LineTotalCents)} · MwSt {x.VatRate}%"));
+        lines.Add($"Rabatt: {Formatting.Money(sale.DiscountCents)}");
+        lines.Add($"GESAMT: {Formatting.Money(sale.TotalCents)}");
+        await new TextReportWindow(
+            _management,
+            new ReportDocument("BON-KOPIE", lines, DateTimeOffset.Now),
+            "Datenansicht des gespeicherten Verkaufs. Keine nachträglich erzeugte TSE-Signatur.")
+            .ShowDialog(this);
     }
 }
 
