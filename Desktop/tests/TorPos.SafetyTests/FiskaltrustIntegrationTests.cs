@@ -486,7 +486,6 @@ public static class FiskaltrustIntegrationTests
                     StringComparison.Ordinal),
                 "fiskaltrust recovery reuses the original reference/items and adds only the documented ReceiptRequest flag");
         }
-    }
 
         var journalPath = Path.Combine(
             Path.GetTempPath(),
@@ -589,6 +588,7 @@ public static class FiskaltrustIntegrationTests
         assert(
             invalidResendTransitionRejected,
             "fiskaltrust journal blocks moving a COMMITTED operation back to SENT");
+    }
 
     private sealed class FakeHandler : HttpMessageHandler
     {
