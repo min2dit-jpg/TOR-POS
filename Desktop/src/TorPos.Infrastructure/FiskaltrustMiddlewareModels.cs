@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace TorPos.Infrastructure;
@@ -113,7 +114,7 @@ public sealed record FiskaltrustReceiptRequest
 public sealed record FiskaltrustChargeItem
 {
     [JsonPropertyName("position")]
-    public int Position { get; init; }
+    public decimal Position { get; init; }
 
     [JsonPropertyName("quantity")]
     public decimal Quantity { get; init; }
@@ -167,7 +168,7 @@ public sealed record FiskaltrustChargeItem
 public sealed record FiskaltrustPayItem
 {
     [JsonPropertyName("position")]
-    public int Position { get; init; }
+    public decimal Position { get; init; }
 
     [JsonPropertyName("quantity")]
     public decimal Quantity { get; init; }
@@ -212,7 +213,7 @@ public sealed record FiskaltrustReceiptResponse
     public string FtQueueItemId { get; init; } = "";
 
     [JsonPropertyName("ftQueueRow")]
-    public long FtQueueRow { get; init; }
+    public ulong FtQueueRow { get; init; }
 
     [JsonPropertyName("cbTerminalID")]
     public string CbTerminalId { get; init; } = "";
@@ -261,7 +262,7 @@ public sealed record FiskaltrustReceiptResponse
     public ulong FtState { get; init; }
 
     [JsonPropertyName("ftStateData")]
-    public string? FtStateData { get; init; }
+    public JsonElement? FtStateData { get; init; }
 }
 
 public sealed record FiskaltrustSignatureItem
@@ -270,7 +271,7 @@ public sealed record FiskaltrustSignatureItem
     public string? FtSignatureItemId { get; init; }
 
     [JsonPropertyName("ftSignatureFormat")]
-    public int FtSignatureFormat { get; init; }
+    public ulong FtSignatureFormat { get; init; }
 
     [JsonPropertyName("ftSignatureType")]
     public ulong FtSignatureType { get; init; }
@@ -344,14 +345,14 @@ public static class FiskaltrustDeCases
 /// </summary>
 public static class FiskaltrustSignatureFormats
 {
-    public const int Text = 0x0001;
-    public const int QrCode = 0x0003;
-    public const int Base64 = 0x000D;
-    public const int OptionalPrintFlag = 0x00010000;
+    public const ulong Text = 0x0001UL;
+    public const ulong QrCode = 0x0003UL;
+    public const ulong Base64 = 0x000DUL;
+    public const ulong OptionalPrintFlag = 0x00010000UL;
 
-    public static int BaseFormat(int value) => value & 0xFFFF;
+    public static ulong BaseFormat(ulong value) => value & 0xFFFFUL;
 
-    public static bool IsOptionalWhenQrIsPrinted(int value) =>
+    public static bool IsOptionalWhenQrIsPrinted(ulong value) =>
         (value & OptionalPrintFlag) != 0;
 }
 
