@@ -457,10 +457,9 @@ public static class FiskaltrustIntegrationTests
             trainingRequest.CbReceiptAmount == simpleRequest.CbReceiptAmount &&
             trainingRequest.CbChargeItems.Count == simpleRequest.CbChargeItems.Count &&
             trainingRequest.CbPayItems.Count == simpleRequest.CbPayItems.Count &&
-            (trainingRequest.FtReceiptCase & FiskaltrustDeCases.TrainingReceiptFlag) != 0 &&
-            (trainingRequest.FtReceiptCase & FiskaltrustDeCases.ImplicitFlowFlag) != 0 &&
-            (trainingRequest.FtReceiptCase & 0xFFFF0000000000FFUL) ==
-                (simpleRequest.FtReceiptCase & 0xFFFF0000000000FFUL),
+            trainingRequest.FtReceiptCase ==
+                (simpleRequest.FtReceiptCase |
+                 FiskaltrustDeCases.TrainingReceiptFlag),
             "fiskaltrust training cash receipt keeps the normal POS payload and adds only the DE AVTraining receipt flag");
 
         var blockedCard = false;
