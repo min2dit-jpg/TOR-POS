@@ -76,8 +76,12 @@ public static class FiskaltrustGermanReceiptProjection
     {
         ArgumentNullException.ThrowIfNull(response);
 
+        var signatures =
+            response.FtSignatures ??
+            Array.Empty<FiskaltrustSignatureItem>();
+
         string Data(ulong type) =>
-            response.FtSignatures
+            signatures
                 .FirstOrDefault(x => x.FtSignatureType == type)
                 ?.Data ?? "";
 
@@ -114,16 +118,20 @@ public static class FiskaltrustGermanReceiptProjection
     {
         ArgumentNullException.ThrowIfNull(response);
 
-        var hasQr = response.FtSignatures.Any(x =>
+        var signatures =
+            response.FtSignatures ??
+            Array.Empty<FiskaltrustSignatureItem>();
+
+        var hasQr = signatures.Any(x =>
             x.FtSignatureType == FiskaltrustDeSignatureTypes.KassenSichVQrPayload &&
             FiskaltrustSignatureFormats.BaseFormat(x.FtSignatureFormat) ==
                 FiskaltrustSignatureFormats.QrCode &&
             !string.IsNullOrWhiteSpace(x.Data));
 
         if (!preferQr || !hasQr)
-            return response.FtSignatures.ToArray();
+            return signatures.ToArray();
 
-        return response.FtSignatures
+        return signatures
             .Where(x =>
                 !FiskaltrustSignatureFormats.IsOptionalWhenQrIsPrinted(
                     x.FtSignatureFormat))
