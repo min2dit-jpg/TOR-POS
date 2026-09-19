@@ -2103,6 +2103,10 @@ private Control FiskaltrustPage()
     training.Children.Add(StatusRow("ProcessData", trainingProcessData));
 
     ReceiptPrintJob? lastTrainingPrintJob = null;
+    Sale? lastTrainingSale = null;
+    FiskaltrustReceiptRequest? lastTrainingRequest = null;
+    FiskaltrustReceiptResponse? lastTrainingResponse = null;
+    var trainingLockedAfterFiscalAttempt = false;
 
     var trainingQr = new TextBox
     {
@@ -2159,9 +2163,22 @@ private Control FiskaltrustPage()
             return;
         }
 
+        if (trainingLockedAfterFiscalAttempt)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "In dieser Sitzung wurde bereits ein fiskaler Trainingsversuch gestartet. " +
+                "Nicht erneut signieren; zuerst Ergebnis/Recovery prüfen.");
+            return;
+        }
+
         trainingButton.IsEnabled = false;
         printTrainingButton.IsEnabled = false;
         lastTrainingPrintJob = null;
+        lastTrainingSale = null;
+        lastTrainingRequest = null;
+        lastTrainingResponse = null;
         SetResult(
             trainingPrintStatus,
             null,
@@ -2229,6 +2246,14 @@ private Control FiskaltrustPage()
             var response = await coordinator.ExecuteAsync(
                 request,
                 "DIAG:TRAINING:CASH");
+
+            // A definite ReceiptResponse means a real AVTraining fiscal
+            // attempt has happened. Do not let this UI send a second training
+            // receipt in the same session just because printing later fails.
+            trainingLockedAfterFiscalAttempt = true;
+            lastTrainingSale = sale;
+            lastTrainingRequest = request;
+            lastTrainingResponse = response;
 
             var report =
                 FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
@@ -2365,6 +2390,7 @@ private Control FiskaltrustPage()
         }
         catch (FiskaltrustSignUnresolvedException ex)
         {
+            trainingLockedAfterFiscalAttempt = true;
             lastTrainingPrintJob = null;
             printTrainingButton.IsEnabled = false;
             SetResult(
@@ -2381,7 +2407,11 @@ private Control FiskaltrustPage()
         catch (Exception ex)
         {
             lastTrainingPrintJob = null;
-            printTrainingButton.IsEnabled = false;
+            printTrainingButton.IsEnabled =
+                lastTrainingSale is not null &&
+                lastTrainingRequest is not null &&
+                lastTrainingResponse is not null;
+
             SetResult(
                 trainingPrintStatus,
                 false,
@@ -2394,25 +2424,56 @@ private Control FiskaltrustPage()
         }
         finally
         {
-            trainingButton.IsEnabled = true;
+            trainingButton.IsEnabled =
+                !trainingLockedAfterFiscalAttempt;
         }
     };
 
     printTrainingButton.Click += async (_, _) =>
     {
-        if (lastTrainingPrintJob is not { } printJob)
-        {
-            SetResult(
-                trainingPrintStatus,
-                false,
-                "Kein bestandener AVTraining-Beleg zum Drucken vorhanden.");
-            return;
-        }
-
         printTrainingButton.IsEnabled = false;
         try
         {
             var values = await _settings.LoadAllAsync();
+
+            if (lastTrainingPrintJob is null &&
+                lastTrainingSale is { } signedSale &&
+                lastTrainingRequest is { } signedRequest &&
+                lastTrainingResponse is { } signedResponse)
+            {
+                var companyName = values.GetText("company.name");
+                var street = values.GetText("company.street");
+                var zip = values.GetText("company.zip");
+                var city = values.GetText("company.city");
+                var locality = string.Join(
+                    " ",
+                    new[] { zip, city }
+                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+                var companyAddress = string.Join(
+                    ", ",
+                    new[] { street, locality }
+                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+                lastTrainingPrintJob =
+                    FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                        signedSale,
+                        signedRequest,
+                        signedResponse,
+                        companyName,
+                        companyAddress,
+                        values.GetText("company.tax_no"),
+                        values.GetText("company.vat_id"),
+                        values.GetText("receipt.logo_path"),
+                        values.GetBool(
+                            "printer.auto_cut.enabled",
+                            fallback: true));
+            }
+
+            if (lastTrainingPrintJob is not { } printJob)
+            {
+                throw new InvalidOperationException(
+                    "Kein bestandener AVTraining-Beleg zum Drucken vorhanden.");
+            }
             if (!values.GetBool(
                     "device.receipt_printer.enabled",
                     fallback: false))
@@ -2479,7 +2540,10 @@ private Control FiskaltrustPage()
         finally
         {
             printTrainingButton.IsEnabled =
-                lastTrainingPrintJob is not null;
+                lastTrainingPrintJob is not null ||
+                (lastTrainingSale is not null &&
+                 lastTrainingRequest is not null &&
+                 lastTrainingResponse is not null);
         }
     };
 
