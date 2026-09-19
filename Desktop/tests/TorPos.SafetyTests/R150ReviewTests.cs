@@ -61,6 +61,34 @@ public static class R150ReviewTests
             !overpriced.IsValid && overpriced.Message.Contains("übersteigt"),
             "R150 refuses a menu price above the sum of known single-sale market values instead of inventing an allocation");
 
+        var bottle = new Product
+        {
+            Id = 1504,
+            Name = "Flasche",
+            BasePriceCents = 200,
+            PfandCents = 25,
+            VatRate = 19m
+        };
+        var depositMenu = new Product
+        {
+            Id = 1505,
+            Name = "Menü mit Pfand",
+            BasePriceCents = 900,
+            VatRate = 7m,
+            ComboItems = new[]
+            {
+                new ProductComboItem(1505, 1501, "Döner", 1m, 0),
+                new ProductComboItem(1505, 1504, "Flasche", 1m, 1)
+            }
+        };
+        var depositAnalysis = MenuVatPolicy.Analyze(
+            depositMenu,
+            new[] { food, bottle, depositMenu },
+            imHaus: false);
+        assert(
+            !depositAnalysis.IsValid && depositAnalysis.Message.Contains("Pfand"),
+            "R150 combo Pfand is blocked until it can be represented as its own immutable fiscal position");
+
         var snapshot = new CheckoutSnapshot(
             "r150-mixed-menu",
             new[]
