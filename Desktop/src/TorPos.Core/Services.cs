@@ -281,7 +281,8 @@ public sealed class SaleEngine
         Product product,
         ProductVariant? variant = null,
         decimal quantity = 1m,
-        PromotionSnapshot? promotion = null)
+        PromotionSnapshot? promotion = null,
+        IReadOnlyList<MenuComponentSnapshot>? menuComponents = null)
     {
         if (IsReadOnly || quantity <= 0m)
             return;
@@ -314,12 +315,15 @@ public sealed class SaleEngine
         var variantName = variant?.Name ?? "";
         var promotionId = promotion?.PromotionId ?? 0;
 
+        var componentSnapshot = (menuComponents ?? Array.Empty<MenuComponentSnapshot>()).ToArray();
+
         var existing = _cart.FirstOrDefault(x =>
             x.ProductId == product.Id &&
             x.VariantName == variantName &&
             x.UnitPriceCents == actualPrice &&
             x.ListUnitPriceCents == listPrice &&
-            x.PromotionId == promotionId);
+            x.PromotionId == promotionId &&
+            SameMenuComponents(x.MenuComponents, componentSnapshot));
 
         if (existing is not null)
         {
@@ -337,6 +341,7 @@ public sealed class SaleEngine
             UnitPriceCents = actualPrice,
             ListUnitPriceCents = listPrice,
             VatRate = product.VatRate,
+            MenuComponents = componentSnapshot,
             ImHausApplicable = product.ImHausApplicable,
             PfandCents = product.PfandCents,
             PromotionId = promotion?.PromotionId ?? 0,
@@ -397,6 +402,8 @@ public sealed class SaleEngine
                 UnitPriceCents = line.UnitPriceCents,
                 ListUnitPriceCents = line.EffectiveListUnitPriceCents,
                 VatRate = line.VatRate,
+                VatAllocations = line.VatAllocations.ToArray(),
+                MenuComponents = line.MenuComponents.ToArray(),
                 ImHausApplicable = line.ImHausApplicable,
                 PfandCents = line.PfandCents,
                 PromotionId = line.PromotionId,
@@ -409,6 +416,26 @@ public sealed class SaleEngine
         }
 
         DiscountCents = Math.Max(0, discountCents);
+    }
+
+    private static bool SameMenuComponents(
+        IReadOnlyList<MenuComponentSnapshot> left,
+        IReadOnlyList<MenuComponentSnapshot> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            var a = left[i];
+            var b = right[i];
+            if (a.ProductId != b.ProductId ||
+                a.Quantity != b.Quantity ||
+                !string.Equals(a.ChoiceGroup, b.ChoiceGroup, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
     }
 
     public void Clear()
