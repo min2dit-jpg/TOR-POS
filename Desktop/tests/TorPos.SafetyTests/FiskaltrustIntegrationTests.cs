@@ -1002,6 +1002,35 @@ public static class FiskaltrustIntegrationTests
             acceptance.Evidence.ProcessData == expectedProcessData,
             "fiskaltrust physical-TSE acceptance validator passes only when QR/TSE evidence matches TOR ProcessData exactly");
 
+        var acceptanceTrainingRequest =
+            acceptanceRequest with
+            {
+                FtReceiptCase =
+                    acceptanceRequest.FtReceiptCase |
+                    FiskaltrustDeCases.TrainingReceiptFlag
+            };
+        var trainingPrint =
+            FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                acceptanceSale,
+                acceptanceTrainingRequest,
+                acceptanceResponse,
+                "TOR Test GmbH",
+                "Teststraße 1, 10115 Berlin");
+
+        assert(
+            trainingPrint.TrainingReceipt &&
+            !trainingPrint.FiscalTestMode &&
+            trainingPrint.ReceiptNumber == 0 &&
+            !trainingPrint.OpenCashDrawer &&
+            trainingPrint.ExternalReceiptId == "FT-ACCEPT-2001" &&
+            trainingPrint.TseProcessStartRaw ==
+                "2026-09-19T06:35:00.000Z" &&
+            trainingPrint.TseProcessEndRaw ==
+                "2026-09-19T06:35:31.000Z" &&
+            TseQrCodePayload.Build(trainingPrint) ==
+                acceptance.Evidence.QrPayload,
+            "fiskaltrust AVTraining print job keeps signed QR/times exact, uses no production bon number and never opens the cash drawer");
+
         var mismatchSignatures =
             acceptanceResponse.FtSignatures
                 .Select(x =>
