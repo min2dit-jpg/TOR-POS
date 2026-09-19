@@ -20,6 +20,7 @@ public partial class SettingsWindow : Window
     private readonly IPaymentTerminalService _paymentTerminal;
     private readonly IFiscalComplianceService _compliance;
     private readonly IDsfinvkExportService _dsfinvkExport;
+    private readonly DatevKassenarchivService _datevKassenarchiv;
     private readonly IAuditLog _audit;
     private readonly ICommercialLicenseService _commercialLicense;
     private readonly IAuthenticationService _authentication;
@@ -66,6 +67,12 @@ public partial class SettingsWindow : Window
         TextWrapping = TextWrapping.Wrap,
         FontWeight = FontWeight.SemiBold
     };
+    private readonly TextBlock _datevStatus = new()
+    {
+        Text = "DATEV-Status wird geladen …",
+        TextWrapping = TextWrapping.Wrap,
+        FontWeight = FontWeight.SemiBold
+    };
 
     // v0.7.33: customer-facing settings are deliberately grouped into a few
     // understandable areas. Technical/fiscal details remain available, but
@@ -79,6 +86,7 @@ public partial class SettingsWindow : Window
         "Geräte",
         "Personal",
         "Berichte & E-Mail",
+        "DATEV",
         "Datensicherung",
         "Software & Update",
         "Erweitert / Techniker 🔒"
@@ -93,6 +101,7 @@ public partial class SettingsWindow : Window
         IPaymentTerminalService paymentTerminal,
         IFiscalComplianceService compliance,
         IDsfinvkExportService dsfinvkExport,
+        DatevKassenarchivService datevKassenarchiv,
         IAuditLog audit,
         ICommercialLicenseService commercialLicense,
         IAuthenticationService authentication,
@@ -109,6 +118,7 @@ public partial class SettingsWindow : Window
         _paymentTerminal = paymentTerminal;
         _compliance = compliance;
         _dsfinvkExport = dsfinvkExport;
+        _datevKassenarchiv = datevKassenarchiv;
         _audit = audit;
         _commercialLicense = commercialLicense;
         _authentication = authentication;
@@ -166,6 +176,8 @@ public partial class SettingsWindow : Window
 
         _pages["Berichte & E-Mail"] = ReportsEmailPage();
 
+        _pages["DATEV"] = DatevPage();
+
         _pages["Datensicherung"] = BackupPage();
 
         _pages["Software & Update"] = SoftwareUpdatePage();
@@ -190,6 +202,7 @@ public partial class SettingsWindow : Window
             "Geräte-Manager" or "Scanner" => "Geräte",
             "Personal & Rechte" => "Personal",
             "Berichte" or "E-Mail" or "Berichte & E-Mail" => "Berichte & E-Mail",
+            "DATEV" or "DATEV Kassenarchiv" or "Kassenarchiv" => "DATEV",
             "Update" or "Software" or "Software & Update" => "Software & Update",
             "TSE-Aktivierung" or "Recht & Fiskal" or "Lizenzierung" or "System" or "Erweitert / Techniker" => "Erweitert / Techniker 🔒",
             _ => requested
@@ -1148,6 +1161,72 @@ public partial class SettingsWindow : Window
         page.Children.Add(section);
         page.Children.Add(InfoCard("Performance", "Bekannte Barcodes werden aus einem RAM-Index gelesen; während des Scannens ist keine Datenbanksuche nötig.", AppTheme.InfoCardBg));
         return page;
+    }
+
+    private Control DatevPage()
+    {
+        var page = Page(
+            "DATEV · Kassenarchiv online",
+            "Z-Abschlüsse werden lokal unveränderbar vorbereitet. Die Online-Übertragung wird erst aktiviert, sobald die offizielle DATEV Developer-Portal API/Auth-Konfiguration implementiert und freigegeben ist.");
+
+        var automation = Section("Automatischer Tagesabschluss-Export");
+        automation.Children.Add(ToggleRow(Check(
+            DatevKassenarchivService.SettingEnabled,
+            "DATEV Kassenarchiv verwenden")));
+        automation.Children.Add(ToggleRow(Check(
+            DatevKassenarchivService.SettingAutoAfterZ,
+            "Nach jedem erfolgreichen Z-Abschluss automatisch DATEV-Paket vorbereiten")));
+        automation.Children.Add(ReadOnlyRow(
+            "Paketinhalt",
+            "DSFinV-K 2.4 + TSE-TAR + TOR Manifest mit SHA-256. Der Z-Abschluss wird niemals von einer DATEV-Störung rückgängig gemacht."));
+        automation.Children.Add(ReadOnlyRow(
+            "Wiederholung",
+            "Ein bereits vorbereitetes Paket wird nicht neu erzeugt. Retry verwendet dieselbe Datei und denselben SHA-256-Hash."));
+        page.Children.Add(automation);
+
+        var connection = Section("Online-Verbindung");
+        connection.Children.Add(_datevStatus);
+        connection.Children.Add(ReadOnlyRow(
+            "API-Status",
+            "Noch nicht produktiv freigeschaltet. TOR verwendet keine erfundenen DATEV-Endpunkte oder OAuth-Parameter."));
+        var refresh = new Button
+        {
+            Content = "STATUS AKTUALISIEREN",
+            MinHeight = 44,
+            MinWidth = 190,
+            FontWeight = FontWeight.SemiBold
+        };
+        refresh.Click += async (_,_) => await RefreshDatevStatusAsync();
+        connection.Children.Add(refresh);
+        page.Children.Add(connection);
+
+        page.Children.Add(InfoCard(
+            "Für den Steuerberater",
+            "Nach DATEV-Freischaltung ist das Ziel: Z-Abschluss → unveränderbares Outbox-Paket → DATEV Kassenarchiv online → Kassenbuch online / Rechnungswesen. Bis dahin bleiben vorbereitete Pakete lokal nachvollziehbar im Übertragungsjournal.",
+            AppTheme.InfoCardBg));
+
+        return page;
+    }
+
+    private async Task RefreshDatevStatusAsync()
+    {
+        try
+        {
+            var rows = await _datevKassenarchiv.GetJournalAsync(200);
+            var ready = rows.Count(x => x.State is "READY" or "WAITING_API");
+            var failed = rows.Count(x => x.State == "PREPARE_FAILED");
+            var sent = rows.Count(x => x.State == "SENT");
+            _datevStatus.Text =
+                $"Online-Verbindung: NOCH NICHT FREIGESCHALTET\n" +
+                $"Lokale Outbox: {rows.Count} Z-Abschluss-Paket(e) · bereit/wartend {ready} · Fehler {failed} · übertragen {sent}\n" +
+                $"Ordner: {_datevKassenarchiv.OutboxDirectory}";
+            _datevStatus.Foreground = failed > 0 ? AppTheme.WarningAmber : AppTheme.AccentTeal;
+        }
+        catch (Exception ex)
+        {
+            _datevStatus.Text = "DATEV-Status konnte nicht gelesen werden: " + ex.Message;
+            _datevStatus.Foreground = AppTheme.WarningAmber;
+        }
     }
 
     private Control ReportsEmailPage()
@@ -2838,6 +2917,7 @@ private Control TsePage()
             _reportSmtpPassword.PlaceholderText = "Gespeichertes Passwort nicht lesbar · neu eingeben";
 
         await RefreshGoogleMailStatusAsync();
+        await RefreshDatevStatusAsync();
 
         foreach (var pair in _combo)
         {
