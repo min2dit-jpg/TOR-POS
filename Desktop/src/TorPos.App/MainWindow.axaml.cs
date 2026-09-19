@@ -2060,6 +2060,25 @@ public partial class MainWindow:Window
             return;
         }
 
+        // A parked receipt/order is itself a fiscal Vorgang once the till is
+        // production-enabled. Block an ambiguous mixed-VAT menu before the
+        // durable order row or a TSE Bestellung-V1 can be created.
+        if (SecuresVorgaengeFiscally())
+        {
+            var blockedMenus = MenuVatPolicy.BlockingMenus(
+                _engine.Cart,
+                _catalog.Products,
+                _imHaus);
+
+            if (blockedMenus.Count > 0)
+            {
+                ScannerStatus.Text =
+                    "PARKEN/BESTELLUNG GESPERRT · Menü-KDV fiskal nicht eindeutig · " +
+                    string.Join(", ", blockedMenus.Select(x => x.MenuName).Distinct());
+                return;
+            }
+        }
+
         SetCheckoutBusy(true);
         try
         {
