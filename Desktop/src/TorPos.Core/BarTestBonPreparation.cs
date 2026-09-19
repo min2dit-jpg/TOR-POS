@@ -141,7 +141,8 @@ public static class BarTestBonPreparation
         string sentProcessType,
         string sentProcessData,
         string tseVorgangState,
-        string qrPayload)
+        string qrPayload,
+        string expectedTseSerial = "")
     {
         var checks = new List<BarTestBonCheck>();
 
@@ -155,20 +156,31 @@ public static class BarTestBonPreparation
             string.Equals(sentProcessData, plan.ExpectedProcessData, StringComparison.Ordinal),
             $"Soll={plan.ExpectedProcessData} · Ist={sentProcessData}");
 
+        var signatureOk = result.Signed && !string.IsNullOrWhiteSpace(result.Signature);
         Add(
             "TSE_SIGNED",
-            result.Signed,
-            result.Signed ? "TSE-Signatur bestätigt." : result.OutageMessage);
+            signatureOk,
+            signatureOk
+                ? "TSE-Signatur bestätigt."
+                : result.Signed ? "TSE meldet Erfolg, aber der Prüfwert/die Signatur fehlt." : result.OutageMessage);
 
         Add(
             "TSE_CLIENT_ID",
             !string.IsNullOrWhiteSpace(result.ClientId),
             string.IsNullOrWhiteSpace(result.ClientId) ? "Client-ID fehlt." : result.ClientId);
 
+        var serialOk =
+            !string.IsNullOrWhiteSpace(result.SerialNumber) &&
+            (string.IsNullOrWhiteSpace(expectedTseSerial) ||
+             string.Equals(result.SerialNumber, expectedTseSerial, StringComparison.Ordinal));
         Add(
             "TSE_SERIAL",
-            !string.IsNullOrWhiteSpace(result.SerialNumber),
-            string.IsNullOrWhiteSpace(result.SerialNumber) ? "TSE-Seriennummer fehlt." : result.SerialNumber);
+            serialOk,
+            string.IsNullOrWhiteSpace(result.SerialNumber)
+                ? "TSE-Seriennummer fehlt."
+                : string.IsNullOrWhiteSpace(expectedTseSerial) || serialOk
+                    ? result.SerialNumber
+                    : $"Erwartet={expectedTseSerial} · Ist={result.SerialNumber}");
 
         var transactionOk =
             ulong.TryParse(result.TransactionNumber, System.Globalization.NumberStyles.None,
@@ -246,6 +258,7 @@ public static class BarTestBonPreparation
             fields[7] == end &&
             !string.IsNullOrWhiteSpace(fields[8]) &&
             !string.IsNullOrWhiteSpace(fields[9]) &&
+            !string.IsNullOrWhiteSpace(fields[10]) &&
             fields[10] == result.Signature &&
             !string.IsNullOrWhiteSpace(fields[11]);
 
