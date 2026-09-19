@@ -68,6 +68,29 @@ public static class KassenSichV2026ReviewTests
             unsupportedVat.Contains("Steuersatz/Steuerbetrag"),
             "KassenSichV 2026 §6 refuses an unclassified VAT rate on a production receipt");
 
+        var completeTse = SaleTseResult.FromSuccessfulTse(
+            "TOR-TEST-001", "123", "456", "TSE-001", "SIGNATURE",
+            DateTimeOffset.Now, DateTimeOffset.Now.AddSeconds(-2));
+        assert(
+            completeTse.Signed && completeTse.OutageMessage.Length == 0,
+            "KassenSichV 2026 §2 accepts a complete TSE success result as signed");
+
+        var incompleteTse = SaleTseResult.FromSuccessfulTse(
+            "TOR-TEST-001", "123", "", "", "",
+            DateTimeOffset.Now, DateTimeOffset.Now.AddSeconds(-2));
+        assert(
+            !incompleteTse.Signed && incompleteTse.OutageMessage.Contains("Signaturzähler") &&
+            incompleteTse.OutageMessage.Contains("TSE-Seriennummer") &&
+            incompleteTse.OutageMessage.Contains("Prüfwert/Signatur"),
+            "KassenSichV 2026 §2 converts an incomplete API success into a documented outage");
+
+        var badCounter = SaleTseResult.FromSuccessfulTse(
+            "TOR-TEST-001", "not-a-number", "456", "TSE-001", "SIGNATURE",
+            DateTimeOffset.Now, DateTimeOffset.Now.AddSeconds(-2));
+        assert(
+            !badCounter.Signed && badCounter.OutageMessage.Contains("Transaktionsnummer"),
+            "KassenSichV 2026 §2 refuses a non-numeric TSE transaction number");
+
         return Task.CompletedTask;
     }
 }
