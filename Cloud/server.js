@@ -407,6 +407,19 @@ function initSchema() {
       FOREIGN KEY(register_id) REFERENCES registers(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_public_receipts_expiry ON public_receipts(expires_at);
+
+    -- 7-day public desktop trial. Only the SHA-256 device fingerprint is stored;
+    -- raw MachineGuid / volume serial values never leave the Windows client.
+    CREATE TABLE IF NOT EXISTS trial_devices(
+      fingerprint_hash TEXT PRIMARY KEY,
+      first_seen_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      activation_count INTEGER NOT NULL DEFAULT 1,
+      last_version TEXT NOT NULL DEFAULT '',
+      last_revision TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_trial_devices_expiry ON trial_devices(expires_at);
   `);
 }
 
@@ -767,6 +780,7 @@ function serveStatic(req, res, pathname) {
 }
 
 const loginAttempts=new Map();
+const trialAttempts=new Map();
 function compareVersion(a,b){const pa=String(a).split(/[^0-9]+/).filter(Boolean).map(Number),pb=String(b).split(/[^0-9]+/).filter(Boolean).map(Number);for(let i=0;i<Math.max(pa.length,pb.length);i++){const d=(pa[i]||0)-(pb[i]||0);if(d)return d>0?1:-1;}return 0;}
 
 // R120: the client IP. Behind the reverse proxy this deployment requires,
@@ -858,6 +872,19 @@ function handleReceiptHost(req,res,url){
 }
 
 const MAX_TRACKED_LOGIN_KEYS=50000;
+const TRIAL_LIMIT_WINDOW_MS=15*60*1000;
+const TRIAL_LIMIT_PER_IP=60;
+function trialLimited(req){
+  const now=Date.now(),key=clientIp(req);
+  let entry=trialAttempts.get(key);
+  if(!entry||entry.until<=now)entry={count:0,until:now+TRIAL_LIMIT_WINDOW_MS};
+  entry.count++;
+  trialAttempts.delete(key);
+  trialAttempts.set(key,entry);
+  for(const oldest of trialAttempts.keys()){if(trialAttempts.size<=50000)break;trialAttempts.delete(oldest);}
+  return entry.count>TRIAL_LIMIT_PER_IP;
+}
+
 function loginLimited(req,email){
   const now=Date.now();
   for(const [k,v] of loginAttempts)if(v.until<now)loginAttempts.delete(k);
@@ -1015,6 +1042,79 @@ async function handler(req, res) {
         }catch(e){db.exec('ROLLBACK');throw e;}
         return html(res,200,`<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TOR POS</title><main style="font-family:system-ui;max-width:620px;margin:70px auto;padding:24px"><h1>Google erfolgreich verbunden ✓</h1><p>${htmlEscape(email)}</p><p>TOR POS darf E-Mails senden. Sie können diese Seite jetzt schließen und zur Kasse zurückkehren.</p></main></html>`);
       }catch(err){const msg=(err.message||'Google-Anmeldung fehlgeschlagen.').slice(0,600);db.prepare("UPDATE google_oauth_pairs SET status='ERROR',error=? WHERE id=?").run(msg,row.id);return html(res,502,`<!doctype html><meta charset="utf-8"><title>TOR POS</title><main style="font-family:system-ui;max-width:620px;margin:70px auto;padding:24px"><h1>Google-Verbindung fehlgeschlagen</h1><p>${htmlEscape(msg)}</p></main>`);}
+    }
+
+    // Public 7-day desktop trial. Reinstalling TOR POS does not reset the
+    // clock: the stable SHA-256 fingerprint is the primary key and the original
+    // first_seen_at/expires_at pair is returned on every later activation.
+    if(req.method==='POST' && pathname==='/api/v1/trial/activate'){
+      if(trialLimited(req))return json(res,429,{ok:false,error:'Zu viele Demo-Aktivierungen. Bitte später erneut versuchen.'});
+      const body=await readJson(req);
+      const fingerprint=String(body.fingerprint_sha256||'').trim().toUpperCase();
+      const version=String(body.version||'').trim().slice(0,80);
+      const revision=String(body.revision||'').trim().slice(0,80);
+      if(!/^[A-F0-9]{64}$/.test(fingerprint))return json(res,400,{ok:false,error:'Ungültiger Demo-Gerätefingerabdruck.'});
+
+      const serverTime=nowIso();
+      let row=db.prepare('SELECT * FROM trial_devices WHERE fingerprint_hash=?').get(fingerprint);
+      let reused=true;
+      if(!row){
+        reused=false;
+        const expiresAt=new Date(Date.parse(serverTime)+7*24*60*60*1000).toISOString();
+        db.prepare('INSERT INTO trial_devices(fingerprint_hash,first_seen_at,expires_at,last_seen_at,activation_count,last_version,last_revision) VALUES(?,?,?,?,1,?,?)')
+          .run(fingerprint,serverTime,expiresAt,serverTime,version,revision);
+        row=db.prepare('SELECT * FROM trial_devices WHERE fingerprint_hash=?').get(fingerprint);
+      }else{
+        db.prepare('UPDATE trial_devices SET last_seen_at=?,activation_count=activation_count+1,last_version=?,last_revision=? WHERE fingerprint_hash=?')
+          .run(serverTime,version,revision,fingerprint);
+      }
+
+      const state=Date.parse(row.expires_at)>Date.parse(serverTime)?'ACTIVE':'EXPIRED';
+      return json(res,200,{
+        ok:true,
+        state,
+        server_time:serverTime,
+        started_at:row.first_seen_at,
+        expires_at:row.expires_at,
+        reused
+      });
+    }
+
+    if(req.method==='GET' && pathname==='/api/v1/trial/download'){
+      const manifestPath=path.join(UPDATES,'trial-manifest.json');
+      if(!fs.existsSync(manifestPath))return json(res,503,{ok:false,error:'TOR POS Demo Setup ist noch nicht veröffentlicht.'});
+      let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Demo-Manifest ist ungültig.'});}
+      const file=path.basename(String(m.filename||''));
+      if(!m.enabled||!file||!/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'TOR POS Demo Setup ist noch nicht freigegeben.'});
+      const origin=CLOUD_PUBLIC_URL?new URL(CLOUD_PUBLIC_URL.endsWith('/')?CLOUD_PUBLIC_URL:CLOUD_PUBLIC_URL+'/'):new URL(`${COOKIE_SECURE?'https':'http'}://${req.headers.host}`);
+      res.writeHead(302,{Location:new URL(`/trial/${encodeURIComponent(file)}`,origin).toString(),'Cache-Control':'no-store'});
+      return res.end();
+    }
+
+    if(req.method==='GET' && pathname.startsWith('/trial/')){
+      const manifestPath=path.join(UPDATES,'trial-manifest.json');
+      if(!fs.existsSync(manifestPath))return text(res,404,'Nicht gefunden');
+      let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return text(res,404,'Nicht gefunden');}
+      const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/trial/'.length));
+      if(!m.enabled||requested!==expected||requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+      const full=path.join(UPDATES,expected);
+      if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');
+      const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
+      if(served!==String(m.sha256||'').toUpperCase()){
+        console.error('Demo download refused: sha256 of',expected,'does not match manifest');
+        return text(res,409,'Demo-Datei stimmt nicht mit dem Manifest überein.');
+      }
+      const stat=fs.statSync(full);
+      res.writeHead(200,{
+        'Content-Type':'application/vnd.microsoft.portable-executable',
+        'Content-Length':stat.size,
+        'Content-Disposition':'attachment; filename="TOR-POS-Demo-Setup.exe"',
+        'Cache-Control':'no-store',
+        'X-Content-Type-Options':'nosniff'
+      });
+      const stream=fs.createReadStream(full);
+      stream.on('error',err=>{console.error('Demo stream failed:',err.message);res.destroy();});
+      return stream.pipe(res);
     }
 
     if(req.method==='GET' && pathname==='/api/v1/updates/check'){

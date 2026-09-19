@@ -85,6 +85,13 @@ jobs:
           $buildExit = $LASTEXITCODE
           if ($buildExit -ne 0) { exit $buildExit }
 
+      - name: Demo varyantini Release olarak derle
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet build src/TorPos.App/TorPos.App.csproj -c Release --no-restore -m:1 -p:TorDemoBuild=true --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/demo-build.log
+          $demoExit = $LASTEXITCODE
+          if ($demoExit -ne 0) { exit $demoExit }
+
       # SafetyTests is an executable, not an xUnit/MSTest test project.
       # Do not substitute dotnet test: use the same entry point as the BAT file.
       - name: Mevcut guvenlik ve regresyon testlerini calistir

@@ -33,3 +33,19 @@ Windows’ta `1-SETUP-ERSTELLEN.bat` çalıştırılır. Oluşan Setup:
 `installer-output\TOR-POS-Pro-Setup.exe`
 
 Setup dosyası Desktop’a kopyalanmaz; doğrudan bu klasörden başlatılır.
+
+
+## 7-Tage-Demo
+
+Die Demo wird bewusst als eigener Build erzeugt:
+
+`BUILD-DEMO-SETUP.bat`
+
+Der Build setzt `TorDemoBuild=true` und erzeugt:
+
+`installer-output\TOR-POS-Demo-Setup.exe`
+
+Die normale `1-SETUP-ERSTELLEN.bat` bleibt ein Nicht-Demo-Build.
+
+Das Demo-Setup darf erst nach Code-Signing über
+`..\Cloud\PUBLISH-DEMO.ps1` öffentlich veröffentlicht werden.
