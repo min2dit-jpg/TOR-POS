@@ -91,6 +91,51 @@ public static class KassenSichV2026ReviewTests
             !badCounter.Signed && badCounter.OutageMessage.Contains("Transaktionsnummer"),
             "KassenSichV 2026 §2 refuses a non-numeric TSE transaction number");
 
+        var consistentSale = new Sale
+        {
+            ReceiptNumber = 151002,
+            PaymentMethod = PaymentMethod.Mixed,
+            CashPortionCents = 500,
+            CardPortionCents = 690,
+            TotalCents = 1190,
+            Lines = new[]
+            {
+                new CartLine
+                {
+                    ProductId = 3,
+                    ProductName = "Kassenbeleg-Test",
+                    Quantity = 1m,
+                    UnitPriceCents = 1190,
+                    ListUnitPriceCents = 1190,
+                    VatRate = 19m
+                }
+            }
+        };
+        assert(
+            FiscalProcessData.KassenbelegText(consistentSale).Contains("5.00:Bar_6.90:Unbar"),
+            "KassenSichV 2026 §2 Kassenbeleg-V1 reconciles VAT gross and mixed payment totals before signing");
+
+        var inconsistentSale = new Sale
+        {
+            ReceiptNumber = 151003,
+            PaymentMethod = PaymentMethod.Cash,
+            CashPortionCents = 999,
+            CardPortionCents = 0,
+            TotalCents = 999,
+            Lines = consistentSale.Lines
+        };
+        try
+        {
+            _ = FiscalProcessData.KassenbelegText(inconsistentSale);
+            assert(false, "KassenSichV 2026 §2 should reject inconsistent VAT gross");
+        }
+        catch (InvalidOperationException ex)
+        {
+            assert(
+                ex.Message.Contains("MwSt.-Brutto"),
+                "KassenSichV 2026 §2 blocks TSE processData when VAT gross differs from receipt total");
+        }
+
         return Task.CompletedTask;
     }
 }
