@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 21;
+    public const int TargetSchemaVersion = 22;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1436,6 +1436,53 @@ public sealed class SchemaMigrationService
                             ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
                         ALTER TABLE training_cancelled_items
                             ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                22,
+                "R154_DATEV_KASSENARCHIV_OUTBOX",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS datev_kassenarchiv_outbox(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          z_archive_id INTEGER NOT NULL UNIQUE REFERENCES z_report_archive(id),
+                          z_number INTEGER NOT NULL,
+                          created_at TEXT NOT NULL,
+                          period_from TEXT NOT NULL,
+                          period_to TEXT NOT NULL,
+                          state TEXT NOT NULL DEFAULT 'PREPARING',
+                          package_path TEXT NOT NULL DEFAULT '',
+                          package_sha256 TEXT NOT NULL DEFAULT '',
+                          attempt_count INTEGER NOT NULL DEFAULT 0,
+                          last_attempt_at TEXT,
+                          last_error TEXT NOT NULL DEFAULT '',
+                          remote_archive_id TEXT NOT NULL DEFAULT '',
+                          sent_at TEXT);
+
+                        CREATE UNIQUE INDEX IF NOT EXISTS ux_datev_kassenarchiv_z_number
+                          ON datev_kassenarchiv_outbox(z_number);
+                        CREATE INDEX IF NOT EXISTS ix_datev_kassenarchiv_state
+                          ON datev_kassenarchiv_outbox(state,z_number);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_datev_kassenarchiv_identity_no_update
+                        BEFORE UPDATE OF z_archive_id,z_number,period_from,period_to,package_path,package_sha256
+                        ON datev_kassenarchiv_outbox
+                        WHEN OLD.package_sha256<>'' OR OLD.state='SENT'
+                        BEGIN
+                          SELECT RAISE(ABORT,'DATEV Kassenarchiv package identity is immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_datev_kassenarchiv_no_delete
+                        BEFORE DELETE ON datev_kassenarchiv_outbox
+                        BEGIN
+                          SELECT RAISE(ABORT,'DATEV Kassenarchiv outbox cannot be deleted');
+                        END;
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);
