@@ -420,14 +420,15 @@ await R148ReviewTests.Run(root,Assert);
 await R149ReviewTests.Run(root,Assert);
 await R150ReviewTests.Run(Assert);
 await R153ReviewTests.Run(root,Assert);
+await R154ReviewTests.Run(root,Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
-// R153: 13 reviewed checks cover Artikel-based menu choice groups,
-// automatic price differences, hidden VAT, distinct cart/order identity,
-// one-line customer receipt, schema and persistence.
-const int ExpectedSafetyChecks = 909;
+// R154: 10 reviewed checks cover DATEV Kassenarchiv outbox schema,
+// immutable package/hash, exact-Z export selection, DSFinV-K+TSE contents,
+// idempotent retry, fail-closed API state, journal and tamper/delete guards.
+const int ExpectedSafetyChecks = 919;
 
 if (checks != ExpectedSafetyChecks)
 {
