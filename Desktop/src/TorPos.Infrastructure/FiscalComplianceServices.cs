@@ -549,10 +549,11 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
                 : $"Die TSE-Client-ID muss {kassenSeriennummer} lauten - dieselbe Nummer steht auf dem Bon, im DSFinV-K-Export (KASSE_SERIENNR) und in der Mitteilung nach § 146a Abs. 4 AO."),
             new("COMPANY", "Bon-Firmendaten", companyReady, companyReady ? "Vollständiger Name und Anschrift vorhanden." : "Firma, Straße, PLZ und Ort müssen vollständig sein."),
             new("TSE", "Zertifizierte TSE", tseActive, tseActive ? "Swissbit TSE ist als AKTIV erkannt." : "Swissbit SDK / reale TSE-Signierung ist noch nicht produktiv freigegeben."),
-            new("DSFINVK", "DSFinV-K 2.4", dsfinvkImplementedAndValidated, "Preflight/Export-Gate ist implementiert; vollständiger DSFinV-K-Prüfdatensatz bleibt bis Z-/TSE-Datenmodell und offiziellem Descriptor gesperrt."),
-            new("RECEIPT", "Beleg § 6 KassenSichV", ksichvReceiptValidated, "TSE-Transaktionsnummer, Signaturzähler und Prüfwert sind noch nicht real befüllt."),
-            new("PARKEN_TSE", "Parken / Bestellung", parkedOrderTseValidated, "R83: IMBISS-Bestellannahme ruft bereits einen eigenen 'Bestellung-V1' TSE-Vorgang auf; das Format ist Entwurf und real noch nicht gegen echte TSE-Hardware/DSFinV-K validiert."),
-            new("PFAND", isKiosk ? "Pfand-Steuerlogik" : "IMBISS Extra-Steuerlogik", !isKiosk || pfandTaxValidated, isKiosk ? "Pfandlogik ist noch nicht fachlich/fiskal abschließend validiert." : "Pfand ist in IMBISS nicht aktiv. Extras übernehmen die MwSt. aus der Warengruppe.", isKiosk),
+            new("KASSENSICHV_CODE", "KassenSichV 2026 Code-Prüfungen", true, "§ 2 Transaktions- und § 6 Belegprüfungen sind als ausführbare Guards aktiv; dies ersetzt keine TSE-Zertifizierung oder Hardware-Abnahme.", Mandatory: false),
+            new("DSFINVK", "DSFinV-K 2.4", dsfinvkImplementedAndValidated, "DSFinV-K-2.4 Export, Preflight, Z-/TSE-/Beleg-/Bestellstrukturen sind implementiert. Externe/finale Validierung eines vollständigen Prüfdatensatzes steht noch aus."),
+            new("RECEIPT", "Beleg § 6 KassenSichV", ksichvReceiptValidated, "Papier- und Digitalbeleg besitzen gemeinsame §-6-Pflichtfeld-/MwSt.-Prüfungen. Reale TSE-Daten, QR und 80-mm-Beleg müssen noch physisch abgenommen werden."),
+            new("PARKEN_TSE", "Parken / Bestellung", parkedOrderTseValidated, "Bestellung-V1, Änderung, Storno und Abrechnungskreis sind implementiert. Reale TSE-/DSFinV-K-Abnahme der Bestellkette steht noch aus."),
+            new("PFAND", isKiosk ? "Pfand-Steuerlogik" : "IMBISS Extra-Steuerlogik", !isKiosk || pfandTaxValidated, isKiosk ? "Pfandverkauf/-rückgabe und DSFinV-K-GV-Typen sind implementiert; die fachlich/fiskale Endabnahme steht noch aus." : "Pfand ist in IMBISS nicht aktiv. Extras übernehmen die MwSt. aus der Warengruppe.", isKiosk),
             new("FISCAL_RELEASE", "TOR Produktivfreigabe", fiscalReleaseBuild, "Produktivfreigabe wird erst nach TSE-, DSFinV-K- und Belegtests gesetzt."),
             new("COMMERCIAL_LICENSE", "Kommerzielle Softwarelizenz", commercialLicense.IsActive, commercialLicense.Message)
         };
