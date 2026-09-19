@@ -398,7 +398,7 @@ await KassenSichV2026ReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
 // R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
-const int ExpectedSafetyChecks = 877;
+const int ExpectedSafetyChecks = 879;
 
 if (checks != ExpectedSafetyChecks)
 {
