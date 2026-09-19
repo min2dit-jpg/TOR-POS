@@ -588,6 +588,163 @@ public static class FiskaltrustIntegrationTests
         assert(
             invalidResendTransitionRejected,
             "fiskaltrust journal blocks moving a COMMITTED operation back to SENT");
+
+        var coordinatorPath = Path.Combine(
+            Path.GetTempPath(),
+            "torpos-ft-coordinator-" + Guid.NewGuid().ToString("N") + ".db");
+        var coordinatorDb = new SqliteDatabase(coordinatorPath);
+        var coordinatorJournal = new FiskaltrustSignJournal(coordinatorDb);
+        await coordinatorJournal.InitializeAsync();
+
+        var successClient = new FakeMiddlewareClient
+        {
+            SignResult = new FiskaltrustReceiptResponse
+            {
+                CbReceiptReference = "COORD-OK",
+                FtReceiptIdentification = "FT-COORD-OK",
+                FtState = FiskaltrustDeState.Ready
+            }
+        };
+        var successCoordinator =
+            new FiskaltrustSignCoordinator(successClient, coordinatorJournal);
+
+        var successRequest = FiskaltrustSandboxRequests.ZeroReceipt(
+            "COORD-OK",
+            DateTimeOffset.Parse("2026-09-19T06:40:00Z"));
+
+        var successResponse = await successCoordinator.ExecuteAsync(successRequest);
+        var successEntry = await coordinatorJournal.GetByReferenceAsync("COORD-OK");
+        assert(
+            successResponse.FtReceiptIdentification == "FT-COORD-OK" &&
+            successClient.SignCalls == 1 &&
+            successClient.RecoverCalls == 0 &&
+            successEntry?.State == FiskaltrustSignState.Committed,
+            "fiskaltrust coordinator persists SENT before Sign and commits a successful response");
+
+        var ambiguousClient = new FakeMiddlewareClient
+        {
+            SignException = new HttpRequestException("simulated timeout")
+        };
+        var ambiguousCoordinator =
+            new FiskaltrustSignCoordinator(ambiguousClient, coordinatorJournal);
+        var ambiguousRequest = FiskaltrustSandboxRequests.ZeroReceipt(
+            "COORD-UNKNOWN",
+            DateTimeOffset.Parse("2026-09-19T06:41:00Z"));
+
+        var ambiguousThrown = false;
+        try
+        {
+            _ = await ambiguousCoordinator.ExecuteAsync(ambiguousRequest);
+        }
+        catch (FiskaltrustSignUnresolvedException)
+        {
+            ambiguousThrown = true;
+        }
+
+        var ambiguousEntry =
+            await coordinatorJournal.GetByReferenceAsync("COORD-UNKNOWN");
+        assert(
+            ambiguousThrown &&
+            ambiguousClient.SignCalls == 1 &&
+            ambiguousEntry?.State == FiskaltrustSignState.Unknown,
+            "fiskaltrust coordinator never treats a failed/timeout Sign call as definitely unsigned");
+
+        ambiguousClient.SignException = null;
+        ambiguousClient.RecoverResult = new FiskaltrustReceiptResponse
+        {
+            CbReceiptReference = "COORD-UNKNOWN",
+            FtReceiptIdentification = "FT-RECOVERED",
+            FtState = FiskaltrustDeState.Ready
+        };
+
+        var recoveredResponse =
+            await ambiguousCoordinator.ExecuteAsync(ambiguousRequest);
+        var recoveredEntry =
+            await coordinatorJournal.GetByReferenceAsync("COORD-UNKNOWN");
+        assert(
+            recoveredResponse.FtReceiptIdentification == "FT-RECOVERED" &&
+            ambiguousClient.SignCalls == 1 &&
+            ambiguousClient.RecoverCalls == 1 &&
+            recoveredEntry?.State == FiskaltrustSignState.Committed,
+            "fiskaltrust coordinator retries UNKNOWN through ReceiptRequest only, never a second Sign");
+
+        var nullRecoveryClient = new FakeMiddlewareClient
+        {
+            SignException = new HttpRequestException("simulated timeout")
+        };
+        var nullRecoveryCoordinator =
+            new FiskaltrustSignCoordinator(nullRecoveryClient, coordinatorJournal);
+        var nullRecoveryRequest = FiskaltrustSandboxRequests.ZeroReceipt(
+            "COORD-NULL",
+            DateTimeOffset.Parse("2026-09-19T06:42:00Z"));
+
+        try
+        {
+            _ = await nullRecoveryCoordinator.ExecuteAsync(nullRecoveryRequest);
+        }
+        catch (FiskaltrustSignUnresolvedException)
+        {
+        }
+
+        nullRecoveryClient.SignException = null;
+        nullRecoveryClient.RecoverResult = null;
+
+        var nullRecoveryBlocked = false;
+        try
+        {
+            _ = await nullRecoveryCoordinator.ExecuteAsync(nullRecoveryRequest);
+        }
+        catch (FiskaltrustSignUnresolvedException ex)
+        {
+            nullRecoveryBlocked =
+                ex.Message.Contains("Automatisches Neusenden", StringComparison.Ordinal);
+        }
+
+        assert(
+            nullRecoveryBlocked &&
+            nullRecoveryClient.SignCalls == 1 &&
+            nullRecoveryClient.RecoverCalls == 1 &&
+            (await coordinatorJournal.GetByReferenceAsync("COORD-NULL"))?.State ==
+                FiskaltrustSignState.Unknown,
+            "fiskaltrust null ReceiptRequest result stays unresolved and cannot trigger an automatic resend");
+    }
+
+    private sealed class FakeMiddlewareClient : IFiskaltrustMiddlewareClient
+    {
+        public int SignCalls { get; private set; }
+        public int RecoverCalls { get; private set; }
+        public Exception? SignException { get; set; }
+        public FiskaltrustReceiptResponse? SignResult { get; set; }
+        public FiskaltrustReceiptResponse? RecoverResult { get; set; }
+
+        public Task<string> EchoAsync(
+            string message,
+            CancellationToken ct = default) =>
+            Task.FromResult(message);
+
+        public Task<FiskaltrustReceiptResponse> SignAsync(
+            FiskaltrustReceiptRequest request,
+            CancellationToken ct = default)
+        {
+            SignCalls++;
+            if (SignException is not null)
+                throw SignException;
+
+            return Task.FromResult(
+                SignResult ??
+                new FiskaltrustReceiptResponse
+                {
+                    CbReceiptReference = request.CbReceiptReference
+                });
+        }
+
+        public Task<FiskaltrustReceiptResponse?> RecoverAsync(
+            FiskaltrustReceiptRequest originalRequest,
+            CancellationToken ct = default)
+        {
+            RecoverCalls++;
+            return Task.FromResult(RecoverResult);
+        }
     }
 
     private sealed class FakeHandler : HttpMessageHandler
