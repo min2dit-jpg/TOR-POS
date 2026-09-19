@@ -68,8 +68,12 @@ public sealed class CheckoutApplicationService
         // snapshot. Invalid menus still fail closed before any external effect.
         if (_catalog is not null)
         {
+            var fiscalMenuLines = snapshot.CancelledLines is { Length: > 0 }
+                ? snapshot.Lines.Concat(snapshot.CancelledLines)
+                : snapshot.Lines;
+
             var blockedMenus = MenuVatPolicy.BlockingMenus(
-                snapshot.Lines,
+                fiscalMenuLines,
                 _catalog.Products,
                 snapshot.ImHaus);
 
@@ -109,7 +113,13 @@ public sealed class CheckoutApplicationService
                 Lines = MenuVatPolicy.ApplyAllocations(
                     snapshot.Lines,
                     _catalog.Products,
-                    snapshot.ImHaus)
+                    snapshot.ImHaus),
+                CancelledLines = snapshot.CancelledLines is null
+                    ? null
+                    : MenuVatPolicy.ApplyAllocations(
+                        snapshot.CancelledLines,
+                        _catalog.Products,
+                        snapshot.ImHaus)
             };
         }
 
