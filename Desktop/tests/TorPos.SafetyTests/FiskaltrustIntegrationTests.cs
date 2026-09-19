@@ -787,6 +787,46 @@ public static class FiskaltrustIntegrationTests
             invalidResendTransitionRejected,
             "fiskaltrust journal blocks moving a COMMITTED operation back to SENT");
 
+        var queueListener =
+            new System.Net.Sockets.TcpListener(
+                System.Net.IPAddress.Loopback,
+                0);
+        var scuListener =
+            new System.Net.Sockets.TcpListener(
+                System.Net.IPAddress.Loopback,
+                0);
+        queueListener.Start();
+        scuListener.Start();
+
+        try
+        {
+            var queuePort =
+                ((System.Net.IPEndPoint)queueListener.LocalEndpoint).Port;
+            var scuPort =
+                ((System.Net.IPEndPoint)scuListener.LocalEndpoint).Port;
+            var diagnosticsClient = new FakeMiddlewareClient();
+            var diagnostics =
+                new FiskaltrustDiagnosticsService(diagnosticsClient);
+
+            var connectivity = await diagnostics.CheckAsync(
+                new Uri($"http://127.0.0.1:{queuePort}/queue-test/"),
+                "127.0.0.1",
+                scuPort);
+
+            assert(
+                connectivity.BasicConnectivityOk &&
+                connectivity.QueueTcpReachable &&
+                connectivity.ScuTcpReachable &&
+                connectivity.EchoSucceeded &&
+                diagnosticsClient.EchoCalls == 1,
+                "fiskaltrust diagnostics verifies Queue TCP, SCU TCP and Echo without creating a fiscal receipt");
+        }
+        finally
+        {
+            queueListener.Stop();
+            scuListener.Stop();
+        }
+
         var acceptanceSale = new TorPos.Core.Sale
         {
             ReceiptNumber = 2001,
@@ -1107,6 +1147,7 @@ public static class FiskaltrustIntegrationTests
 
     private sealed class FakeMiddlewareClient : IFiskaltrustMiddlewareClient
     {
+        public int EchoCalls { get; private set; }
         public int SignCalls { get; private set; }
         public int RecoverCalls { get; private set; }
         public Exception? SignException { get; set; }
@@ -1115,8 +1156,11 @@ public static class FiskaltrustIntegrationTests
 
         public Task<string> EchoAsync(
             string message,
-            CancellationToken ct = default) =>
-            Task.FromResult(message);
+            CancellationToken ct = default)
+        {
+            EchoCalls++;
+            return Task.FromResult(message);
+        }
 
         public Task<FiskaltrustReceiptResponse> SignAsync(
             FiskaltrustReceiptRequest request,
