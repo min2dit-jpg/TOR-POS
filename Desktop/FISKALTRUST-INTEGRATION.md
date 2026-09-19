@@ -302,3 +302,26 @@ embedded directly in an endpoint URL are rejected as well.
 This keeps the working local `http://localhost:1500/<queue-id>/` setup while
 preventing fiscal payloads or portal credentials from being sent in clear text
 to a remote host.
+
+
+## Physical-TSE receipt acceptance validator prepared
+
+The sandbox now has `FiskaltrustSandboxAcceptance.ValidateSimpleCashSale`.
+It is designed for the first real signed cash receipt and compares the
+Middleware result against TOR's own fiscal representation.
+
+It checks, among other things:
+
+- response/request `cbReceiptReference` identity,
+- Queue/receipt identifiers,
+- German `ftState` without TSE-communication or SCU-switch faults,
+- QR payload plus individual TSE signature fields,
+- TSE serial number,
+- `Kassenbeleg-V1` process type,
+- exact `processData` equality with `FiscalProcessData.KassenbelegText`,
+- exact QR reconstruction from the returned individual signature fields,
+- positive transaction number and signature counter.
+
+This is deliberately a sandbox acceptance report rather than a production
+switch. A real Swissbit response must pass these comparisons before TOR stores
+fiskaltrust output as its fiscal sale evidence.
