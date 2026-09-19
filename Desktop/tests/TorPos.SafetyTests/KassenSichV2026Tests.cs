@@ -148,6 +148,31 @@ public static class KassenSichV2026Tests
                 !x.Ready),
             "KassenSichV §6 checker rejects unsupported tax rates");
 
+        var digitalUnsupported = DigitalReceiptDocument.From(
+            receipt with
+            {
+                Lines = new[]
+                {
+                    new CartLine
+                    {
+                        ProductName = "Unbekannter Steuersatz",
+                        Quantity = 1m,
+                        UnitPriceCents = 105,
+                        ListUnitPriceCents = 105,
+                        VatRate = 5m
+                    }
+                },
+                TotalCents = 105
+            },
+            DigitalReceiptDocument.PaymentsFor(
+                PaymentMethod.Cash,
+                105,
+                0));
+        assert(
+            digitalUnsupported.MissingFields.Any(x =>
+                x.Contains("Steuersatz", StringComparison.Ordinal)),
+            "KassenSichV §6 digital receipt exposes unsupported VAT instead of claiming completeness");
+
         var discounted = KassenSichV2026.ValidateReceipt(
             receipt with
             {
