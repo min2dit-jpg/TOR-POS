@@ -249,3 +249,24 @@ The current sandbox adapter follows the current fiskaltrust DE reference tables:
   line can include deposit in the article price, while fiskaltrust/DSFinV-K has
   dedicated Pfand/PfandRueckzahlung cases. It will be enabled only after a
   dedicated split/mapping test exists.
+
+
+## Durable Sign journal prepared
+
+Before any real sale can be wired to fiskaltrust, the sandbox branch now has a
+`FiskaltrustSignJournal`.
+
+The intended sequence is:
+
+1. Persist the complete immutable ReceiptRequest as `PREPARED`.
+2. Change it durably to `SENT` immediately before POST `/Sign`.
+3. Persist the ReceiptResponse as `COMMITTED` when the response arrives.
+4. If the result is ambiguous, keep `SENT/UNKNOWN` plus evidence.
+5. After restart, only those `SENT/UNKNOWN` operations are exposed as recovery
+   candidates; their original payload is reused with the ReceiptRequest flag.
+6. A committed operation can never move back to SENT, and one
+   `cbReceiptReference` cannot be reused with a different payload.
+
+The journal has an immutable request trigger and a no-delete trigger. It is
+still isolated from production checkout; this is the crash-safety foundation
+that must exist before the first real Sign call is wired.
