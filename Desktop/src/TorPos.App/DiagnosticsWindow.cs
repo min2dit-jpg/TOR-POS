@@ -242,6 +242,133 @@ public sealed class DiagnosticsWindow : Window
             _orderPrintResults);
         _ = RefreshOrderPrintFailuresAsync();
 
+        // BAR TESTBON preparation is intentionally pure: it does not create a
+        // checkout-journal row and does not touch the TSE. A real TSE test must
+        // later persist the acceptance operation and its TSE evidence together,
+        // otherwise the hardware would contain an orphan transaction.
+        BarTestBonPlan? barTestPlan = null;
+        var barTestVat = new ComboBox
+        {
+            ItemsSource = new[] { "19 %", "7 %" },
+            SelectedIndex = 0,
+            MinWidth = 110,
+            MinHeight = 42
+        };
+        var barTestPrepare = new Button
+        {
+            Content = "BAR TESTBON VORBEREITEN",
+            MinHeight = 42,
+            MinWidth = 220
+        };
+        var barTestPrint = new Button
+        {
+            Content = "80 MM TESTBON DRUCKEN",
+            MinHeight = 42,
+            MinWidth = 210
+        };
+        var barTestResult = new TextBlock
+        {
+            Text = "Noch nicht vorbereitet. Dieser Bereich startet keine TSE-Transaktion.",
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = new FontFamily("Consolas,Courier New,monospace"),
+            Foreground = AppTheme.TextMuted
+        };
+
+        BarTestBonPlan PrepareBarTest()
+        {
+            var vat = barTestVat.SelectedIndex == 1 ? 7m : 19m;
+            var plan = BarTestBonPreparation.Create(vat);
+            barTestPlan = plan;
+            barTestResult.Foreground = AppTheme.AccentTeal;
+            barTestResult.Text =
+                $"VORBEREITUNG OK · MwSt {vat:0} % · 1,00 EUR · BAR\n" +
+                "Journal erwartet: CASH_READY → COMMITTED (BAR hat kein PREPARED/SENT)\n" +
+                "TSE erwartet: OPEN → FINISHED\n" +
+                $"ProcessType: {plan.ExpectedProcessType}\n" +
+                $"ProcessData: {plan.ExpectedProcessData}\n" +
+                "Hardwareprüfung später: Client-ID · TSE-Serial · Transaction Number · " +
+                "Signature Counter · TSE-Zeiten · QR · FINISHED\n" +
+                "JETZT: keine Buchung, kein Journal-Eintrag, keine TSE-Transaktion.";
+            return plan;
+        }
+
+        barTestPrepare.Click += (_, _) => PrepareBarTest();
+
+        barTestPrint.Click += async (_, _) =>
+        {
+            barTestPrint.IsEnabled = false;
+            try
+            {
+                var plan = barTestPlan ?? PrepareBarTest();
+                var values = await _settings.LoadAllAsync();
+                if (!values.GetBool("device.receipt_printer.enabled", false))
+                {
+                    barTestResult.Foreground = AppTheme.WarningAmber;
+                    barTestResult.Text += "\nDRUCK NICHT AUSGEFÜHRT: Bondrucker ist deaktiviert.";
+                    return;
+                }
+
+                var printerName = values.GetText("device.receipt_printer.name", "").Trim();
+                if (printerName.Length == 0)
+                {
+                    barTestResult.Foreground = AppTheme.WarningAmber;
+                    barTestResult.Text += "\nDRUCK NICHT AUSGEFÜHRT: Kein Bondrucker ausgewählt.";
+                    return;
+                }
+
+                var address = string.Join(" ", new[] { "company.street", "company.zip", "company.city" }
+                    .Select(key => values.GetText(key, "").Trim())
+                    .Where(value => value.Length > 0));
+
+                var job = BarTestBonPreparation.BuildPreviewReceipt(
+                    plan,
+                    values.GetText("company.name", "TOR POS"),
+                    address,
+                    values.GetText("receipt.logo_path", ""));
+
+                await _printer.PrintReceiptAsync(job, printerName).WaitAsync(TimeSpan.FromSeconds(5));
+                barTestResult.Foreground = AppTheme.AccentTeal;
+                barTestResult.Text +=
+                    $"\n80-MM-TESTBON AN WINDOWS-SPOOLER ÜBERGEBEN: {printerName}\n" +
+                    "Bon ist FISCAL TEST MODE, ohne TSE-QR und ohne Kassenschubladen-Impuls.";
+            }
+            catch (TimeoutException)
+            {
+                barTestResult.Foreground = new SolidColorBrush(Color.Parse("#FF8F9D"));
+                barTestResult.Text += "\nDRUCK TIMEOUT: Windows-Druckpfad antwortete nicht innerhalb von 5 Sekunden.";
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("BAR TESTBON preparation print", ex);
+                barTestResult.Foreground = new SolidColorBrush(Color.Parse("#FF8F9D"));
+                barTestResult.Text += "\nDRUCK FEHLER: " + ex.Message;
+            }
+            finally
+            {
+                barTestPrint.IsEnabled = true;
+            }
+        };
+
+        var barTestBonSection = Card(
+            "BAR TESTBON · TSE-ABNAHMEVORBEREITUNG",
+            "Kontrollierter Test: genau 1 Artikel, 1,00 EUR, BAR, wahlweise 19 % oder 7 %. " +
+            "Kein Pfand, Angebot, Rabatt, Storno oder Karte. Vorbereitung und Testdruck schreiben weder Umsatz noch TSE-Daten.",
+            new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new WrapPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        ItemSpacing = 8,
+                        LineSpacing = 8,
+                        Children = { barTestVat, barTestPrepare, barTestPrint }
+                    },
+                    barTestResult
+                }
+            });
+
         Content = new ScrollViewer
         {
             Content = new StackPanel
@@ -254,6 +381,7 @@ public sealed class DiagnosticsWindow : Window
                     buttons,
                     _status,
                     deviceSection,
+                    barTestBonSection,
                     performanceSection,
                     recentSection,
                     errorLookupSection,
