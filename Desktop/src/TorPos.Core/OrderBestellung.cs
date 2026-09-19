@@ -132,6 +132,7 @@ public static class OrderBestellungDelta
         ListUnitPriceCents = line.EffectiveListUnitPriceCents,
         VatRate = line.VatRate,
         VatAllocations = line.VatAllocations.ToArray(),
+        MenuComponents = line.MenuComponents.ToArray(),
         ImHausApplicable = line.ImHausApplicable,
         PfandCents = line.PfandCents,
         PromotionId = line.PromotionId,
@@ -144,7 +145,15 @@ public static class OrderBestellungDelta
 
     // A position is the same article at the same price and rate; the VAT rate
     // is part of it, so switching Im Haus/Außer Haus changes the position.
-    private readonly record struct Key(long ProductId, string Name, string Variant, long UnitPrice, decimal Vat, long Pfand, long PromotionId);
+    private readonly record struct Key(
+        long ProductId,
+        string Name,
+        string Variant,
+        long UnitPrice,
+        decimal Vat,
+        long Pfand,
+        long PromotionId,
+        string MenuSelection);
 
     private static Dictionary<Key, (CartLine Template, decimal Quantity)> Group(IEnumerable<CartLine> lines)
     {
@@ -152,7 +161,19 @@ public static class OrderBestellungDelta
         var groups = new Dictionary<Key, (CartLine Template, decimal Quantity)>();
         foreach (var line in lines)
         {
-            var key = new Key(line.ProductId, line.ProductName, line.VariantName, line.UnitPriceCents, line.VatRate, line.PfandCents, line.PromotionId);
+            var menuSelection = string.Join(
+                "|",
+                line.MenuComponents.Select(x =>
+                    $"{x.ProductId}:{x.Quantity:0.###}:{x.ChoiceGroup}"));
+            var key = new Key(
+                line.ProductId,
+                line.ProductName,
+                line.VariantName,
+                line.UnitPriceCents,
+                line.VatRate,
+                line.PfandCents,
+                line.PromotionId,
+                menuSelection);
             groups[key] = groups.TryGetValue(key, out var existing)
                 ? (existing.Template, existing.Quantity + line.Quantity)
                 : (line, line.Quantity);

@@ -66,7 +66,20 @@ public sealed record ProductComboItem(
     long ComponentProductId,
     string ComponentName,
     decimal Quantity,
-    int SortOrder = 0);
+    int SortOrder = 0,
+    string ChoiceGroup = "")
+{
+    public bool IsChoice => !string.IsNullOrWhiteSpace(ChoiceGroup);
+}
+
+public sealed record MenuComponentSnapshot(
+    long ProductId,
+    string Name,
+    decimal Quantity,
+    long MarketPriceCents,
+    decimal VatRate,
+    bool ImHausApplicable,
+    string ChoiceGroup = "");
 
 public sealed record ExtraItem(
     long Id,
@@ -178,7 +191,14 @@ public sealed class CartLine
     // component lines.
     public MenuVatAllocation[] VatAllocations { get; init; } = Array.Empty<MenuVatAllocation>();
 
+    // R153: exact menu ingredients selected for THIS cart/sale line. Fixed
+    // components and cashier choices are snapshotted here so stock reversal,
+    // VAT allocation and historical replay never depend on a later recipe edit.
+    // Customer receipts deliberately do not render these component names.
+    public MenuComponentSnapshot[] MenuComponents { get; init; } = Array.Empty<MenuComponentSnapshot>();
+
     public bool HasVatAllocations => VatAllocations.Length > 0;
+    public bool HasMenuComponents => MenuComponents.Length > 0;
 
     // R97: mirrors Product.ImHausApplicable at the moment this line was
     // added to the cart.

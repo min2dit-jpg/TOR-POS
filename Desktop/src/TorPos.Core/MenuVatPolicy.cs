@@ -18,7 +18,8 @@ public static class MenuVatPolicy
         Product menu,
         IReadOnlyList<Product> catalog,
         bool imHaus,
-        long? menuGrossCents = null)
+        long? menuGrossCents = null,
+        IReadOnlyList<MenuComponentSnapshot>? selectedComponents = null)
     {
         ArgumentNullException.ThrowIfNull(menu);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -29,41 +30,147 @@ public static class MenuVatPolicy
         var byId = catalog.ToDictionary(x => x.Id);
         var marketByRate = new Dictionary<decimal, long>();
 
-        foreach (var item in menu.ComboItems.OrderBy(x => x.SortOrder))
+        IReadOnlyList<MenuComponentSnapshot> effectiveComponents;
+        if (selectedComponents is { Count: > 0 })
         {
-            if (!byId.TryGetValue(item.ComponentProductId, out var component))
-                return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {item.ComponentProductId} fehlt im Artikelstamm.");
+            var selected = selectedComponents.ToArray();
+            var resolved = new List<MenuComponentSnapshot>();
 
+            foreach (var fixedItem in menu.ComboItems
+                         .Where(x => !x.IsChoice)
+                         .OrderBy(x => x.SortOrder))
+            {
+                var picked = selected.SingleOrDefault(x =>
+                    x.ProductId == fixedItem.ComponentProductId &&
+                    string.IsNullOrWhiteSpace(x.ChoiceGroup));
+                if (picked is null)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Fester Menübestandteil {fixedItem.ComponentName} fehlt in der Verkaufsauswahl.");
+
+                if (!byId.TryGetValue(fixedItem.ComponentProductId, out var component))
+                    return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {fixedItem.ComponentProductId} fehlt im Artikelstamm.");
+
+                if (component.PfandCents != 0)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Menübestandteil {component.Name} enthält Pfand. " +
+                        "Menü-Pfand muss separat abgebildet werden.");
+
+                resolved.Add(new MenuComponentSnapshot(
+                    component.Id,
+                    component.Name,
+                    fixedItem.Quantity,
+                    component.BasePriceCents,
+                    component.VatRate,
+                    component.ImHausApplicable,
+                    ""));
+            }
+
+            foreach (var group in menu.ComboItems
+                         .Where(x => x.IsChoice)
+                         .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+            {
+                var groupName = group.Key.Trim().ToUpperInvariant();
+                var selectedForGroup = selected
+                    .Where(x => string.Equals(
+                        x.ChoiceGroup,
+                        groupName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                if (selectedForGroup.Length != 1)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Auswahlgruppe {groupName} benötigt genau einen gewählten Artikel.");
+
+                var picked = selectedForGroup[0];
+                var configured = group.SingleOrDefault(x => x.ComponentProductId == picked.ProductId);
+                if (configured is null)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Artikel {picked.Name} gehört nicht zur Auswahlgruppe {groupName}.");
+
+                if (!byId.TryGetValue(configured.ComponentProductId, out var component))
+                    return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {configured.ComponentProductId} fehlt im Artikelstamm.");
+
+                if (component.PfandCents != 0)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Menübestandteil {component.Name} enthält Pfand. " +
+                        "Menü-Pfand muss separat abgebildet werden.");
+
+                resolved.Add(new MenuComponentSnapshot(
+                    component.Id,
+                    component.Name,
+                    configured.Quantity,
+                    component.BasePriceCents,
+                    component.VatRate,
+                    component.ImHausApplicable,
+                    groupName));
+            }
+
+            if (resolved.Count != selected.Length)
+                return MenuVatAnalysis.Invalid(
+                    menu,
+                    "Verkaufsauswahl enthält nicht konfigurierte Menübestandteile.");
+
+            effectiveComponents = resolved;
+        }
+        else
+        {
+            if (menu.ComboItems.Any(x => x.IsChoice))
+                return MenuVatAnalysis.Invalid(
+                    menu,
+                    "Menü enthält Auswahlgruppen. Vor dem Verkauf muss für jede Gruppe ein Artikel gewählt werden.");
+
+            var fixedComponents = new List<MenuComponentSnapshot>();
+            foreach (var item in menu.ComboItems.OrderBy(x => x.SortOrder))
+            {
+                if (!byId.TryGetValue(item.ComponentProductId, out var component))
+                    return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {item.ComponentProductId} fehlt im Artikelstamm.");
+
+                if (component.PfandCents != 0)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Menübestandteil {component.Name} enthält Pfand. " +
+                        "Menü-Pfand muss vor Produktivfreigabe separat abgebildet werden.");
+
+                fixedComponents.Add(new MenuComponentSnapshot(
+                    component.Id,
+                    component.Name,
+                    item.Quantity,
+                    component.BasePriceCents,
+                    component.VatRate,
+                    component.ImHausApplicable,
+                    ""));
+            }
+
+            effectiveComponents = fixedComponents;
+        }
+
+        foreach (var item in effectiveComponents)
+        {
             if (item.Quantity <= 0m)
-                return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {component.Name} hat keine gültige Menge.");
+                return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {item.Name} hat keine gültige Menge.");
 
-            // Pfand needs its own immutable fiscal/DSFinV-K position. The current
-            // commercial combo line cannot represent that separately, so it is
-            // blocked rather than hidden inside the menu turnover.
-            if (component.PfandCents != 0)
+            if (item.MarketPriceCents <= 0)
                 return MenuVatAnalysis.Invalid(
                     menu,
-                    $"Menübestandteil {component.Name} enthält Pfand. " +
-                    "Menü-Pfand muss vor Produktivfreigabe separat abgebildet werden.");
-
-            var singleGross = component.BasePriceCents;
-            if (singleGross <= 0)
-                return MenuVatAnalysis.Invalid(
-                    menu,
-                    $"Menübestandteil {component.Name} hat keinen positiven Einzelverkaufspreis. " +
+                    $"Menübestandteil {item.Name} hat keinen positiven Einzelverkaufspreis. " +
                     "Für eine belastbare Aufteilung ist ein Marktwert erforderlich.");
 
             var marketGross = checked((long)Math.Round(
-                item.Quantity * singleGross,
+                item.Quantity * item.MarketPriceCents,
                 MidpointRounding.AwayFromZero));
 
             if (marketGross <= 0)
-                return MenuVatAnalysis.Invalid(menu, $"Marktwert von {component.Name} ist nicht positiv.");
+                return MenuVatAnalysis.Invalid(menu, $"Marktwert von {item.Name} ist nicht positiv.");
 
             var rate = ImHausVat.Effective(
-                component.VatRate,
+                item.VatRate,
                 imHaus,
-                component.ImHausApplicable);
+                item.ImHausApplicable);
 
             marketByRate[rate] = checked(
                 marketByRate.GetValueOrDefault(rate) + marketGross);
@@ -141,15 +248,17 @@ public static class MenuVatPolicy
         var byId = catalog.ToDictionary(x => x.Id);
         var result = new List<MenuVatAnalysis>();
 
-        foreach (var line in lines
-                     .Where(x => x.ProductId > 0)
-                     .GroupBy(x => x.ProductId)
-                     .Select(x => x.First()))
+        foreach (var line in lines.Where(x => x.ProductId > 0))
         {
             if (!byId.TryGetValue(line.ProductId, out var product) || !product.IsCombo)
                 continue;
 
-            var analysis = Analyze(product, catalog, imHaus, line.UnitPriceCents);
+            var analysis = Analyze(
+                product,
+                catalog,
+                imHaus,
+                line.UnitPriceCents,
+                line.MenuComponents);
             if (!analysis.IsValid)
             {
                 result.Add(analysis);
@@ -170,6 +279,62 @@ public static class MenuVatPolicy
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// R153: the stored menu price is the price with the cheapest configured
+    /// option of every choice group. There is no manually maintained Aufpreis.
+    /// Selecting a more expensive Artikel automatically adds only the difference
+    /// between that Artikel's normal market price and the cheapest option in its
+    /// group. Fixed components do not change the configured menu price.
+    /// </summary>
+    public static long EffectiveMenuPrice(
+        Product menu,
+        IReadOnlyList<Product> catalog,
+        IReadOnlyList<MenuComponentSnapshot> selectedComponents)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(selectedComponents);
+
+        if (!menu.IsCombo || !menu.ComboItems.Any(x => x.IsChoice))
+            return menu.BasePriceCents;
+
+        var byId = catalog.ToDictionary(x => x.Id);
+        long delta = 0;
+
+        foreach (var group in menu.ComboItems
+                     .Where(x => x.IsChoice)
+                     .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+        {
+            var groupName = group.Key.Trim().ToUpperInvariant();
+            var picked = selectedComponents
+                .Where(x => string.Equals(x.ChoiceGroup, groupName, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (picked.Length != 1)
+                throw new InvalidOperationException(
+                    $"Auswahlgruppe {groupName} benötigt genau einen gewählten Artikel.");
+
+            long Market(ProductComboItem item)
+            {
+                if (!byId.TryGetValue(item.ComponentProductId, out var product))
+                    throw new InvalidOperationException(
+                        $"Menübestandteil {item.ComponentName} fehlt im Artikelstamm.");
+                return checked((long)Math.Round(
+                    item.Quantity * product.BasePriceCents,
+                    MidpointRounding.AwayFromZero));
+            }
+
+            var configured = group.FirstOrDefault(x => x.ComponentProductId == picked[0].ProductId)
+                ?? throw new InvalidOperationException(
+                    $"Artikel {picked[0].Name} gehört nicht zur Auswahlgruppe {groupName}.");
+
+            var cheapest = group.Min(Market);
+            var selected = Market(configured);
+            delta = checked(delta + Math.Max(0L, selected - cheapest));
+        }
+
+        return checked(menu.BasePriceCents + delta);
     }
 
     public static CartLine[] ApplyAllocations(
@@ -193,7 +358,12 @@ public static class MenuVatPolicy
                 continue;
             }
 
-            var analysis = Analyze(product, catalog, imHaus, line.UnitPriceCents);
+            var analysis = Analyze(
+                product,
+                catalog,
+                imHaus,
+                line.UnitPriceCents,
+                line.MenuComponents);
             if (!analysis.IsValid)
                 throw new InvalidOperationException($"{product.Name}: {analysis.Message}");
 
@@ -222,6 +392,7 @@ public static class MenuVatPolicy
             ListUnitPriceCents = line.EffectiveListUnitPriceCents,
             VatRate = line.VatRate,
             VatAllocations = allocations.ToArray(),
+            MenuComponents = line.MenuComponents.ToArray(),
             ImHausApplicable = line.ImHausApplicable,
             PfandCents = line.PfandCents,
             PromotionId = line.PromotionId,

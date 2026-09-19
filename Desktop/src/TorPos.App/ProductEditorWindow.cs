@@ -99,6 +99,10 @@ public sealed class ProductEditorWindow : Window
     private readonly ObservableCollection<VariantRow> _variants = new();
     private readonly ListBox _comboList = new();
     private readonly ObservableCollection<ComboRow> _comboItems = new();
+    private readonly TextBox _comboChoiceGroup = new()
+    {
+        PlaceholderText = "optional, z. B. GETRÄNK"
+    };
     private readonly TextBlock _comboSummary = new()
     {
         TextWrapping = TextWrapping.Wrap,
@@ -779,9 +783,9 @@ public sealed class ProductEditorWindow : Window
 
     private Control ComboEditorSection()
     {
-        _comboList.MinHeight=120; _comboList.MaxHeight=220;
+        _comboList.MinHeight=140; _comboList.MaxHeight=250;
         var buttons=ButtonRow();
-        var add=LargeButton("+ MENÜ-BESTANDTEIL",190); add.Click+=AddComboItem;
+        var add=LargeButton("+ ARTIKEL HINZUFÜGEN",200); add.Click+=AddComboItem;
         var edit=LargeButton("MENGE ÄNDERN",150); edit.Click+=EditComboItem;
         var del=LargeButton("LÖSCHEN",130); del.Click+=(_,_) =>
         {
@@ -790,6 +794,7 @@ public sealed class ProductEditorWindow : Window
             RefreshComboSummary();
         };
         buttons.Children.Add(add);buttons.Children.Add(edit);buttons.Children.Add(del);
+
         return new Border
         {
             Background=AppTheme.SurfacePanel,BorderBrush=AppTheme.PanelBorder,BorderThickness=new Avalonia.Thickness(1),
@@ -797,11 +802,13 @@ public sealed class ProductEditorWindow : Window
             Child=new StackPanel{Spacing=8,Children={
                 new TextBlock{Text="MENÜ / COMBO",FontSize=19,FontWeight=FontWeight.Bold},
                 new TextBlock{
-                    Text="Bestandteile werden aus dem normalen Artikelstamm gewählt. Deren Einzelverkaufspreise bleiben unverändert und dienen als Marktwert für die MwSt.-Aufteilung. Der oben eingetragene Verkaufspreis ist der eigenständige Menüpreis.",
+                    Text="Bestandteile werden direkt aus dem normalen Artikelstamm gewählt. Der Menü-Verkaufspreis oben bleibt eigenständig; die normalen Artikelpreise dienen nur als Marktwert für Bestand und MwSt.-Aufteilung.",
                     TextWrapping=TextWrapping.Wrap,Opacity=0.68},
                 new TextBlock{
-                    Text="Auf Kundenbon und Digitalbon erscheint nur der Menü-Artikel (z. B. „Döner Menü“). Bestandteile bleiben intern für Bestand und MwSt.-Aufteilung gespeichert.",
+                    Text="Auswahl: Feld leer lassen = fester Bestandteil. Gleichen Gruppennamen verwenden (z. B. GETRÄNK) = Kunde/Kassierer wählt beim Verkauf genau einen Artikel aus dieser Gruppe. Kein Aufpreis-Feld.",
                     TextWrapping=TextWrapping.Wrap,Foreground=AppTheme.AccentTeal},
+                new TextBlock{Text="Auswahlgruppe (optional)",Opacity=.7},
+                _comboChoiceGroup,
                 _comboList,
                 _comboSummary,
                 buttons
@@ -812,19 +819,40 @@ public sealed class ProductEditorWindow : Window
     private async void AddComboItem(object? sender,RoutedEventArgs e)
     {
         var excluded=_selectedArticle?.Id??0;
-        var candidates=_catalog.Products.Where(x=>x.Id!=excluded && !x.IsCombo).OrderBy(x=>x.Name).ToArray();
+        var candidates=_catalog.Products
+            .Where(x=>x.Id!=excluded && !x.IsCombo)
+            .OrderBy(x=>x.Name)
+            .ToArray();
+
         var chosen=await new ComboComponentWindow(candidates).ShowDialog<ComboComponentResult?>(this);
         if(chosen is null)return;
+
+        var group=(_comboChoiceGroup.Text??"").Trim().ToUpperInvariant();
         var existing=_comboItems.FirstOrDefault(x=>x.ComponentProductId==chosen.ProductId);
         if(existing is not null)
         {
+            if (!string.Equals(existing.ChoiceGroup,group,StringComparison.OrdinalIgnoreCase))
+            {
+                _comboSummary.Text="Dieser Artikel ist bereits im Menü vorhanden. Bitte denselben Artikel nicht gleichzeitig fest und als Auswahloption verwenden.";
+                _comboSummary.Foreground=AppTheme.WarningAmber;
+                return;
+            }
+
             var index=_comboItems.IndexOf(existing);
             _comboItems[index]=existing with {Quantity=existing.Quantity+chosen.Quantity};
             RefreshComboSummary();
             return;
         }
+
         var product=candidates.First(x=>x.Id==chosen.ProductId);
-        _comboItems.Add(new ComboRow(product.Id,product.Name,chosen.Quantity,product.BasePriceCents,product.VatRate));
+        _comboItems.Add(new ComboRow(
+            product.Id,
+            product.Name,
+            chosen.Quantity,
+            product.BasePriceCents,
+            product.VatRate,
+            product.ImHausApplicable,
+            group));
         RefreshComboSummary();
     }
 
@@ -840,6 +868,78 @@ public sealed class ProductEditorWindow : Window
         }
     }
 
+    private ProductComboItem[] BuildComboItems(long productId) =>
+        _comboItems.Select((row,index)=>new ProductComboItem(
+            productId,
+            row.ComponentProductId,
+            row.Name,
+            row.Quantity,
+            index,
+            row.ChoiceGroup)).ToArray();
+
+    private MenuComponentSnapshot[] DefaultMenuSelection()
+    {
+        var selected = new List<ComboRow>();
+        selected.AddRange(_comboItems.Where(x => string.IsNullOrWhiteSpace(x.ChoiceGroup)));
+        foreach (var group in _comboItems
+                     .Where(x => !string.IsNullOrWhiteSpace(x.ChoiceGroup))
+                     .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+        {
+            selected.Add(group.OrderBy(x => x.Name).First());
+        }
+
+        return selected.Select(x => new MenuComponentSnapshot(
+            x.ComponentProductId,
+            x.Name,
+            x.Quantity,
+            x.NormalPriceCents,
+            x.VatRate,
+            x.ImHausApplicable,
+            x.ChoiceGroup)).ToArray();
+    }
+
+    private long MinimumMenuMarketValue()
+    {
+        var fixedTotal = _comboItems
+            .Where(x => string.IsNullOrWhiteSpace(x.ChoiceGroup))
+            .Sum(x => (long)Math.Round(x.Quantity*x.NormalPriceCents,MidpointRounding.AwayFromZero));
+
+        var choices = _comboItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.ChoiceGroup))
+            .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase)
+            .Sum(g => g.Min(x =>
+                (long)Math.Round(x.Quantity*x.NormalPriceCents,MidpointRounding.AwayFromZero)));
+
+        return fixedTotal + choices;
+    }
+
+    private long MaximumMenuMarketValue()
+    {
+        var fixedTotal = _comboItems
+            .Where(x => string.IsNullOrWhiteSpace(x.ChoiceGroup))
+            .Sum(x => (long)Math.Round(x.Quantity*x.NormalPriceCents,MidpointRounding.AwayFromZero));
+
+        var choices = _comboItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.ChoiceGroup))
+            .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase)
+            .Sum(g => g.Max(x =>
+                (long)Math.Round(x.Quantity*x.NormalPriceCents,MidpointRounding.AwayFromZero)));
+
+        return fixedTotal + choices;
+    }
+
+    private void ValidateChoiceGroups()
+    {
+        foreach (var group in _comboItems
+                     .Where(x => !string.IsNullOrWhiteSpace(x.ChoiceGroup))
+                     .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+        {
+            if (group.Count() < 2)
+                throw new InvalidOperationException(
+                    $"Auswahlgruppe {group.Key} benötigt mindestens zwei Artikel.");
+        }
+    }
+
     private void RefreshComboSummary()
     {
         if (_comboItems.Count == 0)
@@ -849,36 +949,27 @@ public sealed class ProductEditorWindow : Window
             return;
         }
 
-        var components = _comboItems
-            .Select(row => _catalog.Products.FirstOrDefault(x => x.Id == row.ComponentProductId))
-            .ToArray();
-
-        if (components.Any(x => x is null))
+        try
         {
-            _comboSummary.Text = "FEHLER: Mindestens ein Menü-Bestandteil fehlt im Artikelstamm.";
+            ValidateChoiceGroups();
+        }
+        catch (Exception ex)
+        {
+            _comboSummary.Text = "FEHLER: " + ex.Message;
             _comboSummary.Foreground = AppTheme.WarningAmber;
             return;
         }
-
-        var singleTotal = _comboItems.Sum(row =>
-            (long)Math.Round(row.Quantity * row.NormalPriceCents, MidpointRounding.AwayFromZero));
 
         if (!Formatting.TryParseMoney(_price.Text, out var menuPrice) || menuPrice < 0)
         {
-            _comboSummary.Text =
-                $"Einzelpreise gesamt: {Formatting.Money(singleTotal)} · Bitte gültigen Menü-Verkaufspreis eingeben.";
+            _comboSummary.Text = "Bitte gültigen Menü-Verkaufspreis eingeben.";
             _comboSummary.Foreground = AppTheme.WarningAmber;
             return;
         }
 
-        var comboItems = _comboItems
-            .Select((row,index) => new ProductComboItem(
-                _selectedArticle?.Id ?? 0,
-                row.ComponentProductId,
-                row.Name,
-                row.Quantity,
-                index))
-            .ToArray();
+        var minTotal = MinimumMenuMarketValue();
+        var maxTotal = MaximumMenuMarketValue();
+        var selection = DefaultMenuSelection();
 
         var transient = new Product
         {
@@ -886,12 +977,19 @@ public sealed class ProductEditorWindow : Window
             Name = string.IsNullOrWhiteSpace(_name.Text) ? "Menü" : _name.Text!.Trim(),
             BasePriceCents = menuPrice,
             VatRate = (_articleCategory.SelectedItem as Category)?.VatRate ?? 19m,
-            ComboItems = comboItems
+            ComboItems = BuildComboItems(_selectedArticle?.Id ?? 0)
         };
 
-        var takeAway = MenuVatPolicy.Analyze(transient, _catalog.Products, imHaus:false, menuGrossCents:menuPrice);
-        var inHouse = MenuVatPolicy.Analyze(transient, _catalog.Products, imHaus:true, menuGrossCents:menuPrice);
-        var advantage = singleTotal - menuPrice;
+        var takeAway = MenuVatPolicy.Analyze(
+            transient,_catalog.Products,imHaus:false,menuGrossCents:menuPrice,selectedComponents:selection);
+        var inHouse = MenuVatPolicy.Analyze(
+            transient,_catalog.Products,imHaus:true,menuGrossCents:menuPrice,selectedComponents:selection);
+
+        var groups = _comboItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.ChoiceGroup))
+            .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase)
+            .Select(g => $"{g.Key}: {g.Count()} Optionen")
+            .ToArray();
 
         static string AllocationText(MenuVatAnalysis analysis) =>
             analysis.IsValid
@@ -899,15 +997,27 @@ public sealed class ProductEditorWindow : Window
                     $"{x.VatRate:0}% {Formatting.Money(x.GrossCents)}"))
                 : "FEHLER: " + analysis.Message;
 
+        var marketRange = minTotal == maxTotal
+            ? Formatting.Money(minTotal)
+            : $"{Formatting.Money(minTotal)} – {Formatting.Money(maxTotal)}";
+        var maxChoiceDifference = Math.Max(0L, maxTotal - minTotal);
+        var highestMenuPrice = menuPrice + maxChoiceDifference;
+        var salePriceRange = maxChoiceDifference == 0
+            ? Formatting.Money(menuPrice)
+            : $"{Formatting.Money(menuPrice)} – {Formatting.Money(highestMenuPrice)}";
+        var advantage = minTotal - menuPrice;
+
         _comboSummary.Text =
-            $"Einzelpreise gesamt: {Formatting.Money(singleTotal)} · " +
-            $"Menüpreis: {Formatting.Money(menuPrice)} · " +
-            $"Menüvorteil: {Formatting.Money(Math.Max(0, advantage))}\n" +
-            $"MwSt.-Aufteilung Außer Haus: {AllocationText(takeAway)}\n" +
-            $"MwSt.-Aufteilung Im Haus: {AllocationText(inHouse)}";
+            $"Einzelpreise je nach Auswahl: {marketRange}\n" +
+            $"Menü-Verkaufspreis automatisch: {salePriceRange} · " +
+            $"Menüvorteil bleibt {Formatting.Money(Math.Max(0,advantage))}\n" +
+            "Preisregel: Grundpreis = günstigste Auswahl; teurere Artikeloptionen erhöhen den Menüpreis automatisch nur um ihre echte Artikel-Preisdifferenz." +
+            (groups.Length==0 ? "" : $"\nAuswahlgruppen: {string.Join(" · ",groups)}") +
+            $"\nMwSt.-Beispiel Außer Haus (günstigste Auswahl): {AllocationText(takeAway)}" +
+            $"\nMwSt.-Beispiel Im Haus (günstigste Auswahl): {AllocationText(inHouse)}";
 
         _comboSummary.Foreground =
-            takeAway.IsValid && inHouse.IsValid && advantage >= 0
+            takeAway.IsValid && inHouse.IsValid && menuPrice <= minTotal
                 ? AppTheme.AccentTeal
                 : AppTheme.WarningAmber;
     }
@@ -1704,6 +1814,7 @@ public sealed class ProductEditorWindow : Window
         SetImagePreview("");
         _variants.Clear();
         _comboItems.Clear();
+        _comboChoiceGroup.Text = "";
 
         RefreshInheritedVat();
         RefreshComboSummary();
@@ -1886,6 +1997,7 @@ public sealed class ProductEditorWindow : Window
                     variant.PriceCents));
         }
         _comboItems.Clear();
+        _comboChoiceGroup.Text = "";
         foreach (var item in product.ComboItems)
         {
             var component = _catalog.Products.FirstOrDefault(x => x.Id == item.ComponentProductId);
@@ -1894,7 +2006,9 @@ public sealed class ProductEditorWindow : Window
                 item.ComponentName,
                 item.Quantity,
                 component?.BasePriceCents ?? 0,
-                component?.VatRate ?? 0m));
+                component?.VatRate ?? 0m,
+                component?.ImHausApplicable ?? true,
+                item.ChoiceGroup));
         }
 
         RefreshInheritedVat();
@@ -2508,7 +2622,7 @@ public sealed class ProductEditorWindow : Window
                 };
 
             var variants=_variants.Select((x,index)=>new ProductVariant(0,product.Id,x.Name,x.PriceCents,index)).ToArray();
-            var comboItems=_comboItems.Select((x,index)=>new ProductComboItem(product.Id,x.ComponentProductId,x.Name,x.Quantity,index)).ToArray();
+            var comboItems=BuildComboItems(product.Id);
 
             if (comboItems.Length > 0)
             {
@@ -2522,8 +2636,17 @@ public sealed class ProductEditorWindow : Window
                     ComboItems = comboItems
                 };
 
-                var takeAway = MenuVatPolicy.Analyze(menuProduct, _catalog.Products, imHaus:false, menuGrossCents:price);
-                var inHouse = MenuVatPolicy.Analyze(menuProduct, _catalog.Products, imHaus:true, menuGrossCents:price);
+                ValidateChoiceGroups();
+                var minMarket = MinimumMenuMarketValue();
+                if (price > minMarket)
+                    throw new InvalidOperationException(
+                        $"Menüpreis {Formatting.Money(price)} darf die günstigste mögliche Einzelpreis-Summe {Formatting.Money(minMarket)} nicht übersteigen.");
+
+                var selection = DefaultMenuSelection();
+                var takeAway = MenuVatPolicy.Analyze(
+                    menuProduct,_catalog.Products,imHaus:false,menuGrossCents:price,selectedComponents:selection);
+                var inHouse = MenuVatPolicy.Analyze(
+                    menuProduct,_catalog.Products,imHaus:true,menuGrossCents:price,selectedComponents:selection);
                 if (!takeAway.IsValid)
                     throw new InvalidOperationException("Menü Außer Haus: " + takeAway.Message);
                 if (!inHouse.IsValid)
@@ -2672,9 +2795,12 @@ public sealed class ProductEditorWindow : Window
         string Name,
         decimal Quantity,
         long NormalPriceCents,
-        decimal VatRate)
+        decimal VatRate,
+        bool ImHausApplicable,
+        string ChoiceGroup)
     {
         public override string ToString() =>
+            $"{(string.IsNullOrWhiteSpace(ChoiceGroup) ? "[FEST]" : $"[{ChoiceGroup}]")} " +
             $"{Quantity:0.##} x {Name} · Einzelpreis {Formatting.Money(NormalPriceCents)} · MwSt. {VatRate:0}%";
     }
 

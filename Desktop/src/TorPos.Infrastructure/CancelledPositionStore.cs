@@ -27,8 +27,8 @@ internal static class CancelledPositionStore
                 INSERT INTO {table}(
                   {owner},product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
                   list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
-                  vat_allocations_json)
-                VALUES($o,$p,$n,$v,$b,$q,$u,$vat,$pfand,$list,$pid,$pname,$ppct,$punit,$vatAllocations);
+                  vat_allocations_json,menu_components_json)
+                VALUES($o,$p,$n,$v,$b,$q,$u,$vat,$pfand,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
                 """;
             q.Parameters.AddWithValue("$o", ownerId);
             q.Parameters.AddWithValue("$p", line.ProductId);
@@ -45,6 +45,7 @@ internal static class CancelledPositionStore
             q.Parameters.AddWithValue("$ppct", line.PromotionPercent);
             q.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
             q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+            q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
             await q.ExecuteNonQueryAsync(ct);
         }
     }
@@ -56,7 +57,8 @@ internal static class CancelledPositionStore
         q.CommandText = $"""
             SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
                    list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
-                   COALESCE(vat_allocations_json,'')
+                   COALESCE(vat_allocations_json,''),
+                   COALESCE(menu_components_json,'')
             FROM {table} WHERE {OwnerColumn(table)}=$o ORDER BY id;
             """;
         q.Parameters.AddWithValue("$o", ownerId);
@@ -78,7 +80,8 @@ internal static class CancelledPositionStore
                 PromotionName = r.GetString(10),
                 PromotionPercent = r.GetInt32(11),
                 PromotionDiscountUnitCents = r.GetInt64(12),
-                VatAllocations = VatAllocationStorage.Deserialize(r.GetString(13))
+                VatAllocations = VatAllocationStorage.Deserialize(r.GetString(13)),
+                MenuComponents = MenuComponentStorage.Deserialize(r.GetString(14))
             });
         }
 
