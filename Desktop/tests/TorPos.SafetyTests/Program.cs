@@ -42,6 +42,13 @@ var root=Path.Combine(Path.GetTempPath(),"tor-safety-"+Guid.NewGuid().ToString("
 var db=await SafetyDatabase.CreateCurrentAsync(
     Path.Combine(root,"test.db"));
 
+Assert(
+    InstallationEdition.DisplayName("KIOSK") == "Einzelhandel",
+    "customer-facing KIOSK edition is labeled Einzelhandel without changing the technical code");
+Assert(
+    InstallationEdition.DisplayName("IMBISS") == "Gastronomie",
+    "customer-facing IMBISS edition is labeled Gastronomie without changing the technical code");
+
 // R72.3: ordinary SafetyTests use SafetyDatabase so each disposable fixture
 // follows the same ordered schema migration path as TOR POS itself.
 // R69ReviewTests is the deliberate exception because it tests migration edges.
@@ -399,7 +406,7 @@ await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
 // R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
-const int ExpectedSafetyChecks = 887;
+const int ExpectedSafetyChecks = 889;
 
 if (checks != ExpectedSafetyChecks)
 {
