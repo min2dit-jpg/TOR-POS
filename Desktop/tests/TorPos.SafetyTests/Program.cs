@@ -397,8 +397,8 @@ await R150ReviewTests.Run(Assert);
 await KassenSichV2026Tests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
-// R150/KassenSichV 2026: 14 reviewed compliance assertions added.
-const int ExpectedSafetyChecks = 878;
+// R150/KassenSichV 2026: 15 reviewed compliance assertions added.
+const int ExpectedSafetyChecks = 879;
 
 if (checks != ExpectedSafetyChecks)
 {
