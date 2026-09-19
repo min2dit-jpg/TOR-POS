@@ -602,7 +602,7 @@ public sealed class DatevKassenbuchAsciiService
             !text.Contains('\n'))
             return text;
 
-        return """ + text.Replace(""", """", StringComparison.Ordinal) + """;
+        return "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
     private static string SignedMoney(long cents)
