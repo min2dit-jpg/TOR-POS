@@ -1,4 +1,10 @@
 #define MyAppName "TOR POS Pro"
+#ifndef MyOutputBaseFilename
+  #define MyOutputBaseFilename "TOR-POS-Pro-Setup"
+#endif
+#ifndef MyPublishDir
+  #define MyPublishDir "publish\win-x64"
+#endif
 ; R121: had drifted to 0.7.33.751 while TorRelease.Version was already .820 -
 ; the installer's "Programme und Features" entry showed a version the app did
 ; not report. Keep this in step with TorPos.Core.TorRelease.Version.
@@ -22,7 +28,7 @@ LicenseFile=NUTZUNGSBEDINGUNGEN-DE.txt
 UninstallDisplayName={#MyAppName} {#MyAppReleaseName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=installer-output
-OutputBaseFilename=TOR-POS-Pro-Setup
+OutputBaseFilename={#MyOutputBaseFilename}
 SetupIconFile=src\TorPos.App\Assets\TorPos.ico
 Compression=lzma2/fast
 SolidCompression=no
@@ -44,7 +50,7 @@ AppMutex=TOR-POS-Pro-Running
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
-Source: "publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; Eine einzige, eindeutige Verknuepfung. Alte benutzerspezifische Links werden
