@@ -631,6 +631,13 @@ public static class DsfinvkClosingBuilder
                     : (long)Math.Round(line.Quantity * line.PfandCents, MidpointRounding.AwayFromZero);
                 var articleTotal = line.LineTotalCents - pfandTotal;
 
+                // Pfand is exported as its own Bonpos row below. MenuVatPolicy
+                // refuses combo/menu Pfand, so a Pfand article is always a
+                // normal single-rate line and its main position excludes Pfand.
+                var positionVatAllocations = pfandTotal == 0
+                    ? vatAllocations
+                    : new[] { new MenuVatAllocation(line.VatRate, articleTotal, articleTotal) };
+
                 row++;
                 // R138: a discount position of an order record is GV_TYP Rabatt.
                 // R148: a position of the PFAND / LEERGUT key is deposit (Anhang C);
@@ -646,7 +653,7 @@ public static class DsfinvkClosingBuilder
                 // may contain multiple VAT rows for that same POS_ZEILE.
                 // MenuVatPolicy guarantees these gross buckets sum exactly to the
                 // commercial line total.
-                foreach (var allocation in vatAllocations)
+                foreach (var allocation in positionVatAllocations)
                     PositionVat(
                         bonId,
                         row,
