@@ -192,6 +192,9 @@ public sealed class SaleFiscalSigningService
             finishResult.LogTime,
             startResult.LogTime);
 
+        if (!result.Signed)
+            await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
+
         await ApplyAsync(sale, result, ct);
     }
 
