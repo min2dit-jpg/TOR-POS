@@ -2176,13 +2176,20 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             // same text width as the computed boundary, which isn't guaranteed.
             // Ordering uses the generated created_at_utc column instead of julianday(created_at):
             // both are equally correct across a DST transition, but only the former is indexable.
-            q.CommandText = """
-                SELECT id FROM sales
-                WHERE substr(created_at,1,10) >= $from AND substr(created_at,1,10) <= $to
-                  AND ($number IS NULL OR receipt_number = $number)
-                  AND ($method IS NULL OR payment_method = $method)
-                ORDER BY created_at_utc DESC, id DESC LIMIT 201;
-                """;
+            var showWholeDay = from == to && receiptNumber is null && method is null;
+            q.CommandText = showWholeDay
+                ? """
+                    SELECT id FROM sales
+                    WHERE substr(created_at,1,10) = $from
+                    ORDER BY created_at_utc DESC, id DESC;
+                    """
+                : """
+                    SELECT id FROM sales
+                    WHERE substr(created_at,1,10) >= $from AND substr(created_at,1,10) <= $to
+                      AND ($number IS NULL OR receipt_number = $number)
+                      AND ($method IS NULL OR payment_method = $method)
+                    ORDER BY created_at_utc DESC, id DESC LIMIT 201;
+                    """;
             q.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
             q.Parameters.AddWithValue("$to", to.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
             q.Parameters.AddWithValue("$number", (object?)receiptNumber ?? DBNull.Value);
@@ -2357,6 +2364,13 @@ public async Task<string?> CheckReversalAllowedAsync(long originalSaleId, bool f
     return await IoQueue.RunAsync(async () =>
     {
         await using var c = _db.OpenConnection();
+
+        var original = await LoadSaleAsync(c, originalSaleId, ct);
+        if (original is null)
+            return "Ursprungsbon wurde nicht gefunden.";
+        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
+            return "BON STORNO / TEILRETOURE ist nur am Verkaufstag möglich.";
+
         bool hasStorno, hasReturn;
         await using (var q = c.CreateCommand())
         {
@@ -2391,6 +2405,8 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
 
         if (original.TransactionType != "SALE")
             throw new InvalidOperationException("Nur ein regulärer Verkauf kann storniert werden; dieser Bon ist selbst bereits eine Gegenbuchung.");
+        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
+            throw new InvalidOperationException("BON STORNO ist nur am Verkaufstag möglich.");
 
         var originalCashPortion = original.EffectiveCashPortionCents;
         var originalCardPortion = original.EffectiveCardPortionCents;
@@ -2593,6 +2609,8 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
 
         if (original.TransactionType != "SALE")
             throw new InvalidOperationException("Nur ein regulärer Verkauf kann teilweise retourniert werden.");
+        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
+            throw new InvalidOperationException("TEILRETOURE ist nur am Verkaufstag möglich.");
 
         // R107: a fully storno'd sale has already had its ENTIRE amount
         // refunded - a Teilretoure against it afterward would refund
