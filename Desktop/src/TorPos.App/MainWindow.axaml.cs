@@ -2115,8 +2115,13 @@ public partial class MainWindow:Window
             // in the TSE while the receipt is parked.
             var vorgangId = _tseVorgang.VorgangId;
             var vorgangStartedAt = _tseVorgang.StartedAt;
-            // R146: the positions cancelled in this Vorgang belong to the record it ends in.
-            var cancelledLines = _tseVorgang.CancelledLines.ToArray();
+            // R146/R151: cancelled positions belong to this record too, and
+            // a cancelled menu must keep the same hidden VAT allocation as the
+            // commercial menu line.
+            var cancelledLines = MenuVatPolicy.ApplyAllocations(
+                CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus),
+                _catalog.Products,
+                _imHaus);
             if (_activeParkedReceiptId is long parkedId)
             {
                 // R138: every parked receipt is an order in the TSE, not only in ORDER mode.
