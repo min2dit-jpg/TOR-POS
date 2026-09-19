@@ -34,13 +34,19 @@ public sealed class FiskaltrustSignCoordinator
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
     }
 
+    public Task<FiskaltrustReceiptResponse> ExecuteAsync(
+        FiskaltrustReceiptRequest request,
+        CancellationToken ct = default) =>
+        ExecuteAsync(request, "FINAL", ct);
+
     public async Task<FiskaltrustReceiptResponse> ExecuteAsync(
         FiskaltrustReceiptRequest request,
+        string operationKey,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var entry = await _journal.BeginAsync(request, ct);
+        var entry = await _journal.BeginAsync(request, operationKey, ct);
 
         if (entry.State == FiskaltrustSignState.Committed)
         {
