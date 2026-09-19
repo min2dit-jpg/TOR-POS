@@ -1,5 +1,6 @@
 TOR POS PRO – NUTZUNGSBEDINGUNGEN UND ENDNUTZER-LIZENZVEREINBARUNG
-Entwurfsstand 0.7.19 – Stand: 05.09.2026
+Dokumententwurf – Stand: 05.09.2026
+Technischer Produktstand wird separat in src/TorPos.Core/ReleaseInfo.cs geführt; dieser Rechtstext ist nicht automatisch mit jedem Software-Release juristisch neu geprüft.
 
 1. Anbieter und Vertragsgegenstand
 TOR POS Pro ist eine Kassensoftware von TOR Kassensysteme. Diese Vereinbarung regelt Installation und Nutzung der Software auf dem vereinbarten Windows-Kassensystem. Anbieteranschrift, Kontakt, Vertragslaufzeit, Vergütung, Update- und Supportumfang ergeben sich aus dem individuellen Vertrag und müssen vor Vertrieb ergänzt werden.
