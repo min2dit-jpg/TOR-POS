@@ -46,10 +46,25 @@ public static class FiscalProcessData
         var sign = IsReversal(sale) ? -1 : 1;
 
         // Five tax containers in the fixed order of Anhang I. The gross per
-        // rate comes from the shared discount-prorating calculator (R108), so
-        // the containers add up to the amount actually paid.
+        // rate comes from the shared discount-prorating calculator (R108).
+        // KassenSichV §2 fail-closed: fiscal turnover and payment data must
+        // reconcile exactly before anything is handed to FinishTransaction.
+        var vatGroups = VatSummaryCalculator.Compute(sale.Lines, sale.DiscountCents);
+        if (vatGroups.Count == 0)
+            throw new InvalidOperationException("Kassenbeleg-V1 ohne Positionen ist nicht zulässig.");
+
+        var vatGross = vatGroups.Sum(x => x.GrossCents);
+        if (vatGross != sale.TotalCents)
+            throw new InvalidOperationException(
+                $"Kassenbeleg-V1 inkonsistent: MwSt.-Brutto {vatGross} ct != Bon-Gesamt {sale.TotalCents} ct.");
+
+        var paymentGross = checked(sale.EffectiveCashPortionCents + sale.EffectiveCardPortionCents);
+        if (paymentGross != sale.TotalCents)
+            throw new InvalidOperationException(
+                $"Kassenbeleg-V1 inkonsistent: Zahlungen {paymentGross} ct != Bon-Gesamt {sale.TotalCents} ct.");
+
         var containers = new long[5];
-        foreach (var group in VatSummaryCalculator.Compute(sale.Lines, sale.DiscountCents))
+        foreach (var group in vatGroups)
             containers[TaxContainer(group.Rate)] += group.GrossCents;
 
         var gross = string.Join("_", containers.Select(c => Amount(sign * c)));
