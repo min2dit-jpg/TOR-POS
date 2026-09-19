@@ -18,6 +18,68 @@ public static class FiskaltrustIntegrationTests
                 StringComparison.OrdinalIgnoreCase),
             "fiskaltrust local rest:// endpoint is normalized to http:// without changing port/path");
 
+        var remoteHttpRejected = false;
+        try
+        {
+            _ = new FiskaltrustMiddlewareClient(
+                new HttpClient(new FakeHandler()),
+                new FiskaltrustMiddlewareOptions(
+                    new Uri("http://192.0.2.10:1500/queue/"),
+                    Guid.Empty,
+                    Guid.Empty,
+                    ""));
+        }
+        catch (ArgumentException ex)
+        {
+            remoteHttpRejected =
+                ex.Message.Contains("nur auf localhost", StringComparison.Ordinal);
+        }
+        assert(
+            remoteHttpRejected,
+            "fiskaltrust client refuses clear-text HTTP outside localhost/loopback");
+
+        var saasWithoutHttpsRejected = false;
+        try
+        {
+            _ = new FiskaltrustMiddlewareClient(
+                new HttpClient(new FakeHandler()),
+                new FiskaltrustMiddlewareOptions(
+                    new Uri("http://localhost:1500/cloud-test/"),
+                    Guid.NewGuid(),
+                    Guid.Empty,
+                    "",
+                    "token",
+                    UseSaasHeaders: true));
+        }
+        catch (ArgumentException ex)
+        {
+            saasWithoutHttpsRejected =
+                ex.Message.Contains("erfordert HTTPS", StringComparison.Ordinal);
+        }
+        assert(
+            saasWithoutHttpsRejected,
+            "fiskaltrust SaaS mode refuses sending access-token headers over HTTP even on localhost");
+
+        var urlCredentialRejected = false;
+        try
+        {
+            _ = new FiskaltrustMiddlewareClient(
+                new HttpClient(new FakeHandler()),
+                new FiskaltrustMiddlewareOptions(
+                    new Uri("http://user:password@localhost:1500/queue-test/"),
+                    Guid.Empty,
+                    Guid.Empty,
+                    ""));
+        }
+        catch (ArgumentException ex)
+        {
+            urlCredentialRejected =
+                ex.Message.Contains("nicht in der fiskaltrust URL", StringComparison.Ordinal);
+        }
+        assert(
+            urlCredentialRejected,
+            "fiskaltrust client rejects credentials embedded in endpoint URLs");
+
         var localHandler = new FakeHandler();
         using (var http = new HttpClient(localHandler))
         {
