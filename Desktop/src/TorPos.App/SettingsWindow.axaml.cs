@@ -174,7 +174,7 @@ public partial class SettingsWindow : Window
             "Erweitert / Techniker",
             "Passwortgeschützter Servicebereich. Netzwerk, Ports, Treiber, TSE, Fiskal und Systemdiagnose gehören hierher.",
             AdvancedCashPage(), PaymentTerminalPage(), TechnicalHardwarePage(), TechnicalAccountingPage(),
-            TsePage(), LegalPage(), LicensePage(), SystemPage());
+            FiskaltrustPage(), TsePage(), LegalPage(), LicensePage(), SystemPage());
     }
 
     private static string ResolveNavigationPage(string requested)
@@ -1658,6 +1658,134 @@ public partial class SettingsWindow : Window
         _ = LoadAsync();
         return section;
     }
+
+
+private Control FiskaltrustPage()
+{
+    var page = Page(
+        "fiskaltrust Middleware",
+        "Lokale fiskaltrust Queue prüfen. Der produktive Checkout bleibt bis zur Realhardware-Abnahme unverändert.");
+
+    var config = Section("Lokale Middleware / Queue");
+
+    var baseUri = Text("fiskaltrust.base_uri");
+    baseUri.PlaceholderText = "http://localhost:1500/<Queue-ID>/";
+    Form(
+        config,
+        "Queue REST-URL",
+        baseUri,
+        "Beispiel: http://localhost:1500/<Queue-ID>/. Die Queue-ID stammt aus dem fiskaltrust Portal.");
+
+    Form(
+        config,
+        "CashBox-ID",
+        Text("fiskaltrust.cashbox_id"),
+        "Für Echo nicht erforderlich; wird später für Sign/ReceiptRequest verwendet.");
+
+    Form(
+        config,
+        "POS-System-ID",
+        Text("fiskaltrust.pos_system_id"),
+        "Für Echo nicht erforderlich; wird später für Sign/ReceiptRequest verwendet.");
+
+    Form(
+        config,
+        "Terminal-ID",
+        Text("fiskaltrust.terminal_id"),
+        "Lokale Kassenkennung für fiskaltrust ReceiptRequests.");
+
+    config.Children.Add(ReadOnlyRow(
+        "Portal-AccessToken",
+        "Wird bei lokaler Middleware nicht in TOR POS gespeichert. Der Launcher verwaltet seinen Portalzugang separat."));
+
+    page.Children.Add(config);
+
+    var actions = Section("Verbindungstest");
+    var status = new TextBlock
+    {
+        Text = "Noch nicht getestet.",
+        TextWrapping = TextWrapping.Wrap,
+        FontWeight = FontWeight.SemiBold
+    };
+
+    var probe = new Button
+    {
+        Content = "ECHO VERBINDUNG TESTEN",
+        MinWidth = 230,
+        MinHeight = 46,
+        FontWeight = FontWeight.Bold
+    };
+
+    probe.Click += async (_, _) =>
+    {
+        probe.IsEnabled = false;
+        status.Text = "fiskaltrust Queue wird getestet …";
+        status.Foreground = Brushes.White;
+
+        try
+        {
+            var rawBaseUri = (baseUri.Text ?? "").Trim();
+            if (!Uri.TryCreate(rawBaseUri, UriKind.Absolute, out var uri))
+                throw new InvalidOperationException("Gültige Queue REST-URL fehlt.");
+
+            Guid.TryParse(
+                _text.GetValueOrDefault("fiskaltrust.cashbox_id")?.Text?.Trim(),
+                out var cashBoxId);
+            Guid.TryParse(
+                _text.GetValueOrDefault("fiskaltrust.pos_system_id")?.Text?.Trim(),
+                out var posSystemId);
+            var terminalId =
+                _text.GetValueOrDefault("fiskaltrust.terminal_id")?.Text?.Trim() ?? "";
+
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+
+            var middleware = new FiskaltrustMiddlewareClient(
+                http,
+                new FiskaltrustMiddlewareOptions(
+                    uri,
+                    cashBoxId,
+                    posSystemId,
+                    terminalId));
+
+            const string probeMessage = "TOR POS TEST";
+            var echo = await middleware.EchoAsync(probeMessage);
+
+            if (!string.Equals(echo, probeMessage, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Echo-Antwort stimmt nicht überein: '{echo}'.");
+
+            status.Text =
+                $"VERBUNDEN · Echo OK · {DateTime.Now:dd.MM.yyyy HH:mm:ss}";
+            status.Foreground =
+                new SolidColorBrush(Color.Parse("#57D3A0"));
+        }
+        catch (Exception ex)
+        {
+            status.Text = "NICHT VERBUNDEN · " + ex.Message;
+            status.Foreground =
+                new SolidColorBrush(Color.Parse("#FF8A80"));
+        }
+        finally
+        {
+            probe.IsEnabled = true;
+        }
+    };
+
+    actions.Children.Add(probe);
+    actions.Children.Add(status);
+    page.Children.Add(actions);
+
+    page.Children.Add(InfoCard(
+        "Sicherheitsregel",
+        "Dieser Test sendet nur Echo an die konfigurierte Queue. Er erzeugt keinen Verkauf und keine TSE-Transaktion. " +
+        "Die produktive Kasse wird erst nach realem Swissbit-TSE-, Sign-, Bon- und Recovery-Test auf fiskaltrust umgestellt.",
+        AppTheme.WarningAmberBg));
+
+    return page;
+}
 
 
 private Control TsePage()
