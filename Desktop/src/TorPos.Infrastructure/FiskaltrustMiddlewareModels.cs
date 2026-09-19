@@ -299,7 +299,9 @@ public static class FiskaltrustDeCases
     // German charge-item cases. TOR currently supports 19 %, 7 % and 0 %.
     public const ulong StandardChargeItem = 0x4445000000000001UL; // 19 %
     public const ulong ReducedChargeItem = 0x4445000000000002UL;  // 7 %
-    public const ulong ZeroVatChargeItem = 0x4445000000000006UL;  // 0 %, tax-free case
+    public const ulong NonTaxableChargeItem = 0x4445000000000005UL;
+    public const ulong TaxFreeChargeItem = 0x4445000000000006UL;
+    public const ulong UnknownVatChargeItem = 0x4445000000000007UL;
     public const ulong TakeAwayChargeItemFlag = 0x0000000000010000UL;
     public const ulong PositionCancellationChargeItemFlag = 0x0000000000200000UL;
 
@@ -330,7 +332,9 @@ public static class FiskaltrustDeCases
     {
         19m => StandardChargeItem,
         7m => ReducedChargeItem,
-        0m => ZeroVatChargeItem,
+        0m => throw new InvalidOperationException(
+            "0 % darf für fiskaltrust nicht allein aus dem Steuersatz abgeleitet werden. " +
+            "Nicht steuerbar, steuerfrei und nicht ermittelbar haben getrennte DE-Fälle."),
         _ => throw new InvalidOperationException(
             $"fiskaltrust DE unterstützt in TOR aktuell keinen MwSt.-Satz {vatRate} %.")
     };
