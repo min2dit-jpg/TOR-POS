@@ -4,6 +4,33 @@ using TorPos.Core;
 
 namespace TorPos.Infrastructure;
 
+internal static class VatAllocationStorage
+{
+    public static string Serialize(CartLine line) =>
+        line.VatAllocations.Length == 0
+            ? ""
+            : System.Text.Json.JsonSerializer.Serialize(line.VatAllocations);
+
+    public static MenuVatAllocation[] Deserialize(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return Array.Empty<MenuVatAllocation>();
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<MenuVatAllocation[]>(json)
+                ?? Array.Empty<MenuVatAllocation>();
+        }
+        catch
+        {
+            // Old/corrupt optional allocation data must never invent VAT.
+            // Downstream validation will fall back to the stored scalar rate
+            // only when no allocation snapshot exists.
+            return Array.Empty<MenuVatAllocation>();
+        }
+    }
+}
+
 public static class AppPaths
 {
     /// <summary>
