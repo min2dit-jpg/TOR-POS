@@ -150,8 +150,8 @@ public static class R136ReviewTests
             await q.ExecuteNonQueryAsync();
         }
         catch (Microsoft.Data.Sqlite.SqliteException) { updateRefused = true; }
-        assert(provider.Finishes.Count == 3 && provider.Finishes[2].ProcessType == "Kassenbeleg-V1" &&
-               Encoding.UTF8.GetString(provider.Finishes[2].ProcessData) == "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^" &&
+        assert(provider.Finishes.Count == 2 && provider.Finishes[1].ProcessType == "Kassenbeleg-V1" &&
+               Encoding.UTF8.GetString(provider.Finishes[1].ProcessData) == "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^" &&
                abortedRows == 1 && abortedItems == 1 && updateRefused &&
                (await vorgaenge.GetAsync("abort-1"))!.State == TseVorgangService.Aborted,
             "R136 an emptied cart finishes its transaction as AVBelegabbruch (Anhang I) and is kept once, immutable, with its positions");
