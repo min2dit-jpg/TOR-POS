@@ -839,7 +839,7 @@ public sealed class PfandLeergutSettingsWindow : Window
                 new TextBlock { Text = "PFAND / LEERGUT", FontSize = 24, FontWeight = FontWeight.Bold },
                 new TextBlock
                 {
-                    Text = "Direkte Pfand-Tasten der KIOSK-Version. Werte in Cent.",
+                    Text = "Direkte Pfand-/Leergut-Tasten der Einzelhandel-Version. Werte in Cent.",
                     TextWrapping = TextWrapping.Wrap,
                     Opacity = .68
                 }

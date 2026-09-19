@@ -4580,26 +4580,27 @@ public partial class MainWindow:Window
         var registerName=_settingsCache.GetText("cash.register.name","Kasse 1");
         var business=InstallationEdition.ReadLocked()
             ?? _settingsCache.GetText("business.mode","IMBISS").ToUpperInvariant();
+        var businessDisplay = InstallationEdition.DisplayName(business);
 
         CompanyNameText.Text=company;
-        RegisterInfoText.Text=$"{registerName} · {business}";
-        EditionText.Text=business;
+        RegisterInfoText.Text=$"{registerName} · {businessDisplay}";
+        EditionText.Text=businessDisplay.ToUpperInvariant();
         EditionActionText.Text = business == "IMBISS" ? "EXTRA" : "PFAND";
         var pickupMode=GetImbissPickupMode();
         ParkButtonText.Text = business=="IMBISS" && pickupMode=="ORDER" ? "BESTELLUNG\nANNEHMEN" : "PARKEN";
         ParkButtonSubText.Text = business=="IMBISS" && pickupMode=="ORDER" ? (_settingsCache.GetBool("imbiss.order.number_enabled",true) ? "F3 · ABHOLNR." : "F3 · BESTELLUNG") : "F3 · BON";
-        Title = $"TOR POS Pro · {business}";
+        Title = $"TOR POS Pro · {businessDisplay}";
 
-        // KIOSK und IMBISS haben bewusst unterschiedliche Bedienhinweise.
-        // Die bestehende, stabile Hauptkassen-Struktur bleibt unverändert.
+        // Internal edition codes remain KIOSK/IMBISS for compatibility.
+        // Customer-facing labels use the broader sectors Einzelhandel/Gastronomie.
         if (business == "KIOSK")
         {
-            CategoryHeaderText.Text = "SCHNELLWAHL · KIOSK";
+            CategoryHeaderText.Text = "SCHNELLWAHL · EINZELHANDEL";
             BackToCategoriesButton.Content = "◀ SCHNELLWAHL";
         }
         else
         {
-            CategoryHeaderText.Text = "WARENGRUPPEN · IMBISS";
+            CategoryHeaderText.Text = "WARENGRUPPEN · GASTRONOMIE";
             BackToCategoriesButton.Content = "◀ WARENGRUPPEN";
         }
         var userLabel = _currentUser.IsTraining
@@ -4615,7 +4616,7 @@ public partial class MainWindow:Window
 
         if (business == "KIOSK")
         {
-            ScannerStatus.Text = "KIOSK · SCANNER BEREIT · Barcode scannen";
+            ScannerStatus.Text = "EINZELHANDEL · SCANNER BEREIT · Barcode scannen";
             CategoryModeHintText.Text = "OPTIONAL · Scanner ist der Hauptweg";
             ProductModeHintText.Text = "Schnellwahl optional · Scanner bleibt aktiv";
             EmptyCartHintText.Text = "BARCODE SCANNEN";
@@ -4625,7 +4626,7 @@ public partial class MainWindow:Window
         }
         else
         {
-            ScannerStatus.Text = "IMBISS · TOUCH-SCHNELLWAHL BEREIT";
+            ScannerStatus.Text = "GASTRONOMIE · TOUCH-SCHNELLWAHL BEREIT";
             CategoryModeHintText.Text = "TOUCH · Warengruppe → Artikel";
             ProductModeHintText.Text = "TOUCH · Artikel → direkt im Bon";
             EmptyCartHintText.Text = "WARENGRUPPE ODER ARTIKEL ANTIPPEN";

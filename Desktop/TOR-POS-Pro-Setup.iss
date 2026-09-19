@@ -201,8 +201,8 @@ begin
       True,
       False);
 
-  EditionPage.Add('KIOSK – Barcode / Scanner / schneller Einzelhandel');
-  EditionPage.Add('IMBISS – große Artikeltasten / Varianten / Schnellverkauf');
+  EditionPage.Add('EINZELHANDEL – Kiosk / Spätkauf / Markt / Blumen / Friseur / Schneiderei / Shop');
+  EditionPage.Add('GASTRONOMIE – Döner / Imbiss / Restaurant / Café / Bäckerei / Bar / Foodtruck');
 
   if ExistingInstallation and
      ((ExistingEdition = 'KIOSK') or
@@ -223,7 +223,7 @@ begin
     EditionPage.Values[1] := False;
     EditionPage.CheckListBox.Enabled := True;
     EditionPage.SubCaptionLabel.Caption :=
-      'Bitte KIOSK oder IMBISS ausdrücklich auswählen. Es ist keine Version vorausgewählt.';
+      'Bitte EINZELHANDEL oder GASTRONOMIE ausdrücklich auswählen. Es ist keine Version vorausgewählt.';
   end;
 
   AdminPage := CreateInputQueryPage(
@@ -318,7 +318,7 @@ begin
   begin
     if not EditionPage.Values[0] and not EditionPage.Values[1] then
     begin
-      MsgBox('Bitte wählen Sie zuerst KIOSK oder IMBISS. Ohne Auswahl kann die Installation nicht fortgesetzt werden.', mbInformation, MB_OK);
+      MsgBox('Bitte wählen Sie zuerst EINZELHANDEL oder GASTRONOMIE. Ohne Auswahl kann die Installation nicht fortgesetzt werden.', mbInformation, MB_OK);
       Result := False;
       Exit;
     end;

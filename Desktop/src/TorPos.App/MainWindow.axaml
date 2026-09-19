@@ -260,13 +260,13 @@
               Margin="14,0,8,0" ClipToBounds="True">
         <StackPanel x:Name="CompanyBlock" Margin="0,0,10,0" VerticalAlignment="Center">
           <TextBlock x:Name="CompanyNameText" Text="TOR POS Pro" FontSize="20" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
-          <TextBlock x:Name="RegisterInfoText" Text="Kasse 1 · IMBISS" Opacity="0.58" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="RegisterInfoText" Text="Kasse 1 · Gastronomie" Opacity="0.58" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
 
           <Border Grid.Column="1" x:Name="EditionBadge" Background="#173A32" CornerRadius="8" Padding="14,10"
                   BorderBrush="#2CC4A7" BorderThickness="1" BoxShadow="0 0 10 0 #6653E0C0"
                   VerticalAlignment="Center" Margin="0,0,8,0">
-            <TextBlock x:Name="EditionText" Text="IMBISS" Foreground="#53E0C0" FontWeight="Bold"/>
+            <TextBlock x:Name="EditionText" Text="GASTRONOMIE" Foreground="#53E0C0" FontWeight="Bold"/>
           </Border>
           <Menu Grid.Column="2" x:Name="HeaderMenu" Background="Transparent" VerticalAlignment="Center">
             <MenuItem x:Name="ProductsButton" Header="WAREN">
