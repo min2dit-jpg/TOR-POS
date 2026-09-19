@@ -50,7 +50,10 @@ public static class OrderBestellungDelta
         if (discountCents == 0 || lines.Count == 0)
             return lines;
 
-        var undiscounted = lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => g.Sum(l => l.LineTotalCents));
+        var undiscounted = lines
+            .SelectMany(MenuVatPolicy.LineAllocations)
+            .GroupBy(a => a.VatRate)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.GrossCents));
         var result = lines.ToList();
         foreach (var group in VatSummaryCalculator.Compute(lines, discountCents))
         {
@@ -128,6 +131,7 @@ public static class OrderBestellungDelta
         UnitPriceCents = line.UnitPriceCents,
         ListUnitPriceCents = line.EffectiveListUnitPriceCents,
         VatRate = line.VatRate,
+        VatAllocations = line.VatAllocations.ToArray(),
         ImHausApplicable = line.ImHausApplicable,
         PfandCents = line.PfandCents,
         PromotionId = line.PromotionId,
