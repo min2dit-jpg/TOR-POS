@@ -585,11 +585,56 @@ public static class FiskaltrustIntegrationTests
         catch (InvalidOperationException ex)
         {
             changedPayloadRejected =
-                ex.Message.Contains("anderen fiskaltrust Payload", StringComparison.Ordinal);
+                ex.Message.Contains("anderen Payload", StringComparison.Ordinal);
         }
         assert(
             changedPayloadRejected,
             "fiskaltrust journal refuses reusing one cbReceiptReference with a different payload");
+
+        var explicitStart =
+            FiskaltrustSandboxRequests.StartExplicitTransaction(
+                "EXPLICIT-1",
+                DateTimeOffset.Parse("2026-09-19T06:31:00Z"));
+        var explicitSale = new TorPos.Core.Sale
+        {
+            CreatedAt = DateTimeOffset.Parse("2026-09-19T06:31:30Z"),
+            StartedAt = DateTimeOffset.Parse("2026-09-19T06:31:00Z"),
+            PaymentMethod = TorPos.Core.PaymentMethod.Cash,
+            CashPortionCents = 500,
+            TotalCents = 500,
+            TransactionType = "SALE",
+            Lines =
+            [
+                new TorPos.Core.CartLine
+                {
+                    ProductId = 1,
+                    ProductName = "Explicit Test",
+                    Quantity = 1,
+                    UnitPriceCents = 500,
+                    VatRate = 19m
+                }
+            ]
+        };
+        var explicitFinish =
+            FiskaltrustSandboxRequests.FinishExplicitSimpleCashSale(
+                explicitSale,
+                "EXPLICIT-1");
+
+        var explicitStartEntry =
+            await journal.BeginAsync(explicitStart, "START");
+        var explicitFinishEntry =
+            await journal.BeginAsync(explicitFinish, "FINAL");
+
+        assert(
+            explicitStartEntry.Id != explicitFinishEntry.Id &&
+            explicitStartEntry.ReceiptReference ==
+                explicitFinishEntry.ReceiptReference &&
+            explicitStartEntry.OperationKey == "START" &&
+            explicitFinishEntry.OperationKey == "FINAL" &&
+            explicitStart.FtReceiptCase == FiskaltrustDeCases.StartTransaction &&
+            explicitFinish.FtReceiptCase == FiskaltrustDeCases.PosReceipt &&
+            (explicitFinish.FtReceiptCase & FiskaltrustDeCases.ImplicitFlowFlag) == 0,
+            "fiskaltrust journal supports explicit START and FINAL operations sharing one cbReceiptReference");
 
         await journal.MarkSentAsync(prepared.Id);
 
