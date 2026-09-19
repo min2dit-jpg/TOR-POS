@@ -3270,14 +3270,16 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                   list_unit_price_cents,list_line_total_cents,
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
-                  promotion_start_date,promotion_end_date,im_haus_applicable)
+                  promotion_start_date,promotion_end_date,im_haus_applicable,
+                  vat_allocations_json)
                 VALUES(
                   $parked,$product,$name,$variant,
                   $barcode,$qty,$price,$vat,$pfand,$total,
                   $listUnit,$listTotal,
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
-                  $promotionStart,$promotionEnd,$imHaus);
+                  $promotionStart,$promotionEnd,$imHaus,
+                  $vatAllocations);
                 """;
             q.Parameters.AddWithValue("$parked", parkedId);
             q.Parameters.AddWithValue("$product", line.ProductId);
@@ -3299,6 +3301,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             q.Parameters.AddWithValue("$promotionTotal", line.PromotionDiscountCents);
             q.Parameters.AddWithValue("$promotionStart", line.PromotionStartDate);
             q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
+            q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
             await q.ExecuteNonQueryAsync(ct);
         }
     }
@@ -3317,7 +3320,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                    promotion_id,promotion_name,promotion_percent,
                    promotion_discount_unit_cents,
                    promotion_start_date,promotion_end_date,
-                   COALESCE(im_haus_applicable,1)
+                   COALESCE(im_haus_applicable,1),
+                   COALESCE(vat_allocations_json,'')
             FROM parked_receipt_items
             WHERE parked_receipt_id=$id
             ORDER BY id;
@@ -3346,7 +3350,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                 PromotionDiscountUnitCents = r.GetInt64(12),
                 PromotionStartDate = r.GetString(13),
                 PromotionEndDate = r.GetString(14),
-                ImHausApplicable = r.GetInt64(15) != 0
+                ImHausApplicable = r.GetInt64(15) != 0,
+                VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16))
             });
         }
 
@@ -3365,6 +3370,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             UnitPriceCents = line.UnitPriceCents,
             ListUnitPriceCents = line.EffectiveListUnitPriceCents,
             VatRate = line.VatRate,
+            VatAllocations = line.VatAllocations.ToArray(),
             ImHausApplicable = line.ImHausApplicable,
             PfandCents = line.PfandCents,
             PromotionId = line.PromotionId,
