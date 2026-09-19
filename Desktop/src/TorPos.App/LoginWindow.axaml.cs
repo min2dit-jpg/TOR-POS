@@ -28,7 +28,7 @@ public partial class LoginWindow : Window
         ImbissEditionRadio.IsChecked = false;
         KioskEditionRadio.IsEnabled = true;
         ImbissEditionRadio.IsEnabled = true;
-        EditionStatusText.Text = "Bitte KIOSK oder IMBISS auswählen.";
+        EditionStatusText.Text = "Bitte Einzelhandel oder Gastronomie auswählen.";
 
         Opened += async (_,_) =>
         {
@@ -86,7 +86,7 @@ public partial class LoginWindow : Window
         if (_busy) return;
         if (SelectedEdition is null)
         {
-            StatusText.Text = UiLanguage.T("Bitte zuerst KIOSK oder IMBISS auswählen.");
+            StatusText.Text = UiLanguage.T("Bitte zuerst Einzelhandel oder Gastronomie auswählen.");
             return;
         }
 
@@ -148,7 +148,7 @@ public partial class LoginWindow : Window
         if (_busy) return;
         if (SelectedEdition is null)
         {
-            StatusText.Text = UiLanguage.T("Bitte zuerst KIOSK oder IMBISS auswählen.");
+            StatusText.Text = UiLanguage.T("Bitte zuerst Einzelhandel oder Gastronomie auswählen.");
             return;
         }
 
