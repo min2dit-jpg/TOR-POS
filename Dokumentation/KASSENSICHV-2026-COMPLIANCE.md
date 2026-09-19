@@ -116,3 +116,22 @@ Folgende Gates bleiben bis zum jeweiligen Nachweis geschlossen:
 - gesamter Production Release
 
 Keines dieser Gates darf allein aufgrund eines grünen CI-Laufs aktiviert werden.
+
+
+## CI-Freigabesperre
+
+`Desktop/tools/Verify-Fiscal-Release-Gates.ps1` verhindert, dass die beiden finalen
+Produktionsschalter versehentlich aktiviert werden.
+
+Solange `verification/PRODUCTION-FISCAL-ACCEPTANCE.json` fehlt oder unvollständig ist,
+müssen `FiscalRelease.Enabled` und `fiscalReleaseBuild` false bleiben.
+
+Eine spätere Acceptance-Datei muss mindestens dokumentieren:
+- reale TSE-Seriennummer und Hardware-Testdatum,
+- erfolgreiche physische TSE-E2E-Abnahme,
+- DSFinV-K-Prüfnachweis,
+- §6-Belegnachweis,
+- unabhängigen Reviewer,
+- ausdrückliche Produktionsfreigabe.
+
+Ein grüner Software-CI-Lauf erzeugt diese Nachweise nicht automatisch.
