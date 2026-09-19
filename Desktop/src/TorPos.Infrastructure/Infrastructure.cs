@@ -45,6 +45,7 @@ public static class AppPaths
     public static string CommercialLicensePath => Path.Combine(DataDirectory, "commercial-license.json");
     public static string LicenseDeactivationJournalPath => Path.Combine(DataDirectory, "commercial-license-deactivations.jsonl");
     public static string LicenseInstallationIdPath => Path.Combine(DataDirectory, "license-installation.id");
+    public static string TrialStatePath => Path.Combine(DataDirectory, "trial-state.json");
 }
 
 public sealed class SqliteDatabase
