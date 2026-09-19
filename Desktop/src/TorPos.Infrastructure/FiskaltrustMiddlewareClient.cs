@@ -42,17 +42,14 @@ public sealed class FiskaltrustMiddlewareClient : IFiskaltrustMiddlewareClient
         if (!_options.BaseUri.IsAbsoluteUri)
             throw new ArgumentException("fiskaltrust BaseUri muss absolut sein.", nameof(options));
 
-        if (_options.CashBoxId == Guid.Empty)
-            throw new ArgumentException("fiskaltrust CashBox-ID fehlt.", nameof(options));
+        if (_options.UseSaasHeaders)
+        {
+            if (_options.CashBoxId == Guid.Empty)
+                throw new ArgumentException("fiskaltrust CashBox-ID fehlt für SaaS/CloudCashbox.", nameof(options));
 
-        if (_options.PosSystemId == Guid.Empty)
-            throw new ArgumentException("fiskaltrust POS-System-ID fehlt.", nameof(options));
-
-        if (string.IsNullOrWhiteSpace(_options.TerminalId))
-            throw new ArgumentException("fiskaltrust Terminal-ID fehlt.", nameof(options));
-
-        if (_options.UseSaasHeaders && string.IsNullOrWhiteSpace(_options.AccessToken))
-            throw new ArgumentException("fiskaltrust AccessToken fehlt für SaaS/CloudCashbox.", nameof(options));
+            if (string.IsNullOrWhiteSpace(_options.AccessToken))
+                throw new ArgumentException("fiskaltrust AccessToken fehlt für SaaS/CloudCashbox.", nameof(options));
+        }
     }
 
     public async Task<string> EchoAsync(
@@ -81,6 +78,15 @@ public sealed class FiskaltrustMiddlewareClient : IFiskaltrustMiddlewareClient
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        if (_options.CashBoxId == Guid.Empty)
+            throw new InvalidOperationException("fiskaltrust CashBox-ID fehlt für Sign.");
+
+        if (_options.PosSystemId == Guid.Empty)
+            throw new InvalidOperationException("fiskaltrust POS-System-ID fehlt für Sign.");
+
+        if (string.IsNullOrWhiteSpace(_options.TerminalId))
+            throw new InvalidOperationException("fiskaltrust Terminal-ID fehlt für Sign.");
 
         var normalized = request with
         {
