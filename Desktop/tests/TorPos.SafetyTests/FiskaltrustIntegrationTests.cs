@@ -251,6 +251,25 @@ public static class FiskaltrustIntegrationTests
 
         var evidence = FiskaltrustGermanReceiptProjection.Extract(receipt);
 
+        var nullSignatureProjection =
+            FiskaltrustGermanReceiptProjection.Extract(
+                new FiskaltrustReceiptResponse
+                {
+                    FtSignatures = null!
+                });
+        assert(
+            !nullSignatureProjection.HasQrPayload &&
+            !nullSignatureProjection.HasTextFiscalCore &&
+            FiskaltrustGermanReceiptProjection
+                .PrintableSignatures(
+                    new FiskaltrustReceiptResponse
+                    {
+                        FtSignatures = null!
+                    },
+                    preferQr: true)
+                .Count == 0,
+            "fiskaltrust projection treats a null signature array as missing evidence instead of crashing");
+
         var rawWhitespaceReceipt = new FiskaltrustReceiptResponse
         {
             FtSignatures =
