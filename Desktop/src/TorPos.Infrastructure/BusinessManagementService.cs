@@ -1401,16 +1401,17 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
                 SELECT
                     s.id,
                     s.discount_cents,
+                    i.quantity,
+                    i.unit_price_cents,
                     i.vat_rate,
-                    COALESCE(SUM(i.line_total_cents),0),
+                    COALESCE(i.vat_allocations_json,''),
                     COALESCE(s.transaction_type,'SALE')
                 FROM sales s
                 JOIN sale_items i ON i.sale_id=s.id
                 WHERE s.created_at_utc >= $from
                   AND s.created_at_utc <= $to
                   AND COALESCE(s.transaction_type,'SALE') IN ('SALE','STORNO','RETURN')
-                GROUP BY s.id,s.discount_cents,i.vat_rate,COALESCE(s.transaction_type,'SALE')
-                ORDER BY s.id,i.vat_rate;
+                ORDER BY s.id,i.id;
                 """;
 
             q.Parameters.AddWithValue("$from", fromUtcText);
@@ -1421,12 +1422,24 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
 
             while (await r.ReadAsync(ct))
             {
-                saleTaxRows.Add((
-                    r.GetInt64(0),
-                    r.GetInt64(1),
-                    Convert.ToDecimal(r.GetDouble(2)),
-                    r.GetInt64(3),
-                    r.GetString(4)));
+                var saleId = r.GetInt64(0);
+                var discount = r.GetInt64(1);
+                var line = new CartLine
+                {
+                    Quantity = Convert.ToDecimal(r.GetDouble(2)),
+                    UnitPriceCents = r.GetInt64(3),
+                    VatRate = Convert.ToDecimal(r.GetDouble(4)),
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(5))
+                };
+                var transactionType = r.GetString(6);
+
+                foreach (var allocation in MenuVatPolicy.LineAllocations(line))
+                    saleTaxRows.Add((
+                        saleId,
+                        discount,
+                        allocation.VatRate,
+                        allocation.GrossCents,
+                        transactionType));
             }
         }
 
