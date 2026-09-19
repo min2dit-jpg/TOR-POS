@@ -55,6 +55,7 @@ Die Ergebnisse werden unter `verification/` abgelegt. Vorlage:
 Erst nach grüner automatischer Prüfung und allen für den Release relevanten Hardware-Abnahmen.
 
 Zusätzlich:
+- mindestens eine unabhängige fachliche/technische Prüfung für Änderungen an VAT, TSE, DSFinV-K, Beleg- oder Recovery-Logik dokumentieren
 - offene fiskalische Release-Blocker prüfen
 - Third-Party-/Lizenzinventar prüfen
 - Setup-Hash archivieren
