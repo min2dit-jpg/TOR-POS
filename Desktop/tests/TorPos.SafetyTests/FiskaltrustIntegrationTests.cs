@@ -77,6 +77,151 @@ public static class FiskaltrustIntegrationTests
                 rejected && signHandler.Calls == 0,
                 "fiskaltrust Sign refuses missing fiscal identity before any network request");
         }
+
+        var optional = FiskaltrustSignatureFormats.OptionalPrintFlag;
+        var receipt = new FiskaltrustReceiptResponse
+        {
+            FtReceiptHeader = ["MW HEADER"],
+            FtChargeLines = ["MW CHARGE"],
+            FtPayLines = ["MW PAY"],
+            FtReceiptFooter = ["MW FOOTER"],
+            FtSignatures =
+            [
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.QrCode,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.KassenSichVQrPayload,
+                    Caption = "QR",
+                    Data = "V0;KASSE-1;Kassenbeleg-V1;Beleg^...;42;7;2026-09-19T06:00:00.000Z;2026-09-19T06:00:01.000Z;ecdsa-plain-SHA256;unixTime;SIG;PUB"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.QrVersion,
+                    Data = "V0"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.CashRegisterSerial,
+                    Data = "KASSE-1"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessType,
+                    Data = "Kassenbeleg-V1"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessData,
+                    Data = "Beleg^..."
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.TransactionNumber,
+                    Data = "42"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.SignatureCounter,
+                    Data = "7"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.TransactionStartTime,
+                    Data = "2026-09-19T06:00:00.000Z"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.SignatureLogTime,
+                    Data = "2026-09-19T06:00:01.000Z"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.SignatureAlgorithm,
+                    Data = "ecdsa-plain-SHA256"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.LogTimeFormat,
+                    Data = "unixTime"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.Signature,
+                    Data = "SIG"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text | optional,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.PublicKey,
+                    Data = "PUB"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessStartTime,
+                    Data = "2026-09-19T05:59:59.000Z"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.CertificationIdentification,
+                    Data = "BSI-K-TR-TEST"
+                },
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.TseSerialNumber,
+                    Data = "TSE-SERIAL"
+                }
+            ]
+        };
+
+        var evidence = FiskaltrustGermanReceiptProjection.Extract(receipt);
+
+        assert(
+            evidence.HasQrPayload &&
+            evidence.HasTextFiscalCore &&
+            evidence.TseSerialNumber == "TSE-SERIAL" &&
+            evidence.CertificationIdentification == "BSI-K-TR-TEST",
+            "fiskaltrust German ReceiptResponse projects QR, text fiscal core, certification and TSE serial");
+
+        assert(
+            evidence.BuildComparableQrPayload() == receipt.FtSignatures[0].Data,
+            "fiskaltrust German signature fields rebuild the exact V0 QR payload without timestamp/signature rewriting");
+
+        var qrPrintable =
+            FiskaltrustGermanReceiptProjection.PrintableSignatures(receipt, preferQr: true);
+        assert(
+            qrPrintable.Count == 4 &&
+            qrPrintable.Any(x => x.FtSignatureType == FiskaltrustDeSignatureTypes.KassenSichVQrPayload) &&
+            qrPrintable.Any(x => x.FtSignatureType == FiskaltrustDeSignatureTypes.ProcessStartTime) &&
+            qrPrintable.Any(x => x.FtSignatureType == FiskaltrustDeSignatureTypes.CertificationIdentification) &&
+            qrPrintable.Any(x => x.FtSignatureType == FiskaltrustDeSignatureTypes.TseSerialNumber),
+            "fiskaltrust QR printing keeps mandatory German signature items and drops only explicitly optional text items");
+
+        var textPrintable =
+            FiskaltrustGermanReceiptProjection.PrintableSignatures(receipt, preferQr: false);
+        assert(
+            textPrintable.Count == receipt.FtSignatures.Count,
+            "fiskaltrust text mode preserves every returned signature item instead of silently discarding compliance data");
+
+        assert(
+            receipt.FtReceiptHeader.SequenceEqual(["MW HEADER"]) &&
+            receipt.FtChargeLines.SequenceEqual(["MW CHARGE"]) &&
+            receipt.FtPayLines.SequenceEqual(["MW PAY"]) &&
+            receipt.FtReceiptFooter.SequenceEqual(["MW FOOTER"]),
+            "fiskaltrust ReceiptResponse model preserves Middleware-added printable header/charge/pay/footer supplements");
     }
 
     private sealed class FakeHandler : HttpMessageHandler
