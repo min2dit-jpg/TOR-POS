@@ -21,6 +21,51 @@ namespace TorPos.Core;
 /// </summary>
 public static class FiscalReceiptFields
 {
+    /// <summary>
+    /// KassenSichV §6 complete production-receipt check. The legacy scalar
+    /// overload below remains the shared TSE/company-field rule; this overload
+    /// also verifies §6 Satz 1 Nr. 3 and 5 (positions and VAT/amount data).
+    /// </summary>
+    public static IReadOnlyList<string> Missing(ReceiptPrintJob job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        var missing = Missing(
+            job.CompanyName,
+            job.CompanyAddress,
+            job.EasSerial,
+            job.TseOutage,
+            job.TseSerial,
+            job.TseTransactionNumber,
+            job.SignatureCounter > 0,
+            job.VerificationValue,
+            job.ProcessStart is not null,
+            job.ProcessEnd is not null).ToList();
+
+        if (job.Lines.Count == 0 ||
+            job.Lines.Any(x => x.Quantity == 0m || string.IsNullOrWhiteSpace(x.ProductName)))
+            missing.Add("Menge/Art der Leistung");
+
+        var expectedTotal = ReceiptTotals.Total(
+            job.Lines.Sum(x => x.LineTotalCents),
+            job.DiscountCents);
+        if (expectedTotal != job.TotalCents)
+            missing.Add("Entgelt");
+
+        try
+        {
+            var vat = VatSummaryCalculator.Compute(job.Lines, job.DiscountCents);
+            if (vat.Count == 0 || vat.Any(x => x.Rate is not (7m or 19m)))
+                missing.Add("Steuersatz/Steuerbetrag");
+        }
+        catch (UnsupportedVatRateException)
+        {
+            missing.Add("Steuersatz/Steuerbetrag");
+        }
+
+        return missing.Distinct(StringComparer.Ordinal).ToArray();
+    }
+
     public static IReadOnlyList<string> Missing(
         string? companyName,
         string? companyAddress,
