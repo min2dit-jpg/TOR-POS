@@ -97,6 +97,8 @@ async Task RunAsync()
     var checkoutJournal = new CheckoutJournal(db);
     var paymentTerminal = new ZvtPaymentTerminalService(settings, audit, checkoutJournal);
     var dsfinvkExport = new DsfinvkExportService(db, settings);
+    var datevKassenarchiv = new DatevKassenarchivService(
+        db, settings, dsfinvkExport, tseProvider, audit);
     var compliance = new FiscalComplianceService(identity, settings, tseProvider, commercialLicense);
     var checkoutApplication = new CheckoutApplicationService(compliance, checkoutJournal, paymentTerminal);
 
@@ -118,7 +120,7 @@ async Task RunAsync()
     {
         var window = new MainWindow(
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
-            compliance, dsfinvkExport, new ProductImageStore(), perf, settings, backup,
+            compliance, dsfinvkExport, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
             tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
             auth, management, admin, checkoutJournal, checkoutApplication,
             new ControlledPosActionService(db), new PromotionCampaignService(db),
