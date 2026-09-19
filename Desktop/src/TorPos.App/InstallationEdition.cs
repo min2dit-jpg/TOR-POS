@@ -7,6 +7,24 @@ public static class InstallationEdition
 {
     public static readonly string[] Allowed = ["KIOSK", "IMBISS"];
 
+    // Technical edition codes remain stable for licenses, settings, migrations,
+    // Cloud payloads and existing customer data. Only the customer-facing names
+    // are generalized.
+    public static string DisplayName(string? edition) =>
+        string.Equals(edition?.Trim(), "KIOSK", StringComparison.OrdinalIgnoreCase)
+            ? "Einzelhandel"
+            : string.Equals(edition?.Trim(), "IMBISS", StringComparison.OrdinalIgnoreCase)
+                ? "Gastronomie"
+                : "Nicht festgelegt";
+
+    public static string DisplayNameWithCode(string? edition)
+    {
+        var normalized = Normalize(edition);
+        return normalized is null
+            ? "Nicht festgelegt"
+            : $"{DisplayName(normalized)} ({normalized})";
+    }
+
     public static string? ReadLocked()
     {
         try
@@ -41,7 +59,7 @@ public static class InstallationEdition
 
         if (edition is null)
             throw new InvalidOperationException(
-                "Vor der Anmeldung muss KIOSK oder IMBISS gewählt werden.");
+                "Vor der Anmeldung muss Einzelhandel oder Gastronomie gewählt werden.");
 
         Directory.CreateDirectory(AppPaths.DataDirectory);
         File.WriteAllText(AppPaths.EditionLockPath, edition);
