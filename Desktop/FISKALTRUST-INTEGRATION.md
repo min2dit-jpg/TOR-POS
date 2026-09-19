@@ -179,3 +179,15 @@ receipt.
 This method is not wired into checkout yet. The production recovery journal
 will only call it after the physical-TSE sandbox run establishes the exact
 persist-before-send and restart behavior.
+
+
+## ZeroReceipt payload prepared (not sent)
+
+The sandbox branch now contains a side-effect-free
+`FiskaltrustSandboxRequests.ZeroReceipt` builder. It creates the German
+ZeroReceipt with empty charge/pay arrays and the required implicit-flow flag.
+Nothing calls it automatically.
+
+When the physical Swissbit TSE is connected, this is the first Sign payload to
+use for a controlled functional/status test before any sale is allowed to reach
+fiskaltrust.
