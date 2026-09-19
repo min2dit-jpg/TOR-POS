@@ -1,6 +1,6 @@
 # TOR POS Pro – Drittanbieter- und Lizenzhinweise
 
-Stand: 05.09.2026 · Produktstand: 0.7.19
+Dokumentstand: 05.09.2026 · Technischer Referenzstand bei letzter Pflege: R149 / 0.7.33.849
 
 Dieses Verzeichnis ist eine technische Bestandsaufnahme, keine anwaltliche
 Lizenzprüfung. Vor jeder Kundenfreigabe müssen außerdem alle transitiven NuGet-
