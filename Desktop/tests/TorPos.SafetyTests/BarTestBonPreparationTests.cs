@@ -72,7 +72,8 @@ public static class BarTestBonPreparationTests
             plan19.ExpectedProcessData,
             "FINISHED",
             qr,
-            expectedTseSerial: "TSE-SERIAL-1");
+            expectedTseSerial: "TSE-SERIAL-1",
+            expectedClientId: "TOR-KASSE-1");
 
         assert(
             valid.Passed && valid.Checks.Count == 10 && valid.Checks.All(x => x.Passed),
@@ -97,12 +98,14 @@ public static class BarTestBonPreparationTests
             plan19.ExpectedProcessData,
             "FINISHED",
             qr.Replace(";4711;", ";9999;", StringComparison.Ordinal),
-            expectedTseSerial: "OTHER-TSE");
+            expectedTseSerial: "OTHER-TSE",
+            expectedClientId: "OTHER-CLIENT");
         assert(
             !wrongQr.Passed &&
             !wrongQr.Checks.Single(x => x.Name == "QR_PAYLOAD").Passed &&
-            !wrongQr.Checks.Single(x => x.Name == "TSE_SERIAL").Passed,
-            "BAR TESTBON validator turns red when QR or the probed TSE serial no longer matches the signed transaction");
+            !wrongQr.Checks.Single(x => x.Name == "TSE_SERIAL").Passed &&
+            !wrongQr.Checks.Single(x => x.Name == "TSE_CLIENT_ID").Passed,
+            "BAR TESTBON validator turns red when QR, probed TSE serial or expected client id no longer matches");
 
         var incomplete = BarTestBonPreparation.ValidateHardwareEvidence(
             plan19,
