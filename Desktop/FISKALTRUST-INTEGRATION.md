@@ -325,3 +325,26 @@ It checks, among other things:
 This is deliberately a sandbox acceptance report rather than a production
 switch. A real Swissbit response must pass these comparisons before TOR stores
 fiskaltrust output as its fiscal sale evidence.
+
+
+## Explicit-flow identity corrected
+
+A critical design detail was corrected before any production wiring: German
+explicit flow deliberately reuses the same `cbReceiptReference` for START,
+optional UPDATE/DELTA operations and the final receipt. Therefore a journal
+cannot make `cbReceiptReference` globally unique.
+
+The durable journal now keys a logical Sign operation by
+`(cbReceiptReference, operationKey)`. Examples are `START`, `UPDATE:0001`
+and `FINAL`. Each logical operation still has an immutable payload and its
+own PREPARED/SENT/UNKNOWN/COMMITTED lifecycle.
+
+The sandbox request factory now also provides:
+
+- `StartExplicitTransaction`: empty charge/pay arrays, DE StartTransaction,
+  no implicit flag.
+- `FinishExplicitSimpleCashSale`: final POS receipt with the same reference
+  and no implicit flag.
+
+This matches fiskaltrust's documented explicit-flow requirement and prepares
+the IMBISS/long-running transaction path without enabling it yet.
