@@ -114,3 +114,30 @@ Rules for TOR development:
 
 The launcher archive inspected during sandbox setup reports Launcher product
 version 1.3.52. Its binaries are not copied into the TOR repository.
+
+
+## ReceiptResponse projection prepared
+
+The sandbox branch now preserves all Middleware-added printable supplements
+returned by API v1:
+
+- `ftReceiptHeader`
+- `ftChargeItems` / `ftChargeLines`
+- `ftPayItems` / `ftPayLines`
+- `ftSignatures`
+- `ftReceiptFooter`
+
+For Germany, `FiskaltrustGermanReceiptProjection` extracts the documented
+signature types for QR payload, POS serial, process type/data, transaction
+number, signature counter, TSE times, algorithm, signature, public key,
+process-start time, certification identification and TSE serial number.
+
+The projection keeps the raw strings exactly as returned. It can rebuild the
+DSFinV-K V0 QR payload from the individual signature items without reformatting
+timestamps or signatures, so the first physical-TSE test can compare the
+Middleware QR payload and TOR's representation exactly.
+
+No returned fiscal value is persisted into a Sale yet and no production
+checkout path is changed. That remains intentionally blocked until a physical
+Swissbit TSE is available and a real Sign/receipt/recovery run has been
+captured.
