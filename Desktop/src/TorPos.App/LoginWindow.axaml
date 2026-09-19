@@ -47,20 +47,20 @@
           <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
             <RadioButton x:Name="KioskEditionRadio"
                          GroupName="edition"
-                         Content="KIOSK"
+                         Content="EINZELHANDEL"
                          FontWeight="Bold"
                          MinHeight="42"
                          HorizontalContentAlignment="Center"/>
             <RadioButton x:Name="ImbissEditionRadio"
                          Grid.Column="1"
                          GroupName="edition"
-                         Content="IMBISS"
+                         Content="GASTRONOMIE"
                          FontWeight="Bold"
                          MinHeight="42"
                          HorizontalContentAlignment="Center"/>
           </Grid>
           <TextBlock x:Name="EditionStatusText"
-                     Text="Bitte KIOSK oder IMBISS auswählen."
+                     Text="Bitte Einzelhandel oder Gastronomie auswählen."
                      Foreground="#9CC3FF"
                      FontSize="11"
                      TextWrapping="Wrap"/>
