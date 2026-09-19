@@ -56,11 +56,37 @@ public static class FiskaltrustTrainingReceiptPrintJobFactory
                 "Druckjob abgelehnt: Signaturzähler fehlt oder ist ungültig.");
         }
 
+        var normalizedCompany = companyName?.Trim() ?? "";
+        var normalizedAddress = companyAddress?.Trim() ?? "";
+        var missing =
+            FiscalReceiptFields.Missing(
+                normalizedCompany,
+                normalizedAddress,
+                evidence.CashRegisterSerial,
+                tseOutage: false,
+                evidence.TseSerialNumber,
+                evidence.TransactionNumber,
+                hasSignatureCounter: true,
+                evidence.Signature,
+                hasProcessStart:
+                    !string.IsNullOrWhiteSpace(
+                        evidence.TransactionStartTime),
+                hasProcessEnd:
+                    !string.IsNullOrWhiteSpace(
+                        evidence.SignatureLogTime));
+
+        if (missing.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Druckjob abgelehnt: Fiskal-/Firmendaten fehlen: " +
+                string.Join(", ", missing));
+        }
+
         return new ReceiptPrintJob(
             ReceiptNumber: 0,
             CreatedAt: sale.CreatedAt,
-            CompanyName: companyName?.Trim() ?? "",
-            CompanyAddress: companyAddress?.Trim() ?? "",
+            CompanyName: normalizedCompany,
+            CompanyAddress: normalizedAddress,
             TaxNumber: taxNumber?.Trim() ?? "",
             VatId: vatId?.Trim() ?? "",
             Header:
