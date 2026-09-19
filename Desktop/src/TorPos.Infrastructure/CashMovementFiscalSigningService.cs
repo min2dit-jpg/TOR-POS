@@ -51,7 +51,7 @@ internal static class TseKassenbelegSigner
         if (!finish.Success)
             return SaleTseResult.Outage(finish.Message);
 
-        return SaleTseResult.SignedResult(
+        return SaleTseResult.FromSuccessfulTse(
             clientId,
             finish.TransactionNumber.ToString(),
             finish.SignatureCounter.ToString(),
