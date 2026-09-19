@@ -84,7 +84,10 @@ public static class FiskaltrustSandboxAcceptance
             errors.Add("TSE-Seriennummer fehlt.");
 
         if (string.IsNullOrWhiteSpace(evidence.CertificationIdentification))
-            warnings.Add("TSE-Zertifizierungskennung fehlt.");
+            errors.Add("TSE-Zertifizierungskennung fehlt.");
+
+        if (string.IsNullOrWhiteSpace(evidence.ProcessStartTime))
+            errors.Add("Vorgangsbeginn (process-start) fehlt.");
 
         if (!string.Equals(
                 evidence.ProcessType,
