@@ -38,6 +38,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Repository hijyenini doğrula
+        run: |
+          pwsh -NoProfile -File tools/Verify-Repository-Hygiene.ps1
+
       - name: Sürüm tutarlılığını doğrula
         run: |
           pwsh -NoProfile -File tools/Verify-Version.ps1
