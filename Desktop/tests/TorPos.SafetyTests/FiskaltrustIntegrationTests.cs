@@ -251,6 +251,24 @@ public static class FiskaltrustIntegrationTests
 
         var evidence = FiskaltrustGermanReceiptProjection.Extract(receipt);
 
+        var rawWhitespaceReceipt = new FiskaltrustReceiptResponse
+        {
+            FtSignatures =
+            [
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessData,
+                    Data = "  RAW PROCESS DATA  "
+                }
+            ]
+        };
+        assert(
+            FiskaltrustGermanReceiptProjection
+                .Extract(rawWhitespaceReceipt)
+                .ProcessData == "  RAW PROCESS DATA  ",
+            "fiskaltrust receipt projection preserves signature data byte-for-text and never trims returned evidence");
+
         assert(
             evidence.HasQrPayload &&
             evidence.HasTextFiscalCore &&
