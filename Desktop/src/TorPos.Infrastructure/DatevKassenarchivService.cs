@@ -105,7 +105,14 @@ public sealed class DatevKassenarchivService
                 throw new InvalidOperationException(
                     $"DATEV-Paketdatei existiert bereits, aber Outbox-Hash fehlt: {package}");
 
-            var preflight = await _dsfinvk.ValidateAsync(z.PeriodFrom, z.PeriodTo, ct);
+            // DsfinvkExportService's caller range selects which Z closings are
+            // included; each selected closing then uses its own immutable
+            // period_from/period_to for transactions. Select exactly this Z
+            // rather than the whole open period (whose lower bound is the
+            // previous close and could otherwise include two closings).
+            var zSelectorFrom = z.CreatedAt.AddTicks(-1);
+            var zSelectorTo = z.CreatedAt;
+            var preflight = await _dsfinvk.ValidateAsync(zSelectorFrom, zSelectorTo, ct);
             if (!preflight.Ready)
                 throw new InvalidOperationException(
                     "DSFinV-K für diesen Z-Abschluss ist nicht exportbereit: " +
@@ -113,7 +120,7 @@ public sealed class DatevKassenarchivService
 
             var dsfinvkRoot = Path.Combine(work, "DSFinV-K");
             Directory.CreateDirectory(dsfinvkRoot);
-            await _dsfinvk.ExportAsync(z.PeriodFrom, z.PeriodTo, dsfinvkRoot, ct);
+            await _dsfinvk.ExportAsync(zSelectorFrom, zSelectorTo, dsfinvkRoot, ct);
 
             if (!_tse.ExportAvailable)
                 throw new InvalidOperationException(
@@ -190,6 +197,7 @@ public sealed class DatevKassenarchivService
         catch (Exception ex)
         {
             try { if (Directory.Exists(work)) Directory.Delete(work, true); } catch { }
+            try { if (File.Exists(package)) File.Delete(package); } catch { }
             await MarkPreparationFailedAsync(rowId, ex.Message, ct);
             await _audit.WriteAsync(
                 actor,
