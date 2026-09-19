@@ -218,3 +218,15 @@ tax-free and VAT-not-determinable transactions. A numeric TOR VAT rate of
 adapter therefore refuses automatic 0 % mapping until TOR stores the legal
 tax category explicitly. This avoids silently treating every 0 % article as
 tax-free.
+
+
+## German ftState decoding prepared
+
+The sandbox branch now decodes the German country prefix separately from the
+operational flags. In particular, it can identify ready state, TSE
+communication-failed state and SCU-switching state without confusing the
+constant `0x4445` country prefix with a failure bit.
+
+No automatic recovery action is triggered yet. A future runtime adapter may
+use a ZeroReceipt to probe/recover the TSE communication state only after the
+physical-TSE tests confirm the intended behavior.
