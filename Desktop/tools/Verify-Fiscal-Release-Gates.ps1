@@ -2,21 +2,32 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Get-Location)
 $corePath = Join-Path $repoRoot 'Desktop/src/TorPos.Core/CheckoutSafety.cs'
-$compliancePath = Join-Path $repoRoot 'Desktop/src/TorPos.Infrastructure/FiscalComplianceServices.cs'
 $acceptancePath = Join-Path $repoRoot 'verification/PRODUCTION-FISCAL-ACCEPTANCE.json'
 
 $core = Get-Content -LiteralPath $corePath -Raw
-$compliance = Get-Content -LiteralPath $compliancePath -Raw
 
-$releaseEnabled = $core -match 'public\s+static\s+bool\s+Enabled\s*=>\s*true\s*;'
-$buildEnabled = $compliance -match 'const\s+bool\s+fiscalReleaseBuild\s*=\s*true\s*;'
+$flagNames = @(
+    'DsfinvkValidated',
+    'KassenSichVReceiptValidated',
+    'ParkedOrderTseValidated',
+    'PfandTaxValidated',
+    'PhysicalTseE2EValidated',
+    'IndependentFiscalReviewValidated'
+)
+
+$enabledFlags = @()
+foreach ($name in $flagNames) {
+    if ($core -match ('public\s+const\s+bool\s+' + [regex]::Escape($name) + '\s*=\s*true\s*;')) {
+        $enabledFlags += $name
+    }
+}
 
 if (-not (Test-Path -LiteralPath $acceptancePath)) {
-    if ($releaseEnabled -or $buildEnabled) {
-        throw 'FISCAL RELEASE GATE FAILED: production gate enabled without verification/PRODUCTION-FISCAL-ACCEPTANCE.json'
+    if ($enabledFlags.Count -gt 0) {
+        throw ('FISCAL RELEASE GATE FAILED: acceptance artifact missing but these flags are true: ' + ($enabledFlags -join ', '))
     }
 
-    Write-Host 'FISCAL RELEASE LOCKED: no production acceptance artifact; code gates remain false.'
+    Write-Host 'FISCAL RELEASE LOCKED: no production acceptance artifact; all qualification flags remain false.'
     exit 0
 }
 
@@ -34,6 +45,7 @@ $requiredText = @(
     'receipt_evidence',
     'reviewer'
 )
+
 $missing = @()
 foreach ($name in $requiredText) {
     $value = $acceptance.$name
@@ -45,21 +57,23 @@ foreach ($name in $requiredText) {
 if ($acceptance.hardware_tse_e2e -ne $true) { $missing += 'hardware_tse_e2e=true' }
 if ($acceptance.dsfinvk_validated -ne $true) { $missing += 'dsfinvk_validated=true' }
 if ($acceptance.receipt_validated -ne $true) { $missing += 'receipt_validated=true' }
+if ($acceptance.parked_order_tse_validated -ne $true) { $missing += 'parked_order_tse_validated=true' }
+if ($acceptance.pfand_tax_validated -ne $true) { $missing += 'pfand_tax_validated=true' }
 if ($acceptance.independent_review -ne $true) { $missing += 'independent_review=true' }
 if ($acceptance.approved_for_production -ne $true) { $missing += 'approved_for_production=true' }
 
 if ($missing.Count -gt 0) {
-    if ($releaseEnabled -or $buildEnabled) {
-        throw ('FISCAL RELEASE GATE FAILED: incomplete acceptance artifact while production is enabled: ' + ($missing -join ', '))
+    if ($enabledFlags.Count -gt 0) {
+        throw ('FISCAL RELEASE GATE FAILED: incomplete acceptance artifact while qualification flags are enabled. Missing: ' + ($missing -join ', '))
     }
 
     Write-Host ('FISCAL RELEASE LOCKED: acceptance artifact exists but is incomplete: ' + ($missing -join ', '))
     exit 0
 }
 
-if (-not ($releaseEnabled -and $buildEnabled)) {
-    Write-Host 'FISCAL ACCEPTANCE COMPLETE: evidence is present, but production gates are still intentionally false.'
+if ($enabledFlags.Count -ne $flagNames.Count) {
+    Write-Host ('FISCAL ACCEPTANCE COMPLETE: evidence is complete, but production remains locked. Enabled flags: ' + ($enabledFlags -join ', '))
     exit 0
 }
 
-Write-Host 'FISCAL RELEASE GATE OK: acceptance evidence is complete and both production gates are enabled.'
+Write-Host 'FISCAL RELEASE GATE OK: complete acceptance evidence and all six production qualifications are enabled.'
