@@ -1,3 +1,5 @@
+using TorPos.Core;
+
 namespace TorPos.Infrastructure;
 
 /// <summary>
@@ -32,6 +34,113 @@ public static class FiskaltrustSandboxRequests
             FtReceiptCase =
                 FiskaltrustDeCases.WithImplicitFlow(
                     FiskaltrustDeCases.ZeroReceipt)
+        };
+    }
+
+    /// <summary>
+    /// First real-sale sandbox payload after ZeroReceipt: a deliberately narrow
+    /// cash-only POS receipt. It refuses scenarios whose mapping still needs
+    /// separate validation (card/mixed, manual discount, reversals, cancelled
+    /// positions or negative/zero lines). Production checkout never calls it.
+    /// </summary>
+    public static FiskaltrustReceiptRequest SimpleCashSale(
+        Sale sale,
+        string receiptReference)
+    {
+        ArgumentNullException.ThrowIfNull(sale);
+
+        if (string.IsNullOrWhiteSpace(receiptReference))
+            throw new ArgumentException(
+                "Eine eindeutige cbReceiptReference ist erforderlich.",
+                nameof(receiptReference));
+
+        if (!string.Equals(sale.TransactionType, "SALE", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale unterstützt noch keinen STORNO/RETURN.");
+
+        if (sale.PaymentMethod != PaymentMethod.Cash ||
+            sale.EffectiveCardPortionCents != 0)
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale unterstützt nur reine Barzahlung.");
+
+        if (sale.DiscountCents != 0)
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale unterstützt noch keinen manuellen Bon-Rabatt.");
+
+        if (sale.CancelledLines.Count != 0)
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale unterstützt noch keine stornierten Positionen.");
+
+        if (sale.Lines.Count == 0)
+            throw new InvalidOperationException(
+                "Ein fiskaltrust POS-Beleg benötigt mindestens eine Position.");
+
+        if (sale.Lines.Any(x => x.Quantity <= 0 || x.LineTotalCents <= 0))
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale akzeptiert vor der Realhardware-Abnahme nur positive Verkaufspositionen.");
+
+        var lineTotal = sale.Lines.Sum(x => x.LineTotalCents);
+        if (lineTotal != sale.TotalCents)
+            throw new InvalidOperationException(
+                $"Positionssumme ({lineTotal}) und Belegsumme ({sale.TotalCents}) stimmen nicht überein.");
+
+        var chargeItems = sale.Lines
+            .Select((line, index) =>
+            {
+                var itemCase = FiskaltrustDeCases.ChargeItemCaseForVat(line.VatRate);
+
+                // TOR only needs the explicit take-away marker where the
+                // reduced food rate is actually the relevant distinction.
+                if (sale.ImHaus == false &&
+                    line.ImHausApplicable &&
+                    line.VatRate == 7m)
+                {
+                    itemCase |= FiskaltrustDeCases.TakeAwayChargeItemFlag;
+                }
+
+                return new FiskaltrustChargeItem
+                {
+                    Position = index + 1,
+                    Quantity = line.Quantity,
+                    Description = FiscalProcessData.LineText(line),
+                    Amount = line.LineTotalCents / 100m,
+                    VatRate = line.VatRate,
+                    FtChargeItemCase = itemCase,
+                    ProductNumber = line.ProductId > 0
+                        ? line.ProductId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : null,
+                    ProductBarcode = string.IsNullOrWhiteSpace(line.Barcode)
+                        ? null
+                        : line.Barcode,
+                    Unit = "Stück",
+                    UnitPrice = line.UnitPriceCents / 100m,
+                    Moment = sale.CreatedAt
+                };
+            })
+            .ToArray();
+
+        return new FiskaltrustReceiptRequest
+        {
+            CbReceiptReference = receiptReference.Trim(),
+            CbReceiptMoment = sale.CreatedAt,
+            CbUser = sale.OperatorName,
+            CbChargeItems = chargeItems,
+            CbPayItems =
+            [
+                new FiskaltrustPayItem
+                {
+                    Position = 1,
+                    Quantity = 1m,
+                    Description = "Bar",
+                    Amount = sale.TotalCents / 100m,
+                    FtPayItemCase = FiskaltrustDeCases.CashPayment,
+                    Moment = sale.CreatedAt
+                }
+            ],
+            CbReceiptAmount = sale.TotalCents / 100m,
+            FtReceiptCase =
+                FiskaltrustDeCases.WithImplicitFlow(
+                    FiskaltrustDeCases.PosReceipt)
         };
     }
 }
