@@ -79,7 +79,7 @@ public static class FiskaltrustGermanReceiptProjection
         string Data(ulong type) =>
             response.FtSignatures
                 .FirstOrDefault(x => x.FtSignatureType == type)
-                ?.Data?.Trim() ?? "";
+                ?.Data ?? "";
 
         return new FiskaltrustGermanFiscalEvidence(
             Data(FiskaltrustDeSignatureTypes.KassenSichVQrPayload),
