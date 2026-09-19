@@ -1,13 +1,48 @@
 namespace TorPos.Core;
 
 // A build-level gate. A software license never grants fiscal readiness.
+//
+// Each flag represents an acceptance EVIDENCE decision, not whether code merely
+// exists. They stay false until the corresponding verification artifact has
+// been reviewed. Production can only open when the complete qualification set
+// is true; flipping one historical "release" boolean can no longer bypass the
+// other KassenSichV/DSFinV-K/hardware gates.
 public static class FiscalRelease
 {
-    public static bool Enabled => false;
+    public const bool DsfinvkValidated = false;
+    public const bool KassenSichVReceiptValidated = false;
+    public const bool ParkedOrderTseValidated = false;
+    public const bool PfandTaxValidated = false;
+    public const bool PhysicalTseE2EValidated = false;
+    public const bool IndependentFiscalReviewValidated = false;
+
+    public static bool Enabled =>
+        DsfinvkValidated &&
+        KassenSichVReceiptValidated &&
+        ParkedOrderTseValidated &&
+        PfandTaxValidated &&
+        PhysicalTseE2EValidated &&
+        IndependentFiscalReviewValidated;
+
+    public static IReadOnlyList<string> MissingQualifications()
+    {
+        var missing = new List<string>();
+        if (!DsfinvkValidated) missing.Add("DSFinV-K-Prüfdatensatz");
+        if (!KassenSichVReceiptValidated) missing.Add("§6-Beleg/QR");
+        if (!ParkedOrderTseValidated) missing.Add("Bestellung/Parken-TSE");
+        if (!PfandTaxValidated) missing.Add("Pfand-Steuerlogik");
+        if (!PhysicalTseE2EValidated) missing.Add("physische TSE-E2E-Abnahme");
+        if (!IndependentFiscalReviewValidated) missing.Add("unabhängige Fiskalprüfung");
+        return missing;
+    }
+
     public static void RequireProduction()
     {
         if (!Enabled)
-            throw new InvalidOperationException("Produktivbuchung gesperrt: TSE, DSFinV-K und Belegfreigabe fehlen. TRAINING verwenden.");
+            throw new InvalidOperationException(
+                "Produktivbuchung gesperrt. Fehlende Freigaben: " +
+                string.Join(", ", MissingQualifications()) +
+                ". TRAINING verwenden.");
     }
 }
 
