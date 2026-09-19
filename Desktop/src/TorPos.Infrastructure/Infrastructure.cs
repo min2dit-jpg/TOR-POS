@@ -2063,14 +2063,14 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                   list_unit_price_cents,list_line_total_cents,
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
-                  promotion_start_date,promotion_end_date)
+                  promotion_start_date,promotion_end_date,vat_allocations_json)
                 VALUES(
                   $sale,$product,$name,$variant,$barcode,$qty,
                   $price,$vat,$pfand,$total,
                   $listUnit,$listTotal,
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
-                  $promotionStart,$promotionEnd);
+                  $promotionStart,$promotionEnd,$vatAllocations);
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
             q.Parameters.AddWithValue("$product", line.ProductId);
@@ -2091,6 +2091,7 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Parameters.AddWithValue("$promotionTotal", line.PromotionDiscountCents);
             q.Parameters.AddWithValue("$promotionStart", line.PromotionStartDate);
             q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
+            q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
             await q.ExecuteNonQueryAsync(ct);
             // R49: menus/combos consume their component stock. Normal articles consume themselves.
             // Negative technical IDs (Pfand/Extras) never touch stock.
@@ -2344,7 +2345,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        list_unit_price_cents,
                        promotion_id,promotion_name,promotion_percent,
                        promotion_discount_unit_cents,
-                       promotion_start_date,promotion_end_date
+                       promotion_start_date,promotion_end_date,
+                       COALESCE(vat_allocations_json,'')
                 FROM sale_items WHERE sale_id=$sale ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
@@ -2370,7 +2372,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                     PromotionPercent = r.GetInt32(12),
                     PromotionDiscountUnitCents = r.GetInt64(13),
                     PromotionStartDate = r.GetString(14),
-                    PromotionEndDate = r.GetString(15)
+                    PromotionEndDate = r.GetString(15),
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16))
                 });
             }
         }
@@ -2544,14 +2547,14 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                       list_unit_price_cents,list_line_total_cents,
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
-                      promotion_start_date,promotion_end_date)
+                      promotion_start_date,promotion_end_date,vat_allocations_json)
                     VALUES(
                       $sale,$product,$name,$variant,$barcode,$qty,
                       $price,$vat,$pfand,$total,
                       $listUnit,$listTotal,
                       $promotionId,$promotionName,$promotionPercent,
                       $promotionUnit,$promotionTotal,
-                      $promotionStart,$promotionEnd);
+                      $promotionStart,$promotionEnd,$vatAllocations);
                     """;
                 q.Parameters.AddWithValue("$sale", saleId);
                 q.Parameters.AddWithValue("$product", line.ProductId);
@@ -2572,6 +2575,7 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                 q.Parameters.AddWithValue("$promotionTotal", line.PromotionDiscountCents);
                 q.Parameters.AddWithValue("$promotionStart", line.PromotionStartDate);
                 q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
+                q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
                 await q.ExecuteNonQueryAsync(ct);
             }
 
@@ -2779,7 +2783,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
                       promotion_start_date,promotion_end_date,
-                      original_sale_item_id)
+                      vat_allocations_json,original_sale_item_id)
                     VALUES(
                       $sale,$product,$name,$variant,$barcode,$qty,
                       $price,$vat,$pfand,$total,
@@ -2787,7 +2791,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       $promotionId,$promotionName,$promotionPercent,
                       $promotionUnit,$promotionTotal,
                       $promotionStart,$promotionEnd,
-                      $originalItem);
+                      $vatAllocations,$originalItem);
                     """;
                 q.Parameters.AddWithValue("$sale", saleId);
                 q.Parameters.AddWithValue("$product", originalLine.ProductId);
@@ -2808,6 +2812,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Parameters.AddWithValue("$promotionTotal", (long)Math.Round(quantity * originalLine.PromotionDiscountUnitCents, MidpointRounding.AwayFromZero));
                 q.Parameters.AddWithValue("$promotionStart", originalLine.PromotionStartDate);
                 q.Parameters.AddWithValue("$promotionEnd", originalLine.PromotionEndDate);
+                q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(originalLine));
                 q.Parameters.AddWithValue("$originalItem", originalLine.SaleItemId);
                 await q.ExecuteNonQueryAsync(ct);
             }
