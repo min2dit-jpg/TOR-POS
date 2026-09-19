@@ -943,6 +943,7 @@
                     <Button Classes="menuhubaction" Content="Firma &amp; Bon" Click="OnCompanyReceiptSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Personal" Click="OnGroupedPersonnelSettingsMenuClick"/>
                     <Button Classes="menuhubaction" Content="Berichte &amp; E-Mail" Click="OnGroupedReportsEmailSettingsMenuClick"/>
+                    <Button Classes="menuhubaction" Content="DATEV Kassenarchiv" Click="OnDatevSettingsMenuClick"/>
                   </StackPanel>
                 </Border>
                 <Border Grid.Column="2" Classes="menuhubcard menuhubbalanced">
@@ -1057,6 +1058,7 @@
                         <Button Classes="menuhubaction" Content="GDPdU / GoBD Tools" Click="OnGdpduToolsMenuClick"/>
                         <Button Classes="menuhubaction" Content="DSFinV-K Export" Click="OnDsfinvkExportMenuClick"/>
                         <Button Classes="menuhubaction" Content="TSE Export" Click="OnTseExportMenuClick"/>
+                        <Button Classes="menuhubaction" Content="DATEV Kassenarchiv · Journal" Click="OnDatevJournalMenuClick"/>
                       </StackPanel>
                     </Grid>
                   </StackPanel>

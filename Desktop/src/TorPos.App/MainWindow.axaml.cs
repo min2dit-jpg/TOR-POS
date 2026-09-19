@@ -30,6 +30,7 @@ public partial class MainWindow:Window
     private readonly IAuditLog _audit;
     private readonly IFiscalComplianceService _compliance;
     private readonly IDsfinvkExportService _dsfinvkExport;
+    private readonly DatevKassenarchivService _datevKassenarchiv;
     private readonly ProductImageStore _images;
     private readonly PerformanceCounters _perf;
     private readonly ISettingsRepository _settings;
@@ -147,6 +148,7 @@ public partial class MainWindow:Window
         IAuditLog audit,
         IFiscalComplianceService compliance,
         IDsfinvkExportService dsfinvkExport,
+        DatevKassenarchivService datevKassenarchiv,
         ProductImageStore images,
         PerformanceCounters perf,
         ISettingsRepository settings,
@@ -188,6 +190,7 @@ public partial class MainWindow:Window
         _parkedReceipts=parkedReceipts;_dailyClosingGuard=dailyClosingGuard;
         _cashMovements=cashMovements;_audit=audit;_compliance=compliance;
         _dsfinvkExport=dsfinvkExport;
+        _datevKassenarchiv=datevKassenarchiv;
         _images=images;_perf=perf;
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
         _digitalReceipts=digitalReceipts;
@@ -2484,16 +2487,39 @@ public partial class MainWindow:Window
                 "PRODUCTION_ALLOWED");
 
             var document = _management.ZArchiveToDocument(archived);
+            var datevNote = "";
+
+            if (_settingsCache.GetBool(DatevKassenarchivService.SettingEnabled, false) &&
+                _settingsCache.GetBool(DatevKassenarchivService.SettingAutoAfterZ, false))
+            {
+                try
+                {
+                    var prepared = await _datevKassenarchiv.PrepareZAsync(
+                        archived,
+                        _currentUser.Username);
+                    await _datevKassenarchiv.MarkWaitingForOfficialApiAsync(
+                        prepared.Entry.Id,
+                        _currentUser.Username);
+                    datevNote =
+                        $" · DATEV-Paket vorbereitet ({prepared.Entry.PackageSha256[..12]}…) · Online-API wartet auf Freischaltung";
+                }
+                catch (Exception datevEx)
+                {
+                    CrashLog.WriteException("DATEV Kassenarchiv after Z", datevEx);
+                    datevNote = " · DATEV-Paket noch offen: " + datevEx.Message;
+                }
+            }
 
             ScannerStatus.Text =
-                $"Z {archived.ZNumber:000000} abgeschlossen und unveränderbar archiviert.";
+                $"Z {archived.ZNumber:000000} abgeschlossen und unveränderbar archiviert." +
+                datevNote;
 
             await new TextReportWindow(
                 _management,
                 document,
                 _receiptPrinter,
                 _settings,
-                $"Z-Abschluss gespeichert · {archived.ReceiptCount} Bons · {GermanFormat.Amount(archived.GrossCents)} € Umsatz. Drucker und 58/80 mm oder A4 können jetzt gewählt werden.")
+                $"Z-Abschluss gespeichert · {archived.ReceiptCount} Bons · {GermanFormat.Amount(archived.GrossCents)} € Umsatz.{datevNote} Drucker und 58/80 mm oder A4 können jetzt gewählt werden.")
                 .ShowDialog(this);
         }
         catch (Exception ex)
@@ -3944,6 +3970,9 @@ public partial class MainWindow:Window
     private async void OnGroupedReportsEmailSettingsMenuClick(object? sender, RoutedEventArgs e) =>
         await OpenSettingsPageAsync("Berichte & E-Mail");
 
+    private async void OnDatevSettingsMenuClick(object? sender, RoutedEventArgs e) =>
+        await OpenSettingsPageAsync("DATEV");
+
     private async void OnGroupedBackupSettingsMenuClick(object? sender, RoutedEventArgs e) =>
         await OpenSettingsPageAsync("Datensicherung");
 
@@ -4446,6 +4475,19 @@ public partial class MainWindow:Window
         {
             ShowOperationalError("GDPDU-TOOLS", ex);
         }
+    }
+
+    private async void OnDatevJournalMenuClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_currentUser.IsAdmin)
+        {
+            ScannerStatus.Text = "DATEV Kassenarchiv Journal ist nur für Admin verfügbar.";
+            return;
+        }
+
+        await ShowReportAsync(
+            _datevKassenarchiv.BuildJournalReportAsync(),
+            "DATEV-Outbox: lokale Pakete, Hash, Status und Fehler. Online-Transport ist noch nicht freigeschaltet.");
     }
 
     private async void OnDsfinvkExportMenuClick(object? sender, RoutedEventArgs e)

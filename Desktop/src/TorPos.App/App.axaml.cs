@@ -172,6 +172,14 @@ public partial class App : Avalonia.Application
                     db,
                     settings);
 
+            var datevKassenarchiv =
+                new DatevKassenarchivService(
+                    db,
+                    settings,
+                    dsfinvkExport,
+                    tseProvider,
+                    audit);
+
             var compliance = new FiscalComplianceService(
                 identity,
                 settings,
@@ -200,6 +208,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<IAuditLog>(audit);
             appServices.AddSingleton<IFiscalComplianceService>(compliance);
             appServices.AddSingleton<IDsfinvkExportService>(dsfinvkExport);
+            appServices.AddSingleton(datevKassenarchiv);
             appServices.AddSingleton<IPaymentTerminalService>(paymentTerminal);
             appServices.AddSingleton<ISettingsRepository>(settings);
             appServices.AddSingleton<ITseProvider>(tseProvider);
