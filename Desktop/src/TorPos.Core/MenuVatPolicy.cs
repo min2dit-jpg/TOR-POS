@@ -37,9 +37,16 @@ public static class MenuVatPolicy
             if (item.Quantity <= 0m)
                 return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {component.Name} hat keine gültige Menge.");
 
-            // The comparable single-sale gross price includes any deposit that
-            // the component carries when sold on its own.
-            var singleGross = component.BasePriceCents + component.PfandCents;
+            // Pfand needs its own immutable fiscal/DSFinV-K position. The current
+            // commercial combo line cannot represent that separately, so it is
+            // blocked rather than hidden inside the menu turnover.
+            if (component.PfandCents != 0)
+                return MenuVatAnalysis.Invalid(
+                    menu,
+                    $"Menübestandteil {component.Name} enthält Pfand. " +
+                    "Menü-Pfand muss vor Produktivfreigabe separat abgebildet werden.");
+
+            var singleGross = component.BasePriceCents;
             if (singleGross <= 0)
                 return MenuVatAnalysis.Invalid(
                     menu,
@@ -65,7 +72,12 @@ public static class MenuVatPolicy
         if (marketByRate.Count == 0)
             return MenuVatAnalysis.Invalid(menu, "Menü hat keine Bestandteile.");
 
-        var targetGross = menuGrossCents ?? checked(menu.BasePriceCents + menu.PfandCents);
+        if (menu.PfandCents != 0)
+            return MenuVatAnalysis.Invalid(
+                menu,
+                "Das Menü selbst enthält Pfand. Menü-Pfand muss vor Produktivfreigabe separat abgebildet werden.");
+
+        var targetGross = menuGrossCents ?? menu.BasePriceCents;
         if (targetGross < 0)
             return MenuVatAnalysis.Invalid(menu, "Menüpreis darf für die Aufteilung nicht negativ sein.");
 
