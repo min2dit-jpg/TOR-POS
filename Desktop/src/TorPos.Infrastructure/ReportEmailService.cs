@@ -88,6 +88,41 @@ public sealed class ReportEmailService
         return folder;
     }
 
+    public async Task SendFilesAsync(
+        string recipient,
+        string subject,
+        string body,
+        IReadOnlyList<string> attachments,
+        CancellationToken ct = default)
+    {
+        var values = await _settings.LoadAllAsync(ct);
+        var target = recipient?.Trim() ?? "";
+        try { _ = new MailAddress(target); }
+        catch { throw new InvalidOperationException("Gültige Empfänger-E-Mail fehlt."); }
+
+        foreach (var path in attachments)
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                throw new InvalidOperationException("E-Mail-Anhang fehlt: " + (path ?? ""));
+
+        var transport = values.TryGetValue("reports.email.transport", out var mode)
+            ? mode.Trim().ToLowerInvariant()
+            : "smtp";
+
+        if (transport == "google")
+        {
+            if (_google is null)
+                throw new InvalidOperationException(
+                    "Google-E-Mail-Dienst ist nicht verfügbar. TOR POS neu starten oder SMTP als Fallback wählen.");
+            await _google.SendAsync(target, subject, body, attachments, ct);
+            return;
+        }
+
+        var baseConfig = ReadConfig(values);
+        var config = baseConfig with { Recipient = target };
+        Validate(config);
+        await SendAsync(config, subject, body, attachments, ct);
+    }
+
     public async Task SendTestAsync(string recipient, string sender, string host, int port, bool ssl, string username, string password, CancellationToken ct = default)
     {
         var config = new MailConfig(
