@@ -623,13 +623,20 @@ public static class DsfinvkClosingBuilder
             var row = startRow;
             foreach (var line in lines)
             {
-                var key = VatKey(line.VatRate);
+                var vatAllocations = MenuVatPolicy.LineAllocations(line);
                 var text = FiscalProcessData.LineText(line);
                 var product = _input.ProductOf(line.ProductId);
                 var pfandTotal = line.PfandCents == 0
                     ? 0L
                     : (long)Math.Round(line.Quantity * line.PfandCents, MidpointRounding.AwayFromZero);
                 var articleTotal = line.LineTotalCents - pfandTotal;
+
+                // Pfand is exported as its own Bonpos row below. MenuVatPolicy
+                // refuses combo/menu Pfand, so a Pfand article is always a
+                // normal single-rate line and its main position excludes Pfand.
+                var positionVatAllocations = pfandTotal == 0
+                    ? vatAllocations
+                    : new[] { new MenuVatAllocation(line.VatRate, articleTotal, articleTotal) };
 
                 row++;
                 // R138: a discount position of an order record is GV_TYP Rabatt.
@@ -641,22 +648,48 @@ public static class DsfinvkClosingBuilder
                 // R149: DSFinV-K 4.2.5 - a negative position carries its sign in MENGE.
                 var (quantity, unitPrice) = FiscalProcessData.SignedQuantity(line);
                 Position(bonId, row, text, gvType, null, product, line.Barcode, sign * quantity, unitPrice - line.PfandCents, inHaus);
-                PositionVat(bonId, row, key, line.VatRate, sign * articleTotal, gvType, null, beleg);
+
+                // R151: a commercial menu remains ONE Bonpos row, but Bonpos_USt
+                // may contain multiple VAT rows for that same POS_ZEILE.
+                // MenuVatPolicy guarantees these gross buckets sum exactly to the
+                // commercial line total.
+                foreach (var allocation in positionVatAllocations)
+                    PositionVat(
+                        bonId,
+                        row,
+                        VatKey(allocation.VatRate),
+                        allocation.VatRate,
+                        sign * allocation.GrossCents,
+                        gvType,
+                        null,
+                        beleg);
 
                 if (line.HasPromotion)
                 {
+                    // Mixed-rate menu promotions are blocked before checkout.
+                    // For normal / single-rate lines Preisfindung remains exactly
+                    // the existing representation.
+                    if (vatAllocations.Count != 1)
+                        throw new InvalidOperationException(
+                            $"Beleg {bonId}: Preisfindung für gemischte Menü-MwSt. ist nicht freigegeben.");
+
+                    var promotionRate = vatAllocations[0].VatRate;
+                    var key = VatKey(promotionRate);
                     var baseTotal = (long)Math.Round(
                         line.Quantity * (line.EffectiveListUnitPriceCents - line.PfandCents),
                         MidpointRounding.AwayFromZero);
-                    Pricing(bonId, row, "base_amount", key, line.VatRate, sign * baseTotal);
-                    Pricing(bonId, row, "discount", key, line.VatRate, sign * (articleTotal - baseTotal));
+                    Pricing(bonId, row, "base_amount", key, promotionRate, sign * baseTotal);
+                    Pricing(bonId, row, "discount", key, promotionRate, sign * (articleTotal - baseTotal));
                 }
 
                 if (pfandTotal != 0)
                 {
+                    // MenuVatPolicy refuses combo components/menu articles with
+                    // Pfand. A normal Pfand line therefore has one scalar rate.
+                    var pfandRate = vatAllocations.Count == 1 ? vatAllocations[0].VatRate : line.VatRate;
                     row++;
                     Position(bonId, row, "Pfand " + text, "Pfand", null, null, null, sign * line.Quantity, line.PfandCents, inHaus);
-                    PositionVat(bonId, row, key, line.VatRate, sign * pfandTotal, "Pfand", null, beleg);
+                    PositionVat(bonId, row, VatKey(pfandRate), pfandRate, sign * pfandTotal, "Pfand", null, beleg);
                 }
             }
 
@@ -664,7 +697,10 @@ public static class DsfinvkClosingBuilder
                 return row;
 
             var discounted = VatSummaryCalculator.Compute(lines, discountCents).ToDictionary(g => g.Rate, g => g.GrossCents);
-            var undiscounted = lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => g.Sum(l => l.LineTotalCents));
+            var undiscounted = lines
+                .SelectMany(MenuVatPolicy.LineAllocations)
+                .GroupBy(a => a.VatRate)
+                .ToDictionary(g => g.Key, g => g.Sum(a => a.GrossCents));
             var appliedDiscount = undiscounted.Values.Sum() - discounted.Values.Sum();
             if (appliedDiscount == 0)
                 return row;

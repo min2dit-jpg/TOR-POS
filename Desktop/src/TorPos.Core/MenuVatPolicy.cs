@@ -7,10 +7,10 @@ namespace TorPos.Core;
 /// market price. Allocation uses the components' gross single-sale prices as
 /// weights and distributes cent rounding deterministically.
 ///
-/// This is deliberately a guard/calculation primitive only. R150 does not yet
-/// rewrite sale_items/DSFinV-K into multi-rate menu snapshots; until that
-/// representation is implemented, a mixed-rate menu must not enter a
-/// production checkout.
+/// R151 completes the representation: the customer still sees one menu line,
+/// while the checkout snapshot carries hidden per-rate gross allocations.
+/// Those allocations are persisted with the sale and reused by receipt VAT,
+/// TSE process data and DSFinV-K.
 /// </summary>
 public static class MenuVatPolicy
 {
@@ -150,12 +150,128 @@ public static class MenuVatPolicy
                 continue;
 
             var analysis = Analyze(product, catalog, imHaus, line.UnitPriceCents);
-            if (!analysis.IsValid || analysis.IsMixed)
+            if (!analysis.IsValid)
+            {
                 result.Add(analysis);
+                continue;
+            }
+
+            // R151: ordinary menu pricing is supported even when rates are mixed.
+            // A separate Angebot on top of a mixed menu would need an immutable
+            // pre-promotion allocation snapshot for DSFinV-K Preisfindung; until
+            // that representation exists, refuse it instead of inventing one.
+            if (analysis.IsMixed && line.HasPromotion)
+            {
+                result.Add(MenuVatAnalysis.Invalid(
+                    product,
+                    "Zusätzliches ANGEBOT auf einem Menü mit gemischter MwSt. ist noch nicht freigegeben. " +
+                    "Bitte den gewünschten Menüpreis direkt als Verkaufspreis des Menü-Artikels speichern."));
+            }
         }
 
         return result;
     }
+
+    public static CartLine[] ApplyAllocations(
+        IEnumerable<CartLine> lines,
+        IReadOnlyList<Product> catalog,
+        bool imHaus)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        var byId = catalog.ToDictionary(x => x.Id);
+        var result = new List<CartLine>();
+
+        foreach (var line in lines)
+        {
+            if (line.ProductId <= 0 ||
+                !byId.TryGetValue(line.ProductId, out var product) ||
+                !product.IsCombo)
+            {
+                result.Add(CloneWithAllocations(line, line.VatAllocations));
+                continue;
+            }
+
+            var analysis = Analyze(product, catalog, imHaus, line.UnitPriceCents);
+            if (!analysis.IsValid)
+                throw new InvalidOperationException($"{product.Name}: {analysis.Message}");
+
+            if (analysis.IsMixed && line.HasPromotion)
+                throw new InvalidOperationException(
+                    $"{product.Name}: zusätzliches ANGEBOT auf gemischtem Menü ist nicht freigegeben.");
+
+            result.Add(CloneWithAllocations(line, analysis.Allocations.ToArray()));
+        }
+
+        return result.ToArray();
+    }
+
+    private static CartLine CloneWithAllocations(
+        CartLine line,
+        IReadOnlyList<MenuVatAllocation> allocations) =>
+        new()
+        {
+            SaleItemId = line.SaleItemId,
+            ProductId = line.ProductId,
+            ProductName = line.ProductName,
+            VariantName = line.VariantName,
+            Barcode = line.Barcode,
+            Quantity = line.Quantity,
+            UnitPriceCents = line.UnitPriceCents,
+            ListUnitPriceCents = line.EffectiveListUnitPriceCents,
+            VatRate = line.VatRate,
+            VatAllocations = allocations.ToArray(),
+            ImHausApplicable = line.ImHausApplicable,
+            PfandCents = line.PfandCents,
+            PromotionId = line.PromotionId,
+            PromotionName = line.PromotionName,
+            PromotionPercent = line.PromotionPercent,
+            PromotionDiscountUnitCents = line.PromotionDiscountUnitCents,
+            PromotionStartDate = line.PromotionStartDate,
+            PromotionEndDate = line.PromotionEndDate
+        };
+
+    /// <summary>
+    /// Converts the hidden per-unit allocation into exact gross amounts for one
+    /// cart/sale line. The last VAT bucket absorbs any cent rounding so the
+    /// buckets always sum to LineTotalCents, including quantities > 1.
+    /// </summary>
+    public static IReadOnlyList<MenuVatAllocation> LineAllocations(CartLine line)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+
+        if (line.VatAllocations.Length == 0)
+            return new[] { new MenuVatAllocation(line.VatRate, line.LineTotalCents, line.LineTotalCents) };
+
+        var ordered = line.VatAllocations.OrderBy(x => x.VatRate).ToArray();
+        var total = line.LineTotalCents;
+        long assigned = 0;
+        var result = new List<MenuVatAllocation>(ordered.Length);
+
+        for (var i = 0; i < ordered.Length; i++)
+        {
+            var source = ordered[i];
+            var gross = i == ordered.Length - 1
+                ? total - assigned
+                : (long)Math.Round(line.Quantity * source.GrossCents, MidpointRounding.AwayFromZero);
+            assigned += gross;
+            var market = (long)Math.Round(
+                line.Quantity * source.MarketGrossCents,
+                MidpointRounding.AwayFromZero);
+            result.Add(new MenuVatAllocation(source.VatRate, gross, market));
+        }
+
+        return result;
+    }
+
+    public static IReadOnlyList<decimal> EffectiveRates(CartLine line) =>
+        LineAllocations(line)
+            .Where(x => x.GrossCents != 0)
+            .Select(x => x.VatRate)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToArray();
 
     private sealed record Draft(
         decimal VatRate,

@@ -237,7 +237,8 @@ public sealed class TrainingReceiptRepository
         {
             q.CommandText = """
                 SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
-                       list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents
+                       list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
+                       COALESCE(vat_allocations_json,'')
                 FROM training_receipt_items WHERE training_id=$id ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$id", id);
@@ -259,6 +260,7 @@ public sealed class TrainingReceiptRepository
                     PromotionName = r.GetString(10),
                     PromotionPercent = r.GetInt32(11),
                     PromotionDiscountUnitCents = r.GetInt64(12),
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(13))
                 });
             }
         }
@@ -276,8 +278,8 @@ public sealed class TrainingReceiptRepository
             INSERT INTO training_receipt_items(
               training_id,product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,
               pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
-              promotion_discount_unit_cents)
-            VALUES($t,$p,$n,$v,$b,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit);
+              promotion_discount_unit_cents,vat_allocations_json)
+            VALUES($t,$p,$n,$v,$b,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations);
             """;
         q.Parameters.AddWithValue("$t", trainingId);
         q.Parameters.AddWithValue("$p", line.ProductId);
@@ -294,6 +296,7 @@ public sealed class TrainingReceiptRepository
         q.Parameters.AddWithValue("$pname", line.PromotionName);
         q.Parameters.AddWithValue("$ppct", line.PromotionPercent);
         q.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
+        q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
         await q.ExecuteNonQueryAsync(ct);
     }
 }

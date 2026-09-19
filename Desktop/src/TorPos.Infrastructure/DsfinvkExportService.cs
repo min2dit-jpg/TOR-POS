@@ -380,7 +380,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
 
     private static void CheckVat(IEnumerable<CartLine> lines, string where, List<DsfinvkPreflightIssue> issues)
     {
-        foreach (var rate in lines.Select(l => l.VatRate).Distinct())
+        foreach (var rate in lines.SelectMany(MenuVatPolicy.EffectiveRates).Distinct())
         {
             try { DsfinvkClosingBuilder.VatKey(rate); }
             catch (UnsupportedVatRateException ex) { issues.Add(new("VAT", $"{where}: {ex.Message}")); }

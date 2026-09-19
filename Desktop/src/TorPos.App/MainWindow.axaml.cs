@@ -2103,6 +2103,11 @@ public partial class MainWindow:Window
             }
         }
 
+        var menuLines = MenuVatPolicy.ApplyAllocations(
+            CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
+            _catalog.Products,
+            _imHaus);
+
         SetCheckoutBusy(true);
         try
         {
@@ -2110,8 +2115,13 @@ public partial class MainWindow:Window
             // in the TSE while the receipt is parked.
             var vorgangId = _tseVorgang.VorgangId;
             var vorgangStartedAt = _tseVorgang.StartedAt;
-            // R146: the positions cancelled in this Vorgang belong to the record it ends in.
-            var cancelledLines = _tseVorgang.CancelledLines.ToArray();
+            // R146/R151: cancelled positions belong to this record too, and
+            // a cancelled menu must keep the same hidden VAT allocation as the
+            // commercial menu line.
+            var cancelledLines = MenuVatPolicy.ApplyAllocations(
+                CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus),
+                _catalog.Products,
+                _imHaus);
             if (_activeParkedReceiptId is long parkedId)
             {
                 // R138: every parked receipt is an order in the TSE, not only in ORDER mode.
@@ -2121,7 +2131,7 @@ public partial class MainWindow:Window
                     : null;
                 await _parkedReceipts.UpdateAsync(
                     parkedId,
-                    _engine.Cart.ToArray(),
+                    menuLines,
                     _engine.DiscountCents, orderPrint: orderMode, actor:_currentUser.Username, imHaus: _imHaus);
                 var updated=await _parkedReceipts.GetOpenByIdAsync(parkedId, training: _currentUser.IsTraining);
                 if (before is not null && updated is not null)
@@ -2144,7 +2154,7 @@ public partial class MainWindow:Window
                     // Training or a till that stopped booking for real while the
                     // receipt was open: nothing is secured, the Vorgang ends as aborted.
                     // R146: with its cancelled positions, as every abort (R143).
-                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus).Concat(TseVorgangCartTracker.CancellationPairs(cancelledLines)).ToArray();
+                    var lines = menuLines.Concat(TseVorgangCartTracker.CancellationPairs(cancelledLines)).ToArray();
                     var discount = _engine.DiscountCents;
                     var actor = _currentUser.Username;
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
@@ -2156,7 +2166,7 @@ public partial class MainWindow:Window
             else
             {
                 var parked = await _parkedReceipts.ParkAsync(
-                    _engine.Cart.ToArray(),
+                    menuLines,
                     _engine.DiscountCents,
                     _currentUser.Username,
                     assignPickupNumber: orderMode && _settingsCache.GetBool("imbiss.order.number_enabled",true),
@@ -2195,7 +2205,7 @@ public partial class MainWindow:Window
                     // A training order stays a simulation (R135), and a till that
                     // stopped booking for real secures nothing: the Vorgang does
                     // not become a record and ends as aborted.
-                    var lines = CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus).Concat(TseVorgangCartTracker.CancellationPairs(cancelledLines)).ToArray();
+                    var lines = menuLines.Concat(TseVorgangCartTracker.CancellationPairs(cancelledLines)).ToArray();
                     var discount = _engine.DiscountCents;
                     var actor = _currentUser.Username;
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
@@ -2525,11 +2535,19 @@ public partial class MainWindow:Window
     }
 
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
-        _operationId, CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus), _engine.DiscountCents,
-        method, _currentUser.Username, _activeParkedReceiptId, _imHaus, cashPortionCents,
-        _tseVorgang.VorgangId ?? "", _tseVorgang.StartedAt,
-        // R143: what was cancelled during capture goes with the receipt.
-        _tseVorgang.CancelledLines.Count == 0 ? null : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines));
+        _operationId,
+        CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
+        _engine.DiscountCents,
+        method,
+        _currentUser.Username,
+        _activeParkedReceiptId,
+        _imHaus,
+        cashPortionCents,
+        _tseVorgang.VorgangId ?? "",
+        _tseVorgang.StartedAt,
+        _tseVorgang.CancelledLines.Count == 0
+            ? null
+            : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
 
     private async void OnMixedPaymentClick(object? sender, RoutedEventArgs e)
     {
@@ -2645,6 +2663,23 @@ public partial class MainWindow:Window
             }
             if (IsSimulation)
             {
+                // R151: simulation / fiscally recorded training bypasses the
+                // production application service, so enrich its immutable
+                // snapshot here. Components still stay hidden on the receipt.
+                snapshot = snapshot with
+                {
+                    Lines = MenuVatPolicy.ApplyAllocations(
+                        snapshot.Lines,
+                        _catalog.Products,
+                        snapshot.ImHaus),
+                    CancelledLines = snapshot.CancelledLines is null
+                        ? null
+                        : MenuVatPolicy.ApplyAllocations(
+                            snapshot.CancelledLines,
+                            _catalog.Products,
+                            snapshot.ImHaus)
+                };
+
                 if((method==PaymentMethod.Card || method==PaymentMethod.Mixed) && !_currentUser.IsTraining &&
                     !await new CardTestPaymentWindow(snapshot.EffectiveCardPortionCents).ShowDialog<bool>(this)) return;
                 await _audit.WriteAsync(_currentUser.Username,"TEST_SALE_COMPLETED","SIMULATION",snapshot.OperationId,
@@ -2788,7 +2823,7 @@ public partial class MainWindow:Window
                     "Unbekannter Application-Checkout-Status.");
             }
 
-            await CommitCheckoutAsync(snapshot,cash);
+            await CommitCheckoutAsync(operation.Snapshot,cash);
         }
         catch(Exception ex)
         {

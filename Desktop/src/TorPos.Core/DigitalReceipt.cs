@@ -30,9 +30,10 @@ public static class VatSummaryCalculator
         var targetGross = ReceiptTotals.Total(subtotal, discountCents);
 
         var groups = lines
+            .SelectMany(MenuVatPolicy.LineAllocations)
             .GroupBy(x => x.VatRate)
             .OrderBy(x => x.Key)
-            .Select(g => new { Rate = g.Key, OriginalGross = g.Sum(x => x.LineTotalCents) })
+            .Select(g => new { Rate = g.Key, OriginalGross = g.Sum(x => x.GrossCents) })
             .ToArray();
 
         if (groups.Length == 0)
@@ -156,7 +157,11 @@ public sealed record DigitalReceiptDocument(
                 GermanFormat.Number(line.Quantity, "0.###"),
                 line.UnitPriceCents,
                 line.LineTotalCents,
-                GermanFormat.Number(line.VatRate, "0.##"),
+                line.VatAllocations.Length > 1
+                    ? "gemischt"
+                    : GermanFormat.Number(
+                        line.VatAllocations.Length == 1 ? line.VatAllocations[0].VatRate : line.VatRate,
+                        "0.##"),
                 line.HasPromotion ? $"Angebot: {line.PromotionName} -{line.PromotionPercent} %" : ""))
             .ToArray();
 

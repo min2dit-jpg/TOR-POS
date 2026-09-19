@@ -34,7 +34,8 @@ public sealed class OrderBestellungRepository
             {
                 q.CommandText = """
                     SELECT i.product_id,i.product_name,i.variant_name,i.barcode,i.quantity,i.unit_price_cents,i.vat_rate,i.pfand_cents,
-                           i.list_unit_price_cents,i.promotion_id,i.promotion_name,i.promotion_percent,i.promotion_discount_unit_cents
+                           i.list_unit_price_cents,i.promotion_id,i.promotion_name,i.promotion_percent,i.promotion_discount_unit_cents,
+                           COALESCE(i.vat_allocations_json,'')
                     FROM order_bestellung_items i
                     JOIN order_bestellungen b ON b.id=i.bestellung_id
                     WHERE b.parked_receipt_id=$id
@@ -114,8 +115,8 @@ public sealed class OrderBestellungRepository
                     INSERT INTO order_bestellung_items(
                       bestellung_id,product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,
                       pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
-                      promotion_discount_unit_cents)
-                    VALUES($b,$p,$n,$v,$bc,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit);
+                      promotion_discount_unit_cents,vat_allocations_json)
+                    VALUES($b,$p,$n,$v,$bc,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations);
                     """;
                 item.Parameters.AddWithValue("$b", id);
                 item.Parameters.AddWithValue("$p", line.ProductId);
@@ -132,6 +133,7 @@ public sealed class OrderBestellungRepository
                 item.Parameters.AddWithValue("$pname", line.PromotionName);
                 item.Parameters.AddWithValue("$ppct", line.PromotionPercent);
                 item.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
+                item.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
                 await item.ExecuteNonQueryAsync(ct);
             }
 
@@ -187,7 +189,8 @@ public sealed class OrderBestellungRepository
             await using var q = c.CreateCommand();
             q.CommandText = """
                 SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
-                       list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents
+                       list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
+                       COALESCE(vat_allocations_json,'')
                 FROM order_bestellung_items WHERE bestellung_id=$id ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$id", head.Id);
@@ -229,5 +232,6 @@ public sealed class OrderBestellungRepository
         PromotionName = r.GetString(o + 10),
         PromotionPercent = r.GetInt32(o + 11),
         PromotionDiscountUnitCents = r.GetInt64(o + 12),
+        VatAllocations = VatAllocationStorage.Deserialize(r.GetString(o + 13))
     };
 }

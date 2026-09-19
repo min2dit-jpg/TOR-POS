@@ -63,14 +63,17 @@ public sealed class CheckoutApplicationService
         if (snapshot.Lines.Length == 0)
             throw new InvalidOperationException("Leerer Checkout ist nicht zulässig.");
 
-        // R150 / KassenSichV §§2,6: a mixed-rate menu must not be sent to the
-        // payment terminal or fiscal journal until its gross price can be
-        // represented consistently by VAT rate in receipt, TSE processData and
-        // DSFinV-K. Blocking happens before any external side effect.
+        // R151: menus stay one commercial line, while a validated hidden VAT
+        // allocation is attached BEFORE the payment journal / terminal sees the
+        // snapshot. Invalid menus still fail closed before any external effect.
         if (_catalog is not null)
         {
+            var fiscalMenuLines = snapshot.CancelledLines is { Length: > 0 }
+                ? snapshot.Lines.Concat(snapshot.CancelledLines)
+                : snapshot.Lines;
+
             var blockedMenus = MenuVatPolicy.BlockingMenus(
-                snapshot.Lines,
+                fiscalMenuLines,
                 _catalog.Products,
                 snapshot.ImHaus);
 
@@ -91,8 +94,8 @@ public sealed class CheckoutApplicationService
                     new[]
                     {
                         new FiscalReadinessItem(
-                            "MENU_MIXED_VAT",
-                            "Menü / Combo mit gemischter MwSt.",
+                            "MENU_VAT_ALLOCATION",
+                            "Menü / Combo MwSt.-Aufteilung",
                             false,
                             $"Produktivverkauf gesperrt: {names}. {details}")
                     });
@@ -104,6 +107,20 @@ public sealed class CheckoutApplicationService
                     FiscalReadiness: blockedReadiness,
                     Timings: new CheckoutApplicationTimings(null, null, null));
             }
+
+            snapshot = snapshot with
+            {
+                Lines = MenuVatPolicy.ApplyAllocations(
+                    snapshot.Lines,
+                    _catalog.Products,
+                    snapshot.ImHaus),
+                CancelledLines = snapshot.CancelledLines is null
+                    ? null
+                    : MenuVatPolicy.ApplyAllocations(
+                        snapshot.CancelledLines,
+                        _catalog.Products,
+                        snapshot.ImHaus)
+            };
         }
 
         var fiscalWatch = Stopwatch.StartNew();
