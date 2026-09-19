@@ -166,14 +166,30 @@ public sealed class TseVorgangCartTracker
     }
 
     // Im Haus changes the rate, not the position, so the rate is not part of it.
-    private readonly record struct PositionKey(long ProductId, string Name, string Variant, long UnitPrice, long Pfand, long PromotionId);
+    // R153: two identical menu names with different chosen articles are distinct
+    // positions for capture/cancellation even though the customer receipt text is the same.
+    private readonly record struct PositionKey(
+        long ProductId,
+        string Name,
+        string Variant,
+        long UnitPrice,
+        long Pfand,
+        long PromotionId,
+        string MenuSelection);
 
     private static Dictionary<PositionKey, (CartLine Line, decimal Quantity)> Capture(IReadOnlyList<CartLine> cart)
     {
         var captured = new Dictionary<PositionKey, (CartLine Line, decimal Quantity)>();
         foreach (var line in cart)
         {
-            var key = new PositionKey(line.ProductId, line.ProductName, line.VariantName, line.UnitPriceCents, line.PfandCents, line.PromotionId);
+            var key = new PositionKey(
+                line.ProductId,
+                line.ProductName,
+                line.VariantName,
+                line.UnitPriceCents,
+                line.PfandCents,
+                line.PromotionId,
+                MenuSelectionKey(line));
             captured[key] = captured.TryGetValue(key, out var existing)
                 ? (existing.Line, existing.Quantity + line.Quantity)
                 : (OrderBestellungDelta.WithQuantity(line, line.Quantity), line.Quantity);
@@ -193,10 +209,17 @@ public sealed class TseVorgangCartTracker
         _cancelled.Clear();
     }
 
+    private static string MenuSelectionKey(CartLine line) =>
+        string.Join(
+            ",",
+            line.MenuComponents.Select(x =>
+                $"{x.ProductId}:{x.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)}:{x.ChoiceGroup}"));
+
     private static string Signature(IReadOnlyList<CartLine> cart, long discountCents) =>
         string.Join("|", cart.Select(l => string.Join(";",
                 l.ProductId, l.ProductName, l.VariantName,
                 l.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                l.UnitPriceCents, l.VatRate.ToString(System.Globalization.CultureInfo.InvariantCulture), l.PfandCents, l.PromotionId)))
+                l.UnitPriceCents, l.VatRate.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                l.PfandCents, l.PromotionId, MenuSelectionKey(l))))
         + "#" + discountCents;
 }
