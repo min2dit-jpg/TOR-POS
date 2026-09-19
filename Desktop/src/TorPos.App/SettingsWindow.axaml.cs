@@ -241,7 +241,7 @@ public partial class SettingsWindow : Window
             "Zum Beispiel Kasse 1, Theke oder Eingang.");
         section.Children.Add(ReadOnlyRow(
             "Betriebsart",
-            $"{InstallationEdition.ReadLocked() ?? "NICHT FESTGELEGT"} · bei Installation festgelegt"));
+            $"{InstallationEdition.DisplayName(InstallationEdition.ReadLocked())} · bei Anmeldung gewählt"));
         Form(section, "Startansicht", Combo("startup.view", "KASSE", "OFFICE"),
             "Für den normalen Betrieb wird KASSE empfohlen.");
         Form(section, "Darstellung", Combo("ui.scale", "AUTO", "KOMPAKT", "STANDARD", "GROSS"),
@@ -290,7 +290,7 @@ public partial class SettingsWindow : Window
         if (InstallationEdition.ReadLocked() == "KIOSK")
             section.Children.Add(ToggleRow(Check("function.pfand_buttons", "Pfand / Leergut anzeigen")));
         else
-            section.Children.Add(ReadOnlyRow("IMBISS Extras", "Verwaltung direkt im Artikel / unter STAMMDATEN → EXTRAS"));
+            section.Children.Add(ReadOnlyRow("Gastronomie · Extras", "Verwaltung direkt im Artikel / unter STAMMDATEN → EXTRAS"));
         section.Children.Add(ToggleRow(Check("function.low_stock", "Bei kritischem Warenbestand warnen")));
         Form(section, "Mindestbestand", Text("function.low_stock_threshold"), "Warnschwelle, z.B. 5 Stück.");
         page.Children.Add(section);
@@ -300,7 +300,7 @@ public partial class SettingsWindow : Window
             var pickup = Section("Abholnummer / Bestellablauf");
             pickup.Children.Add(ReadOnlyRow("Schnellauswahl", "OFF = aus · SALE = Nummer beim Kassieren · ORDER = Nummer sofort bei Bestellannahme"));
             Form(pickup, "Abholnummer / Bestellablauf", Combo("imbiss.pickup_number.mode", "OFF", "SALE", "ORDER"),
-                "Empfohlen für Döner/Imbiss: ORDER. Dann erscheint in der Kasse BESTELLUNG ANNEHMEN · F3 · ABHOLNR.; der eigentliche Bon entsteht erst später bei BAR/KARTE.");
+                "Empfohlen für Gastronomie mit Bestell-/Abholablauf (z. B. Döner, Imbiss, Café, Restaurant): ORDER. Dann erscheint in der Kasse BESTELLUNG ANNEHMEN · F3 · ABHOLNR.; der eigentliche Bon entsteht erst später bei BAR/KARTE.");
             pickup.Children.Add(ToggleRow(Check("imbiss.order.number_enabled", "Bei Bestellannahme eine Abholnummer vergeben")));
             pickup.Children.Add(ToggleRow(Check("imbiss.pickup_slip.auto_print", "Bei ORDER einen Abholschein für den Kunden drucken")));
             pickup.Children.Add(ReadOnlyRow("Training", "ORDER kann jetzt auch mit dem TRAINING-Benutzer getestet werden. Trainingsbestellungen und Trainings-Abholnummern bleiben getrennt von echten offenen Bestellungen."));
@@ -377,8 +377,8 @@ public partial class SettingsWindow : Window
         var categoryRows = Text("ui.category.rows");
         var touchFont = Text("ui.touch.font_size");
         foreach (var box in new[] { productColumns, productRows, categoryColumns, categoryRows, touchFont }) { box.Width = 110; box.TextChanged += (_, _) => UpdateTouchLayoutSummary(); }
-        Form(layout, "Artikeltasten · Spalten", productColumns, "2–8 · IMBISS Standard 4 · KIOSK 5");
-        Form(layout, "Artikeltasten · Zeilen", productRows, "2–12 · IMBISS Standard 3 · KIOSK 8");
+        Form(layout, "Artikeltasten · Spalten", productColumns, "2–8 · Gastronomie Standard 4 · Einzelhandel 5");
+        Form(layout, "Artikeltasten · Zeilen", productRows, "2–12 · Gastronomie Standard 3 · Einzelhandel 8");
         Form(layout, "Warengruppen · Spalten", categoryColumns, "2–8 · Standard 4");
         Form(layout, "Warengruppen · Zeilen", categoryRows, "1–10 · Standard 6");
         Form(layout, "Schriftgröße · Tasten", touchFont, "11–28 · Standard 18");
@@ -2635,7 +2635,7 @@ private Control TsePage()
         var installed = Section("Installierte TOR-POS-Version");
         installed.Children.Add(ReadOnlyRow("Version", TorRelease.DisplayName));
         installed.Children.Add(ReadOnlyRow("Build", $"{TorRelease.Version} · {TorRelease.Revision}"));
-        installed.Children.Add(ReadOnlyRow("Edition", InstallationEdition.ReadLocked() ?? "NICHT FESTGELEGT"));
+        installed.Children.Add(ReadOnlyRow("Edition", InstallationEdition.DisplayName(InstallationEdition.ReadLocked())));
         page.Children.Add(installed);
 
         var edition = InstallationEdition.ReadLocked() ?? "KIOSK";
