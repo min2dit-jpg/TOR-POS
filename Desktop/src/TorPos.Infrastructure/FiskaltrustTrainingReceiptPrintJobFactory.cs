@@ -125,10 +125,100 @@ public static class FiskaltrustTrainingReceiptPrintJobFactory
             TseLogTimeFormat: evidence.LogTimeFormat,
             TsePublicKey: evidence.PublicKey,
             TseQrPayloadOverride: evidence.QrPayload,
-            TseProcessStartRaw: evidence.TransactionStartTime,
-            TseProcessEndRaw: evidence.SignatureLogTime,
+            BusinessProcessStartRaw: evidence.ProcessStartTime,
+            BusinessProcessEndRaw: evidence.SignatureLogTime,
             TrainingReceipt: true,
-            ExternalReceiptId: response.FtReceiptIdentification);
+            ExternalReceiptId: response.FtReceiptIdentification,
+            MiddlewareHeaderLines:
+                response.FtReceiptHeader.ToArray(),
+            MiddlewareChargeItemLines:
+                response.FtChargeItems
+                    .Select(FormatChargeSupplement)
+                    .ToArray(),
+            MiddlewareChargeLines:
+                response.FtChargeLines.ToArray(),
+            MiddlewarePayItemLines:
+                response.FtPayItems
+                    .Select(FormatPaySupplement)
+                    .ToArray(),
+            MiddlewarePayLines:
+                response.FtPayLines.ToArray(),
+            MiddlewareRequiredSignatureLines:
+                RequiredQrModeSignatureLines(response),
+            MiddlewareTextFallbackSignatureLines:
+                TextFallbackSignatureLines(response),
+            MiddlewareFooterLines:
+                response.FtReceiptFooter.ToArray());
+    }
+
+    private static string FormatChargeSupplement(
+        FiskaltrustChargeItem item) =>
+        $"fiskaltrust Zusatz: {GermanFormat.Number(item.Quantity, "0.###")} x " +
+        $"{item.Description} · {GermanFormat.Number(item.Amount, "0.00")} EUR" +
+        (item.VatRate == 0m
+            ? ""
+            : $" · MwSt {GermanFormat.Number(item.VatRate, "0.##")} %");
+
+    private static string FormatPaySupplement(
+        FiskaltrustPayItem item) =>
+        $"fiskaltrust Zahlung: {item.Description} · " +
+        $"{GermanFormat.Number(item.Amount, "0.00")} EUR";
+
+    private static IReadOnlyList<string> RequiredQrModeSignatureLines(
+        FiskaltrustReceiptResponse response) =>
+        response.FtSignatures
+            .Where(x =>
+                x.FtSignatureType is
+                    FiskaltrustDeSignatureTypes.CertificationIdentification or
+                    FiskaltrustDeSignatureTypes.TseSerialNumber)
+            .Where(x => !string.IsNullOrWhiteSpace(x.Data))
+            .Select(FormatSignatureLine)
+            .ToArray();
+
+    private static IReadOnlyList<string> TextFallbackSignatureLines(
+        FiskaltrustReceiptResponse response)
+    {
+        var printableTypes = new HashSet<ulong>
+        {
+            FiskaltrustDeSignatureTypes.QrVersion,
+            FiskaltrustDeSignatureTypes.CashRegisterSerial,
+            FiskaltrustDeSignatureTypes.ProcessType,
+            FiskaltrustDeSignatureTypes.ProcessData,
+            FiskaltrustDeSignatureTypes.TransactionNumber,
+            FiskaltrustDeSignatureTypes.SignatureCounter,
+            FiskaltrustDeSignatureTypes.TransactionStartTime,
+            FiskaltrustDeSignatureTypes.SignatureAlgorithm,
+            FiskaltrustDeSignatureTypes.LogTimeFormat,
+            FiskaltrustDeSignatureTypes.Signature,
+            FiskaltrustDeSignatureTypes.PublicKey,
+            FiskaltrustDeSignatureTypes.CertificationIdentification,
+            FiskaltrustDeSignatureTypes.TseSerialNumber
+        };
+
+        // SignatureLogTime (Vorgangsende) and ProcessStartTime
+        // (Vorgangsbeginn) are printed separately with their legal labels.
+        return response.FtSignatures
+            .Where(x => printableTypes.Contains(x.FtSignatureType))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Data))
+            .Select(FormatSignatureLine)
+            .ToArray();
+    }
+
+    private static string FormatSignatureLine(
+        FiskaltrustSignatureItem item)
+    {
+        var caption = string.IsNullOrWhiteSpace(item.Caption)
+            ? item.FtSignatureType switch
+            {
+                FiskaltrustDeSignatureTypes.CertificationIdentification =>
+                    "TSE-Zertifizierung",
+                FiskaltrustDeSignatureTypes.TseSerialNumber =>
+                    "TSE-Seriennummer",
+                _ => $"ftSignature 0x{item.FtSignatureType:X16}"
+            }
+            : item.Caption;
+
+        return caption + ": " + item.Data;
     }
 
     private static CartLine CloneLine(CartLine line) =>
