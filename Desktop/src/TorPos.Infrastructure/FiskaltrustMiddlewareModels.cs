@@ -229,9 +229,33 @@ public sealed record FiskaltrustReceiptResponse
     [JsonPropertyName("ftReceiptMoment")]
     public DateTimeOffset? FtReceiptMoment { get; init; }
 
+    [JsonPropertyName("ftReceiptHeader")]
+    public IReadOnlyList<string> FtReceiptHeader { get; init; } =
+        Array.Empty<string>();
+
+    [JsonPropertyName("ftChargeItems")]
+    public IReadOnlyList<FiskaltrustChargeItem> FtChargeItems { get; init; } =
+        Array.Empty<FiskaltrustChargeItem>();
+
+    [JsonPropertyName("ftChargeLines")]
+    public IReadOnlyList<string> FtChargeLines { get; init; } =
+        Array.Empty<string>();
+
+    [JsonPropertyName("ftPayItems")]
+    public IReadOnlyList<FiskaltrustPayItem> FtPayItems { get; init; } =
+        Array.Empty<FiskaltrustPayItem>();
+
+    [JsonPropertyName("ftPayLines")]
+    public IReadOnlyList<string> FtPayLines { get; init; } =
+        Array.Empty<string>();
+
     [JsonPropertyName("ftSignatures")]
     public IReadOnlyList<FiskaltrustSignatureItem> FtSignatures { get; init; } =
         Array.Empty<FiskaltrustSignatureItem>();
+
+    [JsonPropertyName("ftReceiptFooter")]
+    public IReadOnlyList<string> FtReceiptFooter { get; init; } =
+        Array.Empty<string>();
 
     [JsonPropertyName("ftState")]
     public ulong FtState { get; init; }
@@ -242,6 +266,9 @@ public sealed record FiskaltrustReceiptResponse
 
 public sealed record FiskaltrustSignatureItem
 {
+    [JsonPropertyName("ftSignatureItemId")]
+    public string? FtSignatureItemId { get; init; }
+
     [JsonPropertyName("ftSignatureFormat")]
     public int FtSignatureFormat { get; init; }
 
@@ -281,4 +308,48 @@ public static class FiskaltrustDeCases
 
     public static ulong WithReceiptRequest(ulong receiptCase) =>
         receiptCase | ReceiptRequestFlag;
+}
+
+
+/// <summary>
+/// Generic fiskaltrust signature display formats used by the sandbox receipt
+/// projection. The lower format value identifies text/QR/Base64. Germany also
+/// uses OptionalPrintFlag to mark text values that may be omitted when the QR
+/// compliance signature is printed.
+/// </summary>
+public static class FiskaltrustSignatureFormats
+{
+    public const int Text = 0x0001;
+    public const int QrCode = 0x0003;
+    public const int Base64 = 0x000D;
+    public const int OptionalPrintFlag = 0x00010000;
+
+    public static int BaseFormat(int value) => value & 0xFFFF;
+
+    public static bool IsOptionalWhenQrIsPrinted(int value) =>
+        (value & OptionalPrintFlag) != 0;
+}
+
+/// <summary>
+/// Germany-specific signature types returned by fiskaltrust Middleware 1.3.
+/// Keep these values isolated from TOR's own TSE enums.
+/// </summary>
+public static class FiskaltrustDeSignatureTypes
+{
+    public const ulong KassenSichVQrPayload = 0x4445000000000001UL;
+    public const ulong QrVersion = 0x4445000000000013UL;
+    public const ulong CashRegisterSerial = 0x4445000000000014UL;
+    public const ulong ProcessType = 0x4445000000000015UL;
+    public const ulong ProcessData = 0x4445000000000016UL;
+    public const ulong TransactionNumber = 0x4445000000000017UL;
+    public const ulong SignatureCounter = 0x4445000000000018UL;
+    public const ulong TransactionStartTime = 0x4445000000000019UL;
+    public const ulong SignatureLogTime = 0x444500000000001AUL;
+    public const ulong SignatureAlgorithm = 0x444500000000001BUL;
+    public const ulong LogTimeFormat = 0x444500000000001CUL;
+    public const ulong Signature = 0x444500000000001DUL;
+    public const ulong PublicKey = 0x444500000000001EUL;
+    public const ulong ProcessStartTime = 0x444500000000001FUL;
+    public const ulong CertificationIdentification = 0x4445000000000022UL;
+    public const ulong TseSerialNumber = 0x4445000000000023UL;
 }
