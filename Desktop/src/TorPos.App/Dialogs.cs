@@ -1783,11 +1783,11 @@ public sealed class ReceiptHistoryWindow : Window
 
             var actions = new StackPanel
             {
-                Grid.ColumnProperty = 5,
                 Orientation = Orientation.Horizontal,
                 Spacing = 5,
                 Margin = new Avalonia.Thickness(8, 7)
             };
+            Grid.SetColumn(actions, 5);
 
             var view = ActionButton("ANZEIGEN");
             view.Click += async (_, _) => await ShowPreviewAsync(sale);
