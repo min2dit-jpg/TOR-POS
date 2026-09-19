@@ -1,34 +1,76 @@
-# TOR POS R107 · Kassensicherheit & digitale Belege
+# TOR POS Desktop
 
-Version **0.7.33.807** (Revision R107). Installation/Build: `1-SETUP-ERSTELLEN.bat`.
+**Aktueller Stand:** R149 · Merd-M · 0.7.33.849
 
-Dieses Dokument beschrieb ursprünglich nur R62 (Google OAuth QR + Gmail API);
-dieser Abschnitt bleibt unten unverändert erhalten. Seither hinzugekommen,
-u. a.: Mixed Payment (R101), Karten-Storno/Reversal über ZVT (R102), digitaler
-QR-Beleg über einen lokalen Kassen-Webserver (R103), Kundendisplay (R104),
-automatische Bildschirmanpassung (R105), sowie drei aus einer eigenen
-Quellcode-Prüfung gefundene Korrekturen an Rückgabe/Storno-Berechnungen und
--Reihenfolge (R106, R107). Siehe die einzelnen `R*-CHANGELOG.md`-Dateien und
-`ROADMAP.md` für den vollständigen, laufend gepflegten Stand.
+Die verbindliche Versionsquelle ist `src/TorPos.Core/ReleaseInfo.cs`. Der
+zentrale Release-Index liegt im Repository-Root unter `../CHANGELOG.md`.
 
-## R62 · Google OAuth QR + Gmail API (Original-Abschnitt)
+## Technologie
 
-R62 baut auf R61 auf. ORDER-Direktverkauf, Bestellmonitor, tägliche Sicherung, Drucker-Preflight, PDF-Berichte und der R61 SMTP-Fallback bleiben erhalten.
+- Windows Desktop-Anwendung
+- .NET 10
+- Avalonia 12.1.2
+- SQLite / Microsoft.Data.Sqlite 10.0.11
+- Microsoft.Extensions.DependencyInjection
+- ZVT über Portalum.Zvt
+- Swissbit Hardware-TSE über die externe WORM API
 
-## Neu in R62
+Die Anwendung ist für Windows-Kassenhardware ausgelegt. Drucker-, TSE- und
+Kartenterminalintegration sind Windows-spezifisch; Cross-Compilation allein
+macht daraus keine freigegebene Linux-Kasse.
 
-Unter `Einstellungen > Berichte & E-Mail` gibt es **MIT GOOGLE ANMELDEN (QR)**. Der Betreiber scannt einen einmaligen QR-Code mit dem Handy und bestätigt die Berechtigung direkt bei Google. TOR POS fordert für den Mailversand nur `gmail.send` an; Google-Passwort oder App-Passwort werden für diesen Transport nicht benötigt.
+## Hauptstruktur
 
-Der Google Refresh Token wird nicht auf dem Kassen-PC gespeichert. TOR POS Cloud verwahrt ihn verschlüsselt und gibt der authentifizierten Kasse nur kurzlebige Access Tokens. Bericht-PDFs werden direkt vom Kassen-PC an die Gmail API gesendet und nicht über TOR POS Cloud übertragen.
+- `src/TorPos.App/` – Avalonia UI und Desktop-Komposition
+- `src/TorPos.Application/` – Checkout-/Use-Case-Orchestrierung
+- `src/TorPos.Core/` – Domänenmodelle, Fiskaldaten, Regeln
+- `src/TorPos.Infrastructure/` – SQLite, TSE, Drucker, Export, Hardware
+- `tests/TorPos.SafetyTests/` – Safety-/Regressionstest-Suite
+- `tools/` – Diagnose-, UI-Snapshot- und Hilfswerkzeuge
+- `verification/` – ältere lokale technische Nachweise
 
-## Voraussetzung
+## Build und Tests
 
-Die QR-Anmeldung benötigt einen öffentlich erreichbaren **TOR POS Cloud HTTPS-Server** mit Google OAuth Web Client. Siehe `../Cloud/R62-GOOGLE-OAUTH-SETUP.md`. Ohne diese Serverkonfiguration zeigt die Kasse eine verständliche Konfigurationsmeldung; der SMTP-Fallback bleibt verfügbar.
+Übliche Einstiegspunkte:
 
-## Test
+- `1-SETUP-ERSTELLEN.bat` – Windows Setup bauen
+- `2-NUR-ENTWICKLUNG-DIREKT-STARTEN.bat` – Entwicklungsstart
+- `7-SICHERHEITSTESTS.bat` – Safety-/Regressionstests
 
-1. `7-SICHERHEITSTESTS.bat` – aktuelles Ziel: `ALL 554 CHECKS PASSED` (R62-Stand war 240; die Prüfungszahl wächst mit jeder Revision, siehe `tests/TorPos.SafetyTests/Program.cs`).
-2. `1-SETUP-ERSTELLEN.bat` – echter Windows Build/Setup.
-3. Cloud: `npm test` – R62 Generation: 20/20 bestanden.
+Die maßgebliche CI liegt im Repository-Root unter
+`../.github/workflows/tor-pos-ci.yml` und prüft zusätzlich
+Versionskonsistenz, Release-Build, UI-Snapshots und Cloud-Tests.
 
-In der Erzeugungsumgebung war kein .NET SDK vorhanden; deshalb ist der Windows-Build hier nicht als bestanden behauptet.
+## Fiskalischer Stand
+
+Im aktuellen Code vorhanden sind unter anderem:
+
+- Swissbit-Hardware-TSE-Provider über WORM API,
+- TSE Start/Update/Finish,
+- TSE-Aktivierung und TAR-Export,
+- `Kassenbeleg-V1` / `Bestellung-V1` processData nach DSFinV-K 2.4 Anhang I,
+- DSFinV-K-Export,
+- TSE-Daten und Anhang-I-QR auf dem Bon,
+- TSE-Ausfallbehandlung,
+- Restart-/Vorgang-Recovery.
+
+**Noch getrennt nachzuweisen:** reale End-to-End-Abnahme mit der vorgesehenen
+Swissbit-TSE, WORM-API-Version, Drucker- und – falls aktiviert –
+Kartenterminal-Hardware. Automatische Tests oder ein erkannter TSE-Stick allein
+sind keine fiskalische Produktivfreigabe.
+
+Der Abnahmenachweis wird unter `../verification/` geführt.
+
+## Historische Dokumente
+
+Die vielen `R*-CHANGELOG.md`, `R*-REVIEW.md` und älteren v0.7.33-Dokumente
+beschreiben den jeweiligen damaligen Entwicklungsstand. Sie sind bewusst als
+Audit-/Entwicklungshistorie erhalten und **nicht** als aktuelle
+Versionsbeschreibung zu lesen.
+
+Für den aktuellen Stand immer zuerst verwenden:
+
+1. `../README.md`
+2. `../CHANGELOG.md`
+3. `src/TorPos.Core/ReleaseInfo.cs`
+4. `ROADMAP.md`
