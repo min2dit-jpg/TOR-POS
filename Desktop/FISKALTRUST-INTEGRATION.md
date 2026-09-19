@@ -377,3 +377,27 @@ According to the fiskaltrust DE receipt-case reference, this maps the DSFinV-K
 1.00 EUR / 19 % / BAR hardware acceptance run without writing a production
 `Sale` row. The request is still TSE-signed and can be checked by the existing
 QR/process-data/TSE acceptance validator.
+
+
+## 80 mm signed AVTraining receipt model prepared
+
+After the AVTraining Sign passes the acceptance validator, TOR can now map the
+response to its existing 80 mm `ReceiptPrintJob` without allocating a
+production receipt number.
+
+The training print job:
+
+- is TSE-signed (`FiscalTestMode=false`) but visibly labeled
+  `TRAININGSBON · AVTraining`,
+- never opens the cash drawer,
+- carries the fiskaltrust receipt identification instead of pretending to have
+  a normal TOR bon number,
+- preserves the fiskaltrust QR payload exactly via
+  `TseQrPayloadOverride`,
+- preserves the returned TSE start/log-time strings exactly instead of parsing
+  and reformatting them,
+- still passes the existing fiscal-field validation before the printer is
+  allowed to render it.
+
+The actual printer button remains an explicit technician action; there is no
+automatic print or production checkout wiring.
