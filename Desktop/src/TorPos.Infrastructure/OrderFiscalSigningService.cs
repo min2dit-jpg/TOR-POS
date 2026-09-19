@@ -269,6 +269,9 @@ public sealed class OrderFiscalSigningService
             finishResult.LogTime,
             startResult.LogTime);
 
+        if (!result.Signed)
+            await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
+
         await ApplyAsync(order, result, ct);
     }
 
