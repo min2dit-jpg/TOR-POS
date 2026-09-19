@@ -111,7 +111,7 @@ public sealed class TseVorgangService
                 ct);
 
             result = finish.Success
-                ? SaleTseResult.SignedResult(
+                ? SaleTseResult.FromSuccessfulTse(
                     started.ClientId,
                     finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
                     finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
@@ -192,7 +192,7 @@ public sealed class TseVorgangService
                 actor,
                 ct);
             result = finish.Success
-                ? SaleTseResult.SignedResult(
+                ? SaleTseResult.FromSuccessfulTse(
                     vorgang.ClientId,
                     finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
                     finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
@@ -462,7 +462,7 @@ public sealed class TseVorgangService
             actor,
             ct);
         return finish.Success
-            ? SaleTseResult.SignedResult(
+            ? SaleTseResult.FromSuccessfulTse(
                 clientId,
                 finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
                 finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
