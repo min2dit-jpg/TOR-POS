@@ -448,6 +448,21 @@ public static class FiskaltrustIntegrationTests
                 FiskaltrustDeCases.CashPayment,
             "fiskaltrust sandbox simple cash sale maps 19/7 VAT and take-away/cash cases explicitly");
 
+        var trainingRequest =
+            FiskaltrustSandboxRequests.TrainingSimpleCashSale(
+                simpleCashSale,
+                "TRAINING-1001");
+        assert(
+            trainingRequest.CbReceiptReference == "TRAINING-1001" &&
+            trainingRequest.CbReceiptAmount == simpleRequest.CbReceiptAmount &&
+            trainingRequest.CbChargeItems.Count == simpleRequest.CbChargeItems.Count &&
+            trainingRequest.CbPayItems.Count == simpleRequest.CbPayItems.Count &&
+            (trainingRequest.FtReceiptCase & FiskaltrustDeCases.TrainingReceiptFlag) != 0 &&
+            (trainingRequest.FtReceiptCase & FiskaltrustDeCases.ImplicitFlowFlag) != 0 &&
+            (trainingRequest.FtReceiptCase & 0xFFFF0000000000FFUL) ==
+                (simpleRequest.FtReceiptCase & 0xFFFF0000000000FFUL),
+            "fiskaltrust training cash receipt keeps the normal POS payload and adds only the DE AVTraining receipt flag");
+
         var blockedCard = false;
         try
         {
