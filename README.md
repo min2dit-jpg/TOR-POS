@@ -47,6 +47,7 @@ Sicherheitsprobleme bitte nicht öffentlich melden. Der vertrauliche Meldeweg un
 - `Dokumentation/RELEASE-QUALIFICATION.md` – geliştirme → CI → hardware acceptance → production release akışı
 - `Dokumentation/REPOSITORY-MAINTENANCE.md` – repo boyutu ve artifact politikası
 - `Dokumentation/GITHUB-MAIN-PROTECTION.md` – main branch koruma hedefi
+- `Dokumentation/KASSENSICHV-2026-COMPLIANCE.md` – KassenSichV 2026 §1–§11 uyumluluk matrisi
 - `verification/HARDWARE-E2E-TEMPLATE.md` – gerçek TSE/hardware kabul şablonu
 - `SECURITY.md` – güvenlik bildirim ve hassas veri politikası
 
