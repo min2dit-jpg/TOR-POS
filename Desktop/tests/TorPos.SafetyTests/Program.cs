@@ -421,14 +421,15 @@ await R149ReviewTests.Run(root,Assert);
 await R150ReviewTests.Run(Assert);
 await R153ReviewTests.Run(root,Assert);
 await R154ReviewTests.Run(root,Assert);
+await R155ReviewTests.Run(root,Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
-// R154: 10 reviewed checks cover DATEV Kassenarchiv outbox schema,
-// immutable package/hash, exact-Z export selection, DSFinV-K+TSE contents,
-// idempotent retry, fail-closed API state, journal and tamper/delete guards.
-const int ExpectedSafetyChecks = 919;
+// R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
+// structure/encoding, cash-only semantics, Z reconciliation, cash movements,
+// immutable file/hash, migration/audit and tamper protection.
+const int ExpectedSafetyChecks = 932;
 
 if (checks != ExpectedSafetyChecks)
 {
