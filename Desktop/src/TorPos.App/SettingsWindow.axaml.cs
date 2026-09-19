@@ -1875,8 +1875,11 @@ private Control FiskaltrustPage()
 
     var hardwareConfirmation = new CheckBox
     {
-        Content = "Physische Swissbit TSE ist angeschlossen und im Launcher als bereit geprüft.",
-        TextWrapping = TextWrapping.Wrap,
+        Content = new TextBlock
+        {
+            Text = "Physische Swissbit TSE ist angeschlossen und im Launcher als bereit geprüft.",
+            TextWrapping = TextWrapping.Wrap
+        },
         Margin = new Thickness(0, 4, 0, 8)
     };
     tseTest.Children.Add(ToggleRow(hardwareConfirmation));
