@@ -1588,7 +1588,7 @@ public sealed class ReceiptHistoryWindow : Window
             Background = new SolidColorBrush(Color.Parse("#102235")),
             BorderBrush = new SolidColorBrush(Color.Parse("#294765")),
             BorderThickness = new Avalonia.Thickness(1),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new Avalonia.CornerRadius(10),
             Padding = new Avalonia.Thickness(14),
             Child = new StackPanel
             {
@@ -1831,7 +1831,7 @@ public sealed class ReceiptHistoryWindow : Window
                     status == "STORNO" ? "#7D3D47" :
                     status == "RETOURE" ? "#775F25" : "#294765")),
                 BorderThickness = new Avalonia.Thickness(1),
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new Avalonia.CornerRadius(8),
                 Child = row
             });
         }
@@ -1866,7 +1866,7 @@ public sealed class ReceiptHistoryWindow : Window
             Foreground = Brushes.White,
             BorderBrush = new SolidColorBrush(Color.Parse(danger ? "#9D5260" : "#496985")),
             BorderThickness = new Avalonia.Thickness(1),
-            CornerRadius = new CornerRadius(6)
+            CornerRadius = new Avalonia.CornerRadius(6)
         };
     }
 
