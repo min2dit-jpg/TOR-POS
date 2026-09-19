@@ -543,6 +543,18 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
         const bool fiscalReleaseBuild = false;
         var items = new List<FiscalReadinessItem>
         {
+            new(
+                "KASSENSICHV_2_SOFTWARE",
+                "KassenSichV § 2 · Transaktionsdaten",
+                true,
+                "Start/Finish/Abort, Vorgangsart/-daten, Zahlungsarten, Kassen-/TSE-Identität und TSE-Rückgabefelder sind softwareseitig verdrahtet. Fortlaufende Transaktionsnummer, Prüfwert und Signaturzähler müssen von der realen TSE bestätigt werden.",
+                Mandatory: false),
+            new(
+                "KASSENSICHV_6_SOFTWARE",
+                "KassenSichV § 6 · Beleg-Pflichtfelder",
+                true,
+                "Papier- und Digitalbon verwenden denselben zentralen Validator für Unternehmerdaten, Positionen, Entgelt/MwSt. und TSE-Felder. Hardwarebon-Abnahme bleibt separat.",
+                Mandatory: false),
             new("EAS_ID", "Kassen-Seriennummer", KassenSeriennummer.IsValid(kassenSeriennummer), kassenSeriennummer),
             new("TSE_CLIENT", "TSE-Client-ID = Kassen-Seriennummer", clientIdReady, clientIdReady
                 ? "Die TSE protokolliert die Kasse unter ihrer Seriennummer."
