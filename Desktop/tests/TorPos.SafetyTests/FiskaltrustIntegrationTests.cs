@@ -276,12 +276,15 @@ public static class FiskaltrustIntegrationTests
         assert(
             FiskaltrustDeState.IsReady(FiskaltrustDeState.Ready) &&
             FiskaltrustDeState.HasFlag(
-                FiskaltrustDeState.Ready | FiskaltrustDeState.TseCommunicationFailedFlag,
+                0x4445000000000002UL,
                 FiskaltrustDeState.TseCommunicationFailedFlag) &&
             FiskaltrustDeState.HasFlag(
-                FiskaltrustDeState.Ready | FiskaltrustDeState.ScuSwitchingFlag,
-                FiskaltrustDeState.ScuSwitchingFlag),
-            "fiskaltrust DE ftState decoder separates the country prefix from operational flags");
+                0x4445000000000100UL,
+                FiskaltrustDeState.ScuSwitchingFlag) &&
+            !FiskaltrustDeState.HasFlag(
+                0x4154000000000002UL,
+                FiskaltrustDeState.TseCommunicationFailedFlag),
+            "fiskaltrust DE ftState decoder recognizes only documented German communication/switch states");
 
         var zero = FiskaltrustSandboxRequests.ZeroReceipt(
             "TOR-ZERO-0001",
@@ -294,10 +297,24 @@ public static class FiskaltrustIntegrationTests
                 FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.ZeroReceipt),
             "fiskaltrust DE ZeroReceipt builder keeps charge/pay blocks empty and uses the required implicit flow");
 
+        var zeroInfo = FiskaltrustSandboxRequests.ZeroReceiptWithTseInfo(
+            "TOR-ZERO-INFO-0001",
+            DateTimeOffset.Parse("2026-09-19T06:25:30Z"));
+        assert(
+            zeroInfo.CbChargeItems.Count == 0 &&
+            zeroInfo.CbPayItems.Count == 0 &&
+            zeroInfo.FtReceiptCase ==
+                (FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.ZeroReceipt) |
+                 FiskaltrustDeCases.ZeroReceiptTseInfoFlag) &&
+            (zeroInfo.FtReceiptCase &
+             FiskaltrustDeCases.ZeroReceiptSelfTestAndTimeUpdateFlag) == 0,
+            "fiskaltrust DE TSE-info ZeroReceipt requests status details without forcing self-test/time-update");
+
         var simpleCashSale = new TorPos.Core.Sale
         {
             ReceiptNumber = 1001,
             CreatedAt = DateTimeOffset.Parse("2026-09-19T06:26:00Z"),
+            StartedAt = DateTimeOffset.Parse("2026-09-19T06:25:40Z"),
             PaymentMethod = TorPos.Core.PaymentMethod.Cash,
             CashPortionCents = 1190,
             CardPortionCents = 0,
@@ -334,8 +351,12 @@ public static class FiskaltrustIntegrationTests
                 FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.PosReceipt) &&
             simpleRequest.CbChargeItems.Count == 2 &&
             simpleRequest.CbPayItems.Count == 1 &&
-            simpleRequest.CbReceiptAmount == 11.90m,
-            "fiskaltrust sandbox simple cash sale builds one implicit POS receipt with exact total");
+            simpleRequest.CbReceiptAmount == 11.90m &&
+            simpleRequest.CbChargeItems[0].Moment ==
+                simpleCashSale.StartedAt &&
+            simpleRequest.CbChargeItems[1].Moment ==
+                simpleCashSale.CreatedAt,
+            "fiskaltrust sandbox simple cash sale preserves TOR action start and exact receipt total");
 
         assert(
             simpleRequest.CbChargeItems[0].FtChargeItemCase ==
@@ -376,6 +397,39 @@ public static class FiskaltrustIntegrationTests
         assert(
             blockedCard,
             "fiskaltrust sandbox refuses generic CARD mapping until debit/credit evidence is available");
+
+        var blockedPfand = false;
+        try
+        {
+            _ = FiskaltrustSandboxRequests.SimpleCashSale(
+                new TorPos.Core.Sale
+                {
+                    PaymentMethod = TorPos.Core.PaymentMethod.Cash,
+                    CashPortionCents = 125,
+                    TotalCents = 125,
+                    TransactionType = "SALE",
+                    Lines =
+                    [
+                        new TorPos.Core.CartLine
+                        {
+                            ProductId = 77,
+                            ProductName = "Getränk inkl. Pfand",
+                            Quantity = 1,
+                            UnitPriceCents = 125,
+                            VatRate = 19m,
+                            PfandCents = 25
+                        }
+                    ]
+                },
+                "BON-PFAND");
+        }
+        catch (InvalidOperationException ex)
+        {
+            blockedPfand = ex.Message.Contains("Pfand", StringComparison.Ordinal);
+        }
+        assert(
+            blockedPfand,
+            "fiskaltrust sandbox refuses Pfand until dedicated DSFinV-K/fiskaltrust deposit mapping exists");
 
         var recoveryCashBoxId = Guid.NewGuid();
         var recoveryPosId = Guid.NewGuid();
