@@ -534,13 +534,13 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
         var edition = settings.GetValueOrDefault("installation.edition") ?? settings.GetValueOrDefault("business.mode") ?? "KIOSK";
         var commercialLicense = _commercialLicense.Check(edition);
         var isKiosk = string.Equals(edition, "KIOSK", StringComparison.OrdinalIgnoreCase);
-        // These flags are intentionally code-level blockers, not editable settings.
-        // They become true only after implementation + real hardware/export validation.
-        const bool dsfinvkImplementedAndValidated = false;
-        const bool ksichvReceiptValidated = false;
-        const bool parkedOrderTseValidated = false;
-        const bool pfandTaxValidated = false;
-        const bool fiscalReleaseBuild = false;
+        // Acceptance evidence lives in the central, source-controlled
+        // FiscalRelease qualification set. These are deliberately NOT editable
+        // settings, so a till operator cannot self-enable production.
+        var dsfinvkImplementedAndValidated = FiscalRelease.DsfinvkValidated;
+        var ksichvReceiptValidated = FiscalRelease.KassenSichVReceiptValidated;
+        var parkedOrderTseValidated = FiscalRelease.ParkedOrderTseValidated;
+        var pfandTaxValidated = FiscalRelease.PfandTaxValidated;
         var items = new List<FiscalReadinessItem>
         {
             new("EAS_ID", "Kassen-Seriennummer", KassenSeriennummer.IsValid(kassenSeriennummer), kassenSeriennummer),
@@ -554,7 +554,9 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
             new("RECEIPT", "Beleg § 6 KassenSichV", ksichvReceiptValidated, "Papier- und Digitalbeleg besitzen gemeinsame §-6-Pflichtfeld-/MwSt.-Prüfungen. Reale TSE-Daten, QR und 80-mm-Beleg müssen noch physisch abgenommen werden."),
             new("PARKEN_TSE", "Parken / Bestellung", parkedOrderTseValidated, "Bestellung-V1, Änderung, Storno und Abrechnungskreis sind implementiert. Reale TSE-/DSFinV-K-Abnahme der Bestellkette steht noch aus."),
             new("PFAND", isKiosk ? "Pfand-Steuerlogik" : "IMBISS Extra-Steuerlogik", !isKiosk || pfandTaxValidated, isKiosk ? "Pfandverkauf/-rückgabe und DSFinV-K-GV-Typen sind implementiert; die fachlich/fiskale Endabnahme steht noch aus." : "Pfand ist in IMBISS nicht aktiv. Extras übernehmen die MwSt. aus der Warengruppe.", isKiosk),
-            new("FISCAL_RELEASE", "TOR Produktivfreigabe", fiscalReleaseBuild, "Produktivfreigabe wird erst nach TSE-, DSFinV-K- und Belegtests gesetzt."),
+            new("TSE_E2E", "Physische TSE-End-to-End-Abnahme", FiscalRelease.PhysicalTseE2EValidated, "BAR-Testbon, Start/Finish, QR, Zähler, Seriennummer, TAR-Export, Ausfall und Restart-Recovery müssen mit der realen zertifizierten TSE belegt sein."),
+            new("INDEPENDENT_REVIEW", "Unabhängige Fiskalprüfung", FiscalRelease.IndependentFiscalReviewValidated, "Vor Produktivfreigabe muss die dokumentierte unabhängige Prüfung der fiskalischen Kernpfade abgeschlossen sein."),
+            new("FISCAL_RELEASE", "TOR Produktivfreigabe", FiscalRelease.Enabled, FiscalRelease.Enabled ? "Alle source-controlled Release-Qualifikationen sind erfüllt." : "Fehlende Freigaben: " + string.Join(", ", FiscalRelease.MissingQualifications())),
             new("COMMERCIAL_LICENSE", "Kommerzielle Softwarelizenz", commercialLicense.IsActive, commercialLicense.Message)
         };
         var allowed = items.Where(x => x.Mandatory).All(x => x.Ready);
