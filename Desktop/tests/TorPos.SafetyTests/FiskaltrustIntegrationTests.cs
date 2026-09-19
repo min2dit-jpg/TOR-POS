@@ -1054,7 +1054,7 @@ public static class FiskaltrustIntegrationTests
                 "2026-09-19T06:34:55.000Z" &&
             trainingPrint.BusinessProcessEndRaw ==
                 "2026-09-19T06:35:31.000Z" &&
-            TseQrCodePayload.Build(trainingPrint) ==
+            TorPos.Core.TseQrCodePayload.Build(trainingPrint) ==
                 acceptance.Evidence.QrPayload &&
             trainingPrint.MiddlewareHeaderLines!.SequenceEqual(["FT HEADER"]) &&
             trainingPrint.MiddlewareChargeLines!.SequenceEqual(["FT CHARGE LINE"]) &&
