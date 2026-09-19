@@ -13,8 +13,10 @@ Abhängigkeiten aus dem tatsächlich veröffentlichten Build inventarisiert werd
 | Avalonia, Avalonia.Desktop, Avalonia.Themes.Fluent | 12.1.2 | MIT, <https://github.com/AvaloniaUI/Avalonia/blob/main/licence.md> | Lizenztext und Copyright-Hinweis im Produkt beilegen |
 | Microsoft.Extensions.DependencyInjection | 10.0.0 | MIT, .NET Foundation / dotnet/runtime | DI composition root / window factory |
 | Microsoft.Data.Sqlite | 10.0.11 | MIT, <https://github.com/dotnet/efcore/blob/main/LICENSE.txt> | Lizenztext und Copyright-Hinweis im Produkt beilegen |
+| System.Security.Cryptography.ProtectedData | 10.0.0 | MIT, .NET Foundation / dotnet/runtime | Lizenztext und Copyright-Hinweis im Produkt beilegen |
 | .NET Runtime / System.Drawing.Common | 10.0.0 | MIT, <https://github.com/dotnet/runtime/blob/main/LICENSE.TXT> | Self-contained Runtime-Dateien und Notices des konkreten Builds prüfen/beilegen |
 | Portalum.Zvt | 3.4.0 | MIT, <https://github.com/Portalum/Portalum.Zvt/blob/main/LICENSE> | Lizenztext und Copyright-Hinweis im Produkt beilegen |
+| QRCoder | 1.6.0 | MIT, QRCoder project | Lizenztext und Copyright-Hinweis im Produkt beilegen |
 
 MIT erlaubt grundsätzlich kommerzielle Nutzung und Weiterverteilung, verlangt
 aber die Beibehaltung des Copyright- und Lizenzhinweises. Maßgeblich ist immer
