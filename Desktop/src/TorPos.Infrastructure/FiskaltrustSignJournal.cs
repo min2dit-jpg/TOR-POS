@@ -14,6 +14,7 @@ public enum FiskaltrustSignState
 public sealed record FiskaltrustSignJournalEntry(
     string Id,
     string ReceiptReference,
+    string OperationKey,
     FiskaltrustSignState State,
     FiskaltrustReceiptRequest Request,
     FiskaltrustReceiptResponse? Response,
@@ -24,13 +25,10 @@ public sealed record FiskaltrustSignJournalEntry(
 /// <summary>
 /// Durable journal for future fiskaltrust Sign calls.
 ///
-/// Safety rule:
-/// PREPARED is written before any network call. SENT is written immediately
-/// before POST /Sign. If the process dies after SENT, the original request is
-/// recovered from this journal and must be queried with ReceiptRequest before
-/// any resend is considered.
-///
-/// This class is intentionally not wired into production checkout yet.
+/// Important for Germany: explicit flow reuses the same cbReceiptReference for
+/// START, optional UPDATE/DELTA calls and the final POS receipt. Therefore the
+/// journal identity is (receiptReference, operationKey), not receiptReference
+/// alone.
 /// </summary>
 public sealed class FiskaltrustSignJournal
 {
@@ -50,27 +48,30 @@ public sealed class FiskaltrustSignJournal
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
         q.CommandText = """
-            CREATE TABLE IF NOT EXISTS fiskaltrust_sign_journal(
+            CREATE TABLE IF NOT EXISTS fiskaltrust_sign_journal_v2(
               id TEXT PRIMARY KEY,
-              receipt_reference TEXT NOT NULL UNIQUE,
+              receipt_reference TEXT NOT NULL,
+              operation_key TEXT NOT NULL,
               request_json TEXT NOT NULL,
               state TEXT NOT NULL CHECK(state IN ('PREPARED','SENT','UNKNOWN','COMMITTED')),
               response_json TEXT NOT NULL DEFAULT '',
               evidence TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL);
+              updated_at TEXT NOT NULL,
+              UNIQUE(receipt_reference,operation_key));
 
-            CREATE INDEX IF NOT EXISTS ix_fiskaltrust_sign_journal_state
-              ON fiskaltrust_sign_journal(state,updated_at);
+            CREATE INDEX IF NOT EXISTS ix_fiskaltrust_sign_journal_v2_state
+              ON fiskaltrust_sign_journal_v2(state,updated_at);
 
-            CREATE TRIGGER IF NOT EXISTS trg_fiskaltrust_sign_request_immutable
-            BEFORE UPDATE OF receipt_reference,request_json ON fiskaltrust_sign_journal
+            CREATE TRIGGER IF NOT EXISTS trg_fiskaltrust_sign_v2_request_immutable
+            BEFORE UPDATE OF receipt_reference,operation_key,request_json
+            ON fiskaltrust_sign_journal_v2
             BEGIN
               SELECT RAISE(ABORT,'fiskaltrust sign request is immutable');
             END;
 
-            CREATE TRIGGER IF NOT EXISTS trg_fiskaltrust_sign_no_delete
-            BEFORE DELETE ON fiskaltrust_sign_journal
+            CREATE TRIGGER IF NOT EXISTS trg_fiskaltrust_sign_v2_no_delete
+            BEFORE DELETE ON fiskaltrust_sign_journal_v2
             BEGIN
               SELECT RAISE(ABORT,'fiskaltrust sign journal cannot be deleted');
             END;
@@ -78,8 +79,14 @@ public sealed class FiskaltrustSignJournal
         await q.ExecuteNonQueryAsync(ct);
     }
 
+    public Task<FiskaltrustSignJournalEntry> BeginAsync(
+        FiskaltrustReceiptRequest request,
+        CancellationToken ct = default) =>
+        BeginAsync(request, "FINAL", ct);
+
     public async Task<FiskaltrustSignJournalEntry> BeginAsync(
         FiskaltrustReceiptRequest request,
+        string operationKey,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -90,15 +97,17 @@ public sealed class FiskaltrustSignJournal
                 "cbReceiptReference fehlt für das fiskaltrust Journal.",
                 nameof(request));
 
+        operationKey = NormalizeOperationKey(operationKey);
         var requestJson = JsonSerializer.Serialize(request, JsonOptions);
 
         await using var c = _db.OpenConnection();
         await using var tx = await c.BeginTransactionAsync(ct);
 
-        var existing = await ReadByReferenceAsync(
+        var existing = await ReadAsync(
             c,
             (SqliteTransaction)tx,
             reference,
+            operationKey,
             ct);
 
         if (existing is not null)
@@ -107,7 +116,7 @@ public sealed class FiskaltrustSignJournal
             if (!string.Equals(existingJson, requestJson, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    $"cbReceiptReference '{reference}' wurde bereits mit einem anderen fiskaltrust Payload verwendet.");
+                    $"fiskaltrust Operation '{reference}/{operationKey}' wurde bereits mit einem anderen Payload verwendet.");
             }
 
             await tx.CommitAsync(ct);
@@ -121,14 +130,15 @@ public sealed class FiskaltrustSignJournal
         {
             q.Transaction = (SqliteTransaction)tx;
             q.CommandText = """
-                INSERT INTO fiskaltrust_sign_journal(
-                  id,receipt_reference,request_json,state,response_json,evidence,
-                  created_at,updated_at)
+                INSERT INTO fiskaltrust_sign_journal_v2(
+                  id,receipt_reference,operation_key,request_json,state,
+                  response_json,evidence,created_at,updated_at)
                 VALUES(
-                  $id,$reference,$request,'PREPARED','','',$created,$updated);
+                  $id,$reference,$operation,$request,'PREPARED','','',$created,$updated);
                 """;
             q.Parameters.AddWithValue("$id", id);
             q.Parameters.AddWithValue("$reference", reference);
+            q.Parameters.AddWithValue("$operation", operationKey);
             q.Parameters.AddWithValue("$request", requestJson);
             q.Parameters.AddWithValue("$created", now.ToString("O"));
             q.Parameters.AddWithValue("$updated", now.ToString("O"));
@@ -140,6 +150,7 @@ public sealed class FiskaltrustSignJournal
         return new FiskaltrustSignJournalEntry(
             id,
             reference,
+            operationKey,
             FiskaltrustSignState.Prepared,
             request,
             null,
@@ -148,10 +159,6 @@ public sealed class FiskaltrustSignJournal
             now);
     }
 
-    /// <summary>
-    /// Must be called immediately before the HTTP Sign request.
-    /// Once SENT exists, restart logic may only recover/query first.
-    /// </summary>
     public Task MarkSentAsync(
         string id,
         CancellationToken ct = default) =>
@@ -192,23 +199,25 @@ public sealed class FiskaltrustSignJournal
             ct);
     }
 
-    public async Task<FiskaltrustSignJournalEntry?> GetByReferenceAsync(
+    public Task<FiskaltrustSignJournalEntry?> GetByReferenceAsync(
         string receiptReference,
+        CancellationToken ct = default) =>
+        GetAsync(receiptReference, "FINAL", ct);
+
+    public async Task<FiskaltrustSignJournalEntry?> GetAsync(
+        string receiptReference,
+        string operationKey,
         CancellationToken ct = default)
     {
         await using var c = _db.OpenConnection();
-        return await ReadByReferenceAsync(
+        return await ReadAsync(
             c,
             transaction: null,
             receiptReference?.Trim() ?? "",
+            NormalizeOperationKey(operationKey),
             ct);
     }
 
-    /// <summary>
-    /// SENT/UNKNOWN entries may have reached fiskaltrust. They must be resolved
-    /// with ReceiptRequest using the persisted original Request before resend.
-    /// PREPARED is excluded because it was never marked as submitted.
-    /// </summary>
     public async Task<IReadOnlyList<FiskaltrustSignJournalEntry>>
         GetRecoveryCandidatesAsync(
             CancellationToken ct = default)
@@ -218,9 +227,9 @@ public sealed class FiskaltrustSignJournal
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
         q.CommandText = """
-            SELECT id,receipt_reference,request_json,state,response_json,evidence,
-                   created_at,updated_at
-            FROM fiskaltrust_sign_journal
+            SELECT id,receipt_reference,operation_key,request_json,state,
+                   response_json,evidence,created_at,updated_at
+            FROM fiskaltrust_sign_journal_v2
             WHERE state IN ('SENT','UNKNOWN')
             ORDER BY created_at,id;
             """;
@@ -252,7 +261,7 @@ public sealed class FiskaltrustSignJournal
 
         q.CommandText =
             $"""
-             UPDATE fiskaltrust_sign_journal
+             UPDATE fiskaltrust_sign_journal_v2
              SET state=$to,
                  response_json=COALESCE($response,response_json),
                  evidence=COALESCE($evidence,evidence),
@@ -280,10 +289,11 @@ public sealed class FiskaltrustSignJournal
         }
     }
 
-    private static async Task<FiskaltrustSignJournalEntry?> ReadByReferenceAsync(
+    private static async Task<FiskaltrustSignJournalEntry?> ReadAsync(
         SqliteConnection c,
         SqliteTransaction? transaction,
         string reference,
+        string operationKey,
         CancellationToken ct)
     {
         if (reference.Length == 0)
@@ -292,12 +302,14 @@ public sealed class FiskaltrustSignJournal
         await using var q = c.CreateCommand();
         q.Transaction = transaction;
         q.CommandText = """
-            SELECT id,receipt_reference,request_json,state,response_json,evidence,
-                   created_at,updated_at
-            FROM fiskaltrust_sign_journal
-            WHERE receipt_reference=$reference;
+            SELECT id,receipt_reference,operation_key,request_json,state,
+                   response_json,evidence,created_at,updated_at
+            FROM fiskaltrust_sign_journal_v2
+            WHERE receipt_reference=$reference
+              AND operation_key=$operation;
             """;
         q.Parameters.AddWithValue("$reference", reference);
+        q.Parameters.AddWithValue("$operation", operationKey);
 
         await using var r = await q.ExecuteReaderAsync(ct);
         return await r.ReadAsync(ct) ? Map(r) : null;
@@ -307,17 +319,17 @@ public sealed class FiskaltrustSignJournal
     {
         var request =
             JsonSerializer.Deserialize<FiskaltrustReceiptRequest>(
-                r.GetString(2),
+                r.GetString(3),
                 JsonOptions)
             ?? throw new InvalidOperationException(
                 "Gespeicherter fiskaltrust Request ist nicht lesbar.");
 
         FiskaltrustReceiptResponse? response = null;
-        if (!r.IsDBNull(4) && !string.IsNullOrWhiteSpace(r.GetString(4)))
+        if (!r.IsDBNull(5) && !string.IsNullOrWhiteSpace(r.GetString(5)))
         {
             response =
                 JsonSerializer.Deserialize<FiskaltrustReceiptResponse>(
-                    r.GetString(4),
+                    r.GetString(5),
                     JsonOptions)
                 ?? throw new InvalidOperationException(
                     "Gespeicherte fiskaltrust Response ist nicht lesbar.");
@@ -326,12 +338,23 @@ public sealed class FiskaltrustSignJournal
         return new FiskaltrustSignJournalEntry(
             r.GetString(0),
             r.GetString(1),
-            ParseState(r.GetString(3)),
+            r.GetString(2),
+            ParseState(r.GetString(4)),
             request,
             response,
-            r.GetString(5),
-            DateTimeOffset.Parse(r.GetString(6)),
-            DateTimeOffset.Parse(r.GetString(7)));
+            r.GetString(6),
+            DateTimeOffset.Parse(r.GetString(7)),
+            DateTimeOffset.Parse(r.GetString(8)));
+    }
+
+    private static string NormalizeOperationKey(string? operationKey)
+    {
+        var value = (operationKey ?? "").Trim().ToUpperInvariant();
+        if (value.Length == 0)
+            throw new ArgumentException("fiskaltrust operationKey fehlt.", nameof(operationKey));
+        if (value.Length > 80)
+            throw new ArgumentException("fiskaltrust operationKey ist zu lang.", nameof(operationKey));
+        return value;
     }
 
     private static FiskaltrustSignState ParseState(string state) => state switch
