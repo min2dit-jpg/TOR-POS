@@ -49,6 +49,11 @@ AppMutex=TOR-POS-Pro-Running
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
+[Dirs]
+; Demo identity is machine-wide and intentionally survives a normal uninstall.
+; The application writes only a random Trial-ID here; no hardware identifiers.
+Name: "{commonappdata}\TOR-POS-Pro"; Permissions: users-modify; Flags: uninsneveruninstall
+
 [Files]
 Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
