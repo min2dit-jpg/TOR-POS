@@ -2107,6 +2107,7 @@ private Control FiskaltrustPage()
     FiskaltrustReceiptRequest? lastTrainingRequest = null;
     FiskaltrustReceiptResponse? lastTrainingResponse = null;
     var trainingLockedAfterFiscalAttempt = false;
+    var trainingPrintAttempted = false;
 
     var trainingQr = new TextBox
     {
@@ -2179,6 +2180,7 @@ private Control FiskaltrustPage()
         lastTrainingSale = null;
         lastTrainingRequest = null;
         lastTrainingResponse = null;
+        trainingPrintAttempted = false;
         SetResult(
             trainingPrintStatus,
             null,
@@ -2503,6 +2505,11 @@ private Control FiskaltrustPage()
                     "Drucker nicht bereit: " + probe.Message);
             }
 
+            // From this point the Windows spooler outcome can become
+            // ambiguous. Do not expose a one-click duplicate after success or
+            // timeout; the operator must inspect the physical paper/queue.
+            trainingPrintAttempted = true;
+
             await _receiptPrinter.PrintReceiptAsync(
                 printJob,
                 printerName);
@@ -2540,10 +2547,11 @@ private Control FiskaltrustPage()
         finally
         {
             printTrainingButton.IsEnabled =
-                lastTrainingPrintJob is not null ||
-                (lastTrainingSale is not null &&
-                 lastTrainingRequest is not null &&
-                 lastTrainingResponse is not null);
+                !trainingPrintAttempted &&
+                (lastTrainingPrintJob is not null ||
+                 (lastTrainingSale is not null &&
+                  lastTrainingRequest is not null &&
+                  lastTrainingResponse is not null));
         }
     };
 
