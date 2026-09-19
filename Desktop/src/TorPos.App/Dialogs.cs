@@ -35,6 +35,10 @@ public sealed class VariantWindow:Window
     }
 }
 
+public sealed record MenuChoiceResult(
+    MenuComponentSnapshot[] Components,
+    long UnitPriceCents);
+
 public sealed record MenuChoiceOption(
     ProductComboItem Recipe,
     Product Product)
@@ -86,9 +90,10 @@ public sealed class MenuChoiceWindow : Window
         });
         body.Children.Add(new TextBlock
         {
-            Text = $"Menüpreis: {Formatting.Money(menu.BasePriceCents)} · " +
-                   "Die Auswahl ändert keinen Aufpreis. Normalpreise der gewählten Artikel " +
-                   "werden intern für Bestand und MwSt.-Aufteilung verwendet.",
+            Text = $"Menü-Grundpreis: {Formatting.Money(menu.BasePriceCents)} · " +
+                   "Kein Aufpreis wird gepflegt: ist die gewählte Option laut Artikelstamm teurer " +
+                   "als die günstigste Option der Gruppe, wird nur diese reale Preisdifferenz automatisch ergänzt. " +
+                   "Die Artikelpreise steuern außerdem Bestand und MwSt.-Aufteilung.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = .72
         });
@@ -170,7 +175,7 @@ public sealed class MenuChoiceWindow : Window
             MinHeight = 54,
             MinWidth = 140
         };
-        cancel.Click += (_,_) => Close((MenuComponentSnapshot[]?)null);
+        cancel.Click += (_,_) => Close((MenuChoiceResult?)null);
 
         body.Children.Add(new StackPanel
         {
@@ -229,7 +234,9 @@ public sealed class MenuChoiceWindow : Window
                     group));
             }
 
-            Close((MenuComponentSnapshot[]?)selected.ToArray());
+            var components = selected.ToArray();
+            var price = MenuVatPolicy.EffectiveMenuPrice(_menu, _products.Values.ToArray(), components);
+            Close((MenuChoiceResult?)new MenuChoiceResult(components, price));
         }
         catch (Exception ex)
         {
