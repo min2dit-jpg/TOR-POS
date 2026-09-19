@@ -423,8 +423,9 @@ await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
-// R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
-const int ExpectedSafetyChecks = 893;
+// R151: three reviewed checks added for hidden menu VAT allocation,
+// quantity scaling and fail-closed mixed-menu promotion handling.
+const int ExpectedSafetyChecks = 896;
 
 if (checks != ExpectedSafetyChecks)
 {
