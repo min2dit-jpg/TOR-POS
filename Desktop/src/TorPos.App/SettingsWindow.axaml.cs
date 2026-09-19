@@ -2067,7 +2067,252 @@ private Control FiskaltrustPage()
     tseTest.Children.Add(zeroButton);
     page.Children.Add(tseTest);
 
-    var recovery = Section("3 · Recovery-Journal");
+    var training = Section("3 · BAR Testbon · AVTraining");
+
+    training.Children.Add(ReadOnlyRow(
+        "Testprofil",
+        "1,00 € · 1 × TOR TESTARTIKEL · 19 % MwSt. · BAR · fiskaltrust Training receipt (DSFinV-K AVTraining)."));
+
+    training.Children.Add(ReadOnlyRow(
+        "Buchung in TOR POS",
+        "KEINE · Dieser Hardwaretest erzeugt keinen normalen TOR-Verkauf und keine produktive Bonnummer."));
+
+    var trainingConfirmation = new CheckBox
+    {
+        Content = new TextBlock
+        {
+            Text = "Ich bestätige: Dieser Test sendet einen echten TSE-signierten AVTraining-Beleg an fiskaltrust.",
+            TextWrapping = TextWrapping.Wrap
+        },
+        Margin = new Thickness(0, 4, 0, 8)
+    };
+    training.Children.Add(ToggleRow(trainingConfirmation));
+
+    var trainingStatus = Value("Noch nicht ausgeführt.");
+    var trainingReceiptId = Value();
+    var trainingTransaction = Value();
+    var trainingCounter = Value();
+    var trainingTseSerial = Value();
+    var trainingProcessData = Value();
+
+    training.Children.Add(StatusRow("Acceptance", trainingStatus));
+    training.Children.Add(StatusRow("Receipt-ID", trainingReceiptId));
+    training.Children.Add(StatusRow("TSE-Transaktion", trainingTransaction));
+    training.Children.Add(StatusRow("Signaturzähler", trainingCounter));
+    training.Children.Add(StatusRow("TSE-Seriennummer", trainingTseSerial));
+    training.Children.Add(StatusRow("ProcessData", trainingProcessData));
+
+    var trainingQr = new TextBox
+    {
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MinHeight = 95,
+        MaxHeight = 170,
+        Text = "Noch kein QR-Payload empfangen."
+    };
+    Form(
+        training,
+        "KassenSichV QR-Payload",
+        trainingQr,
+        "Wird exakt aus der fiskaltrust ReceiptResponse übernommen; TOR verändert oder trimmt die signierten Werte nicht.");
+
+    var trainingButton = new Button
+    {
+        Content = "1,00 € BAR TRAININGSBON SIGNIEREN",
+        MinWidth = 320,
+        MinHeight = 46,
+        FontWeight = FontWeight.Bold
+    };
+
+    trainingButton.Click += async (_, _) =>
+    {
+        if (hardwareConfirmation.IsChecked != true)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "Nicht gestartet: zuerst physische Swissbit TSE im Abschnitt 2 bestätigen.");
+            return;
+        }
+
+        if (trainingConfirmation.IsChecked != true)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "Nicht gestartet: AVTraining-Signierung muss ausdrücklich bestätigt werden.");
+            return;
+        }
+
+        trainingButton.IsEnabled = false;
+        SetResult(trainingStatus, null, "AVTraining-Beleg wird vorbereitet …");
+        SetResult(trainingReceiptId, null, "wartet …");
+        SetResult(trainingTransaction, null, "wartet …");
+        SetResult(trainingCounter, null, "wartet …");
+        SetResult(trainingTseSerial, null, "wartet …");
+        SetResult(trainingProcessData, null, "wartet …");
+        trainingQr.Text = "wartet …";
+
+        try
+        {
+            var now = DateTimeOffset.Now;
+            var sale = new Sale
+            {
+                ReceiptNumber = 0,
+                CreatedAt = now,
+                StartedAt = now.AddSeconds(-1),
+                PaymentMethod = PaymentMethod.Cash,
+                CashPortionCents = 100,
+                CardPortionCents = 0,
+                TotalCents = 100,
+                TransactionType = "SALE",
+                ImHaus = false,
+                OperatorName = _currentUser.Username,
+                Lines =
+                [
+                    new CartLine
+                    {
+                        ProductId = 0,
+                        ProductName = "TOR TESTARTIKEL",
+                        Quantity = 1m,
+                        UnitPriceCents = 100,
+                        VatRate = 19m
+                    }
+                ]
+            };
+
+            var reference =
+                $"TOR-TRAINING-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+
+            var request =
+                FiskaltrustSandboxRequests.TrainingSimpleCashSale(
+                    sale,
+                    reference);
+
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+
+            var middleware = CreateClient(http, requireIdentity: true);
+            var journal =
+                new FiskaltrustSignJournal(
+                    new SqliteDatabase(AppPaths.DatabasePath));
+            await journal.InitializeAsync();
+
+            var coordinator =
+                new FiskaltrustSignCoordinator(
+                    middleware,
+                    journal);
+
+            var response = await coordinator.ExecuteAsync(
+                request,
+                "DIAG:TRAINING:CASH");
+
+            var report =
+                FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
+                    sale,
+                    request,
+                    response);
+
+            var evidence = report.Evidence;
+
+            SetResult(
+                trainingStatus,
+                report.Passed,
+                report.Passed
+                    ? "BESTANDEN · QR/TSE/ProcessData stimmen mit TOR überein"
+                    : "NICHT BESTANDEN · " + string.Join(" · ", report.Errors));
+
+            SetResult(
+                trainingReceiptId,
+                string.IsNullOrWhiteSpace(response.FtReceiptIdentification) ? false : true,
+                string.IsNullOrWhiteSpace(response.FtReceiptIdentification)
+                    ? "(fehlt)"
+                    : response.FtReceiptIdentification);
+
+            SetResult(
+                trainingTransaction,
+                ulong.TryParse(evidence.TransactionNumber, out var transactionNumber) &&
+                transactionNumber > 0,
+                string.IsNullOrWhiteSpace(evidence.TransactionNumber)
+                    ? "(fehlt)"
+                    : evidence.TransactionNumber);
+
+            SetResult(
+                trainingCounter,
+                ulong.TryParse(evidence.SignatureCounter, out var signatureCounter) &&
+                signatureCounter > 0,
+                string.IsNullOrWhiteSpace(evidence.SignatureCounter)
+                    ? "(fehlt)"
+                    : evidence.SignatureCounter);
+
+            SetResult(
+                trainingTseSerial,
+                string.IsNullOrWhiteSpace(evidence.TseSerialNumber) ? false : true,
+                string.IsNullOrWhiteSpace(evidence.TseSerialNumber)
+                    ? "(fehlt)"
+                    : evidence.TseSerialNumber);
+
+            var expectedProcessData =
+                FiscalProcessData.KassenbelegText(sale);
+
+            SetResult(
+                trainingProcessData,
+                string.Equals(
+                    evidence.ProcessData,
+                    expectedProcessData,
+                    StringComparison.Ordinal),
+                string.Equals(
+                    evidence.ProcessData,
+                    expectedProcessData,
+                    StringComparison.Ordinal)
+                    ? "IDENTISCH · " + evidence.ProcessData
+                    : $"ABWEICHUNG · TOR: {expectedProcessData} · fiskaltrust: {evidence.ProcessData}");
+
+            trainingQr.Text =
+                string.IsNullOrWhiteSpace(evidence.QrPayload)
+                    ? "(QR-Payload fehlt)"
+                    : evidence.QrPayload;
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_TRAINING_CASH_TEST",
+                "FISKALTRUST",
+                reference,
+                $"AVTraining BAR 1,00 EUR; acceptance={(report.Passed ? "PASS" : "FAIL")}; ftState=0x{response.FtState:X16}; keine Zugangsdaten protokolliert.");
+        }
+        catch (FiskaltrustSignUnresolvedException ex)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "ERGEBNIS UNKLAR · kein automatisches Neusenden. " + ex.Message);
+            trainingQr.Text =
+                "Vorgang im Recovery-Journal. Zuerst Abschnitt 4 · Recovery-Journal prüfen.";
+        }
+        catch (Exception ex)
+        {
+            SetResult(
+                trainingStatus,
+                false,
+                "TEST FEHLGESCHLAGEN · " + ex.Message);
+            trainingQr.Text = ex.Message;
+        }
+        finally
+        {
+            trainingButton.IsEnabled = true;
+        }
+    };
+
+    training.Children.Add(trainingButton);
+    training.Children.Add(ReadOnlyRow(
+        "Wichtig",
+        "AVTraining ist ein fiskaltrust/TSE-Trainingsbeleg. Er dient nur der Hardware-Abnahme und schaltet den produktiven Checkout nicht frei."));
+    page.Children.Add(training);
+
+    var recovery = Section("4 · Recovery-Journal");
     var recoveryStatus = Value("Noch nicht geprüft.");
     recovery.Children.Add(StatusRow("Offene SENT / UNKNOWN", recoveryStatus));
 
@@ -2232,7 +2477,7 @@ private Control FiskaltrustPage()
         "SENT/UNKNOWN wird ausschließlich über ReceiptRequest abgeglichen. TOR sendet den ursprünglichen Sign nicht automatisch ein zweites Mal."));
     page.Children.Add(recovery);
 
-    var production = Section("4 · Produktive Freigabe");
+    var production = Section("5 · Produktive Freigabe");
     production.Children.Add(ReadOnlyRow(
         "Status",
         "GESPERRT · Erst nach erfolgreichem ZeroReceipt/TSEInfo, kontrolliertem BAR-Testbon, Bon/QR-Prüfung und Restart/Recovery-Test."));
@@ -2246,8 +2491,8 @@ private Control FiskaltrustPage()
 
     page.Children.Add(InfoCard(
         "Sicherheitsregel",
-        "QUEUE + SCU + ECHO erzeugt keinen Fiskalvorgang. ZERO RECEIPT + TSEINFO erzeugt dagegen bewusst einen fiskaltrust/TSE-Diagnosevorgang und startet nur nach manueller Hardware-Bestätigung. " +
-        "Bei einem unklaren Ergebnis wird niemals blind erneut gesendet; TOR hält den Vorgang im Recovery-Journal.",
+        "QUEUE + SCU + ECHO erzeugt keinen Fiskalvorgang. ZERO RECEIPT + TSEINFO und der BAR-AVTraining-Test erzeugen dagegen bewusst fiskaltrust/TSE-Diagnosevorgänge und starten nur nach manueller Bestätigung. " +
+        "Der BAR-Test trägt den DE-Training-Flag und wird nicht als normaler TOR-Verkauf gebucht. Bei einem unklaren Ergebnis wird niemals blind erneut gesendet; TOR hält den Vorgang im Recovery-Journal.",
         AppTheme.WarningAmberBg));
 
     return page;
