@@ -208,3 +208,13 @@ cash pay item.
 The helper intentionally refuses CARD/MIXED, STORNO/RETURN, discounts and
 negative lines. Those cases will only be enabled after their exact fiskaltrust
 business-case mapping and real-hardware behavior have separate tests.
+
+
+### 0 % VAT is intentionally not auto-classified
+
+The German Middleware has different charge-item cases for non-taxable,
+tax-free and VAT-not-determinable transactions. A numeric TOR VAT rate of
+`0 %` does not by itself identify which legal case applies. The sandbox
+adapter therefore refuses automatic 0 % mapping until TOR stores the legal
+tax category explicitly. This avoids silently treating every 0 % article as
+tax-free.
