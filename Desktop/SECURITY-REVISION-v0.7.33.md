@@ -1,3 +1,5 @@
+> **HISTORISCHER SECURITY-REVIEW-STAND.** Die repo-weite aktuelle Security Policy steht in `../SECURITY.md`. Dieses Dokument bleibt als Nachweis früherer Hardening-Arbeiten erhalten.
+
 # TOR POS v0.7.33 – Security Revision
 
 Implemented after external review:
