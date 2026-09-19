@@ -92,7 +92,14 @@ public sealed record ReceiptPrintJob(
     DateTimeOffset? TseStartLogTime = null,
     string TseSignatureAlgorithm = "",
     string TseLogTimeFormat = "",
-    string TsePublicKey = "");
+    string TsePublicKey = "",
+    // fiskaltrust can return the already-composed German QR payload. Preserve
+    // that exact string rather than rebuilding/reformatting its signed values.
+    string TseQrPayloadOverride = "",
+    string TseProcessStartRaw = "",
+    string TseProcessEndRaw = "",
+    bool TrainingReceipt = false,
+    string ExternalReceiptId = "");
 
 /// <summary>
 /// R140: TSE times on the receipt. AEAO zu § 146a Nr. 2.4.4: the data the TSE
@@ -125,7 +132,13 @@ public static class TseQrCodePayload
 
     public static string Build(ReceiptPrintJob job)
     {
-        if (job.FiscalTestMode || job.TseOutage || job.SignatureCounter <= 0 ||
+        if (job.FiscalTestMode || job.TseOutage)
+            return "";
+
+        if (!string.IsNullOrWhiteSpace(job.TseQrPayloadOverride))
+            return job.TseQrPayloadOverride;
+
+        if (job.SignatureCounter <= 0 ||
             job.TseStartLogTime is not { } start || job.ProcessEnd is not { } end)
             return "";
 
