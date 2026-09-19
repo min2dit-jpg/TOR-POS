@@ -47,5 +47,10 @@ Der Build setzt `TorDemoBuild=true` und erzeugt:
 
 Die normale `1-SETUP-ERSTELLEN.bat` bleibt ein Nicht-Demo-Build.
 
+Für die 7-Tage-Demo wird eine zufällige maschinenweite Trial-ID unter
+`%ProgramData%\TOR-POS-Pro\trial-installation.id` verwendet. Der Installer
+lässt diesen Ordner bei einer normalen Deinstallation bestehen. Hardwaredaten
+wie MachineGuid oder Laufwerksseriennummer werden nicht verwendet.
+
 Das Demo-Setup darf erst nach Code-Signing über
 `..\Cloud\PUBLISH-DEMO.ps1` öffentlich veröffentlicht werden.
