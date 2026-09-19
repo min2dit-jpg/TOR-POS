@@ -100,38 +100,52 @@ repräsentiert wird.
 - berücksichtigt Im Haus/Außer Haus,
 - berücksichtigt den tatsächlich verkauften Menüpreis,
 - verweigert erfundene Marktwerte,
-- blockiert den Checkout **vor** Journal- und Terminal-I/O.
+- blockiert den Checkout **vor** Journal- und Terminal-I/O,
+- blockiert auf Produktionskassen auch Parken/Bestellung vor dem dauerhaften Bestell-/TSE-Nebeneffekt,
+- blockiert Combo-Pfand, solange es nicht als eigene fiskalische Position persistiert wird.
 
 Dies ist ein Fail-Closed-Schutz, keine Behauptung, dass die Multi-Rate-Repräsentation bereits final ist.
 
 ## Production-Gates
 
-Folgende Gates bleiben bis zum jeweiligen Nachweis geschlossen:
+Folgende source-controlled Qualifikationen bleiben bis zum jeweiligen Nachweis `false`:
 
-- `FiscalRelease.Enabled = false`
-- DSFinV-K final validation
-- §6 Bon/TSE hardware acceptance
-- Bestellung/Parken hardware validation
-- Pfand fiscal validation
-- gesamter Production Release
+- `FiscalRelease.DsfinvkValidated`
+- `FiscalRelease.KassenSichVReceiptValidated`
+- `FiscalRelease.ParkedOrderTseValidated`
+- `FiscalRelease.PfandTaxValidated`
+- `FiscalRelease.PhysicalTseE2EValidated`
+- `FiscalRelease.IndependentFiscalReviewValidated`
+
+`FiscalRelease.Enabled` wird ausschließlich aus diesen sechs Bedingungen berechnet.
 
 Keines dieser Gates darf allein aufgrund eines grünen CI-Laufs aktiviert werden.
 
 
 ## CI-Freigabesperre
 
-`Desktop/tools/Verify-Fiscal-Release-Gates.ps1` verhindert, dass die beiden finalen
-Produktionsschalter versehentlich aktiviert werden.
+`Desktop/tools/Verify-Fiscal-Release-Gates.ps1` verhindert, dass einzelne
+Produktionsqualifikationen versehentlich aktiviert werden.
 
 Solange `verification/PRODUCTION-FISCAL-ACCEPTANCE.json` fehlt oder unvollständig ist,
-müssen `FiscalRelease.Enabled` und `fiscalReleaseBuild` false bleiben.
+müssen alle sechs `FiscalRelease.*Validated`-Flags `false` bleiben.
 
 Eine spätere Acceptance-Datei muss mindestens dokumentieren:
 - reale TSE-Seriennummer und Hardware-Testdatum,
 - erfolgreiche physische TSE-E2E-Abnahme,
 - DSFinV-K-Prüfnachweis,
 - §6-Belegnachweis,
+- Bestellung/Parken-TSE-Nachweis,
+- Pfand-Steuer-Nachweis,
 - unabhängigen Reviewer,
 - ausdrückliche Produktionsfreigabe.
 
 Ein grüner Software-CI-Lauf erzeugt diese Nachweise nicht automatisch.
+
+
+## Kein nachträgliches Ersetzen eines verpassten TSE-Starts
+
+Kann die TSE beim Vorgangsbeginn/bei der ersten Position keine Transaktion starten,
+bleibt genau dieser Vorgang als TSE-Ausfall dokumentiert. TOR eröffnet bei der späteren
+Zahlung **keine** neue Ersatztransaktion mit einem späteren Startzeitpunkt. Dadurch kann
+ein verspäteter TSE-Zeitpunkt nicht als ursprünglicher Vorgangsbeginn erscheinen.
