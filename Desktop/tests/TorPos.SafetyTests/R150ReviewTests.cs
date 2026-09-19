@@ -110,28 +110,94 @@ public static class R150ReviewTests
             ImHaus: false);
 
         var journal = new FakeJournal();
-        var terminal = new FakeTerminal();
+        var terminal = new FakeTerminal(journal);
         var service = new CheckoutApplicationService(
             new FakeCompliance(),
             journal,
             terminal,
             new FakeCatalog(catalogProducts));
 
-        var blocked = await service.PrepareProductionAsync(snapshot);
+        var allowedMixed = await service.PrepareProductionAsync(snapshot);
+        var allocatedLine = allowedMixed.Operation?.Snapshot.Lines.Single();
         assert(
-            blocked.Disposition == CheckoutApplicationDisposition.FiscalBlocked &&
-            blocked.FiscalReadiness.Items.Single().Code == "MENU_MIXED_VAT" &&
-            journal.BeginCount == 0 &&
-            terminal.PayCount == 0,
-            "R150 mixed-rate menu is blocked before checkout journal and terminal side effects");
-
-        var inHouseSnapshot = snapshot with { OperationId = "r150-inhouse", ImHaus = true, Method = PaymentMethod.Cash };
-        var allowed = await service.PrepareProductionAsync(inHouseSnapshot);
-        assert(
-            allowed.Disposition == CheckoutApplicationDisposition.ReadyToCommit &&
+            allowedMixed.Disposition == CheckoutApplicationDisposition.ReadyToCommit &&
             journal.BeginCount == 1 &&
-            terminal.PayCount == 0,
-            "R150 same menu is not blocked when effective component rates are uniformly 19% in-house");
+            terminal.PayCount == 1 &&
+            allocatedLine is not null &&
+            allocatedLine.ProductName == "Döner Menü" &&
+            allocatedLine.VatAllocations.Length == 2 &&
+            allocatedLine.VatAllocations.Single(x => x.VatRate == 7m).GrossCents == 630 &&
+            allocatedLine.VatAllocations.Single(x => x.VatRate == 19m).GrossCents == 270,
+            "R151 mixed-rate menu stays one commercial Döner Menü line while checkout carries hidden 7%/19% gross allocations");
+
+        var vatSummary = VatSummaryCalculator.Compute(
+            allowedMixed.Operation!.Snapshot.Lines,
+            allowedMixed.Operation.Snapshot.DiscountCents);
+        assert(
+            vatSummary.Count == 2 &&
+            vatSummary.Sum(x => x.GrossCents) == 900 &&
+            vatSummary.Single(x => x.Rate == 7m).GrossCents == 630 &&
+            vatSummary.Single(x => x.Rate == 19m).GrossCents == 270,
+            "R151 receipt/TSE VAT summary reads hidden menu allocations without expanding customer-facing lines");
+
+        var quantityTwo = MenuVatPolicy.LineAllocations(new CartLine
+        {
+            ProductId = menu.Id,
+            ProductName = menu.Name,
+            Quantity = 2m,
+            UnitPriceCents = 900,
+            VatRate = 7m,
+            VatAllocations = takeAway.Allocations.ToArray()
+        });
+        assert(
+            quantityTwo.Sum(x => x.GrossCents) == 1800 &&
+            quantityTwo.Single(x => x.VatRate == 7m).GrossCents == 1260 &&
+            quantityTwo.Single(x => x.VatRate == 19m).GrossCents == 540,
+            "R151 menu allocation scales deterministically with quantity and still reconciles to the commercial line total");
+
+        var inHouseJournal = new FakeJournal();
+        var inHouseTerminal = new FakeTerminal(inHouseJournal);
+        var inHouseService = new CheckoutApplicationService(
+            new FakeCompliance(),
+            inHouseJournal,
+            inHouseTerminal,
+            new FakeCatalog(catalogProducts));
+        var inHouseSnapshot = snapshot with { OperationId = "r151-inhouse", ImHaus = true, Method = PaymentMethod.Cash };
+        var allowedInHouse = await inHouseService.PrepareProductionAsync(inHouseSnapshot);
+        assert(
+            allowedInHouse.Disposition == CheckoutApplicationDisposition.ReadyToCommit &&
+            allowedInHouse.Operation!.Snapshot.Lines.Single().VatAllocations.Length == 1 &&
+            allowedInHouse.Operation.Snapshot.Lines.Single().VatAllocations.Single().VatRate == 19m &&
+            allowedInHouse.Operation.Snapshot.Lines.Single().VatAllocations.Single().GrossCents == 900,
+            "R151 in-house menu stores one hidden 19% bucket when all effective component rates are 19%");
+
+        var promotionSnapshot = snapshot with
+        {
+            OperationId = "r151-mixed-promotion",
+            Method = PaymentMethod.Cash,
+            Lines = new[]
+            {
+                snapshot.Lines[0] with
+                {
+                    PromotionId = 88,
+                    PromotionName = "Extra Angebot",
+                    PromotionPercent = 10,
+                    PromotionDiscountUnitCents = 90
+                }
+            }
+        };
+        var promotionJournal = new FakeJournal();
+        var promotionService = new CheckoutApplicationService(
+            new FakeCompliance(),
+            promotionJournal,
+            new FakeTerminal(promotionJournal),
+            new FakeCatalog(catalogProducts));
+        var blockedPromotion = await promotionService.PrepareProductionAsync(promotionSnapshot);
+        assert(
+            blockedPromotion.Disposition == CheckoutApplicationDisposition.FiscalBlocked &&
+            blockedPromotion.FiscalReadiness.Items.Single().Code == "MENU_VAT_ALLOCATION" &&
+            promotionJournal.BeginCount == 0,
+            "R151 additional promotion on a mixed-VAT menu remains fail-closed until immutable Preisfindung allocation is represented");
     }
 
     private sealed class FakeCatalog : IProductCatalog
@@ -218,6 +284,8 @@ public static class R150ReviewTests
 
     private sealed class FakeTerminal : IPaymentTerminalService
     {
+        private readonly FakeJournal _journal;
+        public FakeTerminal(FakeJournal journal) => _journal = journal;
         public int PayCount { get; private set; }
         public IReadOnlyList<PaymentTerminalProfile> Profiles => Array.Empty<PaymentTerminalProfile>();
 
@@ -233,6 +301,15 @@ public static class R150ReviewTests
         public async Task<PaymentTerminalPaymentResult> PayAsync(long amountCents, string operationId, CancellationToken ct = default)
         {
             PayCount++;
+            await _journal.TransitionTerminalAsync(
+                operationId,
+                "PREPARED",
+                "APPROVED",
+                "R151 fake approval",
+                PaymentTerminalOutcome.Approved,
+                requestSubmitted: true,
+                terminalCode: "APPROVED",
+                terminalMessage: "approved");
             return new PaymentTerminalPaymentResult(
                 true,
                 "APPROVED",
