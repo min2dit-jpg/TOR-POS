@@ -20,6 +20,7 @@ public partial class SettingsWindow : Window
     private readonly IPaymentTerminalService _paymentTerminal;
     private readonly IFiscalComplianceService _compliance;
     private readonly IDsfinvkExportService _dsfinvkExport;
+    private readonly DatevKassenbuchAsciiService _datevAscii;
     private readonly DatevKassenarchivService _datevKassenarchiv;
     private readonly IAuditLog _audit;
     private readonly ICommercialLicenseService _commercialLicense;
@@ -101,6 +102,7 @@ public partial class SettingsWindow : Window
         IPaymentTerminalService paymentTerminal,
         IFiscalComplianceService compliance,
         IDsfinvkExportService dsfinvkExport,
+        DatevKassenbuchAsciiService datevAscii,
         DatevKassenarchivService datevKassenarchiv,
         IAuditLog audit,
         ICommercialLicenseService commercialLicense,
@@ -118,6 +120,7 @@ public partial class SettingsWindow : Window
         _paymentTerminal = paymentTerminal;
         _compliance = compliance;
         _dsfinvkExport = dsfinvkExport;
+        _datevAscii = datevAscii;
         _datevKassenarchiv = datevKassenarchiv;
         _audit = audit;
         _commercialLicense = commercialLicense;
@@ -1166,29 +1169,37 @@ public partial class SettingsWindow : Window
     private Control DatevPage()
     {
         var page = Page(
-            "DATEV · Kassenarchiv online",
-            "Z-Abschlüsse werden lokal unveränderbar vorbereitet. Die Online-Übertragung wird erst aktiviert, sobald die offizielle DATEV Developer-Portal API/Auth-Konfiguration implementiert und freigegeben ist.");
+            "DATEV",
+            "Standard-Datei zuerst: DATEV Kassenbuch Standard-ASCII/CSV ohne API-Kosten. Optional kann TOR die erzeugte Datei nach dem Z-Abschluss automatisch an den gespeicherten Steuerberater senden.");
 
-        var automation = Section("Automatischer Tagesabschluss-Export");
-        automation.Children.Add(ToggleRow(Check(
-            DatevKassenarchivService.SettingEnabled,
-            "DATEV Kassenarchiv verwenden")));
-        automation.Children.Add(ToggleRow(Check(
-            DatevKassenarchivService.SettingAutoAfterZ,
-            "Nach jedem erfolgreichen Z-Abschluss automatisch DATEV-Paket vorbereiten")));
-        automation.Children.Add(ReadOnlyRow(
-            "Paketinhalt",
-            "DSFinV-K 2.4 + TSE-TAR + TOR Manifest mit SHA-256. Der Z-Abschluss wird niemals von einer DATEV-Störung rückgängig gemacht."));
-        automation.Children.Add(ReadOnlyRow(
-            "Wiederholung",
-            "Ein bereits vorbereitetes Paket wird nicht neu erzeugt. Retry verwendet dieselbe Datei und denselben SHA-256-Hash."));
-        page.Children.Add(automation);
+        var free = Section("STANDARD-DATEI · 0 € · KEINE DATEV-API");
+        free.Children.Add(ToggleRow(Check(
+            DatevKassenbuchAsciiService.SettingEnabled,
+            "DATEV Kassenbuch Standard-ASCII / CSV verwenden")));
+        free.Children.Add(ToggleRow(Check(
+            DatevKassenbuchAsciiService.SettingAutoAfterZ,
+            "Nach jedem erfolgreichen Z-Abschluss automatisch DATEV-Datei erstellen")));
+        free.Children.Add(ToggleRow(Check(
+            DatevKassenbuchAsciiService.SettingAutoEmail,
+            "DATEV-Datei automatisch an Steuerberater senden")));
+        Form(
+            free,
+            "Steuerberater-E-Mail",
+            Text(DatevKassenbuchAsciiService.SettingRecipient),
+            "Leer = Empfänger aus Berichte & E-Mail verwenden. Versand nutzt die dort gespeicherte Gmail-/SMTP-Verbindung.");
+        free.Children.Add(ReadOnlyRow(
+            "DATEV-Format",
+            "Standard-ASCII für Kassenbewegungen · 13 Spalten · Semikolon · Belegdatum TTMM · Währung/VorzBetrag/RechNr/Belegtext/UStSatz usw."));
+        free.Children.Add(ReadOnlyRow(
+            "Kassenbuch-Regel",
+            "Nur Bargeldbewegungen werden exportiert. Reine Kartenzahlungen gehören nicht in das Kassenbuch und bleiben im Z-Bericht / DSFinV-K dokumentiert."));
+        free.Children.Add(ReadOnlyRow(
+            "E-Mail-Anhänge",
+            "DATEV CSV + zugehöriger Z-Bericht als PDF. Die CSV wird mit SHA-256 gespeichert und bei erneutem Versand nicht neu erzeugt."));
+        page.Children.Add(free);
 
-        var connection = Section("Online-Verbindung");
-        connection.Children.Add(_datevStatus);
-        connection.Children.Add(ReadOnlyRow(
-            "API-Status",
-            "Noch nicht produktiv freigeschaltet. TOR verwendet keine erfundenen DATEV-Endpunkte oder OAuth-Parameter."));
+        var status = Section("Standard-Datei · Status");
+        status.Children.Add(_datevStatus);
         var refresh = new Button
         {
             Content = "STATUS AKTUALISIEREN",
@@ -1197,12 +1208,27 @@ public partial class SettingsWindow : Window
             FontWeight = FontWeight.SemiBold
         };
         refresh.Click += async (_,_) => await RefreshDatevStatusAsync();
-        connection.Children.Add(refresh);
-        page.Children.Add(connection);
+        status.Children.Add(refresh);
+        page.Children.Add(status);
+
+        var online = Section("OPTIONAL SPÄTER · DATEV KASSENARCHIV ONLINE API");
+        online.Children.Add(ToggleRow(Check(
+            DatevKassenarchivService.SettingEnabled,
+            "Kassenarchiv-online Vorbereitung zusätzlich verwenden")));
+        online.Children.Add(ToggleRow(Check(
+            DatevKassenarchivService.SettingAutoAfterZ,
+            "Nach Z-Abschluss DSFinV-K + TSE Paket für Online-API vorbereiten")));
+        online.Children.Add(ReadOnlyRow(
+            "API-Status",
+            "Noch nicht produktiv freigeschaltet. TOR verwendet keine erfundenen DATEV-Endpunkte oder OAuth-Parameter."));
+        online.Children.Add(ReadOnlyRow(
+            "Priorität",
+            "Der kostenlose Standard-ASCII/CSV Weg oben funktioniert unabhängig von dieser späteren Online-API."));
+        page.Children.Add(online);
 
         page.Children.Add(InfoCard(
-            "Für den Steuerberater",
-            "Nach DATEV-Freischaltung ist das Ziel: Z-Abschluss → unveränderbares Outbox-Paket → DATEV Kassenarchiv online → Kassenbuch online / Rechnungswesen. Bis dahin bleiben vorbereitete Pakete lokal nachvollziehbar im Übertragungsjournal.",
+            "Steuerberater-Ablauf",
+            "Z-Abschluss → TOR erzeugt DATEV-Kassenbuch-CSV → optional automatische E-Mail an Steuerberater → Import in DATEV Kassenbuch online. Für die Dateierzeugung ist keine DATEV Developer-Portal API nötig.",
             AppTheme.InfoCardBg));
 
         return page;
@@ -1212,14 +1238,16 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            var rows = await _datevKassenarchiv.GetJournalAsync(200);
-            var ready = rows.Count(x => x.State is "READY" or "WAITING_API");
-            var failed = rows.Count(x => x.State == "PREPARE_FAILED");
-            var sent = rows.Count(x => x.State == "SENT");
+            var ascii = await _datevAscii.GetJournalAsync(200);
+            var api = await _datevKassenarchiv.GetJournalAsync(200);
+            var emailed = ascii.Count(x => x.EmailState == "SENT");
+            var failed = ascii.Count(x => x.EmailState == "SEND_FAILED");
+            var ready = ascii.Count(x => x.EmailState == "READY");
+
             _datevStatus.Text =
-                $"Online-Verbindung: NOCH NICHT FREIGESCHALTET\n" +
-                $"Lokale Outbox: {rows.Count} Z-Abschluss-Paket(e) · bereit/wartend {ready} · Fehler {failed} · übertragen {sent}\n" +
-                $"Ordner: {_datevKassenarchiv.OutboxDirectory}";
+                $"STANDARD-DATEI: {ascii.Count} Export(e) · bereit {ready} · per E-Mail gesendet {emailed} · Versandfehler {failed}\n" +
+                $"CSV-Ordner: {_datevAscii.ExportDirectory}\n\n" +
+                $"KASSENARCHIV ONLINE (optional/später): {api.Count} vorbereitete Paket(e) · Online-API noch nicht freigeschaltet.";
             _datevStatus.Foreground = failed > 0 ? AppTheme.WarningAmber : AppTheme.AccentTeal;
         }
         catch (Exception ex)
