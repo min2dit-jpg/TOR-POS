@@ -2879,7 +2879,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 await q.ExecuteNonQueryAsync(ct);
             }
 
-            await ReverseStockAsync(c, (SqliteTransaction)tx, originalLine.ProductId, quantity, ct);
+            await ReverseStockAsync(c, (SqliteTransaction)tx, originalLine, quantity, ct);
         }
 
         // R90: same reasoning as RecordStornoAsync - without this the Teilretoure
