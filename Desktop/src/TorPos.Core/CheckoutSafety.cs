@@ -139,6 +139,7 @@ public sealed record CheckoutSnapshot(
         ListUnitPriceCents=x.EffectiveListUnitPriceCents,
         VatRate=ImHausVat.Effective(x.VatRate, imHaus, x.ImHausApplicable), PfandCents=x.PfandCents,
         VatAllocations=x.VatAllocations.ToArray(),
+        MenuComponents=x.MenuComponents.ToArray(),
         ImHausApplicable=x.ImHausApplicable,
         PromotionId=x.PromotionId, PromotionName=x.PromotionName,
         PromotionPercent=x.PromotionPercent,
