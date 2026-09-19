@@ -46,6 +46,12 @@ public static class AppPaths
     public static string LicenseDeactivationJournalPath => Path.Combine(DataDirectory, "commercial-license-deactivations.jsonl");
     public static string LicenseInstallationIdPath => Path.Combine(DataDirectory, "license-installation.id");
     public static string TrialStatePath => Path.Combine(DataDirectory, "trial-state.json");
+    public static string TrialIdentityDirectory =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "TOR-POS-Pro");
+    public static string TrialIdentityPath =>
+        Path.Combine(TrialIdentityDirectory, "trial-installation.id");
 }
 
 public sealed class SqliteDatabase
