@@ -1,3 +1,5 @@
+> **HISTORISCHES DOKUMENT.** Dieses Dokument entstand in einer früheren Phase von v0.7.33 und ist nicht der aktuelle Release-Index. Aktueller Stand: siehe `../CHANGELOG.md` und `src/TorPos.Core/ReleaseInfo.cs`.
+
 # TOR POS v0.7.33 – Änderungsliste
 
 ## Bedienung
