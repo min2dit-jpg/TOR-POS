@@ -289,25 +289,50 @@ public sealed record FiskaltrustSignatureItem
 public static class FiskaltrustDeCases
 {
     public const ulong PosReceipt = 0x4445000000000001UL;
+    public const ulong ZeroReceipt = 0x4445000000000002UL;
+    public const ulong DailyClosing = 0x4445000000000007UL;
     public const ulong StartTransaction = 0x4445000000000008UL;
+    public const ulong UpdateTransaction = 0x4445000000000009UL;
+    public const ulong DeltaTransaction = 0x444500000000000AUL;
 
-    // The same DE code is used by the official examples for a normal charge item
-    // and cash payment in national currency.
-    public const ulong StandardChargeItem = 0x4445000000000001UL;
+    // German charge-item cases. TOR currently supports 19 %, 7 % and 0 %.
+    public const ulong StandardChargeItem = 0x4445000000000001UL; // 19 %
+    public const ulong ReducedChargeItem = 0x4445000000000002UL;  // 7 %
+    public const ulong ZeroVatChargeItem = 0x4445000000000006UL;  // 0 %, tax-free case
+    public const ulong TakeAwayChargeItemFlag = 0x0000000000010000UL;
+    public const ulong PositionCancellationChargeItemFlag = 0x0000000000200000UL;
+
+    // German payment cases. Do not guess a generic card type: debit and credit
+    // are separate fiskaltrust cases and must later come from terminal evidence.
     public const ulong CashPayment = 0x4445000000000001UL;
+    public const ulong DebitCardPayment = 0x4445000000000004UL;
+    public const ulong CreditCardPayment = 0x4445000000000005UL;
+    public const ulong OnlinePayment = 0x4445000000000006UL;
+    public const ulong SepaTransfer = 0x4445000000000008UL;
+    public const ulong OtherBankTransfer = 0x4445000000000009UL;
 
-    // Adds the middleware's implicit start+finish flow to a receipt case.
+    // Adds the Middleware's implicit start+finish flow to a receipt case.
     public const ulong ImplicitFlowFlag = 0x0000000100000000UL;
 
-    // Retry/recovery flag: ask the queue for the already stored result instead
-    // of blindly creating a second fiscal action after a timeout.
-    public const ulong ReceiptRequestFlag = 0x0000000000008000UL;
+    // Recovery flag: retrieve an already processed receipt by
+    // cbReceiptReference after an ambiguous communication failure.
+    // Important: this is 0x0000800000000000 (not the generic low 0x8000 bit).
+    public const ulong ReceiptRequestFlag = 0x0000800000000000UL;
 
     public static ulong WithImplicitFlow(ulong receiptCase) =>
         receiptCase | ImplicitFlowFlag;
 
     public static ulong WithReceiptRequest(ulong receiptCase) =>
         receiptCase | ReceiptRequestFlag;
+
+    public static ulong ChargeItemCaseForVat(decimal vatRate) => vatRate switch
+    {
+        19m => StandardChargeItem,
+        7m => ReducedChargeItem,
+        0m => ZeroVatChargeItem,
+        _ => throw new InvalidOperationException(
+            $"fiskaltrust DE unterstützt in TOR aktuell keinen MwSt.-Satz {vatRate} %.")
+    };
 }
 
 
