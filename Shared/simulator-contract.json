@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "source": "TOR-POS",
+  "publicEditions": {
+    "retail": {
+      "id": "retail",
+      "labelDe": "EINZELHANDEL",
+      "labelTr": "EINZELHANDEL",
+      "internalCode": "KIOSK"
+    },
+    "gastro": {
+      "id": "gastro",
+      "labelDe": "GASTRONOMIE",
+      "labelTr": "GASTRONOMİ",
+      "internalCode": "IMBISS"
+    }
+  },
+  "desktopUi": {
+    "topMenu": ["WAREN", "EINSTELLUNGEN", "KASSE", "BERICHTE"],
+    "statusBadges": ["TSE-AUSFALL", "TEST · KEINE LIZENZ", "admin", "AUSSER HAUS", "GEMISCHT", "ABMELDEN"],
+    "quickActions": {
+      "barcode": "EAN / BARCODE",
+      "search": "EAN SUCHEN",
+      "quickItem": "SCHNELLARTIKEL",
+      "discount": "RABATT",
+      "openOrders": "OFFENE BESTELLUNGEN",
+      "receiptOn": "BON EIN/AUS · EIN",
+      "checkout": "KASSIEREN"
+    },
+    "cashier": {
+      "currentSale": "AKTUELLER VERKAUF",
+      "cash": "BAR · TEST",
+      "card": "KARTE · TEST",
+      "extra": "EXTRA",
+      "order": "BESTELLUNG ANNEHMEN"
+    }
+  },
+  "theme": {
+    "background": "#0D1420",
+    "header": "#111B2A",
+    "panel": "#10263A",
+    "productTile": "#172C42",
+    "productBorder": "#3C5F7C",
+    "accent": "#53E0C0",
+    "cash": "#0E9F47",
+    "card": "#1766D1"
+  },
+  "demoCatalogs": {
+    "gastro": [
+      {
+        "id": "doener",
+        "name": "Döner",
+        "letter": "D",
+        "color": "#8DDC00",
+        "products": [
+          {"id": "doener-kebab", "name": "Döner Kebab", "price": 7.50},
+          {"id": "dueruem", "name": "Dürüm Döner", "price": 8.00},
+          {"id": "doener-box", "name": "Döner Box", "price": 7.00},
+          {"id": "lahmacun", "name": "Lahmacun Döner", "price": 8.50},
+          {"id": "falafel", "name": "Falafel im Brot", "price": 6.50},
+          {"id": "halloumi", "name": "Halloumi Dürüm", "price": 7.50}
+        ]
+      },
+      {
+        "id": "burger",
+        "name": "Burger",
+        "letter": "B",
+        "color": "#16A9E8",
+        "products": [
+          {"id": "hamburger", "name": "Hamburger", "price": 6.50},
+          {"id": "cheeseburger", "name": "Cheeseburger", "price": 7.00},
+          {"id": "chickenburger", "name": "Chickenburger", "price": 7.50},
+          {"id": "double-cheese", "name": "Double Cheeseburger", "price": 9.50},
+          {"id": "veggie-burger", "name": "Veggie Burger", "price": 7.20},
+          {"id": "burger-xl", "name": "Burger XL", "price": 10.50}
+        ]
+      },
+      {
+        "id": "fingerfood",
+        "name": "Fingerfood",
+        "letter": "F",
+        "color": "#DD27E9",
+        "products": [
+          {"id": "nuggets", "name": "Chicken Nuggets", "price": 6.50},
+          {"id": "mozzarella", "name": "Mozzarella Sticks", "price": 5.50},
+          {"id": "wings", "name": "Chicken Wings", "price": 7.00},
+          {"id": "onion-rings", "name": "Onion Rings", "price": 4.50},
+          {"id": "chili-cheese", "name": "Chili Cheese Nuggets", "price": 5.90},
+          {"id": "finger-mix", "name": "Fingerfood Mix", "price": 8.90}
+        ]
+      },
+      {
+        "id": "menue",
+        "name": "Menü",
+        "letter": "M",
+        "color": "#FF0064",
+        "products": [
+          {"id": "doener-menue", "name": "Döner Menü", "price": 12.90},
+          {"id": "burger-menue", "name": "Burger Menü", "price": 11.90},
+          {"id": "dueruem-menue", "name": "Dürüm Menü", "price": 13.50},
+          {"id": "nuggets-menue", "name": "Nuggets Menü", "price": 10.90},
+          {"id": "pizza-menue", "name": "Pizza Menü", "price": 13.90},
+          {"id": "veggie-menue", "name": "Veggie Menü", "price": 11.50}
+        ]
+      },
+      {
+        "id": "pizza",
+        "name": "Pizza",
+        "letter": "P",
+        "color": "#FF231D",
+        "products": [
+          {"id": "pizza-margherita", "name": "Pizza Margherita", "price": 8.00},
+          {"id": "pizza-salami", "name": "Pizza Salami", "price": 9.00},
+          {"id": "pizza-tonno", "name": "Pizza Tonno", "price": 10.00},
+          {"id": "pizza-veggie", "name": "Pizza Vegetaria", "price": 9.50},
+          {"id": "pizza-doener", "name": "Pizza Döner", "price": 11.00},
+          {"id": "pizza-funghi", "name": "Pizza Funghi", "price": 9.00}
+        ]
+      },
+      {
+        "id": "getraenke",
+        "name": "Getränke",
+        "letter": "G",
+        "color": "#A9CBCD",
+        "products": [
+          {"id": "cola", "name": "Coca-Cola 0,33 l", "price": 2.50},
+          {"id": "ayran", "name": "Ayran", "price": 2.00},
+          {"id": "wasser", "name": "Mineralwasser 0,5 l", "price": 1.80},
+          {"id": "fanta", "name": "Fanta 0,33 l", "price": 2.50},
+          {"id": "sprite", "name": "Sprite 0,33 l", "price": 2.50},
+          {"id": "redbull", "name": "Red Bull 0,25 l", "price": 3.00}
+        ]
+      }
+    ],
+    "retail": [
+      {
+        "id": "retail-drinks",
+        "name": "Getränke",
+        "letter": "G",
+        "color": "#16A9E8",
+        "products": [
+          {"id": "r-cola", "name": "Coca-Cola 0,33 l", "price": 2.50},
+          {"id": "r-water", "name": "Mineralwasser 0,5 l", "price": 1.80},
+          {"id": "r-redbull", "name": "Red Bull 0,25 l", "price": 3.00},
+          {"id": "r-fanta", "name": "Fanta 0,33 l", "price": 2.50},
+          {"id": "r-sprite", "name": "Sprite 0,33 l", "price": 2.50},
+          {"id": "r-juice", "name": "Orangensaft 1 l", "price": 2.99}
+        ]
+      },
+      {
+        "id": "snacks",
+        "name": "Snacks",
+        "letter": "S",
+        "color": "#FF9B00",
+        "products": [
+          {"id": "chips", "name": "Chips Paprika", "price": 2.20},
+          {"id": "peanuts", "name": "Erdnüsse", "price": 2.40},
+          {"id": "pretzels", "name": "Salzstangen", "price": 1.90},
+          {"id": "nachos", "name": "Nachos", "price": 2.90},
+          {"id": "cracker", "name": "Cracker", "price": 2.10},
+          {"id": "popcorn", "name": "Popcorn", "price": 2.50}
+        ]
+      },
+      {
+        "id": "sweets",
+        "name": "Süßwaren",
+        "letter": "S",
+        "color": "#DD27E9",
+        "products": [
+          {"id": "bueno", "name": "Kinder Bueno", "price": 1.50},
+          {"id": "twix", "name": "Twix", "price": 1.40},
+          {"id": "haribo", "name": "Haribo Goldbären", "price": 2.20},
+          {"id": "milka", "name": "Milka Alpenmilch", "price": 2.40},
+          {"id": "snickers", "name": "Snickers", "price": 1.40},
+          {"id": "mentos", "name": "Mentos", "price": 1.50}
+        ]
+      },
+      {
+        "id": "food",
+        "name": "Lebensmittel",
+        "letter": "L",
+        "color": "#8DDC00",
+        "products": [
+          {"id": "milk", "name": "Milch 1 l", "price": 1.49},
+          {"id": "eggs", "name": "Eier 10er", "price": 3.20},
+          {"id": "butter", "name": "Butter 250 g", "price": 2.49},
+          {"id": "bread", "name": "Mischbrot", "price": 2.80},
+          {"id": "cheese", "name": "Gouda 250 g", "price": 3.49},
+          {"id": "pasta", "name": "Spaghetti 500 g", "price": 1.79}
+        ]
+      },
+      {
+        "id": "household",
+        "name": "Haushalt",
+        "letter": "H",
+        "color": "#FF0064",
+        "products": [
+          {"id": "kitchen-roll", "name": "Küchenrolle", "price": 3.49},
+          {"id": "trash-bags", "name": "Müllbeutel 20 Stk.", "price": 2.99},
+          {"id": "batteries", "name": "Batterien AA 4 Stk.", "price": 4.99},
+          {"id": "lighter", "name": "Feuerzeug", "price": 1.50},
+          {"id": "foil", "name": "Alufolie", "price": 2.49},
+          {"id": "tissues", "name": "Taschentücher", "price": 1.99}
+        ]
+      },
+      {
+        "id": "other",
+        "name": "Sonstiges",
+        "letter": "S",
+        "color": "#A9CBCD",
+        "products": [
+          {"id": "newspaper", "name": "Tageszeitung", "price": 2.50},
+          {"id": "magazine", "name": "TV-Magazin", "price": 2.20},
+          {"id": "puzzle", "name": "Rätselheft", "price": 3.00},
+          {"id": "gift-card", "name": "Geschenkkarte", "price": 10.00},
+          {"id": "bag", "name": "Tragetasche", "price": 0.30},
+          {"id": "quick", "name": "Schnellartikel", "price": 1.00}
+        ]
+      }
+    ]
+  }
+}
