@@ -2534,33 +2534,20 @@ public partial class MainWindow:Window
         await CheckoutAsync(method.Value, invokedByQuickCheckout: true);
     }
 
-    private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0)
-    {
-        var lines = MenuVatPolicy.ApplyAllocations(
-            CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
-            _catalog.Products,
-            _imHaus);
-
-        var cancelled = _tseVorgang.CancelledLines.Count == 0
+    private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
+        _operationId,
+        CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
+        _engine.DiscountCents,
+        method,
+        _currentUser.Username,
+        _activeParkedReceiptId,
+        _imHaus,
+        cashPortionCents,
+        _tseVorgang.VorgangId ?? "",
+        _tseVorgang.StartedAt,
+        _tseVorgang.CancelledLines.Count == 0
             ? null
-            : MenuVatPolicy.ApplyAllocations(
-                CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus),
-                _catalog.Products,
-                _imHaus);
-
-        return new CheckoutSnapshot(
-            _operationId,
-            lines,
-            _engine.DiscountCents,
-            method,
-            _currentUser.Username,
-            _activeParkedReceiptId,
-            _imHaus,
-            cashPortionCents,
-            _tseVorgang.VorgangId ?? "",
-            _tseVorgang.StartedAt,
-            cancelled);
-    }
+            : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
 
     private async void OnMixedPaymentClick(object? sender, RoutedEventArgs e)
     {
@@ -2676,6 +2663,23 @@ public partial class MainWindow:Window
             }
             if (IsSimulation)
             {
+                // R151: simulation / fiscally recorded training bypasses the
+                // production application service, so enrich its immutable
+                // snapshot here. Components still stay hidden on the receipt.
+                snapshot = snapshot with
+                {
+                    Lines = MenuVatPolicy.ApplyAllocations(
+                        snapshot.Lines,
+                        _catalog.Products,
+                        snapshot.ImHaus),
+                    CancelledLines = snapshot.CancelledLines is null
+                        ? null
+                        : MenuVatPolicy.ApplyAllocations(
+                            snapshot.CancelledLines,
+                            _catalog.Products,
+                            snapshot.ImHaus)
+                };
+
                 if((method==PaymentMethod.Card || method==PaymentMethod.Mixed) && !_currentUser.IsTraining &&
                     !await new CardTestPaymentWindow(snapshot.EffectiveCardPortionCents).ShowDialog<bool>(this)) return;
                 await _audit.WriteAsync(_currentUser.Username,"TEST_SALE_COMPLETED","SIMULATION",snapshot.OperationId,
