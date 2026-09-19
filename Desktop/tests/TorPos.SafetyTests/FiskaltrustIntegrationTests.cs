@@ -274,6 +274,91 @@ public static class FiskaltrustIntegrationTests
                 FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.ZeroReceipt),
             "fiskaltrust DE ZeroReceipt builder keeps charge/pay blocks empty and uses the required implicit flow");
 
+        var simpleCashSale = new TorPos.Core.Sale
+        {
+            ReceiptNumber = 1001,
+            CreatedAt = DateTimeOffset.Parse("2026-09-19T06:26:00Z"),
+            PaymentMethod = TorPos.Core.PaymentMethod.Cash,
+            CashPortionCents = 1190,
+            CardPortionCents = 0,
+            TotalCents = 1190,
+            TransactionType = "SALE",
+            ImHaus = false,
+            OperatorName = "TEST",
+            Lines =
+            [
+                new TorPos.Core.CartLine
+                {
+                    ProductId = 1,
+                    ProductName = "Getränk",
+                    Quantity = 1,
+                    UnitPriceCents = 595,
+                    VatRate = 19m,
+                    LineTotalCents = 595
+                },
+                new TorPos.Core.CartLine
+                {
+                    ProductId = 2,
+                    ProductName = "Snack",
+                    Quantity = 1,
+                    UnitPriceCents = 595,
+                    VatRate = 7m,
+                    ImHausApplicable = true,
+                    LineTotalCents = 595
+                }
+            ]
+        };
+        var simpleRequest =
+            FiskaltrustSandboxRequests.SimpleCashSale(simpleCashSale, "BON-1001");
+
+        assert(
+            simpleRequest.FtReceiptCase ==
+                FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.PosReceipt) &&
+            simpleRequest.CbChargeItems.Count == 2 &&
+            simpleRequest.CbPayItems.Count == 1 &&
+            simpleRequest.CbReceiptAmount == 11.90m,
+            "fiskaltrust sandbox simple cash sale builds one implicit POS receipt with exact total");
+
+        assert(
+            simpleRequest.CbChargeItems[0].FtChargeItemCase ==
+                FiskaltrustDeCases.StandardChargeItem &&
+            simpleRequest.CbChargeItems[1].FtChargeItemCase ==
+                (FiskaltrustDeCases.ReducedChargeItem |
+                 FiskaltrustDeCases.TakeAwayChargeItemFlag) &&
+            simpleRequest.CbPayItems[0].FtPayItemCase ==
+                FiskaltrustDeCases.CashPayment,
+            "fiskaltrust sandbox simple cash sale maps 19/7 VAT and take-away/cash cases explicitly");
+
+        var blockedCard = false;
+        try
+        {
+            _ = FiskaltrustSandboxRequests.SimpleCashSale(
+                new TorPos.Core.Sale
+                {
+                    PaymentMethod = TorPos.Core.PaymentMethod.Card,
+                    CardPortionCents = 100,
+                    TotalCents = 100,
+                    Lines =
+                    [
+                        new TorPos.Core.CartLine
+                        {
+                            ProductName = "Test",
+                            Quantity = 1,
+                            UnitPriceCents = 100,
+                            VatRate = 19m
+                        }
+                    ]
+                },
+                "BON-CARD");
+        }
+        catch (InvalidOperationException ex)
+        {
+            blockedCard = ex.Message.Contains("Barzahlung", StringComparison.Ordinal);
+        }
+        assert(
+            blockedCard,
+            "fiskaltrust sandbox refuses generic CARD mapping until debit/credit evidence is available");
+
         var recoveryCashBoxId = Guid.NewGuid();
         var recoveryPosId = Guid.NewGuid();
         var recoveryHandler = new FakeHandler();
