@@ -191,3 +191,20 @@ Nothing calls it automatically.
 When the physical Swissbit TSE is connected, this is the first Sign payload to
 use for a controlled functional/status test before any sale is allowed to reach
 fiskaltrust.
+
+
+## First cash-sale sandbox payload prepared (not sent)
+
+After a successful ZeroReceipt with a physical TSE, the branch can now compose a
+deliberately restricted cash POS receipt via
+`FiskaltrustSandboxRequests.SimpleCashSale`.
+
+It supports only a straightforward positive SALE with no manual receipt
+discount, no cancelled positions and no card portion. It maps 19/7/0 % charge
+cases explicitly, adds the take-away marker to applicable reduced-rate food
+lines, checks that the line sum equals the receipt total, and creates a single
+cash pay item.
+
+The helper intentionally refuses CARD/MIXED, STORNO/RETURN, discounts and
+negative lines. Those cases will only be enabled after their exact fiskaltrust
+business-case mapping and real-hardware behavior have separate tests.
