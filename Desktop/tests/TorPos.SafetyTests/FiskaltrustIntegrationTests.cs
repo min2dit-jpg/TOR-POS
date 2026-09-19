@@ -263,6 +263,17 @@ public static class FiskaltrustIntegrationTests
                 FiskaltrustSignatureFormats.Text,
             "fiskaltrust v1 response model preserves uint64 queue/format values and structured ftStateData");
 
+        var zero = FiskaltrustSandboxRequests.ZeroReceipt(
+            "TOR-ZERO-0001",
+            DateTimeOffset.Parse("2026-09-19T06:25:00Z"));
+        assert(
+            zero.CbReceiptReference == "TOR-ZERO-0001" &&
+            zero.CbChargeItems.Count == 0 &&
+            zero.CbPayItems.Count == 0 &&
+            zero.FtReceiptCase ==
+                FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.ZeroReceipt),
+            "fiskaltrust DE ZeroReceipt builder keeps charge/pay blocks empty and uses the required implicit flow");
+
         var recoveryCashBoxId = Guid.NewGuid();
         var recoveryPosId = Guid.NewGuid();
         var recoveryHandler = new FakeHandler();
