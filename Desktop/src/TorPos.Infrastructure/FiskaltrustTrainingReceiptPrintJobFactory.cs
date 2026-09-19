@@ -60,14 +60,14 @@ public static class FiskaltrustTrainingReceiptPrintJobFactory
         var normalizedAddress = companyAddress?.Trim() ?? "";
         var missing =
             FiscalReceiptFields.Missing(
-                normalizedCompany,
-                normalizedAddress,
-                evidence.CashRegisterSerial,
+                companyName: normalizedCompany,
+                companyAddress: normalizedAddress,
+                easSerial: evidence.CashRegisterSerial,
                 tseOutage: false,
-                evidence.TseSerialNumber,
-                evidence.TransactionNumber,
+                tseSerial: evidence.TseSerialNumber,
+                tseTransactionNumber: evidence.TransactionNumber,
                 hasSignatureCounter: true,
-                evidence.Signature,
+                verificationValue: evidence.Signature,
                 hasProcessStart:
                     !string.IsNullOrWhiteSpace(
                         evidence.TransactionStartTime),
