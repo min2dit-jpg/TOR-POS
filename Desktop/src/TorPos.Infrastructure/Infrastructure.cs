@@ -2124,14 +2124,14 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                   list_unit_price_cents,list_line_total_cents,
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
-                  promotion_start_date,promotion_end_date,vat_allocations_json)
+                  promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json)
                 VALUES(
                   $sale,$product,$name,$variant,$barcode,$qty,
                   $price,$vat,$pfand,$total,
                   $listUnit,$listTotal,
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
-                  $promotionStart,$promotionEnd,$vatAllocations);
+                  $promotionStart,$promotionEnd,$vatAllocations,$menuComponents);
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
             q.Parameters.AddWithValue("$product", line.ProductId);
@@ -2153,21 +2153,18 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Parameters.AddWithValue("$promotionStart", line.PromotionStartDate);
             q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
             q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+            q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
             await q.ExecuteNonQueryAsync(ct);
-            // R49: menus/combos consume their component stock. Normal articles consume themselves.
-            // Negative technical IDs (Pfand/Extras) never touch stock.
+            // R153: selected menu articles are immutable per sale line.
+            // Use the captured choice/fixed-component snapshot for stock; only
+            // legacy/static lines without a snapshot fall back to the current recipe.
             if (line.ProductId > 0)
             {
-                var components=new List<(long Id,decimal Quantity)>();
-                await using (var combo=c.CreateCommand())
-                {
-                    combo.Transaction=(SqliteTransaction)tx;
-                    combo.CommandText="SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id ORDER BY sort_order;";
-                    combo.Parameters.AddWithValue("$id",line.ProductId);
-                    await using var cr=await combo.ExecuteReaderAsync(ct);
-                    while(await cr.ReadAsync(ct)) components.Add((cr.GetInt64(0),Convert.ToDecimal(cr.GetDouble(1))));
-                }
-                if (components.Count==0) components.Add((line.ProductId,1m));
+                var components = await StockComponentsAsync(
+                    c,
+                    (SqliteTransaction)tx,
+                    line,
+                    ct);
                 foreach(var component in components)
                 {
                     await using var stock = c.CreateCommand();
@@ -2407,7 +2404,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        promotion_id,promotion_name,promotion_percent,
                        promotion_discount_unit_cents,
                        promotion_start_date,promotion_end_date,
-                       COALESCE(vat_allocations_json,'')
+                       COALESCE(vat_allocations_json,''),
+                       COALESCE(menu_components_json,'')
                 FROM sale_items WHERE sale_id=$sale ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
@@ -2434,7 +2432,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                     PromotionDiscountUnitCents = r.GetInt64(13),
                     PromotionStartDate = r.GetString(14),
                     PromotionEndDate = r.GetString(15),
-                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16))
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16)),
+                    MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17))
                 });
             }
         }
@@ -2608,14 +2607,14 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                       list_unit_price_cents,list_line_total_cents,
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
-                      promotion_start_date,promotion_end_date,vat_allocations_json)
+                      promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json)
                     VALUES(
                       $sale,$product,$name,$variant,$barcode,$qty,
                       $price,$vat,$pfand,$total,
                       $listUnit,$listTotal,
                       $promotionId,$promotionName,$promotionPercent,
                       $promotionUnit,$promotionTotal,
-                      $promotionStart,$promotionEnd,$vatAllocations);
+                      $promotionStart,$promotionEnd,$vatAllocations,$menuComponents);
                     """;
                 q.Parameters.AddWithValue("$sale", saleId);
                 q.Parameters.AddWithValue("$product", line.ProductId);
@@ -2637,12 +2636,13 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                 q.Parameters.AddWithValue("$promotionStart", line.PromotionStartDate);
                 q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
                 q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+                q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
                 await q.ExecuteNonQueryAsync(ct);
             }
 
             // Mirror image of CommitAsync's stock decrement: give reversed
             // stock back to the same components the original sale consumed.
-            await ReverseStockAsync(c, (SqliteTransaction)tx, line.ProductId, line.Quantity, ct);
+            await ReverseStockAsync(c, (SqliteTransaction)tx, line, line.Quantity, ct);
         }
 
         // R90: without this, the actor who authorized the BON STORNO was only
@@ -2844,7 +2844,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
                       promotion_start_date,promotion_end_date,
-                      vat_allocations_json,original_sale_item_id)
+                      vat_allocations_json,menu_components_json,original_sale_item_id)
                     VALUES(
                       $sale,$product,$name,$variant,$barcode,$qty,
                       $price,$vat,$pfand,$total,
@@ -2852,7 +2852,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       $promotionId,$promotionName,$promotionPercent,
                       $promotionUnit,$promotionTotal,
                       $promotionStart,$promotionEnd,
-                      $vatAllocations,$originalItem);
+                      $vatAllocations,$menuComponents,$originalItem);
                     """;
                 q.Parameters.AddWithValue("$sale", saleId);
                 q.Parameters.AddWithValue("$product", originalLine.ProductId);
@@ -2874,6 +2874,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Parameters.AddWithValue("$promotionStart", originalLine.PromotionStartDate);
                 q.Parameters.AddWithValue("$promotionEnd", originalLine.PromotionEndDate);
                 q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(originalLine));
+                q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(originalLine));
                 q.Parameters.AddWithValue("$originalItem", originalLine.SaleItemId);
                 await q.ExecuteNonQueryAsync(ct);
             }
@@ -2914,19 +2915,45 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
             ?? throw new InvalidOperationException("Retourenbon konnte nicht geladen werden.");
     });
 }
-private static async Task ReverseStockAsync(SqliteConnection c, SqliteTransaction tx, long productId, decimal quantity, CancellationToken ct)
+private static async Task<IReadOnlyList<(long Id, decimal Quantity)>> StockComponentsAsync(
+    SqliteConnection c,
+    SqliteTransaction tx,
+    CartLine line,
+    CancellationToken ct)
 {
-    if (productId <= 0) return;
+    if (line.MenuComponents.Length > 0)
+        return line.MenuComponents
+            .Select(x => (x.ProductId, x.Quantity))
+            .ToArray();
+
     var components = new List<(long Id, decimal Quantity)>();
     await using (var combo = c.CreateCommand())
     {
         combo.Transaction = tx;
-        combo.CommandText = "SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id ORDER BY sort_order;";
-        combo.Parameters.AddWithValue("$id", productId);
+        combo.CommandText = "SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id AND COALESCE(choice_group,'')='' ORDER BY sort_order;";
+        combo.Parameters.AddWithValue("$id", line.ProductId);
         await using var cr = await combo.ExecuteReaderAsync(ct);
-        while (await cr.ReadAsync(ct)) components.Add((cr.GetInt64(0), Convert.ToDecimal(cr.GetDouble(1))));
+        while (await cr.ReadAsync(ct))
+            components.Add((cr.GetInt64(0), Convert.ToDecimal(cr.GetDouble(1))));
     }
-    if (components.Count == 0) components.Add((productId, 1m));
+
+    if (components.Count == 0)
+        components.Add((line.ProductId, 1m));
+
+    return components;
+}
+
+private static async Task ReverseStockAsync(
+    SqliteConnection c,
+    SqliteTransaction tx,
+    CartLine line,
+    decimal quantity,
+    CancellationToken ct)
+{
+    if (line.ProductId <= 0)
+        return;
+
+    var components = await StockComponentsAsync(c, tx, line, ct);
     foreach (var component in components)
     {
         await using var stock = c.CreateCommand();
@@ -3332,7 +3359,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
                   promotion_start_date,promotion_end_date,im_haus_applicable,
-                  vat_allocations_json)
+                  vat_allocations_json,menu_components_json)
                 VALUES(
                   $parked,$product,$name,$variant,
                   $barcode,$qty,$price,$vat,$pfand,$total,
@@ -3340,7 +3367,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
                   $promotionStart,$promotionEnd,$imHaus,
-                  $vatAllocations);
+                  $vatAllocations,$menuComponents);
                 """;
             q.Parameters.AddWithValue("$parked", parkedId);
             q.Parameters.AddWithValue("$product", line.ProductId);
@@ -3363,6 +3390,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             q.Parameters.AddWithValue("$promotionStart", line.PromotionStartDate);
             q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
             q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+            q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
             await q.ExecuteNonQueryAsync(ct);
         }
     }
@@ -3382,7 +3410,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                    promotion_discount_unit_cents,
                    promotion_start_date,promotion_end_date,
                    COALESCE(im_haus_applicable,1),
-                   COALESCE(vat_allocations_json,'')
+                   COALESCE(vat_allocations_json,''),
+                   COALESCE(menu_components_json,'')
             FROM parked_receipt_items
             WHERE parked_receipt_id=$id
             ORDER BY id;
@@ -3412,7 +3441,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                 PromotionStartDate = r.GetString(13),
                 PromotionEndDate = r.GetString(14),
                 ImHausApplicable = r.GetInt64(15) != 0,
-                VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16))
+                VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16)),
+                MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17))
             });
         }
 
@@ -3432,6 +3462,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             ListUnitPriceCents = line.EffectiveListUnitPriceCents,
             VatRate = line.VatRate,
             VatAllocations = line.VatAllocations.ToArray(),
+            MenuComponents = line.MenuComponents.ToArray(),
             ImHausApplicable = line.ImHausApplicable,
             PfandCents = line.PfandCents,
             PromotionId = line.PromotionId,
