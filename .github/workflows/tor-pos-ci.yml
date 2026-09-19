@@ -38,6 +38,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Sürüm tutarlılığını doğrula
+        run: |
+          pwsh -NoProfile -File tools/Verify-Version.ps1
+
       - name: .NET 10 SDK kur
         id: dotnet
         uses: actions/setup-dotnet@v6
