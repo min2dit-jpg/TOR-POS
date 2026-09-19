@@ -240,6 +240,29 @@ public static class FiskaltrustIntegrationTests
             FiskaltrustDeCases.CashPayment != FiskaltrustDeCases.DebitCardPayment,
             "fiskaltrust DE payment constants keep cash, debit and credit card semantically distinct");
 
+        var stateObject = System.Text.Json.JsonDocument.Parse("{\"TseInfo\":{\"State\":\"Ready\"}}").RootElement.Clone();
+        var contractProbe = new FiskaltrustReceiptResponse
+        {
+            FtQueueRow = ulong.MaxValue,
+            FtStateData = stateObject,
+            FtSignatures =
+            [
+                new FiskaltrustSignatureItem
+                {
+                    FtSignatureFormat = FiskaltrustSignatureFormats.OptionalPrintFlag |
+                        FiskaltrustSignatureFormats.Text,
+                    FtSignatureType = FiskaltrustDeSignatureTypes.ProcessType,
+                    Data = "Kassenbeleg-V1"
+                }
+            ]
+        };
+        assert(
+            contractProbe.FtQueueRow == ulong.MaxValue &&
+            contractProbe.FtStateData?.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            FiskaltrustSignatureFormats.BaseFormat(contractProbe.FtSignatures[0].FtSignatureFormat) ==
+                FiskaltrustSignatureFormats.Text,
+            "fiskaltrust v1 response model preserves uint64 queue/format values and structured ftStateData");
+
         var recoveryCashBoxId = Guid.NewGuid();
         var recoveryPosId = Guid.NewGuid();
         var recoveryHandler = new FakeHandler();
