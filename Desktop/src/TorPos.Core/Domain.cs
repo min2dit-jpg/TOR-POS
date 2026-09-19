@@ -332,6 +332,36 @@ public sealed record SaleTseResult(
         DateTimeOffset? startLogTime = null) =>
         new(true, clientId, transactionNumber, signatureCounter, serialNumber, signature, logTime, "", startLogTime);
 
+    /// <summary>
+    /// KassenSichV §2 fail-closed factory for a TSE operation that reported
+    /// success. A transport/API success is not treated as a complete fiscal
+    /// signature when mandatory TSE-returned fields are missing or malformed.
+    /// </summary>
+    public static SaleTseResult FromSuccessfulTse(
+        string clientId,
+        string transactionNumber,
+        string signatureCounter,
+        string serialNumber,
+        string signature,
+        DateTimeOffset? logTime,
+        DateTimeOffset? startLogTime = null)
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(clientId)) missing.Add("Client-ID");
+        if (!ulong.TryParse(transactionNumber, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _))
+            missing.Add("Transaktionsnummer");
+        if (!ulong.TryParse(signatureCounter, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _))
+            missing.Add("Signaturzähler");
+        if (string.IsNullOrWhiteSpace(serialNumber)) missing.Add("TSE-Seriennummer");
+        if (string.IsNullOrWhiteSpace(signature)) missing.Add("Prüfwert/Signatur");
+        if (startLogTime is null) missing.Add("Vorgangsbeginn");
+        if (logTime is null) missing.Add("Vorgangsende");
+
+        return missing.Count == 0
+            ? SignedResult(clientId.Trim(), transactionNumber, signatureCounter, serialNumber.Trim(), signature, logTime, startLogTime)
+            : Outage("Unvollständiges TSE-Ergebnis trotz Success: " + string.Join(", ", missing));
+    }
+
     public static SaleTseResult Outage(string message) =>
         new(false, "", "", "", "", "", null, message);
 }
