@@ -33,7 +33,89 @@ public static class MenuVatPolicy
         IReadOnlyList<MenuComponentSnapshot> effectiveComponents;
         if (selectedComponents is { Count: > 0 })
         {
-            effectiveComponents = selectedComponents;
+            var selected = selectedComponents.ToArray();
+            var resolved = new List<MenuComponentSnapshot>();
+
+            foreach (var fixedItem in menu.ComboItems
+                         .Where(x => !x.IsChoice)
+                         .OrderBy(x => x.SortOrder))
+            {
+                var picked = selected.SingleOrDefault(x =>
+                    x.ProductId == fixedItem.ComponentProductId &&
+                    string.IsNullOrWhiteSpace(x.ChoiceGroup));
+                if (picked is null)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Fester Menübestandteil {fixedItem.ComponentName} fehlt in der Verkaufsauswahl.");
+
+                if (!byId.TryGetValue(fixedItem.ComponentProductId, out var component))
+                    return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {fixedItem.ComponentProductId} fehlt im Artikelstamm.");
+
+                if (component.PfandCents != 0)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Menübestandteil {component.Name} enthält Pfand. " +
+                        "Menü-Pfand muss separat abgebildet werden.");
+
+                resolved.Add(new MenuComponentSnapshot(
+                    component.Id,
+                    component.Name,
+                    fixedItem.Quantity,
+                    component.BasePriceCents,
+                    component.VatRate,
+                    component.ImHausApplicable,
+                    ""));
+            }
+
+            foreach (var group in menu.ComboItems
+                         .Where(x => x.IsChoice)
+                         .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+            {
+                var groupName = group.Key.Trim().ToUpperInvariant();
+                var selectedForGroup = selected
+                    .Where(x => string.Equals(
+                        x.ChoiceGroup,
+                        groupName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                if (selectedForGroup.Length != 1)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Auswahlgruppe {groupName} benötigt genau einen gewählten Artikel.");
+
+                var picked = selectedForGroup[0];
+                var configured = group.SingleOrDefault(x => x.ComponentProductId == picked.ProductId);
+                if (configured is null)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Artikel {picked.Name} gehört nicht zur Auswahlgruppe {groupName}.");
+
+                if (!byId.TryGetValue(configured.ComponentProductId, out var component))
+                    return MenuVatAnalysis.Invalid(menu, $"Menübestandteil {configured.ComponentProductId} fehlt im Artikelstamm.");
+
+                if (component.PfandCents != 0)
+                    return MenuVatAnalysis.Invalid(
+                        menu,
+                        $"Menübestandteil {component.Name} enthält Pfand. " +
+                        "Menü-Pfand muss separat abgebildet werden.");
+
+                resolved.Add(new MenuComponentSnapshot(
+                    component.Id,
+                    component.Name,
+                    configured.Quantity,
+                    component.BasePriceCents,
+                    component.VatRate,
+                    component.ImHausApplicable,
+                    groupName));
+            }
+
+            if (resolved.Count != selected.Length)
+                return MenuVatAnalysis.Invalid(
+                    menu,
+                    "Verkaufsauswahl enthält nicht konfigurierte Menübestandteile.");
+
+            effectiveComponents = resolved;
         }
         else
         {
