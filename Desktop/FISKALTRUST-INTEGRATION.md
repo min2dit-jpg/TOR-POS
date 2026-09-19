@@ -163,3 +163,19 @@ The branch also now distinguishes:
 TOR deliberately does not map its generic CARD payment to debit or credit yet.
 That classification must come from terminal/payment evidence rather than be
 guessed.
+
+
+## Ambiguous Sign recovery prepared
+
+`IFiskaltrustMiddlewareClient.RecoverAsync` is now available on the sandbox
+branch. It intentionally takes the original `ReceiptRequest`, keeps the same
+`cbReceiptReference`, charge items and payment items, and only adds the German
+ReceiptRequest recovery flag before calling `/json/v1/Sign`.
+
+A JSON `null` response is treated as "no previously processed matching
+receipt found" and is returned as null instead of being misreported as a signed
+receipt.
+
+This method is not wired into checkout yet. The production recovery journal
+will only call it after the physical-TSE sandbox run establishes the exact
+persist-before-send and restart behavior.
