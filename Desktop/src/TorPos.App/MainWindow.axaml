@@ -816,7 +816,6 @@
          and the cashier workspace, leaving the status/header row visible. -->
     <Border x:Name="MenuHubOverlay"
             Grid.Row="1" Grid.RowSpan="2" Grid.ColumnSpan="2"
-            Panel.ZIndex="50"
             IsVisible="False"
             Background="#0B1320"
             BorderBrush="#294765"
