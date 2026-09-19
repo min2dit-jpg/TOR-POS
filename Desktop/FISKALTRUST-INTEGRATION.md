@@ -230,3 +230,22 @@ constant `0x4445` country prefix with a failure bit.
 No automatic recovery action is triggered yet. A future runtime adapter may
 use a ZeroReceipt to probe/recover the TSE communication state only after the
 physical-TSE tests confirm the intended behavior.
+
+
+## Hardware-test guards tightened
+
+The current sandbox adapter follows the current fiskaltrust DE reference tables:
+
+- DE `ftState` handling recognizes the documented TSE-communication-failed
+  state (`0x4445000000000002`) and SCU-switching state
+  (`0x4445000000000100`); undocumented guessed DE state bits were removed.
+- `ZeroReceiptWithTseInfo` adds the DE TSE-info flag
+  `0x0000000000800000` but does not force self-test/time-update. The latter
+  stays opt-in because fiskaltrust explicitly warns against using it by default.
+- The restricted cash-sale builder preserves TOR's `StartedAt` as the earliest
+  item timestamp so an implicit-flow response can represent the actual business
+  action start.
+- Pfand is blocked in the first cash-sale sandbox payload. TOR's current cart
+  line can include deposit in the article price, while fiskaltrust/DSFinV-K has
+  dedicated Pfand/PfandRueckzahlung cases. It will be enabled only after a
+  dedicated split/mapping test exists.
