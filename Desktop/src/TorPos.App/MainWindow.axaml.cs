@@ -30,6 +30,7 @@ public partial class MainWindow:Window
     private readonly IAuditLog _audit;
     private readonly IFiscalComplianceService _compliance;
     private readonly IDsfinvkExportService _dsfinvkExport;
+    private readonly DatevKassenarchivService _datevKassenarchiv;
     private readonly ProductImageStore _images;
     private readonly PerformanceCounters _perf;
     private readonly ISettingsRepository _settings;
@@ -147,6 +148,7 @@ public partial class MainWindow:Window
         IAuditLog audit,
         IFiscalComplianceService compliance,
         IDsfinvkExportService dsfinvkExport,
+        DatevKassenarchivService datevKassenarchiv,
         ProductImageStore images,
         PerformanceCounters perf,
         ISettingsRepository settings,
@@ -188,6 +190,7 @@ public partial class MainWindow:Window
         _parkedReceipts=parkedReceipts;_dailyClosingGuard=dailyClosingGuard;
         _cashMovements=cashMovements;_audit=audit;_compliance=compliance;
         _dsfinvkExport=dsfinvkExport;
+        _datevKassenarchiv=datevKassenarchiv;
         _images=images;_perf=perf;
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
         _digitalReceipts=digitalReceipts;
