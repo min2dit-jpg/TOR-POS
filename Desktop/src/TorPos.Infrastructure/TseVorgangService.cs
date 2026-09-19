@@ -92,34 +92,49 @@ public sealed class TseVorgangService
     // ----------------------------------------------------------------- finish
 
     /// <summary>
-    /// Ends the Vorgang with its data and returns the TSE result. With a started
-    /// transaction the TSE finishes that one. When the start had failed (TSE
-    /// unavailable at the first position) and the TSE works again now, the
-    /// transaction is started and finished here, so the Vorgang is still
-    /// secured before its receipt; otherwise the result is the documented outage.
+    /// Ends the Vorgang with its data and returns the TSE result. A transaction
+    /// that was started at Vorgangsbeginn is finished as the SAME transaction.
+    ///
+    /// KassenSichV §2 requires the transaction to start immediately with the
+    /// Vorgang. If that start failed, TOR preserves the Vorgang as an outage;
+    /// it never creates a later payment-time transaction and presents that
+    /// later start time as the original one.
     /// </summary>
     public async Task<SaleTseResult> FinishAsync(string vorgangId, string processType, string processData, string actor, string reference, CancellationToken ct = default)
     {
         var vorgang = await GetAsync(vorgangId, ct);
         SaleTseResult result;
 
-        if (vorgang is { State: Open or Parked } started && TryTransaction(started, out var transaction))
+        if (vorgang is { State: Open or Parked } started)
         {
-            var (finish, _) = await _tse.FinishTransactionAsync(
-                new TseTransactionFinishRequest(started.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(processData), processType),
-                actor,
-                ct);
+            if (TryTransaction(started, out var transaction))
+            {
+                var (finish, _) = await _tse.FinishTransactionAsync(
+                    new TseTransactionFinishRequest(started.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(processData), processType),
+                    actor,
+                    ct);
 
-            result = finish.Success
-                ? SaleTseResult.FromSuccessfulTse(
-                    started.ClientId,
-                    finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
-                    finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
-                    finish.SerialNumber,
-                    finish.SignatureBase64,
-                    finish.LogTime,
-                    started.StartLogTime)
-                : SaleTseResult.Outage(finish.Message);
+                result = finish.Success
+                    ? SaleTseResult.FromSuccessfulTse(
+                        started.ClientId,
+                        finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
+                        finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
+                        finish.SerialNumber,
+                        finish.SignatureBase64,
+                        finish.LogTime,
+                        started.StartLogTime)
+                    : SaleTseResult.Outage(finish.Message);
+
+                if (finish.Success && !result.Signed)
+                    await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
+            }
+            else
+            {
+                result = SaleTseResult.Outage(
+                    started.StartError.Length > 0
+                        ? started.StartError
+                        : "TSE-Transaktion wurde bei Vorgangsbeginn nicht gestartet.");
+            }
         }
         else
         {
@@ -461,16 +476,22 @@ public sealed class TseVorgangService
             new TseTransactionFinishRequest(clientId, start.TransactionNumber, System.Text.Encoding.UTF8.GetBytes(processData), processType),
             actor,
             ct);
-        return finish.Success
-            ? SaleTseResult.FromSuccessfulTse(
-                clientId,
-                finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
-                finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
-                finish.SerialNumber,
-                finish.SignatureBase64,
-                finish.LogTime,
-                start.LogTime)
-            : SaleTseResult.Outage(finish.Message);
+        if (!finish.Success)
+            return SaleTseResult.Outage(finish.Message);
+
+        var result = SaleTseResult.FromSuccessfulTse(
+            clientId,
+            finish.TransactionNumber.ToString(CultureInfo.InvariantCulture),
+            finish.SignatureCounter.ToString(CultureInfo.InvariantCulture),
+            finish.SerialNumber,
+            finish.SignatureBase64,
+            finish.LogTime,
+            start.LogTime);
+
+        if (!result.Signed)
+            await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
+
+        return result;
     }
 
     private async Task<(string ClientId, string? Problem)> TseReadyAsync(string actor, CancellationToken ct)
