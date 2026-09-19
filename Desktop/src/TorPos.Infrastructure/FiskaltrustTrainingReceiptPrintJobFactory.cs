@@ -70,7 +70,7 @@ public static class FiskaltrustTrainingReceiptPrintJobFactory
                 verificationValue: evidence.Signature,
                 hasProcessStart:
                     !string.IsNullOrWhiteSpace(
-                        evidence.TransactionStartTime),
+                        evidence.ProcessStartTime),
                 hasProcessEnd:
                     !string.IsNullOrWhiteSpace(
                         evidence.SignatureLogTime));
@@ -130,25 +130,31 @@ public static class FiskaltrustTrainingReceiptPrintJobFactory
             TrainingReceipt: true,
             ExternalReceiptId: response.FtReceiptIdentification,
             MiddlewareHeaderLines:
-                response.FtReceiptHeader.ToArray(),
+                (response.FtReceiptHeader ?? Array.Empty<string>())
+                    .ToArray(),
             MiddlewareChargeItemLines:
-                response.FtChargeItems
+                (response.FtChargeItems ??
+                 Array.Empty<FiskaltrustChargeItem>())
                     .Select(FormatChargeSupplement)
                     .ToArray(),
             MiddlewareChargeLines:
-                response.FtChargeLines.ToArray(),
+                (response.FtChargeLines ?? Array.Empty<string>())
+                    .ToArray(),
             MiddlewarePayItemLines:
-                response.FtPayItems
+                (response.FtPayItems ??
+                 Array.Empty<FiskaltrustPayItem>())
                     .Select(FormatPaySupplement)
                     .ToArray(),
             MiddlewarePayLines:
-                response.FtPayLines.ToArray(),
+                (response.FtPayLines ?? Array.Empty<string>())
+                    .ToArray(),
             MiddlewareRequiredSignatureLines:
                 RequiredQrModeSignatureLines(response),
             MiddlewareTextFallbackSignatureLines:
                 TextFallbackSignatureLines(response),
             MiddlewareFooterLines:
-                response.FtReceiptFooter.ToArray());
+                (response.FtReceiptFooter ?? Array.Empty<string>())
+                    .ToArray());
     }
 
     private static string FormatChargeSupplement(
