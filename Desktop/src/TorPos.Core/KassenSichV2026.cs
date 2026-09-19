@@ -48,13 +48,6 @@ public static class KassenSichV2026
                 : $"Zahlungsaufteilung {paymentSum} ct stimmt nicht mit Bonbetrag {sale.TotalCents} ct überein.",
             result);
 
-        Add(
-            "KASSENSICHV_2_REGISTER_SERIAL",
-            "§ 2 Seriennummer Aufzeichnungssystem",
-            !string.IsNullOrWhiteSpace(sale.TseClientId),
-            "TSE-Client-ID/Kassen-Identität muss beim signierten Vorgang nachvollziehbar sein.",
-            result);
-
         if (sale.TseOutage)
         {
             // A real outage may lack TSE-generated values. The outage itself
@@ -71,6 +64,13 @@ public static class KassenSichV2026
 
             return result;
         }
+
+        Add(
+            "KASSENSICHV_2_REGISTER_SERIAL",
+            "§ 2 Seriennummer Aufzeichnungssystem",
+            !string.IsNullOrWhiteSpace(sale.TseClientId),
+            "Beim signierten Vorgang muss die Kassen-Identität/TSE-Client-ID gespeichert sein.",
+            result);
 
         Add(
             "KASSENSICHV_2_TXN",
