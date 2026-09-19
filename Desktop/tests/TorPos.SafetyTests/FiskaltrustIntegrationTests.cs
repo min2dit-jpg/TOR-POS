@@ -974,7 +974,7 @@ public static class FiskaltrustIntegrationTests
                 {
                     FtSignatureFormat = FiskaltrustSignatureFormats.Text,
                     FtSignatureType = FiskaltrustDeSignatureTypes.ProcessStartTime,
-                    Data = "2026-09-19T06:35:00.000Z"
+                    Data = "2026-09-19T06:34:55.000Z"
                 },
                 new FiskaltrustSignatureItem
                 {
@@ -1024,7 +1024,7 @@ public static class FiskaltrustIntegrationTests
             !trainingPrint.OpenCashDrawer &&
             trainingPrint.ExternalReceiptId == "FT-ACCEPT-2001" &&
             trainingPrint.TseProcessStartRaw ==
-                "2026-09-19T06:35:00.000Z" &&
+                "2026-09-19T06:34:55.000Z" &&
             trainingPrint.TseProcessEndRaw ==
                 "2026-09-19T06:35:31.000Z" &&
             TseQrCodePayload.Build(trainingPrint) ==
@@ -1086,6 +1086,25 @@ public static class FiskaltrustIntegrationTests
             failedState.Errors.Any(x =>
                 x.Contains("TSE-Kommunikation", StringComparison.Ordinal)),
             "fiskaltrust physical-TSE acceptance validator rejects a receipt returned in TSE communication-failed state");
+
+        var missingProcessStart =
+            FiskaltrustSandboxAcceptance.ValidateSimpleCashSale(
+                acceptanceSale,
+                acceptanceRequest,
+                acceptanceResponse with
+                {
+                    FtSignatures =
+                        acceptanceResponse.FtSignatures
+                            .Where(x =>
+                                x.FtSignatureType !=
+                                FiskaltrustDeSignatureTypes.ProcessStartTime)
+                            .ToArray()
+                });
+        assert(
+            !missingProcessStart.Passed &&
+            missingProcessStart.Errors.Any(x =>
+                x.Contains("Vorgangsbeginn", StringComparison.Ordinal)),
+            "fiskaltrust physical-TSE acceptance requires the separate business-action process-start signature");
 
         var coordinatorPath = Path.Combine(
             Path.GetTempPath(),
