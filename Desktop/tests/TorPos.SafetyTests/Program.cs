@@ -314,6 +314,7 @@ using (var sumup = new SumUpConnectionService(sumupHandler))
     using var canceled = new CancellationTokenSource(); canceled.Cancel();
     await Reject(()=>sumup.ListAsync("MTEST", "fake-secret", canceled.Token), "SumUp connection honors cancellation");
 }
+await FiskaltrustIntegrationTests.Run(Assert);
 await CloudTests.Run(root,Assert,Reject);
 await R48ReviewTests.Run(root,Assert,Reject);
 await R49ReviewTests.Run(root,Assert,Reject);
@@ -395,7 +396,7 @@ await R148ReviewTests.Run(root,Assert);
 await R149ReviewTests.Run(root,Assert);
 
 // R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
-const int ExpectedSafetyChecks = 853;
+const int ExpectedSafetyChecks = 857;
 
 if (checks != ExpectedSafetyChecks)
 {
