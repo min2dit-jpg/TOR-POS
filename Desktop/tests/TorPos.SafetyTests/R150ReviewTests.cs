@@ -177,8 +177,14 @@ public static class R150ReviewTests
             Method = PaymentMethod.Cash,
             Lines = new[]
             {
-                snapshot.Lines[0] with
+                new CartLine
                 {
+                    ProductId = menu.Id,
+                    ProductName = menu.Name,
+                    Quantity = 1m,
+                    UnitPriceCents = 810,
+                    ListUnitPriceCents = 900,
+                    VatRate = 7m,
                     PromotionId = 88,
                     PromotionName = "Extra Angebot",
                     PromotionPercent = 10,
