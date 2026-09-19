@@ -876,6 +876,33 @@ public static class FiskaltrustIntegrationTests
             FtQueueItemId = "queue-item-accept",
             FtReceiptIdentification = "FT-ACCEPT-2001",
             FtState = FiskaltrustDeState.Ready,
+            FtReceiptHeader = ["FT HEADER"],
+            FtChargeItems =
+            [
+                new FiskaltrustChargeItem
+                {
+                    Quantity = 1m,
+                    Description = "FT Zusatzartikel",
+                    Amount = 0.10m,
+                    VatRate = 19m,
+                    FtChargeItemCase =
+                        FiskaltrustDeCases.StandardChargeItem
+                }
+            ],
+            FtChargeLines = ["FT CHARGE LINE"],
+            FtPayItems =
+            [
+                new FiskaltrustPayItem
+                {
+                    Quantity = 1m,
+                    Description = "FT Zusatzzahlung",
+                    Amount = 0.10m,
+                    FtPayItemCase =
+                        FiskaltrustDeCases.CashPayment
+                }
+            ],
+            FtPayLines = ["FT PAY LINE"],
+            FtReceiptFooter = ["FT FOOTER"],
             FtSignatures =
             [
                 new FiskaltrustSignatureItem
@@ -1023,12 +1050,26 @@ public static class FiskaltrustIntegrationTests
             trainingPrint.ReceiptNumber == 0 &&
             !trainingPrint.OpenCashDrawer &&
             trainingPrint.ExternalReceiptId == "FT-ACCEPT-2001" &&
-            trainingPrint.TseProcessStartRaw ==
+            trainingPrint.BusinessProcessStartRaw ==
                 "2026-09-19T06:34:55.000Z" &&
-            trainingPrint.TseProcessEndRaw ==
+            trainingPrint.BusinessProcessEndRaw ==
                 "2026-09-19T06:35:31.000Z" &&
             TseQrCodePayload.Build(trainingPrint) ==
-                acceptance.Evidence.QrPayload,
+                acceptance.Evidence.QrPayload &&
+            trainingPrint.MiddlewareHeaderLines!.SequenceEqual(["FT HEADER"]) &&
+            trainingPrint.MiddlewareChargeLines!.SequenceEqual(["FT CHARGE LINE"]) &&
+            trainingPrint.MiddlewarePayLines!.SequenceEqual(["FT PAY LINE"]) &&
+            trainingPrint.MiddlewareFooterLines!.SequenceEqual(["FT FOOTER"]) &&
+            trainingPrint.MiddlewareChargeItemLines!.Single().Contains(
+                "FT Zusatzartikel",
+                StringComparison.Ordinal) &&
+            trainingPrint.MiddlewarePayItemLines!.Single().Contains(
+                "FT Zusatzzahlung",
+                StringComparison.Ordinal) &&
+            trainingPrint.MiddlewareRequiredSignatureLines!.Any(x =>
+                x.Contains("BSI-K-TR-TEST", StringComparison.Ordinal)) &&
+            trainingPrint.MiddlewareRequiredSignatureLines!.Any(x =>
+                x.Contains("TSE-TEST-SERIAL", StringComparison.Ordinal)),
             "fiskaltrust AVTraining print job keeps signed QR/times exact, uses no production bon number and never opens the cash drawer");
 
         var incompleteTrainingPrintBlocked = false;
