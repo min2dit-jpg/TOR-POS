@@ -4460,6 +4460,19 @@ public partial class MainWindow:Window
             var license = _commercialLicense.Check(edition);
             if (!license.IsActive)
             {
+                if (TorDistribution.IsDemoBuild && TrialRuntime.Current?.IsActive == true)
+                {
+                    var days = TrialRuntime.Current.RemainingDays;
+                    SetFiscalModeLabel(
+                        $"DEMO · {days} TAGE · KEINE ECHTE BUCHUNG",
+                        $"DEMO · {days} T",
+                        "DEMO");
+                    FiscalModeText.Foreground = AppTheme.WarningAmber;
+                    CashButtonText.Text = "BAR · DEMO";
+                    CardButtonText.Text = "KARTE · DEMO";
+                    return;
+                }
+
                 // Source-candidate / development builds must remain testable without
                 // a customer license. No real sale is committed in this mode.
                 SetFiscalModeLabel("TESTBETRIEB · KEINE LIZENZ · KEINE ECHTE BUCHUNG", "TEST · KEINE LIZENZ", "TEST");
@@ -4780,6 +4793,29 @@ public partial class MainWindow:Window
 
     private void RefreshLicenseWarning(CommercialLicenseStatus license)
     {
+        if (TorDistribution.IsDemoBuild && TrialRuntime.Current?.IsActive == true)
+        {
+            var trial = TrialRuntime.Current;
+            var trialDays = trial.RemainingDays;
+            LicenseWarningBadge.IsVisible = true;
+            SetHeaderLabel(
+                LicenseWarningText,
+                $"DEMO · {trialDays} TAGE",
+                $"DEMO · {trialDays} T",
+                "DEMO");
+            LicenseWarningText.Foreground =
+                trialDays <= 1
+                    ? new SolidColorBrush(Color.Parse("#FF8A80"))
+                    : new SolidColorBrush(Color.Parse("#FFB74D"));
+            LicenseWarningBadge.Background =
+                new SolidColorBrush(Color.Parse(trialDays <= 1 ? "#5C2525" : "#5A3A10"));
+            ToolTip.SetTip(
+                LicenseWarningBadge,
+                $"7-Tage-Demo bis {trial.ExpiresAtUtc?.ToLocalTime():dd.MM.yyyy HH:mm}. " +
+                "Eine Neuinstallation auf diesem PC startet keine neue Demo.");
+            return;
+        }
+
         if (!license.IsExpiringSoon || string.IsNullOrWhiteSpace(license.RenewalNotice))
         {
             LicenseWarningBadge.IsVisible = false;
