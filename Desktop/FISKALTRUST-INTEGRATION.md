@@ -362,3 +362,18 @@ It never calls Sign and never creates a fiscal receipt/TSE transaction. The
 service is covered with in-process loopback listeners so the CI verifies that
 the three-stage connectivity status is reported correctly without relying on
 external fiskaltrust infrastructure.
+
+
+## Signed BAR hardware test uses a DE training receipt
+
+The first signed cash acceptance receipt is deliberately **not** a normal
+turnover receipt. The sandbox helper
+`FiskaltrustSandboxRequests.TrainingSimpleCashSale` adds the German
+`Training receipt` flag `0x0000000000020000` to the ordinary implicit-flow
+POS receipt.
+
+According to the fiskaltrust DE receipt-case reference, this maps the DSFinV-K
+`BON_TYP` to `AVTraining`. TOR therefore uses it for the controlled
+1.00 EUR / 19 % / BAR hardware acceptance run without writing a production
+`Sale` row. The request is still TSE-signed and can be checked by the existing
+QR/process-data/TSE acceptance validator.
