@@ -170,6 +170,16 @@ public sealed class CartLine
     public long ListUnitPriceCents { get; init; }
 
     public decimal VatRate { get; init; }
+
+    // R151: A menu/combo remains ONE commercial receipt line, but can carry
+    // multiple hidden VAT buckets. GrossCents is the allocation for ONE sold
+    // menu unit. Normal articles leave this empty and continue to use VatRate.
+    // The customer-facing receipt never expands these allocations into
+    // component lines.
+    public MenuVatAllocation[] VatAllocations { get; init; } = Array.Empty<MenuVatAllocation>();
+
+    public bool HasVatAllocations => VatAllocations.Length > 0;
+
     // R97: mirrors Product.ImHausApplicable at the moment this line was
     // added to the cart.
     public bool ImHausApplicable { get; init; } = true;
