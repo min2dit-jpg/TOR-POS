@@ -45,6 +45,27 @@ public partial class App : Avalonia.Application
 
             CrashLog.Write("Startup initialization started.");
 
+#if TOR_DEMO_BUILD
+            using (var trial = new TrialLicenseService())
+            {
+                var trialStatus = await trial.CheckOrActivateAsync();
+                TrialRuntime.Set(trialStatus);
+                CrashLog.Write(
+                    $"Demo trial: state={trialStatus.State}; offline={trialStatus.Offline}; " +
+                    $"reused={trialStatus.Reused}; expires={trialStatus.ExpiresAtUtc:O}");
+
+                if (!trialStatus.IsActive)
+                {
+                    var blocked = new TrialBlockedWindow(trialStatus);
+                    desktop.MainWindow = blocked;
+                    blocked.Closed += (_, _) => desktop.Shutdown();
+                    blocked.Show();
+                    startupWindow.Close();
+                    return;
+                }
+            }
+#endif
+
             var db = new SqliteDatabase();
 
             // R69: every existing pre-R69 customer database is backed up before
