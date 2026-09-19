@@ -1056,29 +1056,22 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
 private static void ValidateFiscalReceipt(ReceiptPrintJob job)
 {
-    // R122: the list itself now lives in TorPos.Core.FiscalReceiptFields, so
-    // the digital receipt (R103) checks the SAME fields instead of silently
-    // omitting whichever ones happened to be blank. R121's rule is unchanged:
-    // Vorgangsende comes from the TSE log time and belongs with the other
-    // TSE-generated fields - mandatory when signed, legitimately absent during
-    // an outage.
-    var missing = FiscalReceiptFields.Missing(
-        job.CompanyName,
-        job.CompanyAddress,
-        job.EasSerial,
-        job.TseOutage,
-        job.TseSerial,
-        job.TseTransactionNumber,
-        job.SignatureCounter > 0,
-        job.VerificationValue,
-        job.ProcessStart is not null,
-        job.ProcessEnd is not null);
+    // KassenSichV 2026 § 6: validate not only presence of TSE fields but also
+    // receipt arithmetic and tax-container representability. This prevents a
+    // document with inconsistent VAT/total data from being printed as a
+    // productive fiscal receipt merely because the textual fields are filled.
+    var findings = KassenSichV2026
+        .ValidateReceipt(job)
+        .Where(x => !x.Ready)
+        .ToArray();
 
-    if (missing.Count > 0)
+    if (findings.Length > 0)
     {
         throw new InvalidOperationException(
-            "Produktivbeleg gesperrt. Fiskal-Felder fehlen: " +
-            string.Join(", ", missing));
+            "Produktivbeleg gesperrt. KassenSichV-Prüfung fehlgeschlagen: " +
+            string.Join(
+                " | ",
+                findings.Select(x => $"{x.Requirement}: {x.Detail}")));
     }
 }
 
