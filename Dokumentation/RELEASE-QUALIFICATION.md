@@ -70,7 +70,7 @@ Vorherige Builds dürfen höchstens eindeutig als Development/Validation/Pre-Rel
 
 ## Aktueller Stand
 
-R149 ist der dokumentierte Software-Basisstand. BAR TESTBON-Vorbereitung ist als nicht-fiskalische Diagnose-/Abnahmevorbereitung integriert. Nach der CI-Bereinigung liegt der automatisierte Safety-Stand bei 864/864 Checks mit 0 Compiler-Warnings und 0 Errors. Die reale physische Swissbit-TSE-End-to-End-Abnahme bleibt separat erforderlich.
+R149 ist weiterhin der dokumentierte Produktions-Basisstand. Die KassenSichV-2026-Härtung und BAR-TESTBON-Abnahmevorbereitung laufen als noch nicht produktiv freigegebene Validierungsänderungen. Der erwartete automatisierte Safety-Stand liegt nach dieser Härtung bei 881/881 Checks; CI muss zusätzlich 0 Compiler-Warnings und 0 Errors bestätigen. Die reale physische Swissbit-TSE-End-to-End-Abnahme, DSFinV-K-Prüfung, §6-Beleg/QR-Abnahme, Bestellung/Parken-, Pfand- und unabhängige Fiskalprüfung bleiben separate Freigabevoraussetzungen.
 
 ## Release-Tags
 

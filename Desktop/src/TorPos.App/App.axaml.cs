@@ -161,7 +161,8 @@ public partial class App : Avalonia.Application
                 new CheckoutApplicationService(
                     compliance,
                     checkoutJournal,
-                    paymentTerminal);
+                    paymentTerminal,
+                    catalog);
 
             // R68 DI foundation:
             // Async initialization remains explicit, but shared application

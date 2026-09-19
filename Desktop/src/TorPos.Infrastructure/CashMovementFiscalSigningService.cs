@@ -51,7 +51,7 @@ internal static class TseKassenbelegSigner
         if (!finish.Success)
             return SaleTseResult.Outage(finish.Message);
 
-        return SaleTseResult.SignedResult(
+        var result = SaleTseResult.FromSuccessfulTse(
             clientId,
             finish.TransactionNumber.ToString(),
             finish.SignatureCounter.ToString(),
@@ -59,6 +59,11 @@ internal static class TseKassenbelegSigner
             finish.SignatureBase64,
             finish.LogTime,
             start.LogTime);
+
+        if (!result.Signed)
+            await tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
+
+        return result;
     }
 }
 

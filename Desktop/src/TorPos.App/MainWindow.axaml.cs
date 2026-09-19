@@ -2060,6 +2060,25 @@ public partial class MainWindow:Window
             return;
         }
 
+        // R150: Parken/Bestellung itself becomes a fiscal Vorgang on a
+        // production till. Refuse an ambiguous menu before the durable order
+        // row or Bestellung-V1 TSE side effect is created.
+        if (SecuresVorgaengeFiscally())
+        {
+            var blockedMenus = MenuVatPolicy.BlockingMenus(
+                _engine.Cart,
+                _catalog.Products,
+                _imHaus);
+
+            if (blockedMenus.Count > 0)
+            {
+                ScannerStatus.Text =
+                    "PARKEN/BESTELLUNG GESPERRT · Menü-KDV fiskal nicht eindeutig · " +
+                    string.Join(", ", blockedMenus.Select(x => x.MenuName).Distinct());
+                return;
+            }
+        }
+
         SetCheckoutBusy(true);
         try
         {

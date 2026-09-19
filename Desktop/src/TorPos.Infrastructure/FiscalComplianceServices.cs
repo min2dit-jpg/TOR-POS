@@ -534,15 +534,26 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
         var edition = settings.GetValueOrDefault("installation.edition") ?? settings.GetValueOrDefault("business.mode") ?? "KIOSK";
         var commercialLicense = _commercialLicense.Check(edition);
         var isKiosk = string.Equals(edition, "KIOSK", StringComparison.OrdinalIgnoreCase);
-        // These flags are intentionally code-level blockers, not editable settings.
-        // They become true only after implementation + real hardware/export validation.
-        const bool dsfinvkImplementedAndValidated = false;
-        const bool ksichvReceiptValidated = false;
-        const bool parkedOrderTseValidated = false;
-        const bool pfandTaxValidated = false;
-        const bool fiscalReleaseBuild = false;
+        // Acceptance evidence is centralized in FiscalRelease and is not an
+        // editable till setting. An operator cannot self-enable production.
+        var dsfinvkImplementedAndValidated = FiscalRelease.DsfinvkValidated;
+        var ksichvReceiptValidated = FiscalRelease.KassenSichVReceiptValidated;
+        var parkedOrderTseValidated = FiscalRelease.ParkedOrderTseValidated;
+        var pfandTaxValidated = FiscalRelease.PfandTaxValidated;
         var items = new List<FiscalReadinessItem>
         {
+            new(
+                "KASSENSICHV_2_SOFTWARE",
+                "KassenSichV § 2 · Transaktionsdaten",
+                true,
+                "Start/Finish/Abort, Vorgangsart/-daten, Zahlungsarten, Kassen-/TSE-Identität und TSE-Rückgabefelder sind softwareseitig verdrahtet. Fortlaufende Transaktionsnummer, Prüfwert und Signaturzähler müssen von der realen TSE bestätigt werden.",
+                Mandatory: false),
+            new(
+                "KASSENSICHV_6_SOFTWARE",
+                "KassenSichV § 6 · Beleg-Pflichtfelder",
+                true,
+                "Papier- und Digitalbon verwenden denselben zentralen Validator für Unternehmerdaten, Positionen, Entgelt/MwSt. und TSE-Felder. Hardwarebon-Abnahme bleibt separat.",
+                Mandatory: false),
             new("EAS_ID", "Kassen-Seriennummer", KassenSeriennummer.IsValid(kassenSeriennummer), kassenSeriennummer),
             new("TSE_CLIENT", "TSE-Client-ID = Kassen-Seriennummer", clientIdReady, clientIdReady
                 ? "Die TSE protokolliert die Kasse unter ihrer Seriennummer."
@@ -553,7 +564,9 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
             new("RECEIPT", "Beleg § 6 KassenSichV", ksichvReceiptValidated, "TSE-Transaktionsnummer, Signaturzähler und Prüfwert sind noch nicht real befüllt."),
             new("PARKEN_TSE", "Parken / Bestellung", parkedOrderTseValidated, "R83: IMBISS-Bestellannahme ruft bereits einen eigenen 'Bestellung-V1' TSE-Vorgang auf; das Format ist Entwurf und real noch nicht gegen echte TSE-Hardware/DSFinV-K validiert."),
             new("PFAND", isKiosk ? "Pfand-Steuerlogik" : "IMBISS Extra-Steuerlogik", !isKiosk || pfandTaxValidated, isKiosk ? "Pfandlogik ist noch nicht fachlich/fiskal abschließend validiert." : "Pfand ist in IMBISS nicht aktiv. Extras übernehmen die MwSt. aus der Warengruppe.", isKiosk),
-            new("FISCAL_RELEASE", "TOR Produktivfreigabe", fiscalReleaseBuild, "Produktivfreigabe wird erst nach TSE-, DSFinV-K- und Belegtests gesetzt."),
+            new("TSE_E2E", "Physische TSE-End-to-End-Abnahme", FiscalRelease.PhysicalTseE2EValidated, "BAR-Testbon, Start/Finish, QR, Zähler, Seriennummer, TAR-Export, Ausfall und Restart-Recovery müssen mit realer zertifizierter TSE belegt sein."),
+            new("INDEPENDENT_REVIEW", "Unabhängige Fiskalprüfung", FiscalRelease.IndependentFiscalReviewValidated, "Vor Produktivfreigabe muss eine dokumentierte unabhängige Prüfung der fiskalischen Kernpfade abgeschlossen sein."),
+            new("FISCAL_RELEASE", "TOR Produktivfreigabe", FiscalRelease.Enabled, FiscalRelease.Enabled ? "Alle source-controlled Release-Qualifikationen sind erfüllt." : "Fehlende Freigaben: " + string.Join(", ", FiscalRelease.MissingQualifications())),
             new("COMMERCIAL_LICENSE", "Kommerzielle Softwarelizenz", commercialLicense.IsActive, commercialLicense.Message)
         };
         var allowed = items.Where(x => x.Mandatory).All(x => x.Ready);

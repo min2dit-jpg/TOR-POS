@@ -1062,17 +1062,7 @@ private static void ValidateFiscalReceipt(ReceiptPrintJob job)
     // Vorgangsende comes from the TSE log time and belongs with the other
     // TSE-generated fields - mandatory when signed, legitimately absent during
     // an outage.
-    var missing = FiscalReceiptFields.Missing(
-        job.CompanyName,
-        job.CompanyAddress,
-        job.EasSerial,
-        job.TseOutage,
-        job.TseSerial,
-        job.TseTransactionNumber,
-        job.SignatureCounter > 0,
-        job.VerificationValue,
-        job.ProcessStart is not null,
-        job.ProcessEnd is not null);
+    var missing = FiscalReceiptFields.Missing(job);
 
     if (missing.Count > 0)
     {

@@ -42,6 +42,10 @@ jobs:
         run: |
           pwsh -NoProfile -File tools/Verify-Repository-Hygiene.ps1
 
+      - name: Fiskal production kilidini doğrula
+        run: |
+          pwsh -NoProfile -File tools/Verify-Fiscal-Release-Gates.ps1
+
       - name: Sürüm tutarlılığını doğrula
         run: |
           pwsh -NoProfile -File tools/Verify-Version.ps1

@@ -260,7 +260,7 @@ public sealed class OrderFiscalSigningService
             return;
         }
 
-        var result = SaleTseResult.SignedResult(
+        var result = SaleTseResult.FromSuccessfulTse(
             clientId,
             finishResult.TransactionNumber.ToString(),
             finishResult.SignatureCounter.ToString(),
@@ -268,6 +268,9 @@ public sealed class OrderFiscalSigningService
             finishResult.SignatureBase64,
             finishResult.LogTime,
             startResult.LogTime);
+
+        if (!result.Signed)
+            await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
 
         await ApplyAsync(order, result, ct);
     }

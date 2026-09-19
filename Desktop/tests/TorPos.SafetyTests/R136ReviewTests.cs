@@ -111,16 +111,20 @@ public static class R136ReviewTests
                (await vorgaenge.GetAsync("sale-1"))!.State == TseVorgangService.Finished,
             "R136 payment finishes the SAME transaction with the receipt data; Vorgangsbeginn and TSE start time are stored with the sale");
 
-        // the TSE was unavailable at the first position and is back at payment
+        // KassenSichV §2: if immediate TSE start at the first position
+        // failed, recovery before payment must NOT create a later replacement
+        // transaction with a false start time.
         await settings.SaveManyAsync(new Dictionary<string, string> { ["tse.status"] = "" });
         await vorgaenge.StartAsync("sale-2", false, DateTimeOffset.Now, "kasse1");
         var failedStart = await vorgaenge.GetAsync("sale-2");
         await settings.SaveManyAsync(new Dictionary<string, string> { ["tse.status"] = "AKTIV" });
         var sale2 = await sales.GetByIdAsync(await InsertSaleAsync(db, 136002, failedStart!.StartedAt, 300, 19m)) ?? throw new InvalidOperationException("sale");
         await saleSigning.SignInVorgangAsync(sale2, "sale-2", "kasse1");
+        sale2 = await sales.GetByIdAsync(sale2.Id) ?? throw new InvalidOperationException("sale");
         assert(failedStart.TransactionNumber == "" && failedStart.StartError.Contains("nicht aktiv") &&
-               provider.Starts.Count == 2 && provider.Finishes.Count == 2 && sale2.TseOutage == false && sale2.TseStartLogTime is not null,
-            "R136 a start that failed is caught up at payment when the TSE works again, so the Vorgang is still secured before its receipt");
+               provider.Starts.Count == 1 && provider.Finishes.Count == 1 &&
+               sale2.TseOutage && sale2.TseTransactionNumber == "" && sale2.TseStartLogTime is null,
+            "R136 a missed immediate TSE start stays a documented outage and is never replaced by a late transaction at payment");
 
         // ---------- aborted Vorgang ----------
         await vorgaenge.StartAsync("abort-1", false, DateTimeOffset.Now.AddSeconds(-20), "kasse1");
@@ -145,8 +149,8 @@ public static class R136ReviewTests
             await q.ExecuteNonQueryAsync();
         }
         catch (Microsoft.Data.Sqlite.SqliteException) { updateRefused = true; }
-        assert(provider.Finishes.Count == 3 && provider.Finishes[2].ProcessType == "Kassenbeleg-V1" &&
-               Encoding.UTF8.GetString(provider.Finishes[2].ProcessData) == "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^" &&
+        assert(provider.Finishes.Count == 2 && provider.Finishes[1].ProcessType == "Kassenbeleg-V1" &&
+               Encoding.UTF8.GetString(provider.Finishes[1].ProcessData) == "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^" &&
                abortedRows == 1 && abortedItems == 1 && updateRefused &&
                (await vorgaenge.GetAsync("abort-1"))!.State == TseVorgangService.Aborted,
             "R136 an emptied cart finishes its transaction as AVBelegabbruch (Anhang I) and is kept once, immutable, with its positions");
