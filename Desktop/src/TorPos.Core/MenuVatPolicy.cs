@@ -248,10 +248,7 @@ public static class MenuVatPolicy
         var byId = catalog.ToDictionary(x => x.Id);
         var result = new List<MenuVatAnalysis>();
 
-        foreach (var line in lines
-                     .Where(x => x.ProductId > 0)
-                     .GroupBy(x => x.ProductId)
-                     .Select(x => x.First()))
+        foreach (var line in lines.Where(x => x.ProductId > 0))
         {
             if (!byId.TryGetValue(line.ProductId, out var product) || !product.IsCombo)
                 continue;
@@ -282,6 +279,62 @@ public static class MenuVatPolicy
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// R153: the stored menu price is the price with the cheapest configured
+    /// option of every choice group. There is no manually maintained Aufpreis.
+    /// Selecting a more expensive Artikel automatically adds only the difference
+    /// between that Artikel's normal market price and the cheapest option in its
+    /// group. Fixed components do not change the configured menu price.
+    /// </summary>
+    public static long EffectiveMenuPrice(
+        Product menu,
+        IReadOnlyList<Product> catalog,
+        IReadOnlyList<MenuComponentSnapshot> selectedComponents)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(selectedComponents);
+
+        if (!menu.IsCombo || !menu.ComboItems.Any(x => x.IsChoice))
+            return menu.BasePriceCents;
+
+        var byId = catalog.ToDictionary(x => x.Id);
+        long delta = 0;
+
+        foreach (var group in menu.ComboItems
+                     .Where(x => x.IsChoice)
+                     .GroupBy(x => x.ChoiceGroup, StringComparer.OrdinalIgnoreCase))
+        {
+            var groupName = group.Key.Trim().ToUpperInvariant();
+            var picked = selectedComponents
+                .Where(x => string.Equals(x.ChoiceGroup, groupName, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (picked.Length != 1)
+                throw new InvalidOperationException(
+                    $"Auswahlgruppe {groupName} benötigt genau einen gewählten Artikel.");
+
+            long Market(ProductComboItem item)
+            {
+                if (!byId.TryGetValue(item.ComponentProductId, out var product))
+                    throw new InvalidOperationException(
+                        $"Menübestandteil {item.ComponentName} fehlt im Artikelstamm.");
+                return checked((long)Math.Round(
+                    item.Quantity * product.BasePriceCents,
+                    MidpointRounding.AwayFromZero));
+            }
+
+            var configured = group.FirstOrDefault(x => x.ComponentProductId == picked[0].ProductId)
+                ?? throw new InvalidOperationException(
+                    $"Artikel {picked[0].Name} gehört nicht zur Auswahlgruppe {groupName}.");
+
+            var cheapest = group.Min(Market);
+            var selected = Market(configured);
+            delta = checked(delta + Math.Max(0L, selected - cheapest));
+        }
+
+        return checked(menu.BasePriceCents + delta);
     }
 
     public static CartLine[] ApplyAllocations(
