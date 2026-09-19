@@ -50,6 +50,10 @@ jobs:
         run: |
           pwsh -NoProfile -File tools/Verify-Version.ps1
 
+      - name: Simulator sözleşmesini doğrula
+        run: |
+          pwsh -NoProfile -File tools/Verify-Simulator-Contract.ps1
+
       - name: .NET 10 SDK kur
         id: dotnet
         uses: actions/setup-dotnet@v6
