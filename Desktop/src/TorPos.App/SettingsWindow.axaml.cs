@@ -2298,39 +2298,55 @@ private Control FiskaltrustPage()
 
             if (report.Passed)
             {
-                var values = await _settings.LoadAllAsync();
-                var companyName = values.GetText("company.name");
-                var street = values.GetText("company.street");
-                var zip = values.GetText("company.zip");
-                var city = values.GetText("company.city");
-                var locality = string.Join(
-                    " ",
-                    new[] { zip, city }
-                        .Where(x => !string.IsNullOrWhiteSpace(x)));
-                var companyAddress = string.Join(
-                    ", ",
-                    new[] { street, locality }
-                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+                try
+                {
+                    var values = await _settings.LoadAllAsync();
+                    var companyName = values.GetText("company.name");
+                    var street = values.GetText("company.street");
+                    var zip = values.GetText("company.zip");
+                    var city = values.GetText("company.city");
+                    var locality = string.Join(
+                        " ",
+                        new[] { zip, city }
+                            .Where(x => !string.IsNullOrWhiteSpace(x)));
+                    var companyAddress = string.Join(
+                        ", ",
+                        new[] { street, locality }
+                            .Where(x => !string.IsNullOrWhiteSpace(x)));
 
-                lastTrainingPrintJob =
-                    FiskaltrustTrainingReceiptPrintJobFactory.Build(
-                        sale,
-                        request,
-                        response,
-                        companyName,
-                        companyAddress,
-                        values.GetText("company.tax_no"),
-                        values.GetText("company.vat_id"),
-                        values.GetText("receipt.logo_path"),
-                        values.GetBool(
-                            "printer.auto_cut.enabled",
-                            fallback: true));
+                    lastTrainingPrintJob =
+                        FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                            sale,
+                            request,
+                            response,
+                            companyName,
+                            companyAddress,
+                            values.GetText("company.tax_no"),
+                            values.GetText("company.vat_id"),
+                            values.GetText("receipt.logo_path"),
+                            values.GetBool(
+                                "printer.auto_cut.enabled",
+                                fallback: true));
 
-                printTrainingButton.IsEnabled = true;
-                SetResult(
-                    trainingPrintStatus,
-                    true,
-                    "Bereit · signierte fiskaltrust-Daten werden unverändert als QR/TSE-Nachweis gedruckt.");
+                    printTrainingButton.IsEnabled = true;
+                    SetResult(
+                        trainingPrintStatus,
+                        true,
+                        "Bereit · signierte fiskaltrust-Daten werden unverändert als QR/TSE-Nachweis gedruckt.");
+                }
+                catch (Exception printPreparationError)
+                {
+                    // The fiscal Sign already succeeded and must never be
+                    // misreported as failed just because the local print
+                    // configuration is incomplete.
+                    lastTrainingPrintJob = null;
+                    printTrainingButton.IsEnabled = false;
+                    SetResult(
+                        trainingPrintStatus,
+                        false,
+                        "Sign/Acceptance bestanden, Druck aber noch gesperrt · " +
+                        printPreparationError.Message);
+                }
             }
             else
             {
