@@ -408,10 +408,10 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_public_receipts_expiry ON public_receipts(expires_at);
 
-    -- 7-day public desktop trial. Only the SHA-256 device fingerprint is stored;
-    -- raw MachineGuid / volume serial values never leave the Windows client.
-    CREATE TABLE IF NOT EXISTS trial_devices(
-      fingerprint_hash TEXT PRIMARY KEY,
+    -- 7-day public desktop trial. The client generates a random Trial-ID
+    -- stored machine-wide in ProgramData. No hardware identifier is collected.
+    CREATE TABLE IF NOT EXISTS trial_ids(
+      trial_id TEXT PRIMARY KEY,
       first_seen_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       last_seen_at TEXT NOT NULL,
@@ -419,7 +419,7 @@ function initSchema() {
       last_version TEXT NOT NULL DEFAULT '',
       last_revision TEXT NOT NULL DEFAULT ''
     );
-    CREATE INDEX IF NOT EXISTS idx_trial_devices_expiry ON trial_devices(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_trial_ids_expiry ON trial_ids(expires_at);
   `);
 }
 
@@ -1044,29 +1044,29 @@ async function handler(req, res) {
       }catch(err){const msg=(err.message||'Google-Anmeldung fehlgeschlagen.').slice(0,600);db.prepare("UPDATE google_oauth_pairs SET status='ERROR',error=? WHERE id=?").run(msg,row.id);return html(res,502,`<!doctype html><meta charset="utf-8"><title>TOR POS</title><main style="font-family:system-ui;max-width:620px;margin:70px auto;padding:24px"><h1>Google-Verbindung fehlgeschlagen</h1><p>${htmlEscape(msg)}</p></main>`);}
     }
 
-    // Public 7-day desktop trial. Reinstalling TOR POS does not reset the
-    // clock: the stable SHA-256 fingerprint is the primary key and the original
-    // first_seen_at/expires_at pair is returned on every later activation.
+    // Public 7-day desktop trial. The random Trial-ID lives outside the
+    // normal per-user application data so a regular uninstall/reinstall keeps
+    // the original server-side first_seen_at/expires_at pair.
     if(req.method==='POST' && pathname==='/api/v1/trial/activate'){
       if(trialLimited(req))return json(res,429,{ok:false,error:'Zu viele Demo-Aktivierungen. Bitte später erneut versuchen.'});
       const body=await readJson(req);
-      const fingerprint=String(body.fingerprint_sha256||'').trim().toUpperCase();
+      const trialId=String(body.trial_id||'').trim().toUpperCase();
       const version=String(body.version||'').trim().slice(0,80);
       const revision=String(body.revision||'').trim().slice(0,80);
-      if(!/^[A-F0-9]{64}$/.test(fingerprint))return json(res,400,{ok:false,error:'Ungültiger Demo-Gerätefingerabdruck.'});
+      if(!/^[A-F0-9]{64}$/.test(trialId))return json(res,400,{ok:false,error:'Ungültige Demo-ID.'});
 
       const serverTime=nowIso();
-      let row=db.prepare('SELECT * FROM trial_devices WHERE fingerprint_hash=?').get(fingerprint);
+      let row=db.prepare('SELECT * FROM trial_ids WHERE trial_id=?').get(trialId);
       let reused=true;
       if(!row){
         reused=false;
         const expiresAt=new Date(Date.parse(serverTime)+7*24*60*60*1000).toISOString();
-        db.prepare('INSERT INTO trial_devices(fingerprint_hash,first_seen_at,expires_at,last_seen_at,activation_count,last_version,last_revision) VALUES(?,?,?,?,1,?,?)')
-          .run(fingerprint,serverTime,expiresAt,serverTime,version,revision);
-        row=db.prepare('SELECT * FROM trial_devices WHERE fingerprint_hash=?').get(fingerprint);
+        db.prepare('INSERT INTO trial_ids(trial_id,first_seen_at,expires_at,last_seen_at,activation_count,last_version,last_revision) VALUES(?,?,?,?,1,?,?)')
+          .run(trialId,serverTime,expiresAt,serverTime,version,revision);
+        row=db.prepare('SELECT * FROM trial_ids WHERE trial_id=?').get(trialId);
       }else{
-        db.prepare('UPDATE trial_devices SET last_seen_at=?,activation_count=activation_count+1,last_version=?,last_revision=? WHERE fingerprint_hash=?')
-          .run(serverTime,version,revision,fingerprint);
+        db.prepare('UPDATE trial_ids SET last_seen_at=?,activation_count=activation_count+1,last_version=?,last_revision=? WHERE trial_id=?')
+          .run(serverTime,version,revision,trialId);
       }
 
       const state=Date.parse(row.expires_at)>Date.parse(serverTime)?'ACTIVE':'EXPIRED';

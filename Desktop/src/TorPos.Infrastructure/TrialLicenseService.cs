@@ -1,11 +1,9 @@
 using System.Globalization;
 using System.Net.Http.Json;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Win32;
 using TorPos.Core;
 
 namespace TorPos.Infrastructure;
@@ -13,7 +11,7 @@ namespace TorPos.Infrastructure;
 public sealed class TrialLicenseService : IDisposable
 {
     private sealed record TrialCache(
-        string FingerprintSha256,
+        string TrialId,
         DateTimeOffset StartedAtUtc,
         DateTimeOffset ExpiresAtUtc,
         DateTimeOffset LastServerTimeUtc,
@@ -38,7 +36,7 @@ public sealed class TrialLicenseService : IDisposable
     private readonly Uri _activationEndpoint;
     private readonly Func<DateTimeOffset> _utcNow;
     private readonly string _cachePath;
-    private readonly Func<string> _fingerprintProvider;
+    private readonly string _identityPath;
     private readonly bool _ownsHttp;
 
     public TrialLicenseService(
@@ -46,7 +44,7 @@ public sealed class TrialLicenseService : IDisposable
         Uri? activationEndpoint = null,
         Func<DateTimeOffset>? utcNow = null,
         string? cachePath = null,
-        Func<string>? fingerprintProvider = null)
+        string? identityPath = null)
     {
         _http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false })
         {
@@ -57,20 +55,20 @@ public sealed class TrialLicenseService : IDisposable
             new Uri(TrialPolicy.PublicApiBaseUrl + "/api/v1/trial/activate");
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
         _cachePath = cachePath ?? AppPaths.TrialStatePath;
-        _fingerprintProvider = fingerprintProvider ?? CreateMachineFingerprintHash;
+        _identityPath = identityPath ?? AppPaths.TrialIdentityPath;
     }
 
-    public string FingerprintSha256 => _fingerprintProvider();
+    public string TrialId => LoadOrCreateTrialId(_identityPath);
 
     public async Task<TrialLicenseStatus> CheckOrActivateAsync(
         CancellationToken cancellationToken = default)
     {
         var now = _utcNow();
-        string fingerprint;
+        string trialId;
 
         try
         {
-            fingerprint = _fingerprintProvider();
+            trialId = LoadOrCreateTrialId(_identityPath);
         }
         catch (Exception ex) when (
             ex is InvalidOperationException or
@@ -80,11 +78,11 @@ public sealed class TrialLicenseService : IDisposable
         {
             return new TrialLicenseStatus(
                 TrialLicenseState.VerificationRequired,
-                "Dieser PC konnte für die Demo nicht eindeutig erkannt werden. " +
+                "Die lokale Demo-ID konnte nicht gelesen oder erstellt werden. " +
                 "Bitte TOR Service kontaktieren. " + ex.Message);
         }
 
-        var cached = ReadCache(fingerprint);
+        var cached = ReadCache(trialId);
 
         try
         {
@@ -92,7 +90,7 @@ public sealed class TrialLicenseService : IDisposable
             {
                 Content = JsonContent.Create(new
                 {
-                    fingerprint_sha256 = fingerprint,
+                    trial_id = trialId,
                     version = TorRelease.Version,
                     revision = TorRelease.Revision
                 })
@@ -136,7 +134,7 @@ public sealed class TrialLicenseService : IDisposable
                 Reused: reply.Reused);
 
             SaveCache(
-                fingerprint,
+                trialId,
                 reply.StartedAtUtc,
                 reply.ExpiresAtUtc,
                 reply.ServerTimeUtc,
@@ -167,7 +165,7 @@ public sealed class TrialLicenseService : IDisposable
             if (offline.IsActive)
             {
                 SaveCache(
-                    fingerprint,
+                    trialId,
                     cached.StartedAtUtc,
                     cached.ExpiresAtUtc,
                     cached.LastServerTimeUtc,
@@ -177,6 +175,76 @@ public sealed class TrialLicenseService : IDisposable
             return offline;
         }
     }
+
+    public static string LoadOrCreateTrialId(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Trial-ID-Pfad fehlt.", nameof(path));
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                var existing = File.ReadAllText(path, Encoding.UTF8)
+                    .Trim()
+                    .ToUpperInvariant();
+
+                if (IsValidTrialId(existing))
+                    return existing;
+
+                throw new InvalidOperationException(
+                    "Die vorhandene Demo-ID ist beschädigt.");
+            }
+
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            var id = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            var temp = path + ".new";
+            File.WriteAllText(temp, id + Environment.NewLine, new UTF8Encoding(false));
+
+            try
+            {
+                File.Move(temp, path, false);
+                return id;
+            }
+            catch (IOException) when (File.Exists(path))
+            {
+                File.Delete(temp);
+                var concurrent = File.ReadAllText(path, Encoding.UTF8)
+                    .Trim()
+                    .ToUpperInvariant();
+
+                if (IsValidTrialId(concurrent))
+                    return concurrent;
+
+                throw;
+            }
+        }
+        catch
+        {
+            try
+            {
+                var temp = path + ".new";
+                if (File.Exists(temp))
+                    File.Delete(temp);
+            }
+            catch
+            {
+                // Best-effort cleanup only.
+            }
+
+            throw;
+        }
+    }
+
+    public static bool IsValidTrialId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length == 64 &&
+        value.All(static c =>
+            (c >= '0' && c <= '9') ||
+            (c >= 'A' && c <= 'F'));
 
     private static void ValidateServerReply(TrialServerReply reply)
     {
@@ -203,7 +271,7 @@ public sealed class TrialLicenseService : IDisposable
         }
     }
 
-    private TrialCache? ReadCache(string fingerprint)
+    private TrialCache? ReadCache(string trialId)
     {
         try
         {
@@ -215,13 +283,10 @@ public sealed class TrialLicenseService : IDisposable
                 JsonOptions);
 
             if (cache is null ||
-                !string.Equals(
-                    cache.FingerprintSha256,
-                    fingerprint,
-                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(cache.TrialId, trialId, StringComparison.Ordinal) ||
                 !CryptographicOperations.FixedTimeEquals(
                     Convert.FromHexString(cache.Signature),
-                    Convert.FromHexString(Sign(cache with { Signature = "" }, fingerprint))))
+                    Convert.FromHexString(Sign(cache with { Signature = "" }, trialId))))
             {
                 return null;
             }
@@ -240,14 +305,14 @@ public sealed class TrialLicenseService : IDisposable
     }
 
     private void SaveCache(
-        string fingerprint,
+        string trialId,
         DateTimeOffset startedAtUtc,
         DateTimeOffset expiresAtUtc,
         DateTimeOffset lastServerTimeUtc,
         DateTimeOffset lastObservedUtc)
     {
         var unsigned = new TrialCache(
-            fingerprint,
+            trialId,
             startedAtUtc,
             expiresAtUtc,
             lastServerTimeUtc,
@@ -256,7 +321,7 @@ public sealed class TrialLicenseService : IDisposable
 
         var cache = unsigned with
         {
-            Signature = Sign(unsigned, fingerprint)
+            Signature = Sign(unsigned, trialId)
         };
 
         var directory = Path.GetDirectoryName(_cachePath);
@@ -271,14 +336,14 @@ public sealed class TrialLicenseService : IDisposable
         File.Move(temp, _cachePath, true);
     }
 
-    private static string Sign(TrialCache cache, string fingerprint)
+    private static string Sign(TrialCache cache, string trialId)
     {
         var key = SHA256.HashData(Encoding.UTF8.GetBytes(
-            "TOR-POS-TRIAL-CACHE-V1|" + fingerprint));
+            "TOR-POS-TRIAL-CACHE-V2|" + trialId));
 
         var canonical = string.Join(
             "|",
-            cache.FingerprintSha256.ToUpperInvariant(),
+            cache.TrialId,
             cache.StartedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
             cache.ExpiresAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
             cache.LastServerTimeUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
@@ -287,80 +352,6 @@ public sealed class TrialLicenseService : IDisposable
         return Convert.ToHexString(
             HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(canonical)));
     }
-
-    public static string FingerprintHashFor(
-        string machineGuid,
-        string volumeSerial)
-    {
-        machineGuid = (machineGuid ?? "").Trim().ToUpperInvariant();
-        volumeSerial = (volumeSerial ?? "").Trim().ToUpperInvariant();
-
-        if (machineGuid.Length == 0 && volumeSerial.Length == 0)
-            throw new InvalidOperationException(
-                "Windows MachineGuid und Systemlaufwerk-Seriennummer fehlen.");
-
-        var raw = Encoding.UTF8.GetBytes(
-            $"TOR-POS-TRIAL-PC-V1|{machineGuid}|{volumeSerial}");
-
-        return Convert.ToHexString(SHA256.HashData(raw));
-    }
-
-    public static string CreateMachineFingerprintHash()
-    {
-        var machineGuid = "";
-        var volumeSerial = "";
-
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                machineGuid = Registry.LocalMachine
-                    .OpenSubKey(@"SOFTWARE\Microsoft\Cryptography")?
-                    .GetValue("MachineGuid")?
-                    .ToString() ?? "";
-            }
-            catch
-            {
-                // Volume serial remains as fallback.
-            }
-
-            try
-            {
-                var root = Path.GetPathRoot(Environment.SystemDirectory);
-                if (!string.IsNullOrWhiteSpace(root) &&
-                    GetVolumeInformation(
-                        root,
-                        null,
-                        0,
-                        out var serial,
-                        out _,
-                        out _,
-                        null,
-                        0))
-                {
-                    volumeSerial = serial.ToString("X8", CultureInfo.InvariantCulture);
-                }
-            }
-            catch
-            {
-                // MachineGuid remains as fallback.
-            }
-        }
-
-        return FingerprintHashFor(machineGuid, volumeSerial);
-    }
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetVolumeInformation(
-        string rootPathName,
-        StringBuilder? volumeNameBuffer,
-        uint volumeNameSize,
-        out uint volumeSerialNumber,
-        out uint maximumComponentLength,
-        out uint fileSystemFlags,
-        StringBuilder? fileSystemNameBuffer,
-        uint fileSystemNameSize);
 
     public void Dispose()
     {

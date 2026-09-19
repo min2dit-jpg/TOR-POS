@@ -120,8 +120,9 @@ Die öffentliche Windows-Demo ist vom lokalen Cloud-Demomodus zu unterscheiden.
 - Aktivierung: `POST /api/v1/trial/activate`
 - Download: `GET /api/v1/trial/download`
 - Laufzeit: exakt 7 Tage ab erster Serveraktivierung
-- Gerätekennung: nur lokaler SHA-256-Fingerprint; keine rohe MachineGuid/VolumeSerial im Cloud-Datensatz
-- Neuinstallation desselben PCs verlängert die Demo nicht
+- Demo-Identität: zufällige 256-Bit Trial-ID in `%ProgramData%\TOR-POS-Pro\trial-installation.id`
+- keine MachineGuid, Laufwerksseriennummer oder andere Hardwarekennung wird verwendet oder übertragen
+- der Installer lässt die Trial-ID bei einer normalen Deinstallation bestehen; Neuinstallation verlängert die Demo nicht
 - Setup-Publishing: `PUBLISH-DEMO.ps1`
 - Abschalten: `DISABLE-DEMO.ps1`
 - Manifest: `trial-manifest.json`, getrennt vom normalen `manifest.json`

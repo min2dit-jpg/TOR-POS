@@ -35,26 +35,33 @@ public static class TrialLicenseReviewTests
             !rollback.IsActive && rollback.State == TrialLicenseState.ClockRollback,
             "demo refuses an offline clock rollback instead of extending local trial time");
 
-        var fp1 = TrialLicenseService.FingerprintHashFor(
-            "machine-guid-123",
-            "a1b2c3d4");
-        var fp2 = TrialLicenseService.FingerprintHashFor(
-            "MACHINE-GUID-123",
-            "A1B2C3D4");
-        assert(
-            fp1 == fp2 && fp1.Length == 64,
-            "trial fingerprint is a stable case-normalized SHA-256 value and contains no installation id");
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "tor-pos-trial-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var identityPath = Path.Combine(root, "trial-installation.id");
 
-        var fp3 = TrialLicenseService.FingerprintHashFor(
-            "machine-guid-123",
-            "FFFFFFFF");
-        assert(
-            fp3 != fp1,
-            "trial fingerprint changes when the stable machine material changes");
+        try
+        {
+            var created = TrialLicenseService.LoadOrCreateTrialId(identityPath);
+            assert(
+                created.Length == 64 &&
+                TrialLicenseService.IsValidTrialId(created),
+                "trial identity is a random 256-bit hex value and contains no hardware identifier");
 
-        assert(
-            !TorDistribution.IsDemoBuild,
-            "normal TOR POS build remains non-demo unless TorDemoBuild=true is supplied explicitly");
+            var reused = TrialLicenseService.LoadOrCreateTrialId(identityPath);
+            assert(
+                reused == created,
+                "normal restart or reinstall reuses the same persisted machine-wide trial id");
+
+            assert(
+                !TorDistribution.IsDemoBuild,
+                "normal TOR POS build remains non-demo unless TorDemoBuild=true is supplied explicitly");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
 
         return Task.CompletedTask;
     }

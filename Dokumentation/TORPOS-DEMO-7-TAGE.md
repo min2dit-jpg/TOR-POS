@@ -4,63 +4,93 @@ Stand: 2026-09-19
 
 ## Ziel
 
-Die öffentliche Demo läuft ab der ersten Online-Aktivierung genau sieben Tage.
-Eine Deinstallation und erneute Installation auf demselben Windows-PC startet
-keinen neuen Testzeitraum.
+Die öffentliche Demo läuft ab der ersten erfolgreichen Online-Aktivierung genau
+sieben Tage. Eine normale Deinstallation und erneute Installation auf demselben
+Windows-PC startet keinen neuen Testzeitraum.
 
 Die Demo ist keine fiskalische Produktivfreigabe. Ohne kommerzielle Lizenz und
 die getrennten FiscalRelease-Abnahmen entstehen keine echten Produktivbuchungen.
 
-## Gerätebindung
+## Trial-ID statt Hardware-Fingerprint
 
-Der Windows-Client liest lokal:
+TOR POS liest für die Demo keine MachineGuid, keine Laufwerksseriennummer und
+keine sonstigen Hardwarekennungen.
 
-- Windows MachineGuid
-- Seriennummer des Windows-Systemlaufwerks
+Beim ersten Demo-Start wird stattdessen lokal eine kryptographisch zufällige
+256-Bit Trial-ID erzeugt und als 64-stellige Hex-Zeichenfolge gespeichert:
 
-Aus diesen Werten entsteht lokal:
+`%ProgramData%\TOR-POS-Pro\trial-installation.id`
 
-`SHA-256("TOR-POS-TRIAL-PC-V1|<MachineGuid>|<VolumeSerial>")`
+Der Demo-Installer legt den maschinenweiten Ordner mit Schreibrecht für normale
+Benutzer an und markiert ihn in Inno Setup mit `uninsneveruninstall`.
+Dadurch bleibt die Trial-ID bei einer normalen Deinstallation bestehen.
 
-Nur dieser 64-stellige SHA-256-Wert wird an TOR POS Cloud übertragen.
-MachineGuid und Laufwerksseriennummer verlassen den PC nicht.
+An den Aktivierungsdienst werden nur übertragen:
 
-Die normale kommerzielle Lizenz bleibt davon getrennt. Deren InstallationId wird
-nicht in den Trial-Fingerprint aufgenommen, weil eine Neuinstallation sonst eine
-neue Demo erzeugen könnte.
+- Trial-ID
+- TOR POS Version
+- TOR POS Revision
+
+Die Trial-ID enthält keine Hardwaredaten und wird nicht aus persönlichen oder
+geräteinternen Identifikatoren abgeleitet.
 
 ## Cloud-Semantik
 
 `POST /api/v1/trial/activate`
 
+Request:
+
+- `trial_id`: 64-stellige Trial-ID
+- `version`
+- `revision`
+
 Erste Aktivierung:
 
 - `first_seen_at = Serverzeit`
 - `expires_at = first_seen_at + 7 Tage`
-- Fingerprint ist Primärschlüssel
 
-Spätere Aktivierungen desselben Fingerprints:
+Spätere Aktivierungen derselben Trial-ID:
 
 - geben dasselbe `first_seen_at` zurück
 - geben dasselbe `expires_at` zurück
 - verlängern die Demo nicht
-- funktionieren damit auch nach Deinstallation/Neuinstallation nicht als Reset
 
-Ein abgelaufener Fingerprint bleibt gespeichert und erhält keinen neuen Start.
+Eine abgelaufene Trial-ID erhält keinen neuen Start.
+
+## Schutzumfang
+
+Der Mechanismus verhindert den üblichen Reset durch normale
+Deinstallation/Neuinstallation. Ein Benutzer mit administrativem Zugriff, der
+bewusst den maschinenweiten ProgramData-Eintrag manipuliert oder löscht, kann
+nicht allein durch eine lokale Datei technisch absolut ausgeschlossen werden.
+Deshalb wird diese Demo-Sperre nicht als manipulationssichere Lizenzsicherung
+bezeichnet.
+
+Die kommerzielle TOR-POS-Lizenz bleibt davon vollständig getrennt.
 
 ## Offline-Verhalten
 
-Nach einer erfolgreichen Online-Aktivierung wird der absolute Ablaufzeitpunkt
-lokal zwischengespeichert.
+Nach erfolgreicher Online-Aktivierung wird der absolute Ablaufzeitpunkt zusätzlich
+im normalen TOR-POS-Datenbereich zwischengespeichert.
 
 - normale Offline-Starts sind bis zum Ablauf möglich
 - ein Zurückstellen der Windows-Uhr gegenüber dem zuletzt gesehenen Zeitpunkt
   sperrt den Offline-Start und verlangt eine Online-Prüfung
-- wird der lokale Cache gelöscht, ist erneut eine Online-Prüfung nötig; der
-  Cloud-Datensatz startet dabei nicht neu
+- wird nur der lokale Laufzeit-Cache gelöscht, fragt TOR POS erneut beim Server;
+  die maschinenweite Trial-ID und der serverseitige Start bleiben unverändert
 
-Die lokale Cache-Signatur ist eine Manipulationserkennung, kein Ersatz für die
-serverseitige Gerätehistorie.
+Die Cache-Signatur dient der Manipulationserkennung und ersetzt nicht die
+serverseitige Aktivierungshistorie.
+
+## Live API
+
+Bis `api.torpos.de` als Custom Domain freigeschaltet werden kann, verwendet der
+Demo-Build den temporären Live-Endpunkt:
+
+`https://tor-pos-trial-api-xifmg0.v2.appdeploy.ai`
+
+Danach wird ausschließlich `TrialPolicy.PublicApiBaseUrl` auf
+`https://api.torpos.de` umgestellt.
 
 ## Demo-Build
 
@@ -70,8 +100,6 @@ Nur ein Build mit
 
 enthält `TOR_DEMO_BUILD` und aktiviert die Trial-Sperre.
 
-Normaler TOR-POS-Build und Demo-Build bleiben damit getrennt.
-
 Build:
 
 `Desktop/BUILD-DEMO-SETUP.bat`
@@ -79,6 +107,8 @@ Build:
 Ergebnis:
 
 `Desktop/installer-output/TOR-POS-Demo-Setup.exe`
+
+Die normale TOR-POS-Ausgabe bleibt ein Nicht-Demo-Build.
 
 ## Veröffentlichung
 
@@ -95,7 +125,7 @@ Die Veröffentlichung:
 5. veröffentlicht unter einem hashbasierten Dateinamen,
 6. schreibt atomar `trial-manifest.json`.
 
-Der Download-Endpunkt prüft vor jeder Auslieferung erneut SHA-256.
+Der Download-Endpunkt prüft vor der Auslieferung erneut SHA-256.
 
 Öffentlicher Einstieg:
 
@@ -107,15 +137,13 @@ Not-Aus:
 
 ## Datenschutz
 
-Der Trial-Fingerprint ist ein pseudonymes Gerätekennzeichen. Für den Betrieb der
-Demo muss im Datenschutzhinweis erklärt werden:
+Für den öffentlichen Betrieb muss der Datenschutzhinweis mindestens erklären:
 
-- Zweck: Missbrauchsschutz / einmaliger 7-Tage-Test pro PC
-- gespeicherte Daten: SHA-256-Gerätefingerprint, erste/letzte Aktivierung,
-  Ablaufdatum, Softwareversion/Revision
-- keine Speicherung der Rohwerte MachineGuid oder Laufwerksseriennummer
-- Aufbewahrungslogik: abgelaufene Fingerprints müssen für die Verhinderung
-  wiederholter Demo-Aktivierungen erhalten bleiben
+- Zweck: Bereitstellung und Missbrauchsschutz der einmaligen 7-Tage-Demo
+- gespeicherte Daten: zufällige Trial-ID, erste/letzte Aktivierung, Ablaufdatum,
+  Softwareversion und Revision
+- keine MachineGuid, Laufwerksseriennummer oder sonstige Hardwarekennung
+- die abgelaufene Trial-ID muss zur Erkennung bereits genutzter Demos erhalten
+  bleiben, solange diese Einmal-pro-Installation-Regel angeboten wird
+- Lösch- und Aufbewahrungsregel ist vor öffentlicher Freigabe final festzulegen
 
-Vor öffentlicher Freigabe ist die konkrete DSGVO-Aufbewahrungs-/Löschregel mit
-dem Betreiber-Datenschutzhinweis abzugleichen.
