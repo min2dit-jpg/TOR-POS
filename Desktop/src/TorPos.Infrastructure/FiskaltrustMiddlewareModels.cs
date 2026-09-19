@@ -383,3 +383,32 @@ public static class FiskaltrustDeSignatureTypes
     public const ulong CertificationIdentification = 0x4445000000000022UL;
     public const ulong TseSerialNumber = 0x4445000000000023UL;
 }
+
+
+/// <summary>
+/// German Middleware state decoder. The upper 16 bits identify DE; operational
+/// flags live below that country prefix and can be OR'ed together.
+/// </summary>
+public static class FiskaltrustDeState
+{
+    public const ulong Ready = 0x4445000000000000UL;
+    public const ulong CountryMask = 0xFFFF000000000000UL;
+    public const ulong LocalFlagsMask = 0x0000FFFFFFFFFFFFUL;
+
+    public const ulong SecurityMechanismOutOfOperationFlag = 0x0000000000000001UL;
+    public const ulong TseCommunicationFailedFlag = 0x0000000000000002UL;
+    public const ulong LateSigningFlag = 0x0000000000000008UL;
+    public const ulong ScuSwitchingFlag = 0x0000000000000100UL;
+
+    public static bool IsGerman(ulong state) =>
+        (state & CountryMask) == Ready;
+
+    public static ulong Flags(ulong state) =>
+        state & LocalFlagsMask;
+
+    public static bool HasFlag(ulong state, ulong flag) =>
+        (Flags(state) & flag) == flag;
+
+    public static bool IsReady(ulong state) =>
+        IsGerman(state) && Flags(state) == 0;
+}
