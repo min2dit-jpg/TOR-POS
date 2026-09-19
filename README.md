@@ -40,6 +40,16 @@ TOR POS ist proprietäre Software. Repo-weite Lizenzbedingungen stehen in `LICEN
 
 Sicherheitsprobleme bitte nicht öffentlich melden. Der vertrauliche Meldeweg und der Umgang mit sensiblen Daten sind in `SECURITY.md` beschrieben.
 
+
+## Teknik ve Release Belgeleri
+
+- `Dokumentation/ARCHITECTURE.md` – Desktop/Cloud ve fiskal sınırlar
+- `Dokumentation/RELEASE-QUALIFICATION.md` – geliştirme → CI → hardware acceptance → production release akışı
+- `Dokumentation/REPOSITORY-MAINTENANCE.md` – repo boyutu ve artifact politikası
+- `Dokumentation/GITHUB-MAIN-PROTECTION.md` – main branch koruma hedefi
+- `verification/HARDWARE-E2E-TEMPLATE.md` – gerçek TSE/hardware kabul şablonu
+- `SECURITY.md` – güvenlik bildirim ve hassas veri politikası
+
 ## Hinweis zur fiskalischen Freigabe
 
 Implementierter Code, erfolgreiche automatische Tests und ein Release-Stand ersetzen keine reale End-to-End-Abnahme mit der vorgesehenen TSE-, Drucker- und Terminal-Hardware. Der jeweilige Freigabestatus wird im Projekt separat geführt.
