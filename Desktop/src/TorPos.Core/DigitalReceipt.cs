@@ -171,18 +171,15 @@ public sealed record DigitalReceiptDocument(
         IReadOnlyList<string> missing = Array.Empty<string>();
         if (!job.FiscalTestMode)
         {
-            // R122: the list the printer refuses to print without.
-            missing = FiscalReceiptFields.Missing(
-                job.CompanyName,
-                job.CompanyAddress,
-                job.EasSerial,
-                job.TseOutage,
-                job.TseSerial,
-                job.TseTransactionNumber,
-                job.SignatureCounter > 0,
-                job.VerificationValue,
-                job.ProcessStart is not null,
-                job.ProcessEnd is not null);
+            // Same executable KassenSichV § 6 checks as the paper
+            // printer. A digital receipt must never claim completeness merely
+            // because its text fields exist while VAT arithmetic/container
+            // mapping is inconsistent.
+            missing = KassenSichV2026
+                .ValidateReceipt(job)
+                .Where(x => !x.Ready)
+                .Select(x => $"{x.Requirement}: {x.Detail}")
+                .ToArray();
 
             void Add(string label, string? value)
             {
