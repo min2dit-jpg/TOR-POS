@@ -488,6 +488,108 @@ public static class FiskaltrustIntegrationTests
         }
     }
 
+        var journalPath = Path.Combine(
+            Path.GetTempPath(),
+            "torpos-ft-journal-" + Guid.NewGuid().ToString("N") + ".db");
+        var journalDb = new SqliteDatabase(journalPath);
+        var journal = new FiskaltrustSignJournal(journalDb);
+        await journal.InitializeAsync();
+
+        var journalRequest = new FiskaltrustReceiptRequest
+        {
+            CbReceiptReference = "JOURNAL-1",
+            CbReceiptMoment = DateTimeOffset.Parse("2026-09-19T06:30:00Z"),
+            FtReceiptCase =
+                FiskaltrustDeCases.WithImplicitFlow(FiskaltrustDeCases.ZeroReceipt),
+            CbChargeItems = [],
+            CbPayItems = []
+        };
+
+        var prepared = await journal.BeginAsync(journalRequest);
+        var preparedAgain = await journal.BeginAsync(journalRequest);
+        assert(
+            prepared.Id == preparedAgain.Id &&
+            preparedAgain.State == FiskaltrustSignState.Prepared,
+            "fiskaltrust journal is idempotent for the same cbReceiptReference and identical payload");
+
+        var changedPayloadRejected = false;
+        try
+        {
+            _ = await journal.BeginAsync(
+                journalRequest with
+                {
+                    CbReceiptAmount = 1m
+                });
+        }
+        catch (InvalidOperationException ex)
+        {
+            changedPayloadRejected =
+                ex.Message.Contains("anderen fiskaltrust Payload", StringComparison.Ordinal);
+        }
+        assert(
+            changedPayloadRejected,
+            "fiskaltrust journal refuses reusing one cbReceiptReference with a different payload");
+
+        await journal.MarkSentAsync(prepared.Id);
+
+        // Simulate process restart: a fresh repository instance must still see
+        // SENT and the exact original request, so caller can only ReceiptRequest-recover.
+        var afterRestart = new FiskaltrustSignJournal(journalDb);
+        await afterRestart.InitializeAsync();
+        var recoveryCandidates = await afterRestart.GetRecoveryCandidatesAsync();
+        assert(
+            recoveryCandidates.Count == 1 &&
+            recoveryCandidates[0].State == FiskaltrustSignState.Sent &&
+            recoveryCandidates[0].Request.CbReceiptReference == "JOURNAL-1" &&
+            recoveryCandidates[0].Request.FtReceiptCase == journalRequest.FtReceiptCase,
+            "fiskaltrust journal survives restart and exposes SENT operations for ReceiptRequest recovery");
+
+        await afterRestart.MarkUnknownAsync(
+            prepared.Id,
+            "HTTP timeout after POST /Sign");
+        var unknown = await afterRestart.GetByReferenceAsync("JOURNAL-1");
+        assert(
+            unknown is
+            {
+                State: FiskaltrustSignState.Unknown,
+                Evidence: "HTTP timeout after POST /Sign"
+            },
+            "fiskaltrust journal preserves UNKNOWN evidence after an ambiguous external effect");
+
+        var committedResponse = new FiskaltrustReceiptResponse
+        {
+            CbReceiptReference = "JOURNAL-1",
+            FtReceiptIdentification = "FT-TEST-1",
+            FtQueueItemId = "queue-item-1",
+            FtState = FiskaltrustDeState.Ready
+        };
+        await afterRestart.MarkCommittedAsync(
+            prepared.Id,
+            committedResponse,
+            "Recovered with ReceiptRequest");
+
+        var committed = await afterRestart.GetByReferenceAsync("JOURNAL-1");
+        var noneOpen = await afterRestart.GetRecoveryCandidatesAsync();
+        assert(
+            committed?.State == FiskaltrustSignState.Committed &&
+            committed.Response?.FtReceiptIdentification == "FT-TEST-1" &&
+            committed.Evidence == "Recovered with ReceiptRequest" &&
+            noneOpen.Count == 0,
+            "fiskaltrust journal commits recovered response durably and removes it from recovery candidates");
+
+        var invalidResendTransitionRejected = false;
+        try
+        {
+            await afterRestart.MarkSentAsync(prepared.Id);
+        }
+        catch (InvalidOperationException)
+        {
+            invalidResendTransitionRejected = true;
+        }
+        assert(
+            invalidResendTransitionRejected,
+            "fiskaltrust journal blocks moving a COMMITTED operation back to SENT");
+
     private sealed class FakeHandler : HttpMessageHandler
     {
         public int Calls { get; private set; }
