@@ -260,8 +260,14 @@ public sealed class DatevKassenbuchAsciiService
         CancellationToken ct = default)
     {
         var sales = new List<SaleCashTaxData>();
-        var fromUtc = z.PeriodFrom.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", CultureInfo.InvariantCulture);
-        var toUtc = z.PeriodTo.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", CultureInfo.InvariantCulture);
+        // Match the generated created_at_utc column exactly:
+        // strftime('%Y-%m-%dT%H:%M:%fZ', ...).
+        var fromUtc = z.PeriodFrom.UtcDateTime.ToString(
+            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+            CultureInfo.InvariantCulture);
+        var toUtc = z.PeriodTo.UtcDateTime.ToString(
+            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+            CultureInfo.InvariantCulture);
 
         await using var c = _db.OpenConnection();
 
@@ -399,6 +405,8 @@ public sealed class DatevKassenbuchAsciiService
                 SELECT id,created_at,movement_type,amount_cents,reason
                 FROM cash_movements
                 WHERE created_at_utc >= $from AND created_at_utc <= $to
+                  AND movement_type IN ('EINLAGE','ENTNAHME')
+                  AND fiscal_mode <> 'TEST_ONLY'
                 ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$from", fromUtc);
@@ -410,10 +418,7 @@ public sealed class DatevKassenbuchAsciiService
                 var at = DateTimeOffset.Parse(r.GetString(1));
                 var type = r.GetString(2).Trim().ToUpperInvariant();
                 var amount = Math.Abs(r.GetInt64(3));
-                var signed = type.Contains("ENTNAH", StringComparison.OrdinalIgnoreCase) ||
-                             type.Contains("AUSGAB", StringComparison.OrdinalIgnoreCase)
-                    ? -amount
-                    : amount;
+                var signed = type == "ENTNAHME" ? -amount : amount;
                 if (signed == 0)
                     continue;
 
@@ -463,7 +468,7 @@ public sealed class DatevKassenbuchAsciiService
                 SignedMoney(row.SignedAmountCents),
                 row.ReceiptNumber,
                 row.BookingDate.ToString("ddMM", CultureInfo.InvariantCulture),
-                row.BookingText,
+                Limit(row.BookingText, 60),
                 row.VatRate is decimal vat ? VatText(vat) : "",
                 row.BookingKey,
                 row.CounterAccount,
@@ -471,7 +476,7 @@ public sealed class DatevKassenbuchAsciiService
                 row.Cost2,
                 row.Quantity,
                 row.Discount,
-                row.Message
+                Limit(row.Message, 250)
             };
 
             if (fields.Length != 13)
@@ -582,6 +587,12 @@ public sealed class DatevKassenbuchAsciiService
                 ? null
                 : DateTimeOffset.Parse(r.GetString(10)),
             r.GetString(11));
+
+    private static string Limit(string? value, int max)
+    {
+        var text = value ?? "";
+        return text.Length <= max ? text : text[..max];
+    }
 
     private static string Escape(string? value)
     {
