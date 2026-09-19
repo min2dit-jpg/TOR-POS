@@ -171,12 +171,12 @@ public static class R154ReviewTests
         public bool TransactionAvailable => true;
         public bool ExportAvailable => true;
 
-        public TseRuntimeStatus GetRuntimeStatus() => new(true, true, true, true, "", "");
+        public TseRuntimeStatus GetRuntimeStatus() => new(true, true, "1.0", "", "OK");
         public Task<IReadOnlyList<string>> FindSdkLibrariesAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
         public TseRuntimeStatus ConfigureSdkLibrary(string libraryPath) => GetRuntimeStatus();
         public Task<TseProbeResult> ProbeAsync(CancellationToken ct = default) =>
-            Task.FromResult(new TseProbeResult(true, "OK"));
+            Task.FromResult(new TseProbeResult(TseConnectionState.Ready, "OK"));
         public Task<TseActivationResult> ActivateAsync(TseActivationRequest request, CancellationToken ct = default) =>
             Task.FromResult(new TseActivationResult(true, "OK"));
         public Task<TseTransactionResult> StartTransactionAsync(TseTransactionStartRequest request, CancellationToken ct = default) =>
