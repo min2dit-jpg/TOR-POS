@@ -20,14 +20,14 @@ public sealed class EditionSelectionWindow : Window
 
         var kiosk = EditionButton(
             "EINZELHANDEL",
-            "Kiosk · Spätkauf · Shop · Markt · Barcode / Scanner",
+            "Kiosk · Spätkauf · Supermarkt · Blumenladen · Friseur · Schneiderei · Shops",
             "#173A32",
             "#53E0C0");
         kiosk.Click += (_, _) => Close("KIOSK");
 
         var imbiss = EditionButton(
             "GASTRONOMIE",
-            "Imbiss · Café · Restaurant · Take-away · Bestellungen",
+            "Döner · Imbiss · Restaurant · Café · Bäckerei · Bar · Foodtruck",
             "#1A2D46",
             "#9CC3FF");
         imbiss.Click += (_, _) => Close("IMBISS");
