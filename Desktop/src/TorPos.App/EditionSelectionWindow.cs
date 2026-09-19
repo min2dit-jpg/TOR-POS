@@ -19,15 +19,15 @@ public sealed class EditionSelectionWindow : Window
         Background = AppTheme.BgPrimary;
 
         var kiosk = EditionButton(
-            "KIOSK",
-            "Barcode · Scanner · schneller Einzelhandel",
+            "EINZELHANDEL",
+            "Kiosk · Spätkauf · Shop · Markt · Barcode / Scanner",
             "#173A32",
             "#53E0C0");
         kiosk.Click += (_, _) => Close("KIOSK");
 
         var imbiss = EditionButton(
-            "IMBISS",
-            "Große Artikeltasten · Varianten · Schnellverkauf",
+            "GASTRONOMIE",
+            "Imbiss · Café · Restaurant · Take-away · Bestellungen",
             "#1A2D46",
             "#9CC3FF");
         imbiss.Click += (_, _) => Close("IMBISS");
