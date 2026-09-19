@@ -282,12 +282,19 @@ public sealed class SaleEngine
         ProductVariant? variant = null,
         decimal quantity = 1m,
         PromotionSnapshot? promotion = null,
-        IReadOnlyList<MenuComponentSnapshot>? menuComponents = null)
+        IReadOnlyList<MenuComponentSnapshot>? menuComponents = null,
+        long? unitPriceOverrideCents = null)
     {
         if (IsReadOnly || quantity <= 0m)
             return;
 
-        var merchandisePrice = variant?.PriceCents ?? product.BasePriceCents;
+        var merchandisePrice =
+            unitPriceOverrideCents ??
+            variant?.PriceCents ??
+            product.BasePriceCents;
+
+        if (merchandisePrice < 0)
+            throw new InvalidOperationException("Verkaufspreis darf nicht negativ sein.");
         var listPrice = merchandisePrice + product.PfandCents;
         var promotionDiscountUnit = 0L;
 
