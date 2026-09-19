@@ -3038,14 +3038,48 @@ public partial class MainWindow:Window
         {
             // R149: deposit is nothing the kitchen prepares.
             if(PfandProducts.IsDeposit(line.ProductId)) continue;
+
             var display=line.ProductName + (string.IsNullOrWhiteSpace(line.VariantName) ? "" : " · " + line.VariantName);
             var product=_catalog.Products.FirstOrDefault(x=>x.Id==line.ProductId);
             var category=product is null ? null : _catalog.Categories.FirstOrDefault(x=>x.Id==product.CategoryId);
-            var station=KitchenStations.Normalize(category?.KitchenStation);
-            Add(station,new KitchenPrintLine(display,line.Quantity));
-            if(product?.ComboItems is {Count:>0})
-                foreach(var component in product.ComboItems)
-                    Add(station,new KitchenPrintLine(component.ComponentName,line.Quantity*component.Quantity,true));
+            var parentStation=KitchenStations.Normalize(category?.KitchenStation);
+            Add(parentStation,new KitchenPrintLine(display,line.Quantity));
+
+            // R153: customer receipt stays ONE menu line, but kitchen/order
+            // preparation must see the actual chosen articles, never every
+            // possible option in the menu recipe.
+            if(line.MenuComponents.Length>0)
+            {
+                foreach(var component in line.MenuComponents)
+                {
+                    var componentProduct=_catalog.Products.FirstOrDefault(x=>x.Id==component.ProductId);
+                    var componentCategory=componentProduct is null
+                        ? null
+                        : _catalog.Categories.FirstOrDefault(x=>x.Id==componentProduct.CategoryId);
+                    var station=KitchenStations.Normalize(componentCategory?.KitchenStation);
+                    if(station==KitchenStations.None)
+                        station=parentStation;
+
+                    var componentText=string.IsNullOrWhiteSpace(component.ChoiceGroup)
+                        ? component.Name
+                        : $"{component.ChoiceGroup}: {component.Name}";
+                    Add(station,new KitchenPrintLine(
+                        componentText,
+                        line.Quantity*component.Quantity,
+                        true));
+                }
+            }
+            else if(product?.ComboItems is {Count:>0})
+            {
+                // Legacy/static menu records without an R153 selection snapshot:
+                // only fixed components are printable. Choice alternatives are
+                // never all printed as if they had all been selected.
+                foreach(var component in product.ComboItems.Where(x=>!x.IsChoice))
+                    Add(parentStation,new KitchenPrintLine(
+                        component.ComponentName,
+                        line.Quantity*component.Quantity,
+                        true));
+            }
         }
         return groups;
     }
