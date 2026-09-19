@@ -419,13 +419,15 @@ await R147ReviewTests.Run(root,Assert);
 await R148ReviewTests.Run(root,Assert);
 await R149ReviewTests.Run(root,Assert);
 await R150ReviewTests.Run(Assert);
+await R153ReviewTests.Run(root,Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
-// R151: three reviewed checks added for hidden menu VAT allocation,
-// quantity scaling and fail-closed mixed-menu promotion handling.
-const int ExpectedSafetyChecks = 896;
+// R153: 13 reviewed checks cover Artikel-based menu choice groups,
+// automatic price differences, hidden VAT, distinct cart/order identity,
+// one-line customer receipt, schema and persistence.
+const int ExpectedSafetyChecks = 909;
 
 if (checks != ExpectedSafetyChecks)
 {
