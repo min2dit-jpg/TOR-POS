@@ -273,6 +273,16 @@ public static class FiskaltrustIntegrationTests
                 FiskaltrustSignatureFormats.Text,
             "fiskaltrust v1 response model preserves uint64 queue/format values and structured ftStateData");
 
+        assert(
+            FiskaltrustDeState.IsReady(FiskaltrustDeState.Ready) &&
+            FiskaltrustDeState.HasFlag(
+                FiskaltrustDeState.Ready | FiskaltrustDeState.TseCommunicationFailedFlag,
+                FiskaltrustDeState.TseCommunicationFailedFlag) &&
+            FiskaltrustDeState.HasFlag(
+                FiskaltrustDeState.Ready | FiskaltrustDeState.ScuSwitchingFlag,
+                FiskaltrustDeState.ScuSwitchingFlag),
+            "fiskaltrust DE ftState decoder separates the country prefix from operational flags");
+
         var zero = FiskaltrustSandboxRequests.ZeroReceipt(
             "TOR-ZERO-0001",
             DateTimeOffset.Parse("2026-09-19T06:25:00Z"));
