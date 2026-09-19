@@ -528,7 +528,7 @@ public static class R75ReviewTests
             if(Operation?.Snapshot.OperationId!=id)
                 return Task.FromResult<CheckoutOperation?>(null);
 
-            return Task.FromResult(Operation);
+            return Task.FromResult<CheckoutOperation?>(Operation);
         }
 
         public Task<long?> FindSaleAsync(string id) =>

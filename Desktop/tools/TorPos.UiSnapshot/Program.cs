@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using TorPos.App;
@@ -142,7 +143,7 @@ async Task RunAsync()
         var frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("No frame rendered.");
         var file = Path.Combine(output, $"main-{width}x{height}.png");
-        frame.Save(file);
+        frame.Save(file, new PngBitmapEncoderOptions());
         Console.WriteLine($"saved {file}");
         window.Close();
     }
@@ -192,7 +193,7 @@ static async Task SnapshotDialogAsync(Window window, string name, bool check, Li
     var frame = window.CaptureRenderedFrame()
         ?? throw new InvalidOperationException("No frame rendered.");
     var file = Path.Combine(output, $"{name}.png");
-    frame.Save(file);
+    frame.Save(file, new PngBitmapEncoderOptions());
     Console.WriteLine($"saved {file}");
     window.Close();
 }

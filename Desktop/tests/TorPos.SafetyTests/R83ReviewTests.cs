@@ -110,7 +110,20 @@ public static class R83ReviewTests
         provider.FailStart = false;
         await outages.CloseOpenAsync("tester");
 
-        // D) No configured client ID. R113 CORRECTION: same as (A) - the
+        // D) TSE starts but Finish fails: the accepted order remains durable,
+        // receives no invented signature/transaction result and the outage is
+        // documented. This also exercises the FakeTseProvider.FailFinish path.
+        provider.FailFinish = true;
+        var finishFailOrder = await AcceptOrderAsync();
+        await signing.SignAsync(finishFailOrder, "tester");
+        assert(finishFailOrder.TseOutage && finishFailOrder.TseTransactionNumber == "",
+            "R83 a failed TSE Finish marks the accepted order as TSE-Ausfall without inventing a completed transaction");
+        assert(await outages.GetOpenAsync() is not null,
+            "R83 a failed TSE Finish opens a durable TSE outage record");
+        provider.FailFinish = false;
+        await outages.CloseOpenAsync("tester");
+
+        // E) No configured client ID. R113 CORRECTION: same as (A) - the
         // signing attempt is still correctly skipped, but it is now recorded.
         await settings.SaveManyAsync(new Dictionary<string, string> { ["tse.client_id"] = "" });
         var noClientOrder = await AcceptOrderAsync();
