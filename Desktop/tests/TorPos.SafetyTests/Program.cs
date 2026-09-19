@@ -290,7 +290,25 @@ using (var c=db.OpenConnection())
         """;
     q.ExecuteNonQuery();
 }
-Assert((await sales.SearchHistoryAsync(historyDay.AddDays(-1),historyDay)).Count==201, "Archive bounds results with one overflow sentinel");
+Assert((await sales.SearchHistoryAsync(historyDay.AddDays(-1),historyDay)).Count==201, "Archive bounds multi-day results with one overflow sentinel");
+Assert(
+    (await sales.SearchHistoryAsync(historyDay.AddDays(-1), historyDay.AddDays(-1))).Count == 205,
+    "Bon-Historie loads every receipt of a single day without a search/pagination step");
+
+var oldOriginal = (await sales.SearchHistoryAsync(historyDay, historyDay, 91001)).Single();
+var oldReversalReason = await sales.CheckReversalAllowedAsync(oldOriginal.Id, forFullStorno: true);
+Assert(
+    oldReversalReason?.Contains("Verkaufstag", StringComparison.OrdinalIgnoreCase) == true,
+    "BON STORNO / Teilretoure pre-check blocks receipts from a previous day before any terminal refund");
+await RejectMessage(
+    () => sales.RecordStornoAsync(oldOriginal.Id, "tester", "test"),
+    "Verkaufstag",
+    "Authoritative BON STORNO repository gate rejects a previous-day receipt");
+await RejectMessage(
+    () => sales.RecordReturnAsync(oldOriginal.Id, new[] { new ReturnLineRequest(999999, 1m) }, "tester", "test"),
+    "Verkaufstag",
+    "Authoritative Teilretoure repository gate rejects a previous-day receipt");
+
 using (var c=db.OpenConnection())
 {
     using var q=c.CreateCommand();q.CommandText="SELECT COUNT(*) FROM sales;";
@@ -406,7 +424,7 @@ await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 
 // R145: 12 checks of the removed local receipt server (R103/R115) gone, 11 added.
-const int ExpectedSafetyChecks = 889;
+const int ExpectedSafetyChecks = 893;
 
 if (checks != ExpectedSafetyChecks)
 {

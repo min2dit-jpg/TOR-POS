@@ -54,6 +54,9 @@ public partial class MainWindow:Window
     private bool _scanProcessing;
     private long? _activeParkedReceiptId;
     private long? _activeParkNumber;
+    // Direct action selected from today's Bon-Historie. The target is consumed
+    // immediately by BON STORNO / TEILRETOURE so no second picker is opened.
+    private long? _directReceiptActionSaleId;
     // R95: Im-Haus/Außer-Haus VAT toggle (§12 UStG). Only meaningful for
     // IMBISS; reset to the Außer-Haus default at the start of every new
     // customer so a forgotten toggle can never silently carry over.
@@ -1213,17 +1216,22 @@ public partial class MainWindow:Window
             "",
             "Bon-Storno-Auswahl über das Hauptpanel geöffnet.");
 
-        long? selectedId;
-        try
+        long? selectedId = _directReceiptActionSaleId;
+        _directReceiptActionSaleId = null;
+        if (selectedId is null)
         {
-            selectedId = await new ReceiptHistoryWindow(_sales, _management, stornoMode: true)
-                .ShowDialog<long?>(this);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.WriteException("Bon Storno picker", ex);
-            ScannerStatus.Text = "BON STORNO: Bon-Suche fehlgeschlagen.";
-            return;
+            try
+            {
+                var selection = await new ReceiptHistoryWindow(_sales, _management, stornoMode: true)
+                    .ShowDialog<ReceiptHistorySelection?>(this);
+                selectedId = selection?.SaleId;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("Bon Storno picker", ex);
+                ScannerStatus.Text = "BON STORNO: Heutige Bon-Liste konnte nicht geladen werden.";
+                return;
+            }
         }
 
         if (selectedId is not long saleId)
@@ -1377,17 +1385,22 @@ public partial class MainWindow:Window
         if (!RequireRealMode("TEILRETOURE"))
             return;
 
-        long? selectedId;
-        try
+        long? selectedId = _directReceiptActionSaleId;
+        _directReceiptActionSaleId = null;
+        if (selectedId is null)
         {
-            selectedId = await new ReceiptHistoryWindow(_sales, _management, returnMode: true)
-                .ShowDialog<long?>(this);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.WriteException("Partial return picker", ex);
-            ScannerStatus.Text = "TEILRETOURE: Bon-Suche fehlgeschlagen.";
-            return;
+            try
+            {
+                var selection = await new ReceiptHistoryWindow(_sales, _management, returnMode: true)
+                    .ShowDialog<ReceiptHistorySelection?>(this);
+                selectedId = selection?.SaleId;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("Partial return picker", ex);
+                ScannerStatus.Text = "TEILRETOURE: Heutige Bon-Liste konnte nicht geladen werden.";
+                return;
+            }
         }
 
         if (selectedId is not long saleId)
@@ -3338,50 +3351,47 @@ public partial class MainWindow:Window
 
         try
         {
-            var selectedId = await new ReceiptHistoryWindow(_sales, _management)
-                .ShowDialog<long?>(this);
-            if (selectedId is null)
+            var history = new ReceiptHistoryWindow(_sales, _management);
+            var selection = await history.ShowDialog<ReceiptHistorySelection?>(this);
+            if (selection is null)
                 return;
 
-            if (!_settingsCache.GetBool(
-                "device.receipt_printer.enabled",
-                false))
+            if (selection.Action == ReceiptHistoryAction.FullStorno)
             {
-                ScannerStatus.Text =
-                    "BON-HISTORIE: Bondrucker ist deaktiviert.";
+                _directReceiptActionSaleId = selection.SaleId;
+                OnBonStornoClick(sender, e);
                 return;
             }
 
-            var printerName =
-                _settingsCache.GetText(
-                    "device.receipt_printer.name",
-                    "");
+            if (selection.Action == ReceiptHistoryAction.PartialReturn)
+            {
+                _directReceiptActionSaleId = selection.SaleId;
+                OnPartialReturnClick(sender, e);
+                return;
+            }
 
+            if (!_settingsCache.GetBool("device.receipt_printer.enabled", false))
+            {
+                ScannerStatus.Text = "BON-HISTORIE: Bondrucker ist deaktiviert.";
+                return;
+            }
+
+            var printerName = _settingsCache.GetText("device.receipt_printer.name", "");
             if (string.IsNullOrWhiteSpace(printerName))
             {
-                ScannerStatus.Text =
-                    "BON-HISTORIE: Kein Bondrucker ausgewählt.";
+                ScannerStatus.Text = "BON-HISTORIE: Kein Bondrucker ausgewählt.";
                 return;
             }
 
-            var sale =
-                await _sales.GetByIdAsync(selectedId.Value);
-
+            var sale = await _sales.GetByIdAsync(selection.SaleId);
             if (sale is null)
             {
-                ScannerStatus.Text =
-                    "BON-HISTORIE: Bon wurde nicht gefunden.";
+                ScannerStatus.Text = "BON-HISTORIE: Bon wurde nicht gefunden.";
                 return;
             }
 
-            var job =
-                BuildReceiptPrintJob(
-                    sale,
-                    sale.PaymentMethod,
-                    isCopy: true);
-
-            ScannerStatus.Text =
-                $"Bon {sale.ReceiptNumber:000000} · Kopie wird gedruckt ...";
+            var job = BuildReceiptPrintJob(sale, sale.PaymentMethod, isCopy: true);
+            ScannerStatus.Text = $"Bon {sale.ReceiptNumber:000000} · Kopie wird gedruckt ...";
 
             await _audit.WriteAsync(
                 _currentUser.Username,
@@ -3390,10 +3400,7 @@ public partial class MainWindow:Window
                 sale.Id.ToString(),
                 $"receipt={sale.ReceiptNumber}; payment={sale.PaymentMethod}");
 
-            await _receiptPrinter.PrintReceiptAsync(
-                job,
-                printerName);
-
+            await _receiptPrinter.PrintReceiptAsync(job, printerName);
             ScannerStatus.Text =
                 $"Bon {sale.ReceiptNumber:000000} · Kopie an Windows übergeben; Papierausdruck prüfen.";
         }
@@ -3402,12 +3409,11 @@ public partial class MainWindow:Window
             CrashLog.WriteException("MainWindow operation", ex);
             var errorId = ReportOperationalError(
                 "DRUCKER",
-                "Bon-Kopie konnte nicht gedruckt werden: " + ex.Message,
+                "Bon-Historie konnte nicht verarbeitet werden: " + ex.Message,
                 ex,
                 printerRelated: true);
 
-            ScannerStatus.Text =
-                $"BON-HISTORIE · Druckfehler · Fehler-ID {errorId}";
+            ScannerStatus.Text = $"BON-HISTORIE · Fehler-ID {errorId}";
         }
     }
 
