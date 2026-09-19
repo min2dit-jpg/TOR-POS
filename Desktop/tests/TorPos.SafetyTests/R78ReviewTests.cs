@@ -100,7 +100,13 @@ public static class R78ReviewTests
                 await tx.CommitAsync();
             }
 
-            return await sales.CommitAsync(snapshot);
+            // This fixture inserts the immutable sale header manually to bypass
+            // FiscalRelease. The real commit path also persists sale_items; keep the
+            // in-memory Sale faithful to that production shape so Kassenbeleg-V1
+            // validation is exercised with an actual position.
+            var sale = await sales.CommitAsync(snapshot);
+            sale.Lines = snapshot.Lines;
+            return sale;
         }
 
         // A) TSE not configured/active. R113 CORRECTION: these two assertions
