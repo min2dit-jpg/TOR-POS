@@ -136,6 +136,12 @@ public static class KassenSichV2026ReviewTests
                 "KassenSichV 2026 §2 blocks TSE processData when VAT gross differs from receipt total");
         }
 
+        assert(
+            !FiscalRelease.Enabled &&
+            FiscalRelease.MissingQualifications().Count == 6 &&
+            FiscalRelease.MissingQualifications().Contains("physische TSE-E2E-Abnahme"),
+            "KassenSichV 2026 production release stays locked until all six evidence qualifications are complete");
+
         return Task.CompletedTask;
     }
 }
