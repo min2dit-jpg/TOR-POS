@@ -293,8 +293,7 @@ public static class FiskaltrustIntegrationTests
                     ProductName = "Getränk",
                     Quantity = 1,
                     UnitPriceCents = 595,
-                    VatRate = 19m,
-                    LineTotalCents = 595
+                    VatRate = 19m
                 },
                 new TorPos.Core.CartLine
                 {
@@ -303,8 +302,7 @@ public static class FiskaltrustIntegrationTests
                     Quantity = 1,
                     UnitPriceCents = 595,
                     VatRate = 7m,
-                    ImHausApplicable = true,
-                    LineTotalCents = 595
+                    ImHausApplicable = true
                 }
             ]
         };
