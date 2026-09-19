@@ -105,7 +105,6 @@ public sealed class DatevKassenbuchAsciiService
         Directory.CreateDirectory(ExportDirectory);
         var baseName = $"TOR-DATEV-Kassenbuch-Z{z.ZNumber:000000}-{z.PeriodTo:yyyyMMdd}";
         var csvPath = Path.Combine(ExportDirectory, baseName + ".csv");
-        var pdfPath = Path.Combine(ExportDirectory, baseName + "-Z-Bericht.pdf");
 
         if (File.Exists(csvPath) && existing is null)
             throw new InvalidOperationException(
@@ -119,7 +118,7 @@ public sealed class DatevKassenbuchAsciiService
             ct);
 
         var document = _management.ZArchiveToDocument(z);
-        _management.SavePdf(document, pdfPath);
+        var pdfPath = _management.CreatePdf(document, ExportDirectory);
 
         var sha = Sha256(csvPath);
         var id = await InsertOrCompleteAsync(z, csvPath, sha, pdfPath, ct);
