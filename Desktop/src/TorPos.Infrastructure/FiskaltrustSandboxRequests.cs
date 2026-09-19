@@ -147,6 +147,19 @@ public static class FiskaltrustSandboxRequests
                 "Sandbox-SimpleCashSale unterstützt Pfand erst nach eigener fiskaltrust-Pfandzuordnung.");
         }
 
+        if (sale.Lines.Any(x => x.HasPromotion))
+        {
+            throw new InvalidOperationException(
+                "Sandbox-SimpleCashSale unterstützt Angebote/Rabatte erst nach eigener fiskaltrust-Rabattzuordnung.");
+        }
+
+        if (sale.ImHaus is null &&
+            sale.Lines.Any(x => x.ImHausApplicable && x.VatRate == 7m))
+        {
+            throw new InvalidOperationException(
+                "Im-Haus/Außer-Haus-Status fehlt für einen 7%-Artikel.");
+        }
+
         var lineTotal = sale.Lines.Sum(x => x.LineTotalCents);
         if (lineTotal != sale.TotalCents)
             throw new InvalidOperationException(
