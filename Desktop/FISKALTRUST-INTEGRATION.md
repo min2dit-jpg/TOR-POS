@@ -141,3 +141,25 @@ No returned fiscal value is persisted into a Sale yet and no production
 checkout path is changed. That remains intentionally blocked until a physical
 Swissbit TSE is available and a real Sign/receipt/recovery run has been
 captured.
+
+
+## DE case constants re-verified against current fiskaltrust docs
+
+During the sandbox review the recovery flag was corrected from a low generic
+`0x8000` bit to the Germany ReceiptRequest flag
+`0x0000800000000000`. This matters after a timeout: recovery must query the
+already processed receipt by `cbReceiptReference`, not accidentally send a
+different case.
+
+The branch also now distinguishes:
+
+- 19 % charge item: `0x4445000000000001`
+- 7 % charge item: `0x4445000000000002`
+- 0 % tax-free charge item: `0x4445000000000006`
+- cash: `0x4445000000000001`
+- debit card: `0x4445000000000004`
+- credit card: `0x4445000000000005`
+
+TOR deliberately does not map its generic CARD payment to debit or credit yet.
+That classification must come from terminal/payment evidence rather than be
+guessed.
