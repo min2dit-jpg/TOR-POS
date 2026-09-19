@@ -4,8 +4,8 @@ namespace TorPos.Infrastructure;
 
 /// <summary>
 /// R78: post-commit TSE fiscal signing for one completed direct sale
-/// (KIOSK checkout and IMBISS SALE-mode checkout only - the IMBISS
-/// ORDER/Bestellung lifecycle is a separate, not-yet-covered TSE Vorgang).
+/// (KIOSK checkout and IMBISS SALE-mode checkout). The IMBISS
+/// ORDER/Bestellung lifecycle is secured separately by OrderFiscalSigningService.
 ///
 /// Runs strictly AFTER the sale row is already durably committed via
 /// ISaleRepository.CommitAsync. TSE signing failure (TSE-Ausfall) can never
@@ -16,8 +16,8 @@ namespace TorPos.Infrastructure;
 ///
 /// One Kassenbeleg is signed as a single Start+Finish TSE transaction
 /// (process type <see cref="FiscalProcessData.KassenbelegProcessType"/>).
-/// See FiscalProcessData for the important caveat about its ProcessData
-/// format not yet being legally validated.
+/// FiscalProcessData follows the DSFinV-K 2.4 Anhang-I representation; real
+/// certified-TSE and export acceptance remain required before production release.
 ///
 /// NOTE: FiscalComplianceService currently hard-gates ProductionAllowed to
 /// false (fiscalReleaseBuild=false in code), so MainWindow's real
