@@ -1,0 +1,32 @@
+TOR POS PRO — PROPRIETARY SOFTWARE LICENSE NOTICE
+
+Copyright © 2026 TOR Kassensysteme. All rights reserved.
+
+TOR POS Pro and the original source code, documentation, build scripts,
+configuration, database schema, user-interface assets and other project
+materials in this repository are proprietary unless a file or component
+explicitly states otherwise.
+
+No permission is granted by the presence of this repository alone to copy,
+modify, publish, distribute, sublicense, sell, commercially exploit, create
+derivative works from, or otherwise use the proprietary portions of TOR POS Pro
+outside rights expressly granted in a separate written agreement.
+
+Customer and end-user rights are governed by the applicable written contract
+and the end-user terms supplied with the product, including
+Desktop/NUTZUNGSBEDINGUNGEN-DE.txt where applicable.
+
+Third-party software and materials remain subject to their own licenses and
+copyright notices. Relevant notices are documented in
+Desktop/THIRD-PARTY-NOTICES.md and/or are supplied with the corresponding
+dependency or vendor package. Nothing in this notice changes those third-party
+license terms.
+
+No trademark, trade-name or branding rights are granted by this notice.
+
+If a separate signed agreement grants rights that conflict with this notice,
+the signed agreement controls to the extent of that conflict. Mandatory rights
+under applicable law remain unaffected.
+
+For permission beyond an existing agreement, authorization from the copyright
+holder is required in writing.
