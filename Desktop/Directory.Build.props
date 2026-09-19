@@ -4,4 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TorDemoBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);TOR_DEMO_BUILD</DefineConstants>
+  </PropertyGroup>
 </Project>
