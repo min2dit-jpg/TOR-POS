@@ -317,6 +317,11 @@ public static class FiskaltrustDeCases
     // Adds the Middleware's implicit start+finish flow to a receipt case.
     public const ulong ImplicitFlowFlag = 0x0000000100000000UL;
 
+    // ZeroReceipt-only diagnostics. TSE info is useful for the first physical
+    // hardware check. Self-test/time-update is deliberately opt-in only.
+    public const ulong ZeroReceiptTseInfoFlag = 0x0000000000800000UL;
+    public const ulong ZeroReceiptSelfTestAndTimeUpdateFlag = 0x0000000001000000UL;
+
     // Recovery flag: retrieve an already processed receipt by
     // cbReceiptReference after an ambiguous communication failure.
     // Important: this is 0x0000800000000000 (not the generic low 0x8000 bit).
@@ -395,9 +400,8 @@ public static class FiskaltrustDeState
     public const ulong CountryMask = 0xFFFF000000000000UL;
     public const ulong LocalFlagsMask = 0x0000FFFFFFFFFFFFUL;
 
-    public const ulong SecurityMechanismOutOfOperationFlag = 0x0000000000000001UL;
+    // Supported DE ftState values documented by fiskaltrust.
     public const ulong TseCommunicationFailedFlag = 0x0000000000000002UL;
-    public const ulong LateSigningFlag = 0x0000000000000008UL;
     public const ulong ScuSwitchingFlag = 0x0000000000000100UL;
 
     public static bool IsGerman(ulong state) =>
@@ -407,7 +411,7 @@ public static class FiskaltrustDeState
         state & LocalFlagsMask;
 
     public static bool HasFlag(ulong state, ulong flag) =>
-        (Flags(state) & flag) == flag;
+        IsGerman(state) && (Flags(state) & flag) == flag;
 
     public static bool IsReady(ulong state) =>
         IsGerman(state) && Flags(state) == 0;
