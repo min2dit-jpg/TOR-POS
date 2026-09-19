@@ -34,6 +34,12 @@ Der aktuelle Stand ist immer oben in dieser README, im zentralen `CHANGELOG.md` 
 - `.github/workflows/` – CI-Prüfungen
 - `CHANGELOG.md` – zentraler Release-Index
 
+## Lizenz & Sicherheit
+
+TOR POS ist proprietäre Software. Repo-weite Lizenzbedingungen stehen in `LICENSE`; Drittanbieterhinweise in `Desktop/THIRD-PARTY-NOTICES.md`.
+
+Sicherheitsprobleme bitte nicht öffentlich melden. Der vertrauliche Meldeweg und der Umgang mit sensiblen Daten sind in `SECURITY.md` beschrieben.
+
 ## Hinweis zur fiskalischen Freigabe
 
 Implementierter Code, erfolgreiche automatische Tests und ein Release-Stand ersetzen keine reale End-to-End-Abnahme mit der vorgesehenen TSE-, Drucker- und Terminal-Hardware. Der jeweilige Freigabestatus wird im Projekt separat geführt.
