@@ -2102,6 +2102,8 @@ private Control FiskaltrustPage()
     training.Children.Add(StatusRow("TSE-Seriennummer", trainingTseSerial));
     training.Children.Add(StatusRow("ProcessData", trainingProcessData));
 
+    ReceiptPrintJob? lastTrainingPrintJob = null;
+
     var trainingQr = new TextBox
     {
         IsReadOnly = true,
@@ -2125,6 +2127,18 @@ private Control FiskaltrustPage()
         FontWeight = FontWeight.Bold
     };
 
+    var printTrainingButton = new Button
+    {
+        Content = "80 MM TRAININGSBON DRUCKEN",
+        MinWidth = 260,
+        MinHeight = 46,
+        IsEnabled = false
+    };
+
+    var trainingPrintStatus = Value(
+        "Druck erst nach bestandenem AVTraining-Sign-Test verfügbar.");
+    training.Children.Add(StatusRow("80 mm Druck", trainingPrintStatus));
+
     trainingButton.Click += async (_, _) =>
     {
         if (hardwareConfirmation.IsChecked != true)
@@ -2146,6 +2160,12 @@ private Control FiskaltrustPage()
         }
 
         trainingButton.IsEnabled = false;
+        printTrainingButton.IsEnabled = false;
+        lastTrainingPrintJob = null;
+        SetResult(
+            trainingPrintStatus,
+            null,
+            "Wartet auf bestandenen Sign-/Acceptance-Test …");
         SetResult(trainingStatus, null, "AVTraining-Beleg wird vorbereitet …");
         SetResult(trainingReceiptId, null, "wartet …");
         SetResult(trainingTransaction, null, "wartet …");
@@ -2276,6 +2296,50 @@ private Control FiskaltrustPage()
                     ? "(QR-Payload fehlt)"
                     : evidence.QrPayload;
 
+            if (report.Passed)
+            {
+                var values = await _settings.LoadAllAsync();
+                var companyName = values.GetText("company.name");
+                var street = values.GetText("company.street");
+                var zip = values.GetText("company.zip");
+                var city = values.GetText("company.city");
+                var locality = string.Join(
+                    " ",
+                    new[] { zip, city }
+                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+                var companyAddress = string.Join(
+                    ", ",
+                    new[] { street, locality }
+                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+                lastTrainingPrintJob =
+                    FiskaltrustTrainingReceiptPrintJobFactory.Build(
+                        sale,
+                        request,
+                        response,
+                        companyName,
+                        companyAddress,
+                        values.GetText("company.tax_no"),
+                        values.GetText("company.vat_id"),
+                        values.GetText("receipt.logo_path"),
+                        values.GetBool(
+                            "printer.auto_cut.enabled",
+                            fallback: true));
+
+                printTrainingButton.IsEnabled = true;
+                SetResult(
+                    trainingPrintStatus,
+                    true,
+                    "Bereit · signierte fiskaltrust-Daten werden unverändert als QR/TSE-Nachweis gedruckt.");
+            }
+            else
+            {
+                SetResult(
+                    trainingPrintStatus,
+                    false,
+                    "Gesperrt · Acceptance-Test ist nicht bestanden.");
+            }
+
             await _audit.WriteAsync(
                 _currentUser.Username,
                 "FISKALTRUST_TRAINING_CASH_TEST",
@@ -2285,6 +2349,12 @@ private Control FiskaltrustPage()
         }
         catch (FiskaltrustSignUnresolvedException ex)
         {
+            lastTrainingPrintJob = null;
+            printTrainingButton.IsEnabled = false;
+            SetResult(
+                trainingPrintStatus,
+                false,
+                "Druck gesperrt · Sign-Ergebnis ist ungeklärt.");
             SetResult(
                 trainingStatus,
                 false,
@@ -2294,6 +2364,12 @@ private Control FiskaltrustPage()
         }
         catch (Exception ex)
         {
+            lastTrainingPrintJob = null;
+            printTrainingButton.IsEnabled = false;
+            SetResult(
+                trainingPrintStatus,
+                false,
+                "Druck gesperrt · " + ex.Message);
             SetResult(
                 trainingStatus,
                 false,
@@ -2306,7 +2382,102 @@ private Control FiskaltrustPage()
         }
     };
 
-    training.Children.Add(trainingButton);
+    printTrainingButton.Click += async (_, _) =>
+    {
+        if (lastTrainingPrintJob is not { } printJob)
+        {
+            SetResult(
+                trainingPrintStatus,
+                false,
+                "Kein bestandener AVTraining-Beleg zum Drucken vorhanden.");
+            return;
+        }
+
+        printTrainingButton.IsEnabled = false;
+        try
+        {
+            var values = await _settings.LoadAllAsync();
+            if (!values.GetBool(
+                    "device.receipt_printer.enabled",
+                    fallback: false))
+            {
+                throw new InvalidOperationException(
+                    "Bondrucker ist unter Geräte nicht aktiviert.");
+            }
+
+            var printerName =
+                values.GetText("device.receipt_printer.name").Trim();
+            if (printerName.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "Kein Bondrucker ausgewählt.");
+            }
+
+            using var probeTimeout =
+                new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            var probe =
+                await _receiptPrinter.ProbeAsync(
+                    printerName,
+                    probeTimeout.Token);
+
+            if (!probe.Success)
+            {
+                throw new InvalidOperationException(
+                    "Drucker nicht bereit: " + probe.Message);
+            }
+
+            await _receiptPrinter.PrintReceiptAsync(
+                printJob,
+                printerName);
+
+            SetResult(
+                trainingPrintStatus,
+                true,
+                $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} · An Windows übergeben · Papierbon und QR-Code am Drucker kontrollieren.");
+
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "FISKALTRUST_TRAINING_PRINT",
+                "FISKALTRUST",
+                printJob.ExternalReceiptId,
+                "Signierter AVTraining-Bon an Windows-Drucker übergeben; Kassenlade bleibt geschlossen.");
+        }
+        catch (Exception ex)
+        {
+            var uncertain =
+                ex is TimeoutException ||
+                ex.Message.Contains(
+                    "unklar",
+                    StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains(
+                    "Timeout",
+                    StringComparison.OrdinalIgnoreCase);
+
+            SetResult(
+                trainingPrintStatus,
+                false,
+                uncertain
+                    ? "Druckstatus unklar · nicht blind erneut drucken; zuerst Windows-Druckwarteschlange und Papierbeleg prüfen."
+                    : "Druck fehlgeschlagen · " + ex.Message);
+        }
+        finally
+        {
+            printTrainingButton.IsEnabled =
+                lastTrainingPrintJob is not null;
+        }
+    };
+
+    training.Children.Add(
+        new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Children =
+            {
+                trainingButton,
+                printTrainingButton
+            }
+        });
     training.Children.Add(ReadOnlyRow(
         "Wichtig",
         "AVTraining ist ein fiskaltrust/TSE-Trainingsbeleg. Er dient nur der Hardware-Abnahme und schaltet den produktiven Checkout nicht frei."));
