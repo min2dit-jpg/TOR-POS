@@ -30,6 +30,7 @@ public partial class MainWindow:Window
     private readonly IAuditLog _audit;
     private readonly IFiscalComplianceService _compliance;
     private readonly IDsfinvkExportService _dsfinvkExport;
+    private readonly DatevKassenbuchAsciiService _datevAscii;
     private readonly DatevKassenarchivService _datevKassenarchiv;
     private readonly ProductImageStore _images;
     private readonly PerformanceCounters _perf;
@@ -148,6 +149,7 @@ public partial class MainWindow:Window
         IAuditLog audit,
         IFiscalComplianceService compliance,
         IDsfinvkExportService dsfinvkExport,
+        DatevKassenbuchAsciiService datevAscii,
         DatevKassenarchivService datevKassenarchiv,
         ProductImageStore images,
         PerformanceCounters perf,
@@ -190,6 +192,7 @@ public partial class MainWindow:Window
         _parkedReceipts=parkedReceipts;_dailyClosingGuard=dailyClosingGuard;
         _cashMovements=cashMovements;_audit=audit;_compliance=compliance;
         _dsfinvkExport=dsfinvkExport;
+        _datevAscii=datevAscii;
         _datevKassenarchiv=datevKassenarchiv;
         _images=images;_perf=perf;
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
@@ -2487,8 +2490,50 @@ public partial class MainWindow:Window
                 "PRODUCTION_ALLOWED");
 
             var document = _management.ZArchiveToDocument(archived);
-            var datevNote = "";
+            var datevNotes = new List<string>();
 
+            // R155: the zero-cost Standard-ASCII/CSV path is the primary DATEV
+            // workflow. Z is already final at this point; file/mail failures
+            // must never roll the fiscal close back.
+            if (_settingsCache.GetBool(DatevKassenbuchAsciiService.SettingEnabled, false) &&
+                _settingsCache.GetBool(DatevKassenbuchAsciiService.SettingAutoAfterZ, false))
+            {
+                try
+                {
+                    var ascii = await _datevAscii.PrepareAsync(
+                        archived,
+                        _currentUser.Username);
+                    var note = $"DATEV CSV erstellt: {Path.GetFileName(ascii.CsvPath)}";
+
+                    if (_settingsCache.GetBool(DatevKassenbuchAsciiService.SettingAutoEmail, false))
+                    {
+                        try
+                        {
+                            var sent = await _datevAscii.SendToSteuerberaterAsync(
+                                ascii,
+                                _currentUser.Username);
+                            note += sent.EmailState == "SENT"
+                                ? $" · an {sent.EmailRecipient} gesendet"
+                                : $" · E-Mail-Status {sent.EmailState}";
+                        }
+                        catch (Exception mailEx)
+                        {
+                            CrashLog.WriteException("DATEV ASCII E-Mail after Z", mailEx);
+                            note += " · E-Mail offen: " + mailEx.Message;
+                        }
+                    }
+
+                    datevNotes.Add(note);
+                }
+                catch (Exception asciiEx)
+                {
+                    CrashLog.WriteException("DATEV Kassenbuch ASCII after Z", asciiEx);
+                    datevNotes.Add("DATEV CSV noch offen: " + asciiEx.Message);
+                }
+            }
+
+            // Optional future API route stays separate and disabled unless the
+            // operator explicitly enables it.
             if (_settingsCache.GetBool(DatevKassenarchivService.SettingEnabled, false) &&
                 _settingsCache.GetBool(DatevKassenarchivService.SettingAutoAfterZ, false))
             {
@@ -2500,15 +2545,19 @@ public partial class MainWindow:Window
                     await _datevKassenarchiv.MarkWaitingForOfficialApiAsync(
                         prepared.Entry.Id,
                         _currentUser.Username);
-                    datevNote =
-                        $" · DATEV-Paket vorbereitet ({prepared.Entry.PackageSha256[..12]}…) · Online-API wartet auf Freischaltung";
+                    datevNotes.Add(
+                        $"Kassenarchiv-API-Paket vorbereitet ({prepared.Entry.PackageSha256[..12]}…) · wartet auf Freischaltung");
                 }
                 catch (Exception datevEx)
                 {
                     CrashLog.WriteException("DATEV Kassenarchiv after Z", datevEx);
-                    datevNote = " · DATEV-Paket noch offen: " + datevEx.Message;
+                    datevNotes.Add("Kassenarchiv-API-Paket offen: " + datevEx.Message);
                 }
             }
+
+            var datevNote = datevNotes.Count == 0
+                ? ""
+                : " · " + string.Join(" · ", datevNotes);
 
             ScannerStatus.Text =
                 $"Z {archived.ZNumber:000000} abgeschlossen und unveränderbar archiviert." +
@@ -4475,6 +4524,19 @@ public partial class MainWindow:Window
         {
             ShowOperationalError("GDPDU-TOOLS", ex);
         }
+    }
+
+    private async void OnDatevAsciiJournalMenuClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_currentUser.IsAdmin)
+        {
+            ScannerStatus.Text = "DATEV Kassenbuch Exportjournal ist nur für Admin verfügbar.";
+            return;
+        }
+
+        await ShowReportAsync(
+            _datevAscii.BuildJournalReportAsync(),
+            "Kostenfreier DATEV Kassenbuch Standard-ASCII/CSV Export · inklusive E-Mail-Status.");
     }
 
     private async void OnDatevJournalMenuClick(object? sender, RoutedEventArgs e)

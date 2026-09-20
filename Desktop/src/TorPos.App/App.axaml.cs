@@ -116,7 +116,13 @@ public partial class App : Avalonia.Application
             var dailyBackup = new DailyBackupScheduler(backup, settings);
             dailyBackup.Start();
             var googleGmail = new GoogleGmailService(settings, CloudSync);
-            var reportEmail = new ReportEmailService(settings, management, googleGmail);
+            var reportEmail = new ReportEmailService(settings, management, googleGmail, CloudSync);
+            var datevAscii = new DatevKassenbuchAsciiService(
+                db,
+                settings,
+                management,
+                reportEmail,
+                audit);
             var monthlyReports = new MonthlyReportScheduler(settings, reportEmail);
             monthlyReports.Start();
             var receiptPrinter = new StarMcPrint3PrinterService();
@@ -208,6 +214,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<IAuditLog>(audit);
             appServices.AddSingleton<IFiscalComplianceService>(compliance);
             appServices.AddSingleton<IDsfinvkExportService>(dsfinvkExport);
+            appServices.AddSingleton(datevAscii);
             appServices.AddSingleton(datevKassenarchiv);
             appServices.AddSingleton<IPaymentTerminalService>(paymentTerminal);
             appServices.AddSingleton<ISettingsRepository>(settings);

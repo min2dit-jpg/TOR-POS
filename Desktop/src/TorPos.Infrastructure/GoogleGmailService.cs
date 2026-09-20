@@ -126,7 +126,7 @@ public sealed class GoogleGmailService : IDisposable
             ["reports.email.google.connection_id"] = "",
             ["reports.email.google.account_email"] = "",
             ["reports.email.google.connected_at"] = "",
-            ["reports.email.transport"] = "smtp"
+            ["reports.email.transport"] = "tor"
         }, ct);
     }
 

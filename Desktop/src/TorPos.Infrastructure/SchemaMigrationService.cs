@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 22;
+    public const int TargetSchemaVersion = 23;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1482,6 +1482,49 @@ public sealed class SchemaMigrationService
                         BEFORE DELETE ON datev_kassenarchiv_outbox
                         BEGIN
                           SELECT RAISE(ABORT,'DATEV Kassenarchiv outbox cannot be deleted');
+                        END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                23,
+                "R155_DATEV_KASSENBUCH_ASCII_EXPORT",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS datev_kassenbuch_ascii_exports(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          z_archive_id INTEGER NOT NULL UNIQUE REFERENCES z_report_archive(id),
+                          z_number INTEGER NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          csv_path TEXT NOT NULL DEFAULT '',
+                          csv_sha256 TEXT NOT NULL DEFAULT '',
+                          pdf_path TEXT NOT NULL DEFAULT '',
+                          email_state TEXT NOT NULL DEFAULT 'READY',
+                          email_recipient TEXT NOT NULL DEFAULT '',
+                          email_attempts INTEGER NOT NULL DEFAULT 0,
+                          email_sent_at TEXT,
+                          last_error TEXT NOT NULL DEFAULT '');
+
+                        CREATE INDEX IF NOT EXISTS ix_datev_ascii_email_state
+                          ON datev_kassenbuch_ascii_exports(email_state,z_number);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_datev_ascii_identity_no_update
+                        BEFORE UPDATE OF z_archive_id,z_number,csv_path,csv_sha256,pdf_path
+                        ON datev_kassenbuch_ascii_exports
+                        WHEN OLD.csv_sha256<>''
+                        BEGIN
+                          SELECT RAISE(ABORT,'DATEV Kassenbuch ASCII export identity is immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_datev_ascii_no_delete
+                        BEFORE DELETE ON datev_kassenbuch_ascii_exports
+                        BEGIN
+                          SELECT RAISE(ABORT,'DATEV Kassenbuch ASCII export log cannot be deleted');
                         END;
                         """;
 

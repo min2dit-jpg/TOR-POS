@@ -188,7 +188,7 @@ public sealed class TorCloudSyncService : IAsyncDisposable
     public TorCloudSyncService(SqliteDatabase db,ICloudSecretProtector? secrets=null,HttpMessageHandler? handler=null)
     {
         _outbox=new(db);_secrets=secrets??new WindowsCloudSecretProtector();
-        _http=new HttpClient(handler??new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(12)};
+        _http=new HttpClient(handler??new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(70)};
     }
     public static Uri Endpoint(string baseUrl,string suffix)
     {
@@ -224,9 +224,9 @@ public sealed class TorCloudSyncService : IAsyncDisposable
             if(enabled)RequestStockRefresh();
         }finally{_gate.Release();}
     }
-    private async Task<JsonElement> RequestAsync(TorCloudConfiguration config,string route,object? body,CancellationToken ct)
+    private async Task<JsonElement> RequestAsync(TorCloudConfiguration config,string route,object? body,CancellationToken ct,int timeoutSeconds=20)
     {
-        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         using var request=new HttpRequestMessage(body is null?HttpMethod.Get:HttpMethod.Post,Endpoint(config.BaseUrl,route));
         request.Headers.Add("X-Device-Code",config.DeviceCode);request.Headers.Add("X-Device-Token",_secrets.Unprotect(config.ProtectedToken));
         if(body is not null)request.Content=JsonContent.Create(body);
@@ -270,6 +270,48 @@ public sealed class TorCloudSyncService : IAsyncDisposable
 
         return result;
     }
+    public async Task SendManagedMailAsync(
+        string recipient,
+        string subject,
+        string body,
+        IReadOnlyList<string> attachments,
+        CancellationToken ct=default)
+    {
+        const long maxFileBytes=6L*1024*1024;
+        const long maxTotalBytes=8L*1024*1024;
+        if(attachments.Count>10)throw new InvalidOperationException("TOR Mail erlaubt maximal 10 Anhänge.");
+
+        long total=0;
+        var files=new List<object>();
+        foreach(var file in attachments)
+        {
+            if(string.IsNullOrWhiteSpace(file)||!File.Exists(file))
+                throw new InvalidOperationException("E-Mail-Anhang fehlt: "+(file??""));
+            var ext=Path.GetExtension(file).ToLowerInvariant();
+            if(ext is not ".pdf" and not ".csv")
+                throw new InvalidOperationException("TOR Mail erlaubt nur PDF- und CSV-Anhänge.");
+            var info=new FileInfo(file);
+            if(info.Length>maxFileBytes)throw new InvalidOperationException($"E-Mail-Anhang ist zu groß: {info.Name}");
+            total=checked(total+info.Length);
+            if(total>maxTotalBytes)throw new InvalidOperationException("E-Mail-Anhänge sind zusammen zu groß (max. 8 MB).");
+            var bytes=await File.ReadAllBytesAsync(file,ct);
+            files.Add(new
+            {
+                filename=info.Name,
+                data_base64=Convert.ToBase64String(bytes)
+            });
+        }
+
+        var config=await ConfigurationAsync()??throw new InvalidOperationException("TOR POS Cloud zuerst unter Geräte konfigurieren und speichern.");
+        await RequestAsync(config,"api/v1/devices/mail/send",new
+        {
+            recipient=recipient.Trim(),
+            subject,
+            body,
+            attachments=files
+        },ct,60);
+    }
+
     public async Task<JsonElement> DeviceApiAsync(string route,object? body,CancellationToken ct=default)
     {
         var config=await ConfigurationAsync()??throw new InvalidOperationException("TOR POS Cloud zuerst unter Geräte konfigurieren und speichern.");
