@@ -1,5 +1,7 @@
+using System.Text;
 using TorPos.App;
 using TorPos.Core;
+using TorPos.Infrastructure;
 
 // R156: checkout owns Verkaufsart and GEMISCHT.
 //
@@ -14,7 +16,7 @@ using TorPos.Core;
 // - the real payment dialog is part of the multi-size UI snapshot check.
 public static class R156ReviewTests
 {
-    public static Task Run(Action<bool, string> assert)
+    public static async Task Run(string root, Action<bool, string> assert)
     {
         var food = new CartLine
         {
@@ -74,6 +76,106 @@ public static class R156ReviewTests
             result.Method == PaymentMethod.Mixed && result.ImHaus,
             "R156 one payment-hub result carries Zahlart and Verkaufsart together");
 
+        Sale SaleFrom(CheckoutSnapshot snapshot, long receipt) => new()
+        {
+            ReceiptNumber = receipt,
+            CreatedAt = DateTimeOffset.Now,
+            PaymentMethod = PaymentMethod.Cash,
+            TotalCents = snapshot.TotalCents,
+            CashPortionCents = snapshot.TotalCents,
+            CardPortionCents = 0,
+            ImHaus = snapshot.ImHaus,
+            Lines = snapshot.Lines
+        };
+
+        var outsideSale = SaleFrom(outside, 156001);
+        var insideSale = SaleFrom(inside with { Method = PaymentMethod.Cash }, 156002);
+        var outsideTse = Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(outsideSale));
+        var insideTse = Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(insideSale));
+        assert(
+            outsideTse == "Beleg^0.00_7.00_0.00_0.00_0.00^7.00:Bar" &&
+            insideTse == "Beleg^7.00_0.00_0.00_0.00_0.00^7.00:Bar",
+            "R156 the payment-page Verkaufsart reaches TSE Kassenbeleg-V1: AUSSER HAUS uses the 7% bucket and IM HAUS the 19% bucket");
+
+        var outsideVat = VatSummaryCalculator.Compute(outside.Lines, outside.DiscountCents);
+        var insideVat = VatSummaryCalculator.Compute(inside.Lines, inside.DiscountCents);
+        assert(
+            outsideVat.Count == 1 && outsideVat.Single().Rate == 7m && outsideVat.Single().GrossCents == 700 &&
+            insideVat.Count == 1 && insideVat.Single().Rate == 19m && insideVat.Single().GrossCents == 700,
+            "R156 the receipt VAT summary follows the payment-page Verkaufsart while the gross total stays 7.00 EUR");
+
+        var exportDir = Path.Combine(root, "r156-dsfinvk");
+        Directory.CreateDirectory(exportDir);
+        var db = await SafetyDatabase.CreateCurrentAsync(Path.Combine(exportDir, "r156.db"));
+        var settings = new SettingsRepository(db);
+        var audit = new AuditLogRepository(db);
+        await settings.SaveManyAsync(new Dictionary<string, string>
+        {
+            ["company.name"] = "R156 Imbiss",
+            ["company.street"] = "Hauptstraße 1",
+            ["company.zip"] = "10115",
+            ["company.city"] = "Berlin",
+            ["company.tax_no"] = "27/156/00001"
+        });
+
+        async Task SeedDsfinvkSaleAsync(CheckoutSnapshot snapshot, long receipt)
+        {
+            await Task.Delay(15);
+            await using var connection = db.OpenConnection();
+            await using var sale = connection.CreateCommand();
+            sale.CommandText = """
+                INSERT INTO sales(
+                  receipt_number,created_at,payment_method,subtotal_cents,total_cents,
+                  fiscal_status,transaction_type,cash_portion_cents,card_portion_cents,im_haus)
+                VALUES($r,$at,'CASH',$total,$total,'TEST_FIXTURE','SALE',$total,0,$im);
+                SELECT last_insert_rowid();
+                """;
+            sale.Parameters.AddWithValue("$r", receipt);
+            sale.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+            sale.Parameters.AddWithValue("$total", snapshot.TotalCents);
+            sale.Parameters.AddWithValue("$im", snapshot.ImHaus ? 1 : 0);
+            var saleId = Convert.ToInt64(await sale.ExecuteScalarAsync());
+
+            await using var item = connection.CreateCommand();
+            item.CommandText = """
+                INSERT INTO sale_items(
+                  sale_id,product_id,product_name,quantity,unit_price_cents,vat_rate,line_total_cents)
+                VALUES($sale,$product,$name,$qty,$unit,$vat,$line);
+                """;
+            var line = snapshot.Lines.Single();
+            item.Parameters.AddWithValue("$sale", saleId);
+            item.Parameters.AddWithValue("$product", line.ProductId);
+            item.Parameters.AddWithValue("$name", line.ProductName);
+            item.Parameters.AddWithValue("$qty", Convert.ToDouble(line.Quantity));
+            item.Parameters.AddWithValue("$unit", line.UnitPriceCents);
+            item.Parameters.AddWithValue("$vat", Convert.ToDouble(line.VatRate));
+            item.Parameters.AddWithValue("$line", line.LineTotalCents);
+            await item.ExecuteNonQueryAsync();
+
+            await new SaleRepository(db).RecordTseResultAsync(
+                saleId,
+                SaleTseResult.Outage("R156 test outage"));
+        }
+
+        await SeedDsfinvkSaleAsync(outside, 156101);
+        await SeedDsfinvkSaleAsync(inside, 156102);
+        await Task.Delay(15);
+        await new BusinessManagementService(db, settings, audit)
+            .CreateZArchiveAsync("r156", "TEST");
+
+        var exporter = new DsfinvkExportService(db, settings);
+        var folder = await exporter.ExportAsync(
+            DateTimeOffset.Now.AddHours(-1),
+            DateTimeOffset.Now.AddMinutes(1),
+            Path.Combine(exportDir, "out"));
+        var dsfinvkLines = File.ReadAllLines(Path.Combine(folder, "lines.csv")).Skip(1).ToArray();
+        string InHaus(long receipt) =>
+            dsfinvkLines.Single(row => row.Contains($";\"{receipt}\";", StringComparison.Ordinal)).Split(';')[10];
+
+        assert(
+            InHaus(156101) == "\"0\"" && InHaus(156102) == "\"1\"",
+            "R156 DSFinV-K Bonpos.INHAUS exports 0 for AUSSER HAUS and 1 for IM HAUS from the same checkout selection");
+
         var mainAxaml = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml"));
         var mainCode = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
         var paymentCode = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/PaymentChoiceWindow.cs"));
@@ -117,7 +219,6 @@ public static class R156ReviewTests
             snapshotCode.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 6 dialogs)", StringComparison.Ordinal),
             "R156 CI renders the real payment hub and includes it in the five-size/six-dialog layout gate");
 
-        return Task.CompletedTask;
     }
 
     private static int Count(string text, string needle)
