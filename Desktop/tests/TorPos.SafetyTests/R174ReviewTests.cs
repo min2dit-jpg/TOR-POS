@@ -170,12 +170,19 @@ public static class R174ReviewTests
 
         var verifier = File.ReadAllText(
             FindRepoFile("Desktop/tools/Verify-Simulator-Contract.ps1"));
+        var hygiene = File.ReadAllText(
+            FindRepoFile("Desktop/tools/Verify-Repository-Hygiene.ps1"));
+        var workflow = File.ReadAllText(
+            FindRepoFile(".github/workflows/tor-pos-ci.yml"));
 
         assert(
             verifier.Contains(".IndexOf([string]$label, [System.StringComparison]::OrdinalIgnoreCase)", StringComparison.Ordinal) &&
             verifier.Contains(".IndexOf([string]$color, [System.StringComparison]::OrdinalIgnoreCase)", StringComparison.Ordinal) &&
-            !verifier.Contains(".Contains([string]$label, [System.StringComparison]::OrdinalIgnoreCase)", StringComparison.Ordinal),
-            "R174 simulator verifier is compatible with Windows PowerShell 5.1 string APIs");
+            !verifier.Contains(".Contains([string]$label, [System.StringComparison]::OrdinalIgnoreCase)", StringComparison.Ordinal) &&
+            hygiene.Contains("[switch]$RequireGit", StringComparison.Ordinal) &&
+            hygiene.Contains("REPOSITORY HYGIENE SKIPPED", StringComparison.Ordinal) &&
+            workflow.Contains("Verify-Repository-Hygiene.ps1 -RequireGit", StringComparison.Ordinal),
+            "R174 PowerShell 5.1 verification works from normal Windows and source ZIPs while CI keeps Git hygiene fail-closed");
 
         var main = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
