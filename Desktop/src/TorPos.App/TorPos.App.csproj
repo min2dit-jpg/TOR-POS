@@ -49,6 +49,7 @@
           CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="Assets\TorPos-Brand.jpg" />
     <None Update="Assets\TorPos-Magnifier.png"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
