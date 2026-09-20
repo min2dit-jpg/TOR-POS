@@ -433,7 +433,7 @@ await R163ReviewTests.Run(Assert);
 await R164ReviewTests.Run(Assert);
 await R165ReviewTests.Run(Assert);
 await R167ReviewTests.Run(root,Assert);
-await R168ReviewTests.Run(Assert);
+R168ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
