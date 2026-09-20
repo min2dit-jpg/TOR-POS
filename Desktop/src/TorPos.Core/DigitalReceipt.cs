@@ -154,7 +154,9 @@ public sealed record DigitalReceiptDocument(
         var lines = job.Lines
             .Select(line => new DigitalReceiptLine(
                 line.ProductName + (string.IsNullOrWhiteSpace(line.VariantName) ? "" : " · " + line.VariantName),
-                GermanFormat.Number(line.Quantity, "0.###"),
+                line.IsWeighted
+                    ? WeightedSales.QuantityLabel(line.Quantity)
+                    : GermanFormat.Number(line.Quantity, "0.###"),
                 line.UnitPriceCents,
                 line.LineTotalCents,
                 line.VatAllocations.Length > 1
@@ -162,7 +164,10 @@ public sealed record DigitalReceiptDocument(
                     : GermanFormat.Number(
                         line.VatAllocations.Length == 1 ? line.VatAllocations[0].VatRate : line.VatRate,
                         "0.##"),
-                line.HasPromotion ? $"Angebot: {line.PromotionName} -{line.PromotionPercent} %" : ""))
+                (line.IsWeighted ? "Preis pro kg" : "") +
+                (line.HasPromotion
+                    ? (line.IsWeighted ? " · " : "") + $"Angebot: {line.PromotionName} -{line.PromotionPercent} %"
+                    : "")))
             .ToArray();
 
         // R106: VAT on what was actually paid, the discount spread over the rates.
