@@ -283,6 +283,7 @@
       <Setter Property="MinHeight" Value="50"/>
       <Setter Property="Padding" Value="12,9"/>
       <Setter Property="Margin" Value="0,0,0,7"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="Background" Value="#172C42"/>
       <Setter Property="Foreground" Value="#EEF7FF"/>
       <Setter Property="BorderBrush" Value="#3D607E"/>
