@@ -31,18 +31,18 @@ public sealed class OrderPrintOutbox(SqliteDatabase db)
    // damit jede Station an ihren eigenen konfigurierten Drucker geroutet werden kann.
    var lines=new List<(long Id,string Name,decimal Quantity,string Station)>();
    using(var q=c.CreateCommand()){q.Transaction=tx;q.CommandText=
-    "SELECT pri.product_id,pri.product_name,pri.variant_name,pri.quantity,COALESCE(k.station,'') "+
+    "SELECT pri.product_id,pri.product_name,pri.variant_name,CASE WHEN COALESCE(pri.quantity_milli,0)<>0 THEN pri.quantity_milli ELSE CAST(ROUND(pri.quantity*1000.0) AS INTEGER) END,COALESCE(k.station,'') "+
     "FROM parked_receipt_items pri "+
     "LEFT JOIN products p ON p.id=pri.product_id "+
     "LEFT JOIN category_kitchen_data k ON k.category_id=p.category_id "+
     "WHERE pri.parked_receipt_id=$id ORDER BY pri.id;";
     q.Parameters.AddWithValue("$id",orderId);using var r=await q.ExecuteReaderAsync(ct);
-    while(await r.ReadAsync(ct))lines.Add((r.GetInt64(0),r.GetString(1)+(string.IsNullOrWhiteSpace(r.GetString(2))?"":" · "+r.GetString(2)),Convert.ToDecimal(r.GetDouble(3)),KitchenStations.Normalize(r.GetString(4))));}
+    while(await r.ReadAsync(ct))lines.Add((r.GetInt64(0),r.GetString(1)+(string.IsNullOrWhiteSpace(r.GetString(2))?"":" · "+r.GetString(2)),QuantityStorage.FromMilli(r.GetInt64(3)),KitchenStations.Normalize(r.GetString(4))));}
    var grouped=new Dictionary<string,List<KitchenPrintLine>>();
    void Add(string station,KitchenPrintLine line){if(!grouped.TryGetValue(station,out var list))grouped[station]=list=new List<KitchenPrintLine>();list.Add(line);}
    foreach(var line in lines){
     Add(line.Station,new(line.Name,line.Quantity));
-    using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT p.name,i.quantity FROM product_combo_items i JOIN products p ON p.id=i.component_product_id WHERE i.product_id=$id ORDER BY i.sort_order;";q.Parameters.AddWithValue("$id",line.Id);using var r=await q.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))Add(line.Station,new(r.GetString(0),line.Quantity*Convert.ToDecimal(r.GetDouble(1)),true));
+    using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT p.name,CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END FROM product_combo_items i JOIN products p ON p.id=i.component_product_id WHERE i.product_id=$id ORDER BY i.sort_order;";q.Parameters.AddWithValue("$id",line.Id);using var r=await q.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))Add(line.Station,new(r.GetString(0),line.Quantity*QuantityStorage.FromMilli(r.GetInt64(1)),true));
    }
    var instruction=action switch{"CHANGE"=>"ÄNDERUNG · VOLLSTÄNDIGER AKTUELLER AUFTRAG · ERSETZT VORHERIGEN BON","CANCEL"=>"STORNO · NICHT ZUBEREITEN",_=>""};
    var baseNote=string.Join(" · ",new[]{instruction,note}.Where(x=>!string.IsNullOrWhiteSpace(x)));
