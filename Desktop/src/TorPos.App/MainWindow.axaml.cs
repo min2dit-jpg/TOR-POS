@@ -411,6 +411,14 @@ public partial class MainWindow:Window
                         p.Id,
                         p.CategoryId,
                         DateOnly.FromDateTime(DateTime.Now));
+
+                // R170: current promotion storage is per whole unit (cents/unit).
+                // A fractional kg sale can otherwise make the independently
+                // rounded promotion amount differ by one cent from list-total
+                // minus line-total. Keep weighed sales exact until promotions
+                // have their own weight-aware line-level allocation.
+                if (p.IsWeighted)
+                    promotion = null;
             }
 
             // Re-check: a checkout may have started while the promotion lookup
