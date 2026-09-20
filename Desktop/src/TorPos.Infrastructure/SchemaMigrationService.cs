@@ -26,8 +26,12 @@ public sealed class SchemaMigrationService
         _migrationBackupDirectory = migrationBackupDirectory;
     }
 
-    public async Task<SchemaMigrationResult> InitializeDatabaseAsync(
+    public Task<SchemaMigrationResult> InitializeDatabaseAsync(
         CancellationToken ct = default)
+        => IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(ct));
+
+    private async Task<SchemaMigrationResult> InitializeDatabaseCoreAsync(
+        CancellationToken ct)
     {
         var existedBefore =
             File.Exists(_db.DatabasePath) &&
