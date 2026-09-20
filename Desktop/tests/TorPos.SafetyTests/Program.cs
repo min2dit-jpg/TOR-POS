@@ -439,6 +439,7 @@ await R170ReviewTests.Run(Assert);
 await R171ReviewTests.Run(Assert);
 await R172ReviewTests.Run(Assert);
 await R173ReviewTests.Run(Assert);
+await R174ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -485,7 +486,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // and the validated source-code ZIP artifact.
 // R173: 5 reviewed checks lock Unicode Windows spooler metadata and prevent
 // Epson office/fax queues from being accepted as POS receipt printers.
-const int ExpectedSafetyChecks = 1062;
+// R174: 8 reviewed checks lock PowerShell 5.1 simulator verification,
+// operating/Z-day promotion dates, cent-exact weighted promotions, checkout
+// unit preservation and identical partial-return allocation.
+const int ExpectedSafetyChecks = 1070;
 
 if (checks != ExpectedSafetyChecks)
 {
