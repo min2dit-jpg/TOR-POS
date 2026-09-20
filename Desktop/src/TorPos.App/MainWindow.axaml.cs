@@ -212,6 +212,16 @@ public partial class MainWindow:Window
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
 
+        // R165: keyboard-wedge scanners reliably produce TextInput because that
+        // is the same path a normal TextBox receives. Some devices/layouts do
+        // not expose their digits as Key.D0..D9, which made the cashier screen
+        // silently ignore scans even though Artikelverwaltung could read them.
+        AddHandler(
+            InputElement.TextInputEvent,
+            OnGlobalScannerTextInput,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+
         _scanNoEnterTimer.IsEnabled = false;
         _scanNoEnterTimer.Tick += async (_,_) =>
         {
@@ -225,6 +235,8 @@ public partial class MainWindow:Window
 
             var code = _scan;
             _scan = "";
+            ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+            ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
         };
 
@@ -738,7 +750,7 @@ public partial class MainWindow:Window
     private void OnGlobalScannerKeyDown(object? sender, KeyEventArgs e)
     {
         // R145: the card menu hub replaces the cashier workspace while open.
-        // Never let scanner digits or cashier shortcuts modify the hidden cart.
+        // Never let scanner input or cashier shortcuts modify the hidden cart.
         if (MenuHubOverlay.IsVisible)
         {
             _scan = "";
@@ -748,9 +760,14 @@ public partial class MainWindow:Window
             return;
         }
 
-        if (CartLocked) { _scan=""; return; }
-        // Kassierer-Schnelltasten: funktionieren ohne Fokuswechsel und
-        // beeinträchtigen den Scanner nicht, da Scanner nur Ziffern + Enter sendet.
+        if (CartLocked)
+        {
+            _scan = "";
+            return;
+        }
+
+        // Kassierer-Schnelltasten: scanner digits are collected by TextInput
+        // (R165), so function keys remain independent from barcode capture.
         if (e.Key == Key.F1 && CashButton.IsEnabled)
         {
             e.Handled = true;
@@ -786,49 +803,95 @@ public partial class MainWindow:Window
             return;
         }
 
+        // Scanner suffix can be Enter or Tab. Supporting both matters because
+        // many USB/HID scanners are configured with TAB as the terminator.
+        if (e.Key is not (Key.Enter or Key.Tab))
+            return;
+
+        _scanNoEnterTimer.Stop();
+
+        var now = Stopwatch.GetTimestamp();
+        var gap = _lastScan == 0
+            ? 999d
+            : Stopwatch.GetElapsedTime(_lastScan, now).TotalMilliseconds;
+        var maxSuffixGap = Math.Max(
+            400,
+            _settingsCache.GetInt("scanner.wait_ms", 1000));
+
+        if (_scan.Length >= 6 && gap < maxSuffixGap && !_scanProcessing)
+        {
+            var code = _scan;
+            _scan = "";
+            e.Handled = true;
+            ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+            ScannerStatus.Foreground = AppTheme.AccentBlue;
+            _ = ProcessBarcodeSafely(code);
+        }
+        else
+        {
+            _scan = "";
+        }
+    }
+
+    private void OnGlobalScannerTextInput(object? sender, TextInputEventArgs e)
+    {
+        if (MenuHubOverlay.IsVisible || CartLocked)
+        {
+            _scan = "";
+            return;
+        }
+
+        var text = e.Text ?? "";
+        if (text.Length == 0)
+            return;
+
         var now = Stopwatch.GetTimestamp();
         var gap = _lastScan == 0
             ? 999d
             : Stopwatch.GetElapsedTime(_lastScan, now).TotalMilliseconds;
 
-        if (e.Key == Key.Enter)
-        {
-            _scanNoEnterTimer.Stop();
-
-            var maxEnterGap = Math.Max(
-                400,
-                _settingsCache.GetInt("scanner.wait_ms", 1000));
-
-            if (_scan.Length >= 6 && gap < maxEnterGap && !_scanProcessing)
-            {
-                var code = _scan;
-                _scan = "";
-                e.Handled = true;
-                _ = ProcessBarcodeSafely(code);
-            }
-            else
-            {
-                _scan = "";
-            }
-
-            return;
-        }
-
-        var digit = Digit(e.Key);
-        if (digit is null)
-            return;
-
-        // A hardware scanner sends the digits much faster than a human typist.
-        // This avoids interpreting normal number-key use as an EAN scan.
-        var fastGap = 180;
-        if (gap > fastGap)
+        // A scanner emits characters much faster than a cashier can type them.
+        // Reset after a human-speed pause so unrelated keyboard input never
+        // becomes part of a barcode.
+        if (gap > 180)
             _scan = "";
 
-        _scan += digit.Value;
-        _lastScan = now;
+        var added = false;
+        var hasSuffix = false;
+        foreach (var ch in text)
+        {
+            if (ch is '\r' or '\n' or '\t')
+            {
+                hasSuffix = true;
+                continue;
+            }
+
+            if (!char.IsDigit(ch))
+                continue;
+
+            _scan += ch;
+            added = true;
+        }
+
+        if (!added && !hasSuffix)
+            return;
 
         if (_scan.Length > 32)
             _scan = _scan[^32..];
+
+        _lastScan = now;
+        e.Handled = true;
+
+        if (hasSuffix && _scan.Length >= 6 && !_scanProcessing)
+        {
+            _scanNoEnterTimer.Stop();
+            var code = _scan;
+            _scan = "";
+            ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+            ScannerStatus.Foreground = AppTheme.AccentBlue;
+            _ = ProcessBarcodeSafely(code);
+            return;
+        }
 
         if (!_settingsCache.GetBool("scanner.enter_suffix", true))
         {
@@ -873,42 +936,71 @@ public partial class MainWindow:Window
 
     private async Task ProcessBarcode(string code)
     {
-        code=code.Trim();if(code.Length==0)return;
-        var started=Stopwatch.GetTimestamp();
+        code = code.Trim();
+        if (code.Length == 0)
+            return;
 
-        if(_catalog.TryGetByBarcode(code,out var p)&&p is not null)
+        var started = Stopwatch.GetTimestamp();
+
+        // The article may have been created/changed in Warenverwaltung after the
+        // cashier catalog was loaded. On a miss, refresh once before declaring
+        // the EAN unknown so a newly added article scans without an app restart.
+        if (!_catalog.TryGetByBarcode(code, out var p) || p is null)
         {
-            ScannerStatus.Text=$"Gefunden: {p.Name}";
+            await _catalog.ReloadAsync();
+            _catalog.TryGetByBarcode(code, out p);
+        }
+
+        if (p is not null)
+        {
+            ScannerStatus.Text = $"SCAN OK · {p.Name}";
+            ScannerStatus.Foreground = AppTheme.AccentTeal;
             await AddProduct(p);
         }
         else
         {
-            ScannerStatus.Text=$"Nicht gefunden: {code}";
+            ScannerStatus.Text = $"EAN NICHT GEFUNDEN · {code}";
+            ScannerStatus.Foreground = AppTheme.WarningAmber;
 
-            if(_settingsCache.GetBool("scanner.unknown_dialog",true))
+            if (_settingsCache.GetBool("scanner.unknown_dialog", true))
             {
                 if (!_currentUser.Can(UserPermissions.ManageProducts))
                 {
-                    ScannerStatus.Text = $"Nicht gefunden: {code} · keine Stammdaten-Berechtigung.";
+                    ScannerStatus.Text =
+                        $"EAN NICHT GEFUNDEN · {code} · keine Stammdaten-Berechtigung.";
                     return;
                 }
 
-                var saved=await new ProductEditorWindow(_repo,_catalog,_images,_management,_promotions,_currentUser,code).ShowDialog<bool>(this);
-                if(saved)
+                var saved = await new ProductEditorWindow(
+                        _repo,
+                        _catalog,
+                        _images,
+                        _management,
+                        _promotions,
+                        _currentUser,
+                        code)
+                    .ShowDialog<bool>(this);
+
+                if (saved)
                 {
                     await _catalog.ReloadAsync();
                     BuildCategories();
                     SelectCategory(_categoryId);
 
-                    if(_catalog.TryGetByBarcode(code,out p)&&p is not null)
+                    if (_catalog.TryGetByBarcode(code, out p) && p is not null)
+                    {
+                        ScannerStatus.Text = $"SCAN OK · {p.Name}";
+                        ScannerStatus.Foreground = AppTheme.AccentTeal;
                         await AddProduct(p);
+                    }
                 }
             }
         }
 
-        var ms=Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        PerformanceStatus.Text=$"Barcode {ms:0} ms";
-        PerformanceStatus.Foreground=ms<100?AppTheme.AccentTeal:AppTheme.WarningAmber;
+        var ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        PerformanceStatus.Text = $"Barcode {ms:0} ms";
+        PerformanceStatus.Foreground =
+            ms < 100 ? AppTheme.AccentTeal : AppTheme.WarningAmber;
     }
 
     private async void OnEanSearchClick(object? sender, RoutedEventArgs e)
