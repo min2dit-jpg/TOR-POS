@@ -430,6 +430,7 @@ await R160ReviewTests.Run(Assert);
 await R161ReviewTests.Run(Assert);
 await R162ReviewTests.Run(root,Assert,Reject);
 await R163ReviewTests.Run(Assert);
+await R164ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -454,7 +455,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // untouched factory credentials and the customer installer/desktop shortcut.
 // R163: 5 reviewed checks lock ShellExecute launch and verified asInvoker
 // manifest packaging for the customer installer.
-const int ExpectedSafetyChecks = 978;
+// R164: 3 reviewed checks lock fresh admin TextBoxes on reload and the real
+// employee-management double-load UI regression path.
+const int ExpectedSafetyChecks = 981;
 
 if (checks != ExpectedSafetyChecks)
 {

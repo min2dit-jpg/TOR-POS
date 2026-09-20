@@ -55,7 +55,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 8 dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 9 dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -187,6 +187,11 @@ async Task RunAsync()
     await SnapshotDialogAsync(new StartupLoadingWindow(), "startup-loading", check, failures, output);
     await SnapshotDialogAsync(new LoginWindow(auth, settings), "login", check, failures, output);
 
+    // R164: the real employee-management window is opened and then reloaded
+    // once more, exactly matching the refresh path after a successful save.
+    // This catches Avalonia visual-parent reuse bugs that static tests cannot.
+    await SnapshotUserManagementAsync(auth, admin, check, failures, output);
+
     // R156: Verkaufsart and all tender choices now live in one payment hub.
     // Snapshot it explicitly so moving controls out of the header cannot turn
     // into an untested dialog overflow on a till.
@@ -209,6 +214,59 @@ async Task RunAsync()
     // R149: returned empties and the cash payout.
     await SnapshotDialogAsync(new PfandSelectionWindow(), "pfand-return", check, failures, output);
     await SnapshotDialogAsync(new DepositPayoutWindow(50), "deposit-payout", check, failures, output);
+}
+
+static async Task SnapshotUserManagementAsync(
+    IAuthenticationService auth,
+    AuthenticatedUser admin,
+    bool check,
+    List<string> failures,
+    string output)
+{
+    var window = new UserManagementWindow(auth, admin);
+    window.Show();
+
+    for (var i = 0; i < 20; i++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(30);
+    }
+
+    void CheckLoadStatus(string phase)
+    {
+        var failed = window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Select(t => t.Text ?? "")
+            .FirstOrDefault(t => t.StartsWith("Laden fehlgeschlagen:", StringComparison.Ordinal));
+        if (failed is not null)
+            failures.Add($"user-management {phase}: {failed}");
+    }
+
+    if (check) CheckLoadStatus("initial load");
+
+    var reload = typeof(UserManagementWindow).GetMethod(
+        "LoadAsync",
+        BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("UserManagementWindow.LoadAsync reflection hook missing.");
+
+    var reloadTask = reload.Invoke(window, null) as Task
+        ?? throw new InvalidOperationException("UserManagementWindow.LoadAsync did not return Task.");
+    await reloadTask;
+
+    for (var i = 0; i < 10; i++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(20);
+    }
+
+    if (check) CheckLoadStatus("second load");
+
+    var frame = window.CaptureRenderedFrame()
+        ?? throw new InvalidOperationException("No user-management frame rendered.");
+    var file = Path.Combine(output, "user-management.png");
+    frame.Save(file, new PngBitmapEncoderOptions());
+    Console.WriteLine($"saved {file}");
+    window.Close();
 }
 
 // R145: a dialog at its own fixed size; every visible button must be inside it.
