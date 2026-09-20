@@ -343,6 +343,22 @@ public partial class MainWindow:Window
             if (!RequirePermission(UserPermissions.Sale, "Artikelverkauf"))
                 return;
 
+            decimal? weighedKilograms = null;
+            if (p.IsWeighted)
+            {
+                if (p.Variants.Count > 0 || p.IsCombo)
+                    throw new InvalidOperationException("Gewichtsartikel dürfen keine Varianten oder Menüs verwenden.");
+
+                // A pending Stück multiplier must never leak into a weight sale.
+                ClearNumericInput();
+                var weighed = await new WeightEntryWindow(p)
+                    .ShowDialog<WeightEntryResult?>(this);
+                if (weighed is null)
+                    return;
+
+                weighedKilograms = weighed.Kilograms;
+            }
+
             ProductVariant? variant=null;
             if(p.Variants.Count>0)
             {
@@ -415,7 +431,7 @@ public partial class MainWindow:Window
             if (promotionSuppressedByManualDiscount)
                 promotion = null;
 
-            var quantity = ConsumePendingQuantity();
+            var quantity = weighedKilograms ?? ConsumePendingQuantity();
             _engine.Add(
                 p,
                 variant,
@@ -462,6 +478,19 @@ public partial class MainWindow:Window
             if (menuChoices.Length > 0)
                 name += " · " + string.Join(" · ", menuChoices);
 
+            if (x.IsWeighted)
+            {
+                var quantity = WeightedSales.QuantityLabel(x.Quantity);
+                if (!x.HasPromotion)
+                    return name + "   " +
+                        $"{quantity} × {Formatting.Money(x.UnitPriceCents)} / kg = {Formatting.Money(x.LineTotalCents)}";
+
+                return name + "   " +
+                    $"{quantity} × {Formatting.Money(x.EffectiveListUnitPriceCents)} / kg → " +
+                    $"{Formatting.Money(x.UnitPriceCents)} / kg = {Formatting.Money(x.LineTotalCents)} · " +
+                    $"ANGEBOT -{x.PromotionPercent}%";
+            }
+
             if (!x.HasPromotion)
             {
                 return name + "   " +
@@ -481,10 +510,17 @@ public partial class MainWindow:Window
         var listSubtotalCents = _engine.Cart.Sum(x => x.ListLineTotalCents);
         var promotionDiscountCents = _engine.Cart.Sum(x => x.PromotionDiscountCents);
 
+        var weighedKg = _engine.Cart.Where(x => x.IsWeighted).Sum(x => x.Quantity);
+        var otherQuantity = _engine.Cart.Where(x => !x.IsWeighted).Sum(x => x.Quantity);
+
         ItemsSummaryText.Text =
             itemCount == 0
                 ? ""
-                : $"{itemCount} Artikel · {quantityTotal:0.##} Stk.";
+                : weighedKg > 0m && otherQuantity > 0m
+                    ? $"{itemCount} Positionen · {otherQuantity:0.##} Stk. · {GermanFormat.Number(weighedKg, "0.###")} kg"
+                    : weighedKg > 0m
+                        ? $"{itemCount} Positionen · {GermanFormat.Number(weighedKg, "0.###")} kg"
+                        : $"{itemCount} Artikel · {otherQuantity:0.##} Stk.";
 
         SubtotalText.Text =
             itemCount == 0
@@ -1101,10 +1137,13 @@ public partial class MainWindow:Window
         var selectedIndex = CartList.SelectedIndex;
         if (selectedIndex >= 0 && selectedIndex < _engine.Cart.Count)
         {
+            var selectedLine = _engine.Cart[selectedIndex];
             _engine.SetQuantity(selectedIndex, quantity);
             ClearNumericInput();
             UpdateCart();
-            ScannerStatus.Text = $"Menge auf {quantity:0.###} gesetzt.";
+            ScannerStatus.Text = selectedLine.IsWeighted
+                ? $"Gewicht auf {GermanFormat.Number(quantity, "0.###")} kg gesetzt."
+                : $"Menge auf {quantity:0.###} gesetzt.";
             return;
         }
 
@@ -1163,12 +1202,24 @@ public partial class MainWindow:Window
     private void OnQtyPlusClick(object? s,RoutedEventArgs e)
     {
         if (!RequirePermission(UserPermissions.Sale, "+1")) return;
-        _engine.ChangeQuantity(CartList.SelectedIndex,1);UpdateCart();
+        var index = CartList.SelectedIndex;
+        if (index >= 0 && index < _engine.Cart.Count && _engine.Cart[index].IsWeighted)
+        {
+            ScannerStatus.Text = "Gewichtsartikel: Gewicht über MENGE × ändern oder Artikel erneut wiegen.";
+            return;
+        }
+        _engine.ChangeQuantity(index,1);UpdateCart();
     }
     private async void OnQtyMinusClick(object? s,RoutedEventArgs e)
     {
         if (!RequirePermission(UserPermissions.Sale, "-1")) return;
-        _engine.ChangeQuantity(CartList.SelectedIndex,-1);
+        var index = CartList.SelectedIndex;
+        if (index >= 0 && index < _engine.Cart.Count && _engine.Cart[index].IsWeighted)
+        {
+            ScannerStatus.Text = "Gewichtsartikel: Gewicht über MENGE × ändern oder Position stornieren.";
+            return;
+        }
+        _engine.ChangeQuantity(index,-1);
         UpdateCart();
         await CancelActiveParkedReceiptIfEmptyAsync("MENGE_MINUS");
     }
