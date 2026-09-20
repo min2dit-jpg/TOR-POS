@@ -123,10 +123,9 @@ jobs:
           $uiExit = $LASTEXITCODE
           if ($uiExit -ne 0) { exit $uiExit }
 
-      # Main branch publishes a self-contained Windows x64 folder so a tester
-      # can unzip and run TOR POS without installing a matching .NET runtime.
+      # CI publishes a self-contained Windows x64 folder so a tester can
+      # unzip and run TOR POS without installing a matching .NET runtime.
       - name: Windows x64 test paketini olustur
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
           Remove-Item -Recurse -Force ci-results/publish -ErrorAction SilentlyContinue
@@ -136,7 +135,6 @@ jobs:
           if (-not (Test-Path ci-results/publish/TorPos.App.exe)) { throw 'TOR POS executable was not produced.' }
 
       - name: Windows x64 test paketini sakla
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@v7
         with:
           name: TOR-POS-Windows-x64-${{ github.sha }}
