@@ -477,16 +477,16 @@ public partial class SettingsWindow : Window
     {
         var page = Page(
             "Kartenzahlung / Terminal",
-            "TOR nutzt in Deutschland primär die herstellerunabhängige ZVT-Kassenschnittstelle. In v0.6.1 ist ZVT über TCP/IP aktiv implementiert.");
+            "Technische Terminaldiagnose. Für die normale Einrichtung bitte unter Geräte den Kartenterminal-Assistenten verwenden.");
 
-        var config = Section("ZVT-Terminal");
+        var config = Section("Terminal-Profil / ZVT-Diagnose");
         config.Children.Add(ToggleRow(Check(
             "payment.terminal.enabled",
             "Kartenterminal mit TOR POS verbinden")));
 
         config.Children.Add(ReadOnlyRow(
-            "Aktives Protokoll",
-            "ZVT · TCP/IP"));
+            "Produktiv direkt unterstützt",
+            "ZVT · TCP/IP. Proprietäre Cloud-/SDK-Profile bleiben bis zur jeweiligen Partner-/Adapterfreigabe automatisch deaktiviert."));
 
         Form(
             config,
@@ -494,12 +494,20 @@ public partial class SettingsWindow : Window
             Combo(
                 "payment.terminal.vendor",
                 "AUTO_ZVT",
-                "INGENICO_ZVT",
+                "PAYONE_ZVT",
                 "CCV_ZVT",
+                "SPARKASSE_ZVT",
+                "INGENICO_ZVT",
                 "VERIFONE_ZVT",
                 "PAX_PROVIDER_ZVT",
-                "OTHER_ZVT"),
-            "AUTO_ZVT ist für ein normales ZVT-fähiges Terminal die empfohlene Einstellung.");
+                "OTHER_ZVT",
+                "SUMUP_CLOUD",
+                "MYPOS_EPOS",
+                "MYPOS_DOTNET",
+                "READYPAY_API",
+                "ZETTLE_SDK",
+                "FLATPAY_PARTNER"),
+            "Normale Einrichtung: Geräte → KARTENTERMINAL VERBINDEN. Nicht-ZVT-Profile werden hier nicht als ZVT ausgegeben.");
 
         Form(
             config,
@@ -680,7 +688,7 @@ public partial class SettingsWindow : Window
 
         page.Children.Add(InfoCard(
             "Nicht alles ist ZVT",
-            "SumUp, Stripe Terminal und Adyen verwenden eigene Integrationswege. TOR zeigt sie deshalb getrennt und behauptet keine universelle ZVT-Kompatibilität, wenn sie nicht verifiziert ist.",
+            "SumUp, myPOS, readyPay/readyMini, PayPal Zettle (iZettle) und Flatpay verwenden eigene bzw. providerabhängige Integrationswege. TOR zeigt sie getrennt und aktiviert keine automatische Zahlung, solange der jeweilige offizielle Adapter-/Partnerweg nicht freigegeben ist.",
             AppTheme.WarningAmberBg));
 
         return page;
@@ -719,10 +727,21 @@ public partial class SettingsWindow : Window
             values["payment.terminal.vendor"] =
                 vendor.SelectedItem?.ToString() ?? "AUTO_ZVT";
 
-        values["payment.terminal.protocol"] = "ZVT_TCP";
+        var profile = PaymentTerminalProfiles.Find(
+            values.GetValueOrDefault("payment.terminal.vendor", "AUTO_ZVT"));
+        values["payment.terminal.protocol"] = profile.Protocol;
+
+        // R167 fail-closed: selecting a prepared proprietary profile must never
+        // accidentally leave the old ZVT integration enabled.
+        if (!profile.ProductionReady)
+        {
+            values["payment.terminal.enabled"] = "false";
+            if (_check.TryGetValue("payment.terminal.enabled", out var terminalEnabled))
+                terminalEnabled.IsChecked = false;
+        }
 
         await _settings.SaveManyAsync(values);
-            TouchKeyboard.AutoOpen = values.GetValueOrDefault("ui.keyboard.auto", "true") != "false";
+        TouchKeyboard.AutoOpen = values.GetValueOrDefault("ui.keyboard.auto", "true") != "false";
     }
 
     private Control TaxesPage()
@@ -906,7 +925,7 @@ public partial class SettingsWindow : Window
     private Control DevicesPage()
     {
         var page = Page("Drucker / Yazıcılar & Geräte",
-            "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Kartenterminal için marka seçimi aşağıdaki asistan üzerinden yapılır.");
+            "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden.");
 
         var terminalAssistant = new Button
         {
