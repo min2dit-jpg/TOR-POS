@@ -24,81 +24,7 @@ public sealed class ZvtPaymentTerminalService : IPaymentTerminalService
         _journal = journal;
     }
 
-    public IReadOnlyList<PaymentTerminalProfile> Profiles { get; } =
-        new[]
-        {
-            new PaymentTerminalProfile(
-                "AUTO_ZVT",
-                "Herstellerunabhängig",
-                "ZVT-fähiges Terminal",
-                "ZVT über TCP/IP",
-                "TOR AKTIV",
-                "Bevorzugter Universalmodus. Terminal/Netzbetreiber muss ZVT TCP/IP freischalten."),
-
-            new PaymentTerminalProfile(
-                "INGENICO_ZVT",
-                "Ingenico",
-                "AXIUM / Desk / Lane / weitere ZVT-Modelle",
-                "ZVT über TCP/IP",
-                "TOR AKTIV",
-                "ZVT muss in der Payment-Applikation bzw. beim Netzbetreiber aktiviert sein."),
-
-            new PaymentTerminalProfile(
-                "CCV_ZVT",
-                "CCV",
-                "Pad Next / Pad / Q25 / weitere ZVT-Modelle",
-                "ZVT über TCP/IP",
-                "TOR AKTIV",
-                "CCV dokumentiert ZVT und O.P.I.; TOR nutzt in dieser Version ZVT TCP/IP."),
-
-            new PaymentTerminalProfile(
-                "VERIFONE_ZVT",
-                "Verifone / TeleCash",
-                "ZVT-fähige Verifone-Terminals",
-                "ZVT über TCP/IP",
-                "TOR AKTIV",
-                "TeleCash dokumentiert ZVT über TCP/IP, COM und USB; TOR nutzt aktuell TCP/IP."),
-
-            new PaymentTerminalProfile(
-                "OTHER_ZVT",
-                "Weitere Hersteller",
-                "ZVT-fähige Payment-Terminals",
-                "ZVT über TCP/IP",
-                "TEST ERFORDERLICH",
-                "Kompatibel, wenn die konkrete Terminalsoftware des Netzbetreibers ZVT bereitstellt."),
-
-            new PaymentTerminalProfile(
-                "PAX_PROVIDER_ZVT",
-                "PAX",
-                "A-Serie / providerabhängig",
-                "ZVT falls vom Netzbetreiber bereitgestellt",
-                "TEST ERFORDERLICH",
-                "Nicht pauschal für jedes PAX-Gerät zugesagt; Payment-App und Netzbetreiber entscheiden."),
-
-            new PaymentTerminalProfile(
-                "SUMUP",
-                "SumUp",
-                "SumUp Terminal / Reader",
-                "Herstellerspezifische Integration",
-                "NICHT ZVT-VERIFIZIERT",
-                "Nicht als universelles ZVT-Terminal freigegeben; separater SumUp-Adapter wäre erforderlich."),
-
-            new PaymentTerminalProfile(
-                "STRIPE",
-                "Stripe Terminal",
-                "WisePOS E / S700/S710 / Verifone Reader",
-                "Stripe Terminal API",
-                "SEPARATER ADAPTER",
-                "Stripe nutzt SDK/server-driven API; nicht über den TOR-ZVT-Adapter."),
-
-            new PaymentTerminalProfile(
-                "ADYEN",
-                "Adyen",
-                "Adyen Payment Terminals",
-                "Adyen Terminal API / nexo",
-                "SEPARATER ADAPTER",
-                "Lokale oder Cloud-Terminal-API; nicht über den TOR-ZVT-Adapter.")
-        };
+    public IReadOnlyList<PaymentTerminalProfile> Profiles => PaymentTerminalProfiles.All;
 
     public async Task<PaymentTerminalProbeResult> ProbeAsync(
         CancellationToken ct = default)
@@ -947,8 +873,17 @@ public sealed class ZvtPaymentTerminalService : IPaymentTerminalService
 
     private static string? Validate(TerminalConfig cfg)
     {
+        var profile = PaymentTerminalProfiles.Find(cfg.Vendor);
+
+        if (!profile.ProductionReady ||
+            !string.Equals(profile.Protocol, "ZVT_TCP", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{profile.Manufacturer}: {profile.TorStatus}. " +
+                   "Dieses Profil darf nicht über den ZVT-Adapter belastet werden.";
+        }
+
         if (!string.Equals(cfg.Protocol, "ZVT_TCP", StringComparison.OrdinalIgnoreCase))
-            return "Diese TOR-Version unterstützt produktiv nur ZVT über TCP/IP.";
+            return "Für dieses aktive Profil muss das Protokoll ZVT_TCP verwendet werden.";
 
         if (string.IsNullOrWhiteSpace(cfg.IpAddress))
             return "IP-Adresse des Kartenterminals fehlt.";

@@ -29,9 +29,12 @@ public sealed class FirstRunSetupWindow : Window
     private readonly TextBox _city = new();
     private readonly ComboBox _printerName = new();
     private readonly CheckBox _printerEnabled = new() { Content = "Bondrucker verwenden", IsChecked = true };
-    private readonly CheckBox _terminalEnabled = new() { Content = "Kartenterminal verwenden" };
+    private readonly CheckBox _terminalEnabled = new() { Content = "Automatische Kartenterminal-Anbindung verwenden" };
+    private readonly ComboBox _terminalProfile = new() { MinHeight = 42, HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly TextBlock _terminalProfileHint = new() { TextWrapping = TextWrapping.Wrap, MinHeight = 48 };
     private readonly TextBox _terminalIp = new() { PlaceholderText = "z. B. 192.168.1.50" };
     private readonly TextBox _terminalPort = new() { Text = "20007" };
+    private readonly TerminalProfileChoice[] _terminalProfiles;
 
     public bool Completed { get; private set; }
 
@@ -39,6 +42,13 @@ public sealed class FirstRunSetupWindow : Window
         ITseProvider tse, IPaymentTerminalService terminal, string edition)
     {
         _settings = settings; _printer = printer; _tse = tse; _terminal = terminal; _edition = edition;
+        _terminalProfiles = _terminal.Profiles.Select(x => new TerminalProfileChoice(x)).ToArray();
+        _terminalProfile.ItemsSource = _terminalProfiles;
+        _terminalProfile.SelectionChanged += (_,_) =>
+        {
+            ApplyTerminalProfile();
+            if (_step == 3) Render();
+        };
         Title = "TOR POS – Ersteinrichtung";
         Width = 820; Height = 650; MinWidth = 720; MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -70,8 +80,18 @@ public sealed class FirstRunSetupWindow : Window
         _printerName.ItemsSource = printers;
         if (!string.IsNullOrWhiteSpace(configured)) _printerName.SelectedItem = configured; else if (printers.Count > 0) _printerName.SelectedIndex = 0;
         _printerEnabled.IsChecked = !string.Equals(s.GetValueOrDefault("device.receipt_printer.enabled", "true"), "false", StringComparison.OrdinalIgnoreCase);
-        _terminalEnabled.IsChecked = string.Equals(s.GetValueOrDefault("payment.terminal.enabled", "false"), "true", StringComparison.OrdinalIgnoreCase);
-        _terminalIp.Text = s.GetValueOrDefault("payment.terminal.ip", ""); _terminalPort.Text = s.GetValueOrDefault("payment.terminal.port", "20007");
+        var selectedTerminal = PaymentTerminalProfiles.Find(s.GetValueOrDefault("payment.terminal.vendor", "AUTO_ZVT"));
+        _terminalProfile.SelectedItem =
+            _terminalProfiles.FirstOrDefault(x => x.Profile.Id == selectedTerminal.Id)
+            ?? _terminalProfiles.FirstOrDefault();
+        _terminalEnabled.IsChecked =
+            selectedTerminal.ProductionReady &&
+            string.Equals(s.GetValueOrDefault("payment.terminal.enabled", "false"), "true", StringComparison.OrdinalIgnoreCase);
+        _terminalIp.Text = s.GetValueOrDefault("payment.terminal.ip", "");
+        _terminalPort.Text = s.GetValueOrDefault(
+            "payment.terminal.port",
+            selectedTerminal.DefaultPort > 0 ? selectedTerminal.DefaultPort.ToString() : "");
+        ApplyTerminalProfile();
     }
 
     private static StackPanel Page(params Control[] controls)
@@ -103,13 +123,38 @@ public sealed class FirstRunSetupWindow : Window
                 page = Page(Info("TOR prüft hier nur die TSE. Es wird keine TSE automatisch aktiviert oder neu eingerichtet."),
                     Info($"Provider: {_tse.DisplayName}"), Action("TSE PRÜFEN", ProbeTseAsync)); break;
             case 3:
+            {
                 _title.Text = "Kartenterminal";
-                page = Page(Info("Optional. ZVT-Terminal im Netzwerk eintragen. Der Test löst keine Zahlung aus."), _terminalEnabled,
-                    Field("IP-Adresse", _terminalIp), Field("Port", _terminalPort), Action("VERBINDUNG PRÜFEN", ProbeTerminalAsync)); break;
+                ApplyTerminalProfile();
+                var profile = SelectedTerminalProfile;
+                var controls = new List<Control>
+                {
+                    Info("Optional. Marke bzw. Terminalfamilie auswählen. TOR zeigt den freigegebenen Integrationsweg und aktiviert keine nicht verifizierte Schnittstelle."),
+                    Field("Marke / Profil", _terminalProfile),
+                    _terminalProfileHint,
+                    _terminalEnabled
+                };
+                if (profile.RequiresNetworkEndpoint)
+                {
+                    controls.Add(Field("IP-Adresse", _terminalIp));
+                    controls.Add(Field("ZVT TCP-Port", _terminalPort));
+                    controls.Add(Action("VERBINDUNG PRÜFEN", ProbeTerminalAsync));
+                }
+                else if (profile.Id == "SUMUP_CLOUD")
+                {
+                    controls.Add(Action("SUMUP GERÄT / PAIRING TESTEN", OpenSumUpAsync));
+                }
+                else
+                {
+                    controls.Add(Info("Für dieses Profil ist keine IP-/ZVT-Eingabe erforderlich. Die automatische Zahlung bleibt bis zur offiziellen Adapter-/Partnerfreigabe deaktiviert."));
+                }
+                page = Page(controls.ToArray());
+                break;
+            }
             case 4:
                 _title.Text = "Kontrolle";
                 page = Page(Info("Bitte kurz prüfen. Mit WEITER werden die Einstellungen gespeichert."),
-                    Info($"Firma: {(_company.Text ?? "").Trim()}\nKassenart: {_edition}\nBondrucker: {(_printerEnabled.IsChecked == true ? (_printerName.SelectedItem?.ToString() ?? "nicht gewählt") : "aus")}\nKartenterminal: {(_terminalEnabled.IsChecked == true ? $"{_terminalIp.Text}:{_terminalPort.Text}" : "aus")}")); break;
+                    Info($"Firma: {(_company.Text ?? "").Trim()}\nKassenart: {_edition}\nBondrucker: {(_printerEnabled.IsChecked == true ? (_printerName.SelectedItem?.ToString() ?? "nicht gewählt") : "aus")}\nKartenterminal: {SelectedTerminalProfile.Manufacturer} · {(SelectedTerminalProfile.ProductionReady && _terminalEnabled.IsChecked == true ? "aktiv" : "nicht aktiv")}")); break;
             default:
                 _title.Text = "Fertig";
                 page = Page(Info("Die Grundeinrichtung ist bereit. Technische Details bleiben unter Einstellungen → Erweitert / Techniker geschützt."),
@@ -118,17 +163,43 @@ public sealed class FirstRunSetupWindow : Window
         _host.Children.Add(new ScrollViewer { Content = page, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
     }
 
+    private PaymentTerminalProfile SelectedTerminalProfile =>
+        (_terminalProfile.SelectedItem as TerminalProfileChoice)?.Profile
+        ?? PaymentTerminalProfiles.All[0];
+
+    private void ApplyTerminalProfile()
+    {
+        var profile = SelectedTerminalProfile;
+        _terminalProfileHint.Text =
+            $"{profile.Integration} · {profile.TorStatus}\n{profile.Notes}" +
+            (string.IsNullOrWhiteSpace(profile.SetupHint) ? "" : $"\nEinrichtung: {profile.SetupHint}");
+        _terminalProfileHint.Foreground =
+            profile.ProductionReady ? AppTheme.AccentTeal : AppTheme.WarningAmber;
+        _terminalEnabled.IsEnabled = profile.ProductionReady;
+        if (!profile.ProductionReady)
+            _terminalEnabled.IsChecked = false;
+        _terminalIp.IsEnabled = profile.RequiresNetworkEndpoint;
+        _terminalPort.IsEnabled = profile.RequiresNetworkEndpoint;
+        if (profile.RequiresNetworkEndpoint &&
+            profile.DefaultPort > 0 &&
+            string.IsNullOrWhiteSpace(_terminalPort.Text))
+            _terminalPort.Text = profile.DefaultPort.ToString();
+    }
+
     private async Task SaveAsync(bool finish = false)
     {
+        var terminalProfile = SelectedTerminalProfile;
         await _settings.SaveManyAsync(new Dictionary<string,string>
         {
             ["company.name"] = (_company.Text ?? "").Trim(), ["company.owner"] = (_owner.Text ?? "").Trim(),
             ["company.street"] = (_street.Text ?? "").Trim(), ["company.zip"] = (_zip.Text ?? "").Trim(), ["company.city"] = (_city.Text ?? "").Trim(),
             ["device.receipt_printer.enabled"] = _printerEnabled.IsChecked == true ? "true" : "false",
             ["device.receipt_printer.name"] = _printerName.SelectedItem?.ToString() ?? "",
-            ["payment.terminal.enabled"] = _terminalEnabled.IsChecked == true ? "true" : "false",
-            ["payment.terminal.ip"] = (_terminalIp.Text ?? "").Trim(), ["payment.terminal.port"] = (_terminalPort.Text ?? "20007").Trim(),
-            ["payment.terminal.protocol"] = "ZVT_TCP",
+            ["payment.terminal.vendor"] = terminalProfile.Id,
+            ["payment.terminal.enabled"] = terminalProfile.ProductionReady && _terminalEnabled.IsChecked == true ? "true" : "false",
+            ["payment.terminal.ip"] = terminalProfile.RequiresNetworkEndpoint ? (_terminalIp.Text ?? "").Trim() : "",
+            ["payment.terminal.port"] = terminalProfile.RequiresNetworkEndpoint ? (_terminalPort.Text ?? terminalProfile.DefaultPort.ToString()).Trim() : "",
+            ["payment.terminal.protocol"] = terminalProfile.Protocol,
             ["installation.first_run_completed"] = finish ? "true" : "false"
         });
     }
@@ -168,5 +239,29 @@ public sealed class FirstRunSetupWindow : Window
             _status.Text = "⚠ " + ex.Message;
         }
     }
-    private async Task ProbeTerminalAsync() { try { await SaveAsync(); var r=await _terminal.ProbeAsync(); _status.Text=r.Success ? $"✓ {r.Message}" : $"⚠ {r.Message}"; } catch(Exception ex){_status.Text="⚠ "+ex.Message;} }
+    private async Task ProbeTerminalAsync()
+    {
+        try
+        {
+            var profile = SelectedTerminalProfile;
+            if (!profile.ProductionReady || profile.Protocol != "ZVT_TCP")
+            {
+                _status.Text = $"⚠ {profile.Manufacturer}: {profile.TorStatus}. Automatische Zahlung ist für dieses Profil noch nicht freigegeben.";
+                return;
+            }
+
+            await SaveAsync();
+            var r = await _terminal.ProbeAsync();
+            _status.Text = r.Success ? $"✓ {r.Message}" : $"⚠ {r.Message}";
+        }
+        catch(Exception ex) { _status.Text = "⚠ " + ex.Message; }
+    }
+
+    private async Task OpenSumUpAsync() =>
+        await new SumUpConnectionWindow().ShowDialog(this);
+
+    private sealed record TerminalProfileChoice(PaymentTerminalProfile Profile)
+    {
+        public override string ToString() => $"{Profile.Manufacturer} · {Profile.Family}";
+    }
 }
