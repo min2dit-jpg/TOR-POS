@@ -11,9 +11,9 @@ namespace TorPos.App;
 public sealed record PaymentChoiceResult(
     PaymentMethod Method,
     bool ImHaus,
-    CashPaymentResult? Cash,
-    long CashPortionCents,
-    bool UiConfirmed);
+    CashPaymentResult? Cash = null,
+    long CashPortionCents = 0,
+    bool UiConfirmed = false);
 
 /// <summary>
 /// R166: one payment surface owns service type, tender selection and the
