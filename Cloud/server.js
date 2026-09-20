@@ -12,6 +12,7 @@ const {normalizeEvent,canonical,berlinParts}=require('./validation');
 const {makeQrV6L}=require('./qr-v6');
 // R125: shared with tools/provision.js so both hash credentials identically.
 const {hashPassword,hashToken}=require('./credentials');
+const {normalizeManagedMailPayload,smtpConfigFromEnv,isManagedMailConfigured,sendManagedMail}=require('./managed-mail');
 // R145: the public digital receipt (TOR Digital Receipt Cloud).
 const {validateReceipt,renderReceiptPage,renderNotFoundPage,renderHomePage,renderReceiptPdf,ASSETS:RECEIPT_ASSETS}=require('./receipts');
 // R127: the version string was typed twice (startup log and /api/health) and
@@ -49,6 +50,13 @@ const GOOGLE_PAIR_TTL_MS = 10 * 60 * 1000;
 const GOOGLE_TOKEN_KEY = GOOGLE_TOKEN_KEY_MATERIAL ? crypto.createHash('sha256').update(GOOGLE_TOKEN_KEY_MATERIAL).digest() : null;
 const GOOGLE_OAUTH_READY = !!(CLOUD_PUBLIC_URL && GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET && GOOGLE_TOKEN_KEY && (DEMO || CLOUD_PUBLIC_URL.startsWith('https://')));
 const GOOGLE_REDIRECT_URI = CLOUD_PUBLIC_URL ? `${CLOUD_PUBLIC_URL}/google/oauth/callback` : '';
+
+// R155: server-managed TOR Mail. Customer PCs store no SMTP password and need
+// no Google account. The relay identity lives only in Cloud environment secrets.
+const TOR_MAIL_CONFIG = smtpConfigFromEnv();
+const TOR_MAIL_READY = isManagedMailConfigured(TOR_MAIL_CONFIG);
+const TOR_MAIL_HOURLY_LIMIT = Math.min(100, Math.max(1, Math.floor(Number(process.env.TOR_MAIL_HOURLY_LIMIT || 20))));
+const TOR_MAIL_DAILY_LIMIT = Math.min(1000, Math.max(TOR_MAIL_HOURLY_LIMIT, Math.floor(Number(process.env.TOR_MAIL_DAILY_LIMIT || 100))));
 
 // R145: TOR Digital Receipt Cloud. The customer's copy of a Kassenbon lives on
 // its own domain (bon.<domain>), a security domain of its own next to the API
@@ -210,8 +218,8 @@ async function readBody(req, maxBytes = 1024 * 1024) {
   }
   return Buffer.concat(chunks);
 }
-async function readJson(req) {
-  const raw = await readBody(req);
+async function readJson(req, maxBytes = 1024 * 1024) {
+  const raw = await readBody(req, maxBytes);
   if (!raw.length) return {};
   try { return JSON.parse(raw.toString('utf8')); }
   catch { throw Object.assign(new Error('Ungültiges JSON'), { statusCode: 400 }); }
@@ -469,6 +477,22 @@ function seedDemo() {
 }
 
 initSchema();
+db.exec(`
+  CREATE TABLE IF NOT EXISTS managed_mail_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    register_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    recipient_hash TEXT NOT NULL,
+    subject_hash TEXT NOT NULL,
+    attachment_count INTEGER NOT NULL DEFAULT 0,
+    total_bytes INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY(register_id) REFERENCES registers(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_managed_mail_register_created
+    ON managed_mail_log(register_id,created_at);
+`);
 function ensureColumn(table,name,definition){
   const exists=db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name===name);
   if(!exists)db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
@@ -932,7 +956,38 @@ async function handler(req, res) {
     }
 
 
-    if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, {ok:true, service:'TOR POS Cloud', version:CLOUD_VERSION, demo:DEMO, google_oauth_configured:GOOGLE_OAUTH_READY, digital_receipts:!!RECEIPT_ORIGIN, time:nowIso()});
+    if (req.method === 'GET' && pathname === '/api/health') return json(res, 200, {ok:true, service:'TOR POS Cloud', version:CLOUD_VERSION, demo:DEMO, google_oauth_configured:GOOGLE_OAUTH_READY, managed_mail_configured:TOR_MAIL_READY, digital_receipts:!!RECEIPT_ORIGIN, time:nowIso()});
+
+    // R155: TOR Mail is a fixed server-side sender. A till may provide exactly one
+    // recipient, subject, body and PDF/CSV attachments. Device authentication, size
+    // limits and per-register quotas prevent this endpoint from becoming an open relay.
+    if(req.method==='POST' && pathname==='/api/v1/devices/mail/send'){
+      const device=requireDevice(req,res);if(!device)return;
+      if(!TOR_MAIL_READY)return json(res,503,{ok:false,error:'TOR Mail ist auf dem Cloud-Server noch nicht konfiguriert.'});
+      const now=Date.now();
+      const hourAgo=new Date(now-60*60*1000).toISOString();
+      const dayAgo=new Date(now-24*60*60*1000).toISOString();
+      const hourly=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,hourAgo).c);
+      const daily=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,dayAgo).c);
+      if(hourly>=TOR_MAIL_HOURLY_LIMIT||daily>=TOR_MAIL_DAILY_LIMIT)
+        return json(res,429,{ok:false,error:'TOR Mail Versandlimit erreicht. Bitte später erneut versuchen.'},{'Retry-After':'3600'});
+
+      const body=await readJson(req,12*1024*1024);
+      const mail=normalizeManagedMailPayload(body);
+      const created=nowIso();
+      const log=db.prepare(`INSERT INTO managed_mail_log(register_id,created_at,recipient_hash,subject_hash,attachment_count,total_bytes,status)
+                            VALUES(?,?,?,?,?,?,'SENDING') RETURNING id`)
+        .get(device.register_id,created,hashToken(mail.recipient.toLowerCase()),hashToken(mail.subject),mail.attachments.length,mail.totalBytes);
+      try{
+        await sendManagedMail(TOR_MAIL_CONFIG,mail);
+        db.prepare("UPDATE managed_mail_log SET status='SENT',last_error='' WHERE id=?").run(log.id);
+        return json(res,200,{ok:true,sender:TOR_MAIL_CONFIG.from});
+      }catch(err){
+        const safe=String(err?.message||'Unbekannter SMTP-Fehler').replace(/[\r\n]+/g,' ').slice(0,500);
+        db.prepare("UPDATE managed_mail_log SET status='FAILED',last_error=? WHERE id=?").run(safe,log.id);
+        throw Object.assign(new Error('TOR Mail Versand fehlgeschlagen: '+safe),{statusCode:502});
+      }
+    }
 
     // R62: QR pairing + Google OAuth. The POS authenticates to TOR Cloud with its existing
     // device credentials. The phone only receives a one-time claim URL; the Gmail password
@@ -1415,6 +1470,7 @@ server.listen(PORT, HOST, () => {
   if(DEMO) console.log('Lokaler Demomodus aktiv. Keine echten Umsätze.');
   if(TRUST_PROXY) console.log('X-Forwarded-For wird ausgewertet (TOR_CLOUD_TRUST_PROXY=true).');
   if(RECEIPT_ORIGIN) console.log(`Digitaler Kassenbon: ${RECEIPT_ORIGIN} (Links ${RECEIPT_TTL_DAYS} Tage abrufbar).`);
+  if(TOR_MAIL_READY) console.log(`TOR Mail aktiv: ${TOR_MAIL_CONFIG.from} via ${TOR_MAIL_CONFIG.host}:${TOR_MAIL_CONFIG.port}.`);
   if(RECEIPT_ORIGIN&&!DEMO&&(!RECEIPT_LINKS.imprint||!RECEIPT_LINKS.privacy)) console.warn('WARNUNG: TOR_CLOUD_IMPRINT_URL und TOR_CLOUD_PRIVACY_URL setzen - die Bon-Domain ist ein öffentliches Angebot (Impressum, Datenschutzhinweis).');
   if(BACKUP_DIR) console.log(`Datensicherung aktiv: ${BACKUP_DIR} (alle ${BACKUP_INTERVAL_MS/3600000} h, ${BACKUP_KEEP} behalten).`);
   // R125: after the port is open, so a large database never delays startup.
