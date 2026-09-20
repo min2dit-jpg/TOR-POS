@@ -290,9 +290,24 @@ public async Task InitializeAsync(CancellationToken ct = default)
             configured = Convert.ToInt64(value) == 1;
         }
 
-        if (user.IsActive && !configured && (password.Length == 0 || pin.Length == 0))
+        if (user.IsActive && !configured && password.Length == 0 && pin.Length == 0)
         {
-            throw new InvalidOperationException("Vor der Aktivierung müssen ein Passwort und eine 4-stellige PIN vergeben werden.");
+            throw new InvalidOperationException(
+                "Vor der Aktivierung muss mindestens ein Passwort oder eine 4-stellige PIN vergeben werden.");
+        }
+
+        await using (var duplicate = c.CreateCommand())
+        {
+            duplicate.CommandText = """
+                SELECT COUNT(*)
+                FROM users
+                WHERE username=$username COLLATE NOCASE
+                  AND id<>$id;
+                """;
+            duplicate.Parameters.AddWithValue("$username", username);
+            duplicate.Parameters.AddWithValue("$id", user.Id);
+            if (Convert.ToInt32(await duplicate.ExecuteScalarAsync(ct)) > 0)
+                throw new InvalidOperationException("Dieser Benutzername wird bereits verwendet.");
         }
 
         await using var tx = await c.BeginTransactionAsync(ct);
@@ -311,9 +326,22 @@ public async Task InitializeAsync(CancellationToken ct = default)
                 throw new InvalidOperationException("Mitarbeiterkonto wurde nicht gefunden.");
         }
 
-        if (password.Length > 0)
+        // R162: the first activation may intentionally use only one login method.
+        // The untouched factory secret for the other method must never remain usable.
+        // Replace it with a cryptographically random, unknowable value.
+        var passwordToStore = password;
+        var pinToStore = pin;
+        if (!configured)
         {
-            var secret = HashSecret(password);
+            if (passwordToStore.Length == 0 && pinToStore.Length > 0)
+                passwordToStore = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            if (pinToStore.Length == 0 && passwordToStore.Length > 0)
+                pinToStore = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        }
+
+        if (passwordToStore.Length > 0)
+        {
+            var secret = HashSecret(passwordToStore);
             await using var update = c.CreateCommand();
             update.Transaction = (SqliteTransaction)tx;
             update.CommandText = """
@@ -332,9 +360,9 @@ public async Task InitializeAsync(CancellationToken ct = default)
             await update.ExecuteNonQueryAsync(ct);
         }
 
-        if (pin.Length > 0)
+        if (pinToStore.Length > 0)
         {
-            var secret = HashSecret(pin);
+            var secret = HashSecret(pinToStore);
             await using var update = c.CreateCommand();
             update.Transaction = (SqliteTransaction)tx;
             update.CommandText = """
@@ -353,7 +381,7 @@ public async Task InitializeAsync(CancellationToken ct = default)
             await update.ExecuteNonQueryAsync(ct);
         }
 
-        var nowConfigured = configured || (password.Length > 0 && pin.Length > 0);
+        var nowConfigured = configured || password.Length > 0 || pin.Length > 0;
         if (nowConfigured)
         {
             await using var ready = c.CreateCommand();
