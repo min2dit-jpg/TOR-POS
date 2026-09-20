@@ -427,6 +427,7 @@ await R157ReviewTests.Run(Assert);
 await R158ReviewTests.Run(Assert);
 await R159ReviewTests.Run(Assert);
 await R160ReviewTests.Run(Assert);
+await R161ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -445,7 +446,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // the single-file Windows download package.
 // R160: 4 reviewed checks lock proportional full-height sidebar cards and
 // larger till-readable labels.
-const int ExpectedSafetyChecks = 962;
+// R161: 4 reviewed checks lock the refreshed splash/login/application branding
+// and visual snapshot coverage.
+const int ExpectedSafetyChecks = 966;
 
 if (checks != ExpectedSafetyChecks)
 {

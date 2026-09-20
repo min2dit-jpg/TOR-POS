@@ -10,19 +10,18 @@
 
     <!-- Kompakter Kopfbereich -->
     <StackPanel HorizontalAlignment="Center" Margin="0,0,0,12">
-      <Border Background="#2CC4A7"
-              CornerRadius="12"
-              Width="58" Height="58"
-              HorizontalAlignment="Center">
-        <TextBlock Text="TOR"
-                   Foreground="#07140F"
-                   FontSize="17"
-                   FontWeight="Bold"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center"/>
+      <Border Width="82" Height="82"
+              CornerRadius="41"
+              ClipToBounds="True"
+              HorizontalAlignment="Center"
+              BorderBrush="#279CFF"
+              BorderThickness="1.2"
+              BoxShadow="0 0 18 1 #66279CFF">
+        <Image Source="avares://TorPos.App/Assets/TorPos-Brand.jpg"
+               Stretch="UniformToFill"/>
       </Border>
-      <TextBlock Text="TOR POS Pro"
-                 FontSize="24"
+      <TextBlock Text="TOR-POS"
+                 FontSize="25"
                  FontWeight="Bold"
                  HorizontalAlignment="Center"
                  Margin="0,8,0,0"/>
