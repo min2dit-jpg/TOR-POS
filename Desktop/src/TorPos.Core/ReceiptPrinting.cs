@@ -181,11 +181,17 @@ public interface IReceiptPrinterService : IAsyncDisposable
 
     IReadOnlyList<string> GetInstalledPrinterNames();
 
+    IReadOnlyList<PrinterDeviceInfo> GetInstalledPrinterDevices();
+
     Task<PrinterProbeResult> ProbeAsync(
         string configuredPrinterName = "",
         CancellationToken ct = default);
 
     Task PrintTestAsync(
+        string printerName,
+        CancellationToken ct = default);
+
+    Task TestCashDrawerAsync(
         string printerName,
         CancellationToken ct = default);
 
