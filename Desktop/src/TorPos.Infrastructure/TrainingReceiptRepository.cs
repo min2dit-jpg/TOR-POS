@@ -236,7 +236,9 @@ public sealed class TrainingReceiptRepository
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-                SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
+                SELECT product_id,product_name,variant_name,barcode,
+                       CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
+                       unit_price_cents,vat_rate,pfand_cents,
                        list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
                        COALESCE(vat_allocations_json,''),
                        COALESCE(menu_components_json,''),
@@ -253,7 +255,7 @@ public sealed class TrainingReceiptRepository
                     ProductName = r.GetString(1),
                     VariantName = r.GetString(2),
                     Barcode = r.GetString(3),
-                    Quantity = Convert.ToDecimal(r.GetDouble(4)),
+                    Quantity = QuantityStorage.FromMilli(r.GetInt64(4)),
                     UnitPriceCents = r.GetInt64(5),
                     VatRate = Convert.ToDecimal(r.GetDouble(6)),
                     PfandCents = r.GetInt64(7),
@@ -280,10 +282,10 @@ public sealed class TrainingReceiptRepository
         q.Transaction = tx;
         q.CommandText = """
             INSERT INTO training_receipt_items(
-              training_id,product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,
+              training_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,
               pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
               promotion_discount_unit_cents,vat_allocations_json,menu_components_json)
-            VALUES($t,$p,$n,$v,$b,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
+            VALUES($t,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
             """;
         q.Parameters.AddWithValue("$t", trainingId);
         q.Parameters.AddWithValue("$p", line.ProductId);
@@ -291,6 +293,7 @@ public sealed class TrainingReceiptRepository
         q.Parameters.AddWithValue("$v", line.VariantName);
         q.Parameters.AddWithValue("$b", line.Barcode);
         q.Parameters.AddWithValue("$q", (double)line.Quantity);
+        q.Parameters.AddWithValue("$qm", QuantityStorage.ToMilli(line.Quantity));
         q.Parameters.AddWithValue("$u", line.UnitPriceCents);
         q.Parameters.AddWithValue("$vat", (double)line.VatRate);
         q.Parameters.AddWithValue("$pfand", line.PfandCents);
