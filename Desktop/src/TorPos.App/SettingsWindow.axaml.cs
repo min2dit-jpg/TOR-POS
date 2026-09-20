@@ -927,6 +927,26 @@ public partial class SettingsWindow : Window
         var page = Page("Drucker / Yazıcılar & Geräte",
             "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden.");
 
+        var scaleAssistant = new Button
+        {
+            Content = "WAAGEN-EINSTELLUNGEN · MANUELL / COM / LAN / BARCODE",
+            MinHeight = 54,
+            FontWeight = FontWeight.Bold,
+            Background = AppTheme.InfoBlue,
+            BorderBrush = AppTheme.InfoBlueBorder
+        };
+        scaleAssistant.Click += async (_, _) =>
+        {
+            if (!_currentUser.IsAdmin) return;
+            await new ScaleSetupWindow(_settings).ShowDialog(this);
+            await LoadAsync();
+        };
+        page.Children.Add(scaleAssistant);
+        page.Children.Add(InfoCard(
+            "Gewichtsverkauf",
+            "Gewichtsartikel werden intern in kg geführt. Eine separate Waage ohne Kassenanschluss ist vollständig nutzbar: Gewicht ablesen und beim Verkauf in Gramm oder Kilogramm eingeben. COM/LAN/Waagenbarcode können zusätzlich vorbereitet werden.",
+            AppTheme.InfoCardBg));
+
         var printerAssistant = new Button
         {
             Content = "DRUCKER-ZENTRALE · EPSON / STAR AUTOMATISCH ERKENNEN",
