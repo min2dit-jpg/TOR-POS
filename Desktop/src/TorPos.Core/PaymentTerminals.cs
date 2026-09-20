@@ -196,10 +196,26 @@ public static class PaymentTerminalProfiles
             SetupHint: "Flatpay muss für TOR eine dokumentierte ECR/Partner-Schnittstelle freigeben. Ohne diese Freigabe wird keine automatische Zahlung gestartet.")
     ];
 
-    public static PaymentTerminalProfile Find(string? id) =>
-        All.FirstOrDefault(x =>
-            string.Equals(x.Id, (id ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
-        ?? All[0];
+    public static PaymentTerminalProfile Find(string? id)
+    {
+        var key = (id ?? "").Trim();
+        key = key.ToUpperInvariant() switch
+        {
+            "SUMUP" => "SUMUP_CLOUD",
+            "PAYONE" => "PAYONE_ZVT",
+            "CCV" => "CCV_ZVT",
+            "SPARKASSE" or "S_HAENDLERSERVICE" => "SPARKASSE_ZVT",
+            "READYPAY" or "READYMINI" => "READYPAY_API",
+            "IZETTLE" or "ZETTLE" => "ZETTLE_SDK",
+            "FLATPAY" => "FLATPAY_PARTNER",
+            "MYPOS" => "MYPOS_EPOS",
+            _ => key
+        };
+
+        return All.FirstOrDefault(x =>
+            string.Equals(x.Id, key, StringComparison.OrdinalIgnoreCase))
+            ?? All[0];
+    }
 
     public static bool UsesZvt(string? id) =>
         string.Equals(Find(id).Protocol, "ZVT_TCP", StringComparison.OrdinalIgnoreCase);
