@@ -70,9 +70,12 @@ public static class R171ReviewTests
             TorRelease.UserAgentVersion == "0.7.33-R171",
             "R171 authoritative runtime release metadata advanced from the stale R149 value");
 
-        var rootReadme = File.ReadAllText(FindRepoFile("README.md"));
+        var changelogPath = FindRepoFile("CHANGELOG.md");
+        var repositoryRoot = Path.GetDirectoryName(changelogPath)
+            ?? throw new DirectoryNotFoundException("Repository root could not be resolved.");
+        var rootReadme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
         var desktopReadme = File.ReadAllText(FindRepoFile("Desktop/README.md"));
-        var changelog = File.ReadAllText(FindRepoFile("CHANGELOG.md"));
+        var changelog = File.ReadAllText(changelogPath);
         assert(
             rootReadme.Contains("TOR_RELEASE:R171|0.7.33.871|Merd-M", StringComparison.Ordinal) &&
             desktopReadme.Contains("Aktueller Stand:** R171 · Merd-M · 0.7.33.871", StringComparison.Ordinal) &&
