@@ -116,8 +116,13 @@ public sealed class FirstRunSetupWindow : Window
                     Info($"Kassenart: {_edition}  ✓  (bei der Anmeldung gewählt)")); break;
             case 1:
                 _title.Text = "Bondrucker";
-                page = Page(Info("Windows-Drucker auswählen und einen Testbon senden."), _printerEnabled,
-                    Field("Drucker", _printerName), Action("DRUCKER PRÜFEN", ProbePrinterAsync), Action("TESTBON DRUCKEN", TestPrinterAsync)); break;
+                page = Page(
+                    Info("TOR kann verbreitete Epson- und Star-Bondrucker aus Windows-Druckername, Treiber und Port automatisch erkennen. Bei unklarem Modell bleibt die Auswahl manuell."),
+                    _printerEnabled,
+                    Action("AUTOMATISCH ERKENNEN", AutoDetectPrinterAsync),
+                    Field("Drucker", _printerName),
+                    Action("DRUCKER PRÜFEN", ProbePrinterAsync),
+                    Action("TESTBON DRUCKEN", TestPrinterAsync)); break;
             case 2:
                 _title.Text = "TSE";
                 page = Page(Info("TOR prüft hier nur die TSE. Es wird keine TSE automatisch aktiviert oder neu eingerichtet."),
@@ -211,6 +216,54 @@ public sealed class FirstRunSetupWindow : Window
         if (_step < 5) { _step++; Render(); return; }
         await SaveAsync(true); Completed = true; Close();
     }
+    private async Task AutoDetectPrinterAsync()
+    {
+        try
+        {
+            _status.Text = "Windows-Drucker werden automatisch geprüft …";
+            var devices = await Task.Run(() => _printer.GetInstalledPrinterDevices())
+                .WaitAsync(TimeSpan.FromSeconds(12));
+
+            var names = devices.Select(x => x.PrinterName).ToList();
+            _printerName.ItemsSource = names;
+
+            var candidates = devices
+                .Where(x => x.IsReceiptPrinter && x.Ready != false)
+                .OrderByDescending(x => x.ExactModel)
+                .ToArray();
+
+            if (candidates.Length == 0)
+            {
+                if (names.Count > 0) _printerName.SelectedIndex = 0;
+                _status.Text = names.Count == 0
+                    ? "⚠ Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren."
+                    : "⚠ Kein Epson-/Star-Bondrucker eindeutig erkannt. Vorhandene Windows-Drucker wurden geladen; bitte manuell auswählen.";
+                return;
+            }
+
+            _printerName.SelectedItem = candidates[0].PrinterName;
+            if (candidates.Length == 1 && candidates[0].ExactModel)
+            {
+                var d = candidates[0];
+                _status.Text =
+                    $"✓ {d.Manufacturer} {d.Model} erkannt · {d.ConnectionType} · {d.PaperWidthMm} mm · {d.PrinterName}";
+            }
+            else
+            {
+                _status.Text =
+                    $"✓ {candidates.Length} Epson/Star-Bondrucker gefunden. Vorauswahl: {candidates[0].Manufacturer} {candidates[0].Model}. Bitte Auswahl kontrollieren.";
+            }
+        }
+        catch (TimeoutException)
+        {
+            _status.Text = "⚠ Druckersuche dauert zu lange. Offline-/Netzwerkdrucker in Windows prüfen.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "⚠ Automatische Druckersuche fehlgeschlagen: " + ex.Message;
+        }
+    }
+
     private async Task ProbePrinterAsync() { try { var r = await _printer.ProbeAsync(_printerName.SelectedItem?.ToString() ?? ""); _status.Text = r.Success ? $"✓ {r.Message}" : $"⚠ {r.Message}"; if (r.Success) _printerName.SelectedItem = r.PrinterName; } catch(Exception ex) { _status.Text = "⚠ " + ex.Message; } }
     private async Task TestPrinterAsync() { try { var n=_printerName.SelectedItem?.ToString() ?? ""; if(string.IsNullOrWhiteSpace(n)){_status.Text="Bitte zuerst einen Drucker wählen.";return;} await _printer.PrintTestAsync(n); _status.Text="✓ Testbon gesendet."; } catch(Exception ex){_status.Text="⚠ "+ex.Message;} }
     private async Task ProbeTseAsync()
