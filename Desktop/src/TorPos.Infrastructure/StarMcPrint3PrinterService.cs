@@ -60,16 +60,19 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
     private const uint PrinterStatusUserIntervention = 0x00100000;
     private const uint PrinterStatusDoorOpen = 0x00400000;
 
-    [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+    // R173: bind the explicit Unicode spooler entry points. Mixing OpenPrinterW
+    // with GetPrinterA and then decoding PRINTER_INFO_2 pointers as UTF-16
+    // produces mojibake (often CJK-looking characters) in driver/port names.
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     private static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
 
-    [DllImport("winspool.drv", SetLastError = true)]
+    [DllImport("winspool.drv", EntryPoint = "GetPrinterW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     private static extern bool GetPrinter(IntPtr hPrinter, uint level, IntPtr pPrinter, uint cbBuf, out uint pcbNeeded);
 
     [DllImport("winspool.drv", SetLastError = true)]
     private static extern bool ClosePrinter(IntPtr hPrinter);
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct PRINTER_INFO_2
     {
         public IntPtr pServerName;
@@ -175,8 +178,10 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                     return false;
 
                 var info = Marshal.PtrToStructure<PRINTER_INFO_2>(buffer);
-                driverName = Marshal.PtrToStringUni(info.pDriverName) ?? "";
-                portName = Marshal.PtrToStringUni(info.pPortName) ?? "";
+                driverName = SanitizeWindowsPrinterText(
+                    Marshal.PtrToStringUni(info.pDriverName));
+                portName = SanitizeWindowsPrinterText(
+                    Marshal.PtrToStringUni(info.pPortName));
                 return true;
             }
             finally
@@ -188,6 +193,22 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         {
             _ = ClosePrinter(handle);
         }
+    }
+
+    private static string SanitizeWindowsPrinterText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var clean = new string(
+            value
+                .Where(ch => !char.IsControl(ch) || ch == '\t')
+                .ToArray())
+            .Trim();
+
+        return clean.Length <= 512
+            ? clean
+            : clean[..512];
     }
 
     public IReadOnlyList<string> GetInstalledPrinterNames()
