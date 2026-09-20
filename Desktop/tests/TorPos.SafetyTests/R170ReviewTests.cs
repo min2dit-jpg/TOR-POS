@@ -111,6 +111,8 @@ public static class R170ReviewTests
             orders.Contains("p.unit FROM products p WHERE p.id=i.product_id", StringComparison.Ordinal) &&
             cancelled.Contains("p.unit FROM products p WHERE p.id={table}.product_id", StringComparison.Ordinal),
             "R170 sale, parked, training, order and cancelled-position reloads restore the kg unit for receipt/reversal flows");
+
+        return Task.CompletedTask;
     }
 
     private static string FindRepoFile(string relativePath)
