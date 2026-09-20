@@ -2405,7 +2405,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        promotion_discount_unit_cents,
                        promotion_start_date,promotion_end_date,
                        COALESCE(vat_allocations_json,''),
-                       COALESCE(menu_components_json,'')
+                       COALESCE(menu_components_json,''),
+                       COALESCE((SELECT p.unit FROM products p WHERE p.id=sale_items.product_id),'Stück')
                 FROM sale_items WHERE sale_id=$sale ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
@@ -2433,7 +2434,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                     PromotionStartDate = r.GetString(14),
                     PromotionEndDate = r.GetString(15),
                     VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16)),
-                    MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17))
+                    MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17)),
+                    Unit = r.GetString(18)
                 });
             }
         }
@@ -3411,7 +3413,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                    promotion_start_date,promotion_end_date,
                    COALESCE(im_haus_applicable,1),
                    COALESCE(vat_allocations_json,''),
-                   COALESCE(menu_components_json,'')
+                   COALESCE(menu_components_json,''),
+                   COALESCE((SELECT p.unit FROM products p WHERE p.id=parked_receipt_items.product_id),'Stück')
             FROM parked_receipt_items
             WHERE parked_receipt_id=$id
             ORDER BY id;
@@ -3442,7 +3445,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                 PromotionEndDate = r.GetString(14),
                 ImHausApplicable = r.GetInt64(15) != 0,
                 VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16)),
-                MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17))
+                MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17)),
+                Unit = r.GetString(18)
             });
         }
 
@@ -3458,6 +3462,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             VariantName = line.VariantName,
             Barcode = line.Barcode,
             Quantity = line.Quantity,
+            Unit = line.Unit,
             UnitPriceCents = line.UnitPriceCents,
             ListUnitPriceCents = line.EffectiveListUnitPriceCents,
             VatRate = line.VatRate,
