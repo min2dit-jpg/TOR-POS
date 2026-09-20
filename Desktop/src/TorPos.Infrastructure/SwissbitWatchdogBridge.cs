@@ -182,7 +182,16 @@ public sealed class SwissbitWatchdogBridge : ISwissbitSdkBridge, IDisposable
                 "Der isolierte TSE-Prozess wurde beendet; TOR POS bleibt bedienbar.");
         }
 
-        await waitTask;
+        try
+        {
+            await waitTask;
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw;
+        }
+
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
 
