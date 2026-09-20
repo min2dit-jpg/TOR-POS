@@ -493,7 +493,7 @@
              Seltenere Kassenaktionen liegen oben im Menü KASSE. -->
         <UniformGrid Grid.Column="3"
                      Rows="1"
-                     Columns="4"
+                     Columns="3"
                      HorizontalAlignment="Stretch"
                      VerticalAlignment="Stretch">
           <Button x:Name="DiscountButton" Classes="topaction" Click="OnDiscountClick">
@@ -507,18 +507,6 @@
             <TextBlock x:Name="ReceiptModeText" Text="BON EIN/AUS"
                        FontSize="10" FontWeight="Bold" TextAlignment="Center"/>
           </Button>
-          <Button x:Name="QuickCheckoutButton" Classes="topaction" Click="OnQuickCheckoutClick"
-                  Background="#0F7A55" BorderBrush="#53E0C0">
-            <Button.Effect>
-              <DropShadowEffect Color="#53E0C0" BlurRadius="16" OffsetX="0" OffsetY="0" Opacity="0.55"/>
-            </Button.Effect>
-            <StackPanel Spacing="1" HorizontalAlignment="Center">
-              <TextBlock x:Name="QuickCheckoutText" Text="KASSIEREN"
-                         FontSize="10" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
-              <TextBlock x:Name="QuickCheckoutSubText" Text="F5 · ZAHLART"
-                         FontSize="8" Opacity="0.76" HorizontalAlignment="Center"/>
-            </StackPanel>
-          </Button>
         </UniformGrid>
 
         <!-- Diese Controls bleiben logisch vorhanden, sind aber aus dem täglichen
@@ -528,6 +516,12 @@
           <Button x:Name="CashMovementButton" Click="OnCashMovementClick"/>
           <Button x:Name="ReceiptHistoryButton" Click="OnReceiptHistoryClick"/>
           <Button x:Name="BonStornoButton" Click="OnBonStornoClick"/>
+          <Button x:Name="CashButton" Click="OnCashClick">
+            <TextBlock x:Name="CashButtonText" Text="BAR"/>
+          </Button>
+          <Button x:Name="CardButton" Click="OnCardClick">
+            <TextBlock x:Name="CardButtonText" Text="KARTE"/>
+          </Button>
         </StackPanel>
 
         <!-- Bleibt für Diagnose-Code vorhanden, wird aber nicht mehr als UI-Text angezeigt. -->
@@ -738,7 +732,7 @@
                              TextAlignment="Center"
                              TextWrapping="Wrap"/>
                   <TextBlock x:Name="CheckoutHintText"
-                             Text="Danach BAR oder KARTE"
+                             Text="KASSIEREN → ZAHLART"
                              FontSize="11"
                              Foreground="#58748D"
                              HorizontalAlignment="Center"
@@ -856,22 +850,22 @@
               </StackPanel>
               </Viewbox>
             </Button>
-            <Button Grid.Row="4" Grid.Column="2" x:Name="CashButton" Classes="action" Click="OnCashClick"
-                    Background="#0E9F47" BorderBrush="#4DDA82">
+            <!-- R168: BAR/KARTE are no longer separate cashier entry points.
+                 One bottom KASSIEREN button owns the complete payment page. -->
+            <Button Grid.Row="4" Grid.Column="2" Grid.ColumnSpan="2"
+                    x:Name="QuickCheckoutButton" Classes="action" Click="OnQuickCheckoutClick"
+                    Background="#0F7A55" BorderBrush="#53E0C0">
+              <Button.Effect>
+                <DropShadowEffect Color="#53E0C0" BlurRadius="16" OffsetX="0" OffsetY="0" Opacity="0.55"/>
+              </Button.Effect>
               <Viewbox StretchDirection="DownOnly">
-              <StackPanel Spacing="1" HorizontalAlignment="Center">
-                <TextBlock x:Name="CashButtonText" Text="BAR · TEST" TextWrapping="Wrap" MaxWidth="110" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <TextBlock Text="F1 · BEZAHLEN" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
-              </StackPanel>
-              </Viewbox>
-            </Button>
-            <Button Grid.Row="4" Grid.Column="3" x:Name="CardButton" Classes="action" Click="OnCardClick"
-                    Background="#1766D1" BorderBrush="#65A0FF">
-              <Viewbox StretchDirection="DownOnly">
-              <StackPanel Spacing="1" HorizontalAlignment="Center">
-                <TextBlock x:Name="CardButtonText" Text="KARTE · TEST" TextWrapping="Wrap" MaxWidth="110" TextAlignment="Center" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <TextBlock Text="F2 · BEZAHLEN" FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
-              </StackPanel>
+                <StackPanel Spacing="1" HorizontalAlignment="Center">
+                  <TextBlock x:Name="QuickCheckoutText" Text="KASSIEREN"
+                             TextWrapping="Wrap" TextAlignment="Center"
+                             FontSize="15" FontWeight="Bold" HorizontalAlignment="Center"/>
+                  <TextBlock x:Name="QuickCheckoutSubText" Text="F5 · ZAHLART"
+                             FontSize="9" Opacity="0.76" HorizontalAlignment="Center"/>
+                </StackPanel>
               </Viewbox>
             </Button>
           </Grid>
