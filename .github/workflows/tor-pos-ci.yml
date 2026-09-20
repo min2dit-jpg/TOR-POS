@@ -123,6 +123,28 @@ jobs:
           $uiExit = $LASTEXITCODE
           if ($uiExit -ne 0) { exit $uiExit }
 
+      # Main branch publishes a self-contained Windows x64 folder so a tester
+      # can unzip and run TOR POS without installing a matching .NET runtime.
+      - name: Windows x64 test paketini olustur
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          Remove-Item -Recurse -Force ci-results/publish -ErrorAction SilentlyContinue
+          dotnet publish src/TorPos.App/TorPos.App.csproj -c Release -r win-x64 --self-contained true -o ci-results/publish --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/publish.log
+          $publishExit = $LASTEXITCODE
+          if ($publishExit -ne 0) { exit $publishExit }
+          if (-not (Test-Path ci-results/publish/TorPos.App.exe)) { throw 'TOR POS executable was not produced.' }
+
+      - name: Windows x64 test paketini sakla
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-POS-Windows-x64-${{ github.sha }}
+          path: Desktop/ci-results/publish/**
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
+
       # upload-artifact paths are relative to the repository root, not to the
       # job's working-directory.
       - name: Hata ve test gunluklerini sakla
