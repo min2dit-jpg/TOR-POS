@@ -211,9 +211,12 @@ public static class R156ReviewTests
             "R156 every completed/cleared customer resets the next sale to AUSSER HAUS");
 
         assert(
-            mainCode.Contains("if (choice.Method == PaymentMethod.Mixed)", StringComparison.Ordinal) &&
-            mainCode.Contains("new MixedPaymentWindow(total)", StringComparison.Ordinal),
-            "R156 choosing GEMISCHT in the payment hub continues into the existing split-amount dialog");
+            paymentCode.Contains("CashPortionCents = 0", StringComparison.Ordinal) &&
+            paymentCode.Contains("SelectMethod(PaymentMethod.Mixed)", StringComparison.Ordinal) &&
+            mainCode.Contains("choice.CashPortionCents", StringComparison.Ordinal) &&
+            !Slice(mainCode, "private async Task OpenPaymentWindowAsync", "private CheckoutSnapshot CaptureCheckout")
+                .Contains("new MixedPaymentWindow", StringComparison.Ordinal),
+            "R156/R168 GEMISCHT stays in the payment hub and returns the BAR split without opening a second payment dialog");
 
         assert(
             snapshotCode.Contains("new PaymentChoiceWindow(cashEnabled: true, cardEnabled: true, allowImHaus: true)", StringComparison.Ordinal) &&
