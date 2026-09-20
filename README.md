@@ -1,8 +1,8 @@
 # TOR POS
 
-<!-- TOR_RELEASE:R173|0.7.33.873|Merd-M -->
+<!-- TOR_RELEASE:R174|0.7.33.874|Merd-M -->
 
-**Aktueller Release:** R173 · Merd-M · 0.7.33.873
+**Aktueller Release:** R174 · Merd-M · 0.7.33.874
 
 TOR POS ist ein Windows-Kassensystem mit Desktop- und Cloud-Komponenten. Der aktive Desktop-Code liegt unter `Desktop/`, die Cloud-Komponenten unter `Cloud/`.
 
