@@ -7,16 +7,20 @@ public static class R159ReviewTests
         var workflow = File.ReadAllText(FindRepoFile(".github/workflows/tor-pos-ci.yml"));
 
         assert(
-            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"240,*\"", StringComparison.Ordinal) &&
+            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"270,*\"", StringComparison.Ordinal) &&
             axaml.Contains("SettingsNavCash", StringComparison.Ordinal) &&
-            axaml.Contains("SettingsDetailTitle", StringComparison.Ordinal),
-            "R159 Einstellungen uses the site-style left vertical navigation and one wide detail panel");
+            axaml.Contains("SettingsDetailTitle", StringComparison.Ordinal) &&
+            axaml.Contains("<Setter Property=\"FontSize\" Value=\"14\"/>", StringComparison.Ordinal) &&
+            axaml.Contains("<Setter Property=\"FontSize\" Value=\"27\"/>", StringComparison.Ordinal),
+            "R159 Einstellungen uses a wider site-style sidebar, one wide detail panel and till-readable typography");
 
         assert(
             axaml.Contains("GoodsNavArticles", StringComparison.Ordinal) &&
             axaml.Contains("CashNavOperation", StringComparison.Ordinal) &&
-            axaml.Contains("ReportsNavDaily", StringComparison.Ordinal),
-            "R159 Waren, Kasse and Berichte use the same sidebar/detail workspace pattern");
+            axaml.Contains("ReportsNavDaily", StringComparison.Ordinal) &&
+            axaml.Contains("<Setter Property=\"MinHeight\" Value=\"62\"/>", StringComparison.Ordinal) &&
+            axaml.Contains("<Setter Property=\"HorizontalContentAlignment\" Value=\"Stretch\"/>", StringComparison.Ordinal),
+            "R159 Waren, Kasse and Berichte use the same sidebar/detail pattern with full-width action cards");
 
         assert(
             mainCode.Contains("ShowSettingsHubSection", StringComparison.Ordinal) &&
