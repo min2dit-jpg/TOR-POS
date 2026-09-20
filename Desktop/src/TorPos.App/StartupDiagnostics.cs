@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 
 namespace TorPos.App;
 
@@ -288,45 +289,46 @@ public sealed class StartupLoadingWindow : Window
     {
         try
         {
-            var path = Path.Combine(
-                AppContext.BaseDirectory,
-                "Assets",
-                "TorPos-Magnifier.png");
-
-            if (File.Exists(path))
+            var uri = new Uri("avares://TorPos.App/Assets/TorPos-Brand.jpg");
+            using var stream = AssetLoader.Open(uri);
+            return new Border
             {
-                return new Image
+                Width = 150,
+                Height = 150,
+                CornerRadius = new CornerRadius(75),
+                ClipToBounds = true,
+                BorderBrush = new SolidColorBrush(Color.Parse("#279CFF")),
+                BorderThickness = new Thickness(1),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Child = new Image
                 {
-                    Source = new Bitmap(path),
-                    Width = 138,
-                    Height = 138,
-                    Stretch = Stretch.Uniform,
-                    HorizontalAlignment = HorizontalAlignment.Center
-                };
-            }
+                    Source = new Bitmap(stream),
+                    Stretch = Stretch.UniformToFill
+                }
+            };
         }
         catch
         {
-            // Fallback below. The splash must never block application startup.
-        }
-
-        return new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#0B2A67")),
-            CornerRadius = new CornerRadius(69),
-            Width = 138,
-            Height = 138,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Child = new TextBlock
+            // The splash must never block application startup. If the bundled
+            // brand asset cannot be read, keep a neutral TOR-POS fallback.
+            return new Border
             {
-                Text = "TOR",
-                Foreground = Brushes.White,
-                FontSize = 34,
-                FontWeight = FontWeight.Bold,
+                Background = new SolidColorBrush(Color.Parse("#07111F")),
+                CornerRadius = new CornerRadius(75),
+                Width = 150,
+                Height = 150,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
+                Child = new TextBlock
+                {
+                    Text = "TOR-POS",
+                    Foreground = Brushes.White,
+                    FontSize = 28,
+                    FontWeight = FontWeight.Bold,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+        }
     }
 
     private static Control CreateTitle() =>
@@ -338,7 +340,7 @@ public sealed class StartupLoadingWindow : Window
             {
                 new TextBlock
                 {
-                    Text = "TOR KASSENSYSTEME",
+                    Text = "TOR POS",
                     Foreground = new SolidColorBrush(Color.Parse("#0B2A67")),
                     FontSize = 25,
                     FontWeight = FontWeight.Bold,
@@ -346,7 +348,7 @@ public sealed class StartupLoadingWindow : Window
                 },
                 new TextBlock
                 {
-                    Text = "TOR POS Pro wird vorbereitet ...",
+                    Text = "Kassensystem wird vorbereitet ...",
                     Foreground = new SolidColorBrush(Color.Parse("#26364A")),
                     FontSize = 18,
                     FontWeight = FontWeight.SemiBold,
