@@ -264,10 +264,10 @@ public sealed class TseVorgangService
                 item.Transaction = tx;
                 item.CommandText = """
                     INSERT INTO aborted_vorgang_items(
-                      aborted_id,product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,
+                      aborted_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,
                       pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents)
-                    VALUES($a,$p,$n,$v,$b,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit);
+                    VALUES($a,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit);
                     """;
                 item.Parameters.AddWithValue("$a", id);
                 item.Parameters.AddWithValue("$p", line.ProductId);
@@ -275,6 +275,7 @@ public sealed class TseVorgangService
                 item.Parameters.AddWithValue("$v", line.VariantName);
                 item.Parameters.AddWithValue("$b", line.Barcode);
                 item.Parameters.AddWithValue("$q", (double)line.Quantity);
+                item.Parameters.AddWithValue("$qm", QuantityStorage.ToMilli(line.Quantity));
                 item.Parameters.AddWithValue("$u", line.UnitPriceCents);
                 item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                 item.Parameters.AddWithValue("$pfand", line.PfandCents);
@@ -408,7 +409,9 @@ public sealed class TseVorgangService
             var lines = new List<CartLine>();
             await using var q = c.CreateCommand();
             q.CommandText = """
-                SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
+                SELECT product_id,product_name,variant_name,barcode,
+                       CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
+                       unit_price_cents,vat_rate,pfand_cents,
                        list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents
                 FROM aborted_vorgang_items WHERE aborted_id=$id ORDER BY id;
                 """;
@@ -422,7 +425,7 @@ public sealed class TseVorgangService
                     ProductName = r.GetString(1),
                     VariantName = r.GetString(2),
                     Barcode = r.GetString(3),
-                    Quantity = Convert.ToDecimal(r.GetDouble(4)),
+                    Quantity = QuantityStorage.FromMilli(r.GetInt64(4)),
                     UnitPriceCents = r.GetInt64(5),
                     VatRate = Convert.ToDecimal(r.GetDouble(6)),
                     PfandCents = r.GetInt64(7),
