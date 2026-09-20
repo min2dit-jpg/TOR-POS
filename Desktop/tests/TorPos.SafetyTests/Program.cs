@@ -432,6 +432,7 @@ await R162ReviewTests.Run(root,Assert,Reject);
 await R163ReviewTests.Run(Assert);
 await R164ReviewTests.Run(Assert);
 await R165ReviewTests.Run(Assert);
+await R167ReviewTests.Run(root,Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -460,7 +461,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // employee-management double-load UI regression path.
 // R165: 5 reviewed checks lock keyboard-wedge scanner capture, ENTER/TAB
 // suffix support, catalog refresh and explicit scan feedback.
-const int ExpectedSafetyChecks = 986;
+// R167: 11 reviewed checks lock the multi-brand terminal catalogue, verified
+// ZVT routes, fail-closed proprietary profiles and first-run/setup assistants.
+const int ExpectedSafetyChecks = 997;
 
 if (checks != ExpectedSafetyChecks)
 {
