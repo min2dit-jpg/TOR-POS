@@ -438,6 +438,7 @@ await R169ReviewTests.Run(Assert);
 await R170ReviewTests.Run(Assert);
 await R171ReviewTests.Run(Assert);
 await R172ReviewTests.Run(Assert);
+await R173ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -482,7 +483,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // R172: 14 reviewed checks lock single-writer FIFO database execution,
 // Swissbit hard-watchdog isolation/cancellation, fixed-point quantity storage
 // and the validated source-code ZIP artifact.
-const int ExpectedSafetyChecks = 1057;
+// R173: 5 reviewed checks lock Unicode Windows spooler metadata and prevent
+// Epson office/fax queues from being accepted as POS receipt printers.
+const int ExpectedSafetyChecks = 1062;
 
 if (checks != ExpectedSafetyChecks)
 {
