@@ -116,7 +116,7 @@ public partial class App : Avalonia.Application
             var dailyBackup = new DailyBackupScheduler(backup, settings);
             dailyBackup.Start();
             var googleGmail = new GoogleGmailService(settings, CloudSync);
-            var reportEmail = new ReportEmailService(settings, management, googleGmail);
+            var reportEmail = new ReportEmailService(settings, management, googleGmail, CloudSync);
             var datevAscii = new DatevKassenbuchAsciiService(
                 db,
                 settings,
