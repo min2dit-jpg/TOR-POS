@@ -11,6 +11,7 @@ Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
 ### R171
 
 - DSFinV-K 2.4 Export: frei wählbare Von-/Bis-Kalendertage, Preflight und Zielordnerauswahl; Export bleibt auf vollständige Z-Abschlusszeiträume begrenzt.
+- Nach erfolgreichem DSFinV-K-Export bietet TOR direkte Weitergabe an: kompletter Ordner auf USB/Datenträger oder vollständiger Export als ZIP per aktivem TOR-Mail/Google/SMTP-Versand an frei wählbare E-Mail, inklusive Steuerberater-Schnellauswahl.
 - Release-Metadaten nach R149-Stagnation auf R171 / 0.7.33.871 synchronisiert; Versionsprüfung wird gegen neue Review-Revisionen gehärtet.
 - R169/R170 Funktionen (Drucker-Zentrale, Kassenschubladen-Test, Gewichtsartikel/Waage) sind damit erstmals in einer fortgeschriebenen zentralen Release-Revision enthalten.
 
