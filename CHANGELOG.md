@@ -1,12 +1,18 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R172|0.7.33.872|Merd-M -->
+<!-- TOR_RELEASE:R173|0.7.33.873|Merd-M -->
 
 ## Aktueller Release
 
-**R172 · Merd-M · 0.7.33.872**
+**R173 · Merd-M · 0.7.33.873**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R173
+
+- Drucker-Zentrale: Windows-Spooler-Metadaten werden konsequent über OpenPrinterW/GetPrinterW als Unicode gelesen; fehlerhafte CJK-/Mojibake-Zeichen bei Treiber/Port werden verhindert.
+- Epson-Erkennung: Office-/Multifunktions-/Fax-Drucker wie ET-4850 gelten nicht mehr als Bondrucker. Nur bekannte Epson-TM-Profile bzw. eindeutig POS-/Receipt-typische Epson-Warteschlangen werden freigegeben.
+- Nicht geeignete Office/PDF/Fax-Drucker bleiben zur Diagnose sichtbar, können aber nicht als Bondrucker übernommen, getestet oder für die Kassenschublade verwendet werden.
 
 ### R172
 
