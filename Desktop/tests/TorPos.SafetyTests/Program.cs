@@ -423,6 +423,7 @@ await R153ReviewTests.Run(root,Assert);
 await R154ReviewTests.Run(root,Assert);
 await R155ReviewTests.Run(root,Assert);
 await R156ReviewTests.Run(root,Assert);
+await R157ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -433,7 +434,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // R156: 12 reviewed checks lock the payment hub, fresh-sale AUSSER HAUS default,
 // IM HAUS VAT snapshot, TSE/receipt tax propagation, DSFinV-K INHAUS,
 // GEMISCHT split and multi-size UI snapshot coverage.
-const int ExpectedSafetyChecks = 944;
+// R157: 5 reviewed checks lock the new TOR POS header branding and the
+// grouped/aligned payment dialog without changing checkout behavior.
+const int ExpectedSafetyChecks = 949;
 
 if (checks != ExpectedSafetyChecks)
 {

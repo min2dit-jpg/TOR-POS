@@ -4850,13 +4850,12 @@ public partial class MainWindow:Window
         _settingsCache=await _settings.LoadAllAsync();
         UiLanguage.Set(_settingsCache.GetText("ui.language","DE"));
 
-        var company=_settingsCache.GetText("company.name","TOR POS Pro");
         var registerName=_settingsCache.GetText("cash.register.name","Kasse 1");
         var business=InstallationEdition.ReadLocked()
             ?? _settingsCache.GetText("business.mode","IMBISS").ToUpperInvariant();
         var businessDisplay = InstallationEdition.DisplayName(business);
 
-        CompanyNameText.Text=company;
+        CompanyNameText.Text="TOR-POS";
         RegisterInfoText.Text=$"{registerName} · {businessDisplay}";
         EditionText.Text=businessDisplay.ToUpperInvariant();
         EditionActionText.Text = business == "IMBISS" ? "EXTRA" : "PFAND";
