@@ -479,10 +479,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // R171: 15 reviewed checks lock DSFinV-K Von/Bis export, complete Z-period
 // semantics, USB/e-mail delivery, ZIP MIME handling and current release
 // metadata / anti-drift CI enforcement.
-// R172: 13 reviewed checks lock single-writer FIFO database execution,
+// R172: 14 reviewed checks lock single-writer FIFO database execution,
 // Swissbit hard-watchdog isolation/cancellation, fixed-point quantity storage
 // and the validated source-code ZIP artifact.
-const int ExpectedSafetyChecks = 1056;
+const int ExpectedSafetyChecks = 1057;
 
 if (checks != ExpectedSafetyChecks)
 {
