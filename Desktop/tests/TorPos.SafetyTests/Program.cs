@@ -426,6 +426,7 @@ await R156ReviewTests.Run(root,Assert);
 await R157ReviewTests.Run(Assert);
 await R158ReviewTests.Run(Assert);
 await R159ReviewTests.Run(Assert);
+await R160ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -442,7 +443,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // Waren, Einstellungen, Kasse and Berichte workspaces.
 // R159: 5 reviewed checks lock the site-like sidebar/detail navigation and
 // the single-file Windows download package.
-const int ExpectedSafetyChecks = 958;
+// R160: 4 reviewed checks lock proportional full-height sidebar cards and
+// larger till-readable labels.
+const int ExpectedSafetyChecks = 962;
 
 if (checks != ExpectedSafetyChecks)
 {
