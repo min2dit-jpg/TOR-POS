@@ -429,6 +429,7 @@ await R159ReviewTests.Run(Assert);
 await R160ReviewTests.Run(Assert);
 await R161ReviewTests.Run(Assert);
 await R162ReviewTests.Run(root,Assert,Reject);
+await R163ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -451,7 +452,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // and visual snapshot coverage.
 // R162: 7 reviewed checks lock password-or-PIN staff activation, removal of
 // untouched factory credentials and the customer installer/desktop shortcut.
-const int ExpectedSafetyChecks = 973;
+// R163: 5 reviewed checks lock ShellExecute launch and verified asInvoker
+// manifest packaging for the customer installer.
+const int ExpectedSafetyChecks = 978;
 
 if (checks != ExpectedSafetyChecks)
 {
