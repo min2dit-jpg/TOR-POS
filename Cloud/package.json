@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check credentials.js && node --check receipts.js && node --check receipt-pdf.js && node --check tools/provision.js && node --check public/app.js",
+    "check": "node --check server.js && node --check managed-mail.js && node --check credentials.js && node --check receipts.js && node --check receipt-pdf.js && node --check tools/provision.js && node --check public/app.js",
     "test": "node --test tests/*.test.js",
     "_comment_test:dom": "R122: portal-dom.cjs is a real, working portal test that needs jsdom - the one thing this otherwise dependency-free project will not install by default. It was listed as dead code in the audit only because nothing named it. Run: npm install --no-save jsdom && npm run test:dom",
     "test:dom": "node tests/portal-dom.cjs && node tests/portal-password-dom.cjs",
