@@ -33,7 +33,9 @@ public sealed class OrderBestellungRepository
             await using (var q = c.CreateCommand())
             {
                 q.CommandText = """
-                    SELECT i.product_id,i.product_name,i.variant_name,i.barcode,i.quantity,i.unit_price_cents,i.vat_rate,i.pfand_cents,
+                    SELECT i.product_id,i.product_name,i.variant_name,i.barcode,
+                           CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END,
+                           i.unit_price_cents,i.vat_rate,i.pfand_cents,
                            i.list_unit_price_cents,i.promotion_id,i.promotion_name,i.promotion_percent,i.promotion_discount_unit_cents,
                            COALESCE(i.vat_allocations_json,''),
                            COALESCE(i.menu_components_json,''),
@@ -115,10 +117,10 @@ public sealed class OrderBestellungRepository
                 item.Transaction = tx;
                 item.CommandText = """
                     INSERT INTO order_bestellung_items(
-                      bestellung_id,product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,
+                      bestellung_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,
                       pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,vat_allocations_json,menu_components_json)
-                    VALUES($b,$p,$n,$v,$bc,$q,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
+                    VALUES($b,$p,$n,$v,$bc,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
                     """;
                 item.Parameters.AddWithValue("$b", id);
                 item.Parameters.AddWithValue("$p", line.ProductId);
@@ -126,6 +128,7 @@ public sealed class OrderBestellungRepository
                 item.Parameters.AddWithValue("$v", line.VariantName);
                 item.Parameters.AddWithValue("$bc", line.Barcode);
                 item.Parameters.AddWithValue("$q", (double)line.Quantity);
+                item.Parameters.AddWithValue("$qm", QuantityStorage.ToMilli(line.Quantity));
                 item.Parameters.AddWithValue("$u", line.UnitPriceCents);
                 item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                 item.Parameters.AddWithValue("$pfand", line.PfandCents);
@@ -191,7 +194,9 @@ public sealed class OrderBestellungRepository
             var lines = new List<CartLine>();
             await using var q = c.CreateCommand();
             q.CommandText = """
-                SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
+                SELECT product_id,product_name,variant_name,barcode,
+                       CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
+                       unit_price_cents,vat_rate,pfand_cents,
                        list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
                        COALESCE(vat_allocations_json,''),
                        COALESCE(menu_components_json,''),
@@ -228,7 +233,7 @@ public sealed class OrderBestellungRepository
         ProductName = r.GetString(o + 1),
         VariantName = r.GetString(o + 2),
         Barcode = r.GetString(o + 3),
-        Quantity = Convert.ToDecimal(r.GetDouble(o + 4)),
+        Quantity = QuantityStorage.FromMilli(r.GetInt64(o + 4)),
         UnitPriceCents = r.GetInt64(o + 5),
         VatRate = Convert.ToDecimal(r.GetDouble(o + 6)),
         PfandCents = r.GetInt64(o + 7),
