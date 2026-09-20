@@ -45,7 +45,7 @@ $requiredLabels += 'BESTELLUNG'
 $missing = @()
 foreach ($label in ($requiredLabels | Select-Object -Unique)) {
     if ([string]::IsNullOrWhiteSpace($label)) { continue }
-    if (-not $sourceText.Contains([string]$label, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($sourceText.IndexOf([string]$label, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
         $missing += $label
     }
 }
@@ -59,7 +59,7 @@ $requiredColors = @(
 ) | Select-Object -Unique
 
 foreach ($color in $requiredColors) {
-    if (-not $mainWindow.Contains([string]$color, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($mainWindow.IndexOf([string]$color, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
         $missing += "theme:$color"
     }
 }
