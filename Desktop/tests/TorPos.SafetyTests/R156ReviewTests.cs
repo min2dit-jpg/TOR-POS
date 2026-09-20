@@ -190,8 +190,8 @@ public static class R156ReviewTests
         assert(
             paymentCode.Contains("AUSSER HAUS\\nSTANDARD", StringComparison.Ordinal) &&
             paymentCode.Contains("ChoiceButton(\"IM HAUS\")", StringComparison.Ordinal) &&
-            paymentCode.Contains("GEMISCHT\\nBAR + KARTE", StringComparison.Ordinal) &&
-            paymentCode.Contains("cashEnabled && cardEnabled", StringComparison.Ordinal) &&
+            paymentCode.Contains("PaymentButton(\n            \"GEMISCHT\"", StringComparison.Ordinal) &&
+            paymentCode.Contains("_cashEnabled && _cardEnabled && totalCents > 0", StringComparison.Ordinal) &&
             paymentCode.Contains("IsEnabled = enabled", StringComparison.Ordinal),
             "R156 the payment window visibly offers AUSSER HAUS, IM HAUS and GEMISCHT, with GEMISCHT enabled only when both tenders exist");
 
@@ -211,12 +211,18 @@ public static class R156ReviewTests
             "R156 every completed/cleared customer resets the next sale to AUSSER HAUS");
 
         assert(
-            mainCode.Contains("if (choice.Method == PaymentMethod.Mixed)", StringComparison.Ordinal) &&
-            mainCode.Contains("new MixedPaymentWindow(total)", StringComparison.Ordinal),
-            "R156 choosing GEMISCHT in the payment hub continues into the existing split-amount dialog");
+            paymentCode.Contains("BuildMixedPanel()", StringComparison.Ordinal) &&
+            paymentCode.Contains("CashPortionCents", StringComparison.Ordinal) &&
+            mainCode.Contains("choice.CashPortionCents", StringComparison.Ordinal) &&
+            !mainCode.Contains("new MixedPaymentWindow(total)", StringComparison.Ordinal),
+            "R156 choosing GEMISCHT keeps the split amount inside the payment hub and carries it into checkout");
 
         assert(
-            snapshotCode.Contains("new PaymentChoiceWindow(cashEnabled: true, cardEnabled: true, allowImHaus: true)", StringComparison.Ordinal) &&
+            snapshotCode.Contains("new PaymentChoiceWindow(", StringComparison.Ordinal) &&
+            snapshotCode.Contains("totalCents: 1890", StringComparison.Ordinal) &&
+            snapshotCode.Contains("cashEnabled: true", StringComparison.Ordinal) &&
+            snapshotCode.Contains("cardEnabled: true", StringComparison.Ordinal) &&
+            snapshotCode.Contains("allowImHaus: true", StringComparison.Ordinal) &&
             snapshotCode.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 9 dialogs)", StringComparison.Ordinal),
             "R156 CI renders the real payment hub and includes it in the five-size/dialog layout gate");
 
