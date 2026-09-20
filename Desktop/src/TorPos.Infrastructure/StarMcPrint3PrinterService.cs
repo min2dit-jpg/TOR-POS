@@ -562,6 +562,19 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         }
     }
 
+    private static PrinterDeviceInfo DetectPrinterProfile(string printerName)
+    {
+        _ = TryReadWindowsPrinterIdentity(printerName, out var driver, out var port);
+        return ReceiptPrinterProfiles.Detect(printerName, driver, port);
+    }
+
+    private static PaperSize ReceiptPaperSizeFor(string printerName, int height)
+    {
+        var profile = DetectPrinterProfile(printerName);
+        var width = profile.PaperWidthMm <= 58 ? 228 : 315;
+        return new PaperSize($"{profile.PaperWidthMm}mm Receipt", width, height);
+    }
+
     private static bool IsPreferredStarMcPrint3Name(string name) =>
         name.Contains("MCP31", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("MCP30", StringComparison.OrdinalIgnoreCase) ||
@@ -596,9 +609,10 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         document.PrintController = new StandardPrintController();
         document.DefaultPageSettings.Margins = new Margins(4, 4, 4, 4);
 
-        // 80 mm roll. Driver may override this with its configured receipt size.
+        // R169: known 58/80 mm Epson/Star profiles select their receipt width
+        // automatically. An unknown queue stays on the conservative 80 mm default.
         document.DefaultPageSettings.PaperSize =
-            new PaperSize("80mm Receipt", 315, 1200);
+            ReceiptPaperSizeFor(printerName, 1200);
 
         document.PrintPage += (_, e) =>
         {
@@ -665,7 +679,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
         document.PrintController = new StandardPrintController();
         document.DefaultPageSettings.Margins = new Margins(4, 4, 4, 4);
-        document.DefaultPageSettings.PaperSize = new PaperSize("80mm Receipt", 315, 900);
+        document.DefaultPageSettings.PaperSize = ReceiptPaperSizeFor(printerName, 900);
 
         document.PrintPage += (_, e) =>
         {
@@ -1151,7 +1165,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         document.PrinterSettings=new PrinterSettings { PrinterName=printerName };
         if(!document.PrinterSettings.IsValid) throw new InvalidOperationException($"Drucker nicht verfügbar: {printerName}");
         document.PrintController=new StandardPrintController(); document.DefaultPageSettings.Margins=new Margins(4,4,4,4);
-        document.DefaultPageSettings.PaperSize=new PaperSize("80mm Receipt",315,1200);
+        document.DefaultPageSettings.PaperSize=ReceiptPaperSizeFor(printerName,1200);
         var entries = new List<(string Text,bool Bold)>();
         // The instruction precedes products so a cancellation cannot look like a new order.
         if(!string.IsNullOrWhiteSpace(job.Note)) entries.Add(("HINWEIS: "+job.Note,true));
@@ -1195,7 +1209,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         using var document=new PrintDocument(); document.DocumentName=$"TOR POS Abholschein {job.PickupNumber:000}";
         document.PrinterSettings=new PrinterSettings { PrinterName=printerName };
         if(!document.PrinterSettings.IsValid) throw new InvalidOperationException($"Drucker nicht verfügbar: {printerName}");
-        document.PrintController=new StandardPrintController();document.DefaultPageSettings.Margins=new Margins(4,4,4,4);document.DefaultPageSettings.PaperSize=new PaperSize("80mm Receipt",315,500);
+        document.PrintController=new StandardPrintController();document.DefaultPageSettings.Margins=new Margins(4,4,4,4);document.DefaultPageSettings.PaperSize=ReceiptPaperSizeFor(printerName,500);
         document.PrintPage+=(_,e)=>{var g=e.Graphics??throw new InvalidOperationException("Drucker konnte keinen Graphics-Kontext bereitstellen.");using var title=new Font("Arial",13f,FontStyle.Bold);using var big=new Font("Arial",34f,FontStyle.Bold);using var small=new Font("Arial",8f);float y=e.MarginBounds.Top,left=e.MarginBounds.Left,width=e.MarginBounds.Width;void C(string t,Font f){var z=g.MeasureString(t,f);g.DrawString(t,f,Brushes.Black,left+Math.Max(0,(width-z.Width)/2),y);y+=Math.Max(18,z.Height)+4;}if(!string.IsNullOrWhiteSpace(job.CompanyName))C(job.CompanyName,title);C("ABHOLSCHEIN",title);C(job.PickupNumber.ToString("000"),big);C($"Bestellung P{job.ParkNumber:000000}",small);C(job.CreatedAt.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss"),small);C("KEIN STEUERBELEG",small);e.HasMorePages=false;};
         document.Print();
         SendRawCommandsAfterPrint(printerName, job.AutoCut, false);
