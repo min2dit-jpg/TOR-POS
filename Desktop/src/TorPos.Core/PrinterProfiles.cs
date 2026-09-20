@@ -90,19 +90,44 @@ public static class ReceiptPrinterProfiles
 
         if (haystack.Contains("EPSON", StringComparison.Ordinal))
         {
+            var looksLikeReceiptPrinter =
+                haystack.Contains("RECEIPT", StringComparison.Ordinal) ||
+                haystack.Contains("POSDRIVER", StringComparison.Ordinal) ||
+                haystack.Contains("ADVANCEDPRINTERDRIVER", StringComparison.Ordinal) ||
+                haystack.Contains("EPSONTM", StringComparison.Ordinal) ||
+                haystack.Contains("TMT", StringComparison.Ordinal) ||
+                haystack.Contains("TMM", StringComparison.Ordinal);
+
+            if (looksLikeReceiptPrinter)
+            {
+                return new PrinterDeviceInfo(
+                    printerName,
+                    "Epson",
+                    "Bondrucker-Modell nicht eindeutig",
+                    driverName,
+                    portName,
+                    DetectConnection(portName, haystack),
+                    80,
+                    AutoCutSupported: true,
+                    CashDrawerPortSupported: true,
+                    IsReceiptPrinter: true,
+                    ExactModel: false,
+                    RecognitionNote: "Epson-Bondrucker erkannt; Modell nicht eindeutig. Vor Übernahme am Gerät/Windows-Treiber prüfen.");
+            }
+
             return new PrinterDeviceInfo(
                 printerName,
                 "Epson",
-                "Modell nicht eindeutig",
+                "Kein Bondruckerprofil",
                 driverName,
                 portName,
                 DetectConnection(portName, haystack),
                 80,
-                AutoCutSupported: true,
-                CashDrawerPortSupported: true,
-                IsReceiptPrinter: true,
+                AutoCutSupported: false,
+                CashDrawerPortSupported: false,
+                IsReceiptPrinter: false,
                 ExactModel: false,
-                RecognitionNote: "Epson erkannt; Modell nicht eindeutig. Vor Übernahme am Gerät/Windows-Treiber prüfen.");
+                RecognitionNote: "Epson-Windows-Drucker erkannt, aber kein Bondruckerprofil. Büro-/Multifunktionsdrucker werden nicht automatisch als Kassenbondrucker verwendet.");
         }
 
         if (haystack.Contains("STAR", StringComparison.Ordinal))
