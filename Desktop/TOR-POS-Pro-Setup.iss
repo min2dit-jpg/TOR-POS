@@ -78,7 +78,7 @@ Type: dirifempty; Name: "{commonprograms}\TOR POS Pro"
 Type: dirifempty; Name: "{autoprograms}\TOR POS Pro"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "TOR POS Pro starten"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "TOR POS Pro starten"; Flags: nowait postinstall skipifsilent shellexec
 
 [Code]
 var
