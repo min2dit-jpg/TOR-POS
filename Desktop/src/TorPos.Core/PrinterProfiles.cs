@@ -63,8 +63,13 @@ public static class ReceiptPrinterProfiles
         portName = (portName ?? "").Trim();
 
         var haystack = Normalize(printerName + " " + driverName);
-        var match = Known.FirstOrDefault(p =>
-            p.Tokens.Any(t => haystack.Contains(Normalize(t), StringComparison.Ordinal)));
+        // Longest model token wins. This matters for families such as
+        // TM-T88V / TM-T88VI / TM-T88VII where the older model token is a
+        // literal prefix of the newer one.
+        var match = Known
+            .OrderByDescending(p => p.Tokens.Max(t => Normalize(t).Length))
+            .FirstOrDefault(p =>
+                p.Tokens.Any(t => haystack.Contains(Normalize(t), StringComparison.Ordinal)));
 
         if (match is not null)
         {
