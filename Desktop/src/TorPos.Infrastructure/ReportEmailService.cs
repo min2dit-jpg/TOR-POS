@@ -49,12 +49,18 @@ public sealed class ReportEmailService
     private readonly ISettingsRepository _settings;
     private readonly BusinessManagementService _management;
     private readonly GoogleGmailService? _google;
+    private readonly TorCloudSyncService? _cloud;
 
-    public ReportEmailService(ISettingsRepository settings, BusinessManagementService management, GoogleGmailService? google = null)
+    public ReportEmailService(
+        ISettingsRepository settings,
+        BusinessManagementService management,
+        GoogleGmailService? google = null,
+        TorCloudSyncService? cloud = null)
     {
         _settings = settings;
         _management = management;
         _google = google;
+        _cloud = cloud;
     }
 
     public async Task<string> SendMonthlyReportsAsync(int year, int month, CancellationToken ct = default)
@@ -63,7 +69,7 @@ public sealed class ReportEmailService
         var recipient = values.TryGetValue("reports.email.recipient", out var r) ? r.Trim() : "";
         try { _ = new MailAddress(recipient); }
         catch { throw new InvalidOperationException("Gültige Empfänger-E-Mail fehlt."); }
-        var transport = values.TryGetValue("reports.email.transport", out var mode) ? mode.Trim().ToLowerInvariant() : "smtp";
+        var transport = values.TryGetValue("reports.email.transport", out var mode) ? mode.Trim().ToLowerInvariant() : "tor";
 
         var documents = await _management.BuildMonthlyReportBundleAsync(year, month, ct);
         var root = Path.Combine(AppPaths.DataDirectory, "Reports", "Monatsberichte");
@@ -74,9 +80,14 @@ public sealed class ReportEmailService
         var body = $"Anbei die automatisch erstellten TOR POS Monatsberichte für {month:00}/{year:0000}.\r\n\r\n" +
                    "Die Erstellung und der Versand erzeugen keinen Z-Bericht und keinen Kassenabschluss.";
 
-        if (transport == "google")
+        if (transport == "tor")
         {
-            if (_google is null) throw new InvalidOperationException("Google-E-Mail-Dienst ist nicht verfügbar. TOR POS neu starten oder SMTP als Fallback wählen.");
+            if (_cloud is null) throw new InvalidOperationException("TOR Mail benötigt eine konfigurierte TOR POS Cloud-Verbindung.");
+            await _cloud.SendManagedMailAsync(recipient, subject, body, attachments, ct);
+        }
+        else if (transport == "google")
+        {
+            if (_google is null) throw new InvalidOperationException("Google-E-Mail-Dienst ist nicht verfügbar. TOR POS neu starten oder TOR Mail/SMTP als Alternative wählen.");
             await _google.SendAsync(recipient, subject, body, attachments, ct);
         }
         else
@@ -106,13 +117,21 @@ public sealed class ReportEmailService
 
         var transport = values.TryGetValue("reports.email.transport", out var mode)
             ? mode.Trim().ToLowerInvariant()
-            : "smtp";
+            : "tor";
+
+        if (transport == "tor")
+        {
+            if (_cloud is null)
+                throw new InvalidOperationException("TOR Mail benötigt eine konfigurierte TOR POS Cloud-Verbindung.");
+            await _cloud.SendManagedMailAsync(target, subject, body, attachments, ct);
+            return;
+        }
 
         if (transport == "google")
         {
             if (_google is null)
                 throw new InvalidOperationException(
-                    "Google-E-Mail-Dienst ist nicht verfügbar. TOR POS neu starten oder SMTP als Fallback wählen.");
+                    "Google-E-Mail-Dienst ist nicht verfügbar. TOR POS neu starten oder TOR Mail/SMTP als Alternative wählen.");
             await _google.SendAsync(target, subject, body, attachments, ct);
             return;
         }
@@ -121,6 +140,22 @@ public sealed class ReportEmailService
         var config = baseConfig with { Recipient = target };
         Validate(config);
         await SendAsync(config, subject, body, attachments, ct);
+    }
+
+    public async Task SendTorMailTestAsync(string recipient, CancellationToken ct = default)
+    {
+        var target = recipient?.Trim() ?? "";
+        try { _ = new MailAddress(target); }
+        catch { throw new InvalidOperationException("Gültige Empfänger-E-Mail fehlt."); }
+        if (_cloud is null)
+            throw new InvalidOperationException("TOR Mail benötigt eine konfigurierte TOR POS Cloud-Verbindung.");
+
+        await _cloud.SendManagedMailAsync(
+            target,
+            "TOR POS · TOR Mail Test",
+            "Diese Test-E-Mail bestätigt den TOR-Mail-Versand. Auf diesem Kassen-PC sind dafür weder Google-Anmeldung noch SMTP-Passwort erforderlich.",
+            Array.Empty<string>(),
+            ct);
     }
 
     public async Task SendTestAsync(string recipient, string sender, string host, int port, bool ssl, string username, string password, CancellationToken ct = default)
