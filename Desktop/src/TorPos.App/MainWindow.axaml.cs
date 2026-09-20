@@ -768,21 +768,10 @@ public partial class MainWindow:Window
 
         // Kassierer-Schnelltasten: scanner digits are collected by TextInput
         // (R165), so function keys remain independent from barcode capture.
-        if (e.Key == Key.F1 && CashButton.IsEnabled)
-        {
-            e.Handled = true;
-            OnCashClick(CashButton, new RoutedEventArgs());
-            return;
-        }
-
-        if (e.Key == Key.F2 && CardButton.IsEnabled)
-        {
-            e.Handled = true;
-            OnCardClick(CardButton, new RoutedEventArgs());
-            return;
-        }
-
-        if (e.Key == Key.F5 && QuickCheckoutButton.IsEnabled)
+        // R168: there is one payment entry point. F1/F2 remain accepted as
+        // legacy shortcuts, but they now behave exactly like F5/KASSIEREN.
+        if ((e.Key == Key.F1 || e.Key == Key.F2 || e.Key == Key.F5) &&
+            QuickCheckoutButton.IsEnabled)
         {
             e.Handled = true;
             OnQuickCheckoutClick(QuickCheckoutButton, new RoutedEventArgs());
@@ -2734,11 +2723,14 @@ public partial class MainWindow:Window
             return;
 
         var allowImHaus = IsImbissBusiness();
+        var paymentTotal = _engine.TotalCents;
         var choice = await new PaymentChoiceWindow(
                 _cashEnabledBySettings,
                 _cardEnabledBySettings,
                 allowImHaus,
-                allowImHaus && _imHaus)
+                allowImHaus && _imHaus,
+                totalCents: paymentTotal,
+                simulation: IsSimulation)
             .ShowDialog<PaymentChoiceResult?>(this);
 
         if (choice is null)
@@ -2746,32 +2738,30 @@ public partial class MainWindow:Window
 
         _imHaus = allowImHaus && choice.ImHaus;
 
-        // R156: choosing IM HAUS changes the effective VAT snapshot. Refreshing
-        // the current cart also persists the choice before any external payment
-        // effect is admitted. A new customer is reset to AUSSER HAUS below.
+        // R168: Verkaufsart, BAR/KARTE/GEMISCHT and BAR/GEMISCHT amount entry
+        // all live in this one payment page. No second cash/mixed/test-card page.
         UpdateCart();
 
-        long cashPortionCents = 0;
-        if (choice.Method == PaymentMethod.Mixed)
+        CashPaymentResult? pageCash = null;
+        if (choice.Method == PaymentMethod.Cash && paymentTotal > 0)
         {
-            var total = CaptureCheckout(PaymentMethod.Mixed).TotalCents;
-            if (total <= 0)
+            if (choice.CashTenderedCents < paymentTotal)
             {
-                ScannerStatus.Text = "GEMISCHT nicht möglich · Pfand-Auszahlung nur BAR.";
+                ScannerStatus.Text = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
                 return;
             }
 
-            var cashPortion = await new MixedPaymentWindow(total).ShowDialog<long?>(this);
-            if (cashPortion is null)
-                return;
-
-            cashPortionCents = cashPortion.Value;
+            pageCash = new CashPaymentResult(
+                choice.CashTenderedCents,
+                choice.CashTenderedCents - paymentTotal);
         }
 
         await CheckoutAsync(
             choice.Method,
             invokedByQuickCheckout,
-            cashPortionCents);
+            choice.CashPortionCents,
+            pageCash,
+            cardConfirmedOnPaymentPage: true);
     }
 
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
@@ -2797,7 +2787,12 @@ public partial class MainWindow:Window
         RefreshSalesActionState();
     }
 
-    private async Task CheckoutAsync(PaymentMethod method, bool invokedByQuickCheckout, long cashPortionCents = 0)
+    private async Task CheckoutAsync(
+        PaymentMethod method,
+        bool invokedByQuickCheckout,
+        long cashPortionCents = 0,
+        CashPaymentResult? paymentPageCash = null,
+        bool cardConfirmedOnPaymentPage = false)
     {
         if (CartLocked || _engine.Cart.Count==0 || !CanCompleteSale()) return;
         var snapshot=CaptureCheckout(method, cashPortionCents);
@@ -2840,31 +2835,31 @@ public partial class MainWindow:Window
             }
             else if (method==PaymentMethod.Cash)
             {
-                if (QuickCheckoutPolicy.UseExactCashWithoutDialog(
+                if (paymentPageCash is not null)
+                {
+                    cash = paymentPageCash;
+                }
+                else if (QuickCheckoutPolicy.UseExactCashWithoutDialog(
                     _settingsCache,
                     method,
                     invokedByQuickCheckout))
                 {
-                    cash = new CashPaymentResult(
-                        snapshot.TotalCents,
-                        0);
-
-                    _perf.RecordElapsed(
-                        "checkout.quick_exact_cash",
-                        0);
+                    // Compatibility fallback for non-UI callers. Normal cashier
+                    // checkout already collected the amount in PaymentChoiceWindow.
+                    cash = new CashPaymentResult(snapshot.TotalCents, 0);
+                    _perf.RecordElapsed("checkout.quick_exact_cash", 0);
                 }
                 else
                 {
+                    // Legacy fallback only; the visible R168 flow never reaches
+                    // a second cash dialog.
                     cash=await new CashPaymentWindow(snapshot.TotalCents).ShowDialog<CashPaymentResult?>(this);
                     if(cash is null) return;
                 }
             }
             else if (method==PaymentMethod.Mixed)
             {
-                // R101: the cash portion was already collected by
-                // MixedPaymentWindow before CheckoutAsync was even called
-                // (OnMixedPaymentClick) - no separate tender/change concept,
-                // the entered amount IS what changed hands in cash.
+                // R168: the BAR portion was entered on the one payment page.
                 cash = new CashPaymentResult(snapshot.EffectiveCashPortionCents, 0);
             }
             if (IsSimulation)
@@ -2886,7 +2881,9 @@ public partial class MainWindow:Window
                             snapshot.ImHaus)
                 };
 
-                if((method==PaymentMethod.Card || method==PaymentMethod.Mixed) && !_currentUser.IsTraining &&
+                if((method==PaymentMethod.Card || method==PaymentMethod.Mixed) &&
+                    !_currentUser.IsTraining &&
+                    !cardConfirmedOnPaymentPage &&
                     !await new CardTestPaymentWindow(snapshot.EffectiveCardPortionCents).ShowDialog<bool>(this)) return;
                 await _audit.WriteAsync(_currentUser.Username,"TEST_SALE_COMPLETED","SIMULATION",snapshot.OperationId,
                     $"total_cents={snapshot.TotalCents}; payment={method}; no_fiscal_sale=true");
@@ -5119,9 +5116,7 @@ public partial class MainWindow:Window
             CategoryModeHintText.Text = "OPTIONAL · Scanner ist der Hauptweg";
             ProductModeHintText.Text = "Schnellwahl optional · Scanner bleibt aktiv";
             EmptyCartHintText.Text = "BARCODE SCANNEN";
-            CheckoutHintText.Text = QuickCheckoutPolicy.ResolveMethod(_settingsCache, _cashEnabledBySettings, _cardEnabledBySettings) is null
-                ? "SCANNEN → F1 BAR / F2 KARTE"
-                : "SCANNEN → F5 SCHNELL · F1 BAR / F2 KARTE";
+            CheckoutHintText.Text = "SCANNEN → F5 KASSIEREN";
         }
         else
         {
@@ -5129,9 +5124,7 @@ public partial class MainWindow:Window
             CategoryModeHintText.Text = "TOUCH · Warengruppe → Artikel";
             ProductModeHintText.Text = "TOUCH · Artikel → direkt im Bon";
             EmptyCartHintText.Text = "WARENGRUPPE ODER ARTIKEL ANTIPPEN";
-            CheckoutHintText.Text = QuickCheckoutPolicy.ResolveMethod(_settingsCache, _cashEnabledBySettings, _cardEnabledBySettings) is null
-                ? "TOUCH → ARTIKEL → F1 BAR / F2 KARTE"
-                : "TOUCH → ARTIKEL → F5 SCHNELL · F1/F2";
+            CheckoutHintText.Text = "TOUCH → ARTIKEL → F5 KASSIEREN";
         }
 
         // Änderungen an Spalten/Zeilen werden nach dem Schließen der
