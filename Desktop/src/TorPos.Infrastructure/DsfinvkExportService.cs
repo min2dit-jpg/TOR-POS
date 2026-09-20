@@ -540,7 +540,9 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             var lines = new List<CartLine>();
             await using var q = c.CreateCommand();
             q.CommandText = """
-                SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
+                SELECT product_id,product_name,variant_name,barcode,
+                       CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
+                       unit_price_cents,vat_rate,pfand_cents,
                        COALESCE(list_unit_price_cents,0),COALESCE(promotion_id,0),COALESCE(promotion_name,''),
                        COALESCE(promotion_percent,0),COALESCE(promotion_discount_unit_cents,0)
                 FROM parked_receipt_items WHERE parked_receipt_id=$id ORDER BY id;
@@ -555,7 +557,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     ProductName = r.GetString(1),
                     VariantName = r.GetString(2),
                     Barcode = r.GetString(3),
-                    Quantity = Convert.ToDecimal(r.GetDouble(4)),
+                    Quantity = QuantityStorage.FromMilli(r.GetInt64(4)),
                     UnitPriceCents = r.GetInt64(5),
                     VatRate = Convert.ToDecimal(r.GetDouble(6)),
                     PfandCents = r.GetInt64(7),
