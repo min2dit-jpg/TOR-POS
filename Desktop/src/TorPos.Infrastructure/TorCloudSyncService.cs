@@ -270,6 +270,47 @@ public sealed class TorCloudSyncService : IAsyncDisposable
 
         return result;
     }
+    public async Task SendManagedMailAsync(
+        string recipient,
+        string subject,
+        string body,
+        IReadOnlyList<string> attachments,
+        CancellationToken ct=default)
+    {
+        const long maxFileBytes=6L*1024*1024;
+        const long maxTotalBytes=8L*1024*1024;
+        if(attachments.Count>10)throw new InvalidOperationException("TOR Mail erlaubt maximal 10 Anhänge.");
+
+        long total=0;
+        var files=new List<object>();
+        foreach(var file in attachments)
+        {
+            if(string.IsNullOrWhiteSpace(file)||!File.Exists(file))
+                throw new InvalidOperationException("E-Mail-Anhang fehlt: "+(file??""));
+            var ext=Path.GetExtension(file).ToLowerInvariant();
+            if(ext is not ".pdf" and not ".csv")
+                throw new InvalidOperationException("TOR Mail erlaubt nur PDF- und CSV-Anhänge.");
+            var info=new FileInfo(file);
+            if(info.Length>maxFileBytes)throw new InvalidOperationException($"E-Mail-Anhang ist zu groß: {info.Name}");
+            total=checked(total+info.Length);
+            if(total>maxTotalBytes)throw new InvalidOperationException("E-Mail-Anhänge sind zusammen zu groß (max. 8 MB).");
+            var bytes=await File.ReadAllBytesAsync(file,ct);
+            files.Add(new
+            {
+                filename=info.Name,
+                data_base64=Convert.ToBase64String(bytes)
+            });
+        }
+
+        await DeviceApiAsync("api/v1/devices/mail/send",new
+        {
+            recipient=recipient.Trim(),
+            subject,
+            body,
+            attachments=files
+        },ct);
+    }
+
     public async Task<JsonElement> DeviceApiAsync(string route,object? body,CancellationToken ct=default)
     {
         var config=await ConfigurationAsync()??throw new InvalidOperationException("TOR POS Cloud zuerst unter Geräte konfigurieren und speichern.");
