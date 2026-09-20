@@ -1580,111 +1580,12 @@ public sealed class SchemaMigrationService
                         await backfill.ExecuteNonQueryAsync(ct);
                     }
 
-                    // Mutable/master rows are guarded so REAL remains only a
-                    // compatibility mirror and can never drift away from the
-                    // authoritative INTEGER value.
-                    await using (var guards = c.CreateCommand())
-                    {
-                        guards.Transaction = tx;
-                        guards.CommandText = """
-                            CREATE TRIGGER IF NOT EXISTS trg_products_fixed_quantity_insert
-                            AFTER INSERT ON products
-                            WHEN NEW.stock_milli<>CAST(ROUND(COALESCE(NEW.stock_quantity,0)*1000.0) AS INTEGER)
-                              OR NEW.min_stock_milli<>CAST(ROUND(COALESCE(NEW.min_stock_quantity,0)*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'product fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_products_fixed_quantity_update
-                            AFTER UPDATE OF stock_quantity,stock_milli,min_stock_quantity,min_stock_milli ON products
-                            WHEN NEW.stock_milli<>CAST(ROUND(COALESCE(NEW.stock_quantity,0)*1000.0) AS INTEGER)
-                              OR NEW.min_stock_milli<>CAST(ROUND(COALESCE(NEW.min_stock_quantity,0)*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'product fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_combo_fixed_quantity_insert
-                            AFTER INSERT ON product_combo_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'combo fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_combo_fixed_quantity_update
-                            AFTER UPDATE OF quantity,quantity_milli ON product_combo_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'combo fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_parked_fixed_quantity_insert
-                            AFTER INSERT ON parked_receipt_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'parked fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_parked_fixed_quantity_update
-                            AFTER UPDATE OF quantity,quantity_milli ON parked_receipt_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'parked fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_sale_fixed_quantity_insert
-                            AFTER INSERT ON sale_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'sale fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_training_fixed_quantity_insert
-                            AFTER INSERT ON training_receipt_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'training fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_aborted_fixed_quantity_insert
-                            AFTER INSERT ON aborted_vorgang_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'aborted fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_order_fixed_quantity_insert
-                            AFTER INSERT ON order_bestellung_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'order fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_sale_cancelled_fixed_quantity_insert
-                            AFTER INSERT ON sale_cancelled_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'cancelled sale fixed quantity mismatch');
-                            END;
-
-                            CREATE TRIGGER IF NOT EXISTS trg_training_cancelled_fixed_quantity_insert
-                            AFTER INSERT ON training_cancelled_items
-                            WHEN NEW.quantity_milli=0
-                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
-                            BEGIN
-                              SELECT RAISE(ABORT,'cancelled training fixed quantity mismatch');
-                            END;
-                            """;
-                        await guards.ExecuteNonQueryAsync(ct);
-                    }
+                    // The new TOR code writes both the INTEGER value and
+                    // the legacy REAL compatibility mirror. No INSERT trigger
+                    // is used here: historical test/import tooling and older
+                    // companion builds may still write only the REAL column.
+                    // Readers therefore prefer *_milli when present and fall
+                    // back to a one-time REAL->milli conversion for such rows.
                 })
         };
 
