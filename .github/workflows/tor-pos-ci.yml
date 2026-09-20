@@ -172,6 +172,35 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Kunden Setup icin standart Windows publish olustur
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          Remove-Item -Recurse -Force ci-results/setup-publish -ErrorAction SilentlyContinue
+          dotnet publish src/TorPos.App/TorPos.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o ci-results/setup-publish --verbosity minimal 2>&1 |
+            Tee-Object -FilePath ci-results/setup-publish.log
+          $publishExit = $LASTEXITCODE
+          if ($publishExit -ne 0) { exit $publishExit }
+          if (-not (Test-Path ci-results/setup-publish/TorPos.App.exe)) {
+            throw 'TOR POS setup publish executable was not produced.'
+          }
+
+      - name: Setup EXE manifestini dogrula
+        run: |
+          $mt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter mt.exe -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $mt) { throw 'Windows SDK mt.exe not found.' }
+
+          $exe = (Resolve-Path 'ci-results/setup-publish/TorPos.App.exe').Path
+          $manifestOut = (Join-Path (Resolve-Path 'ci-results').Path 'setup-app.manifest.xml')
+          & $mt.FullName "-inputresource:$exe;#1" "-out:$manifestOut"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $manifestText = Get-Content $manifestOut -Raw
+          if ($manifestText -notmatch 'requestedExecutionLevel\s+level="asInvoker"') {
+            throw 'Installed TorPos.App.exe does not contain the required asInvoker manifest.'
+          }
+
       - name: Kunden Setup EXE olustur
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
@@ -183,7 +212,7 @@ jobs:
           if (-not $iscc) { throw 'Inno Setup ISCC.exe not found.' }
 
           Remove-Item -Recurse -Force installer-output -ErrorAction SilentlyContinue
-          & $iscc "/DMyPublishDir=ci-results\publish" "/DMyOutputBaseFilename=TOR-POS-Setup" "TOR-POS-Pro-Setup.iss" 2>&1 |
+          & $iscc "/DMyPublishDir=ci-results\setup-publish" "/DMyOutputBaseFilename=TOR-POS-Setup" "TOR-POS-Pro-Setup.iss" 2>&1 |
             Tee-Object -FilePath ci-results/installer.log
           $setupExit = $LASTEXITCODE
           if ($setupExit -ne 0) { exit $setupExit }
