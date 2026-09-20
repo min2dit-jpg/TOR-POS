@@ -382,9 +382,11 @@ public partial class MainWindow
         var price = p.Variants.Count > 0
             ? p.Variants.Min(x => x.PriceCents) + p.PfandCents
             : p.BasePriceCents + p.PfandCents;
-        var priceLabel = p.Variants.Count > 0
-            ? $"ab {Formatting.Money(price)}"
-            : Formatting.Money(price);
+        var priceLabel = p.IsWeighted
+            ? $"{Formatting.Money(p.BasePriceCents)} / kg"
+            : p.Variants.Count > 0
+                ? $"ab {Formatting.Money(price)}"
+                : Formatting.Money(price);
 
         var image = showImages ? LoadImage(p.ImagePath) : null;
         if (image is not null)
