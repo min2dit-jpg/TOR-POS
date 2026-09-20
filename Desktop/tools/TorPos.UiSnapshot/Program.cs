@@ -55,7 +55,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 8 dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 9 dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -209,6 +209,74 @@ async Task RunAsync()
     // R149: returned empties and the cash payout.
     await SnapshotDialogAsync(new PfandSelectionWindow(), "pfand-return", check, failures, output);
     await SnapshotDialogAsync(new DepositPayoutWindow(50), "deposit-payout", check, failures, output);
+
+    // R164: reproduce the real Mitarbeiter & Rechte failure mode. The window
+    // rebuilds its tabs after SaveAsync/LoadAsync; loading twice must never
+    // reattach the same TextBox to a second StackPanel.
+    var userManagement = new UserManagementWindow(auth, admin);
+    userManagement.Show();
+    for (var i = 0; i < 10; i++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(30);
+    }
+
+    var loadUsers = typeof(UserManagementWindow).GetMethod(
+        "LoadAsync",
+        BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("UserManagementWindow.LoadAsync missing.");
+    await ((Task?)loadUsers.Invoke(userManagement, null)
+        ?? throw new InvalidOperationException("UserManagementWindow.LoadAsync did not return Task."));
+    await ((Task?)loadUsers.Invoke(userManagement, null)
+        ?? throw new InvalidOperationException("UserManagementWindow.LoadAsync did not return Task."));
+
+    var statusField = typeof(UserManagementWindow).GetField(
+        "_status",
+        BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("UserManagementWindow._status missing.");
+    var userStatus = (TextBlock?)statusField.GetValue(userManagement);
+    if (userStatus?.Text?.Contains("visual parent", StringComparison.OrdinalIgnoreCase) == true ||
+        userStatus?.Text?.StartsWith("Laden fehlgeschlagen", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        failures.Add($"user-management-reload: {userStatus.Text}");
+    }
+
+    await SnapshotShownDialogAsync(userManagement, "user-management-reload", check, failures, output);
+}
+
+// R164: snapshot a dialog that is already shown and initialized.
+static async Task SnapshotShownDialogAsync(Window window, string name, bool check, List<string> failures, string output)
+{
+    for (var i = 0; i < 6; i++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(30);
+    }
+
+    if (check)
+    {
+        var width = window.ClientSize.Width;
+        var height = window.ClientSize.Height;
+        foreach (var button in window.GetVisualDescendants().OfType<Button>().Where(b => b.IsVisible))
+        {
+            var topLeft = button.TranslatePoint(new Point(0, 0), window);
+            if (topLeft is null)
+            {
+                failures.Add($"{name}: button '{button.Content}' is not laid out");
+                continue;
+            }
+            if (topLeft.Value.X < -0.5 || topLeft.Value.Y < -0.5 ||
+                topLeft.Value.X + button.Bounds.Width > width + 0.5 || topLeft.Value.Y + button.Bounds.Height > height + 0.5)
+                failures.Add($"{name}: button '{button.Content}' extends past the window");
+        }
+    }
+
+    var frame = window.CaptureRenderedFrame()
+        ?? throw new InvalidOperationException("No frame rendered.");
+    var file = Path.Combine(output, $"{name}.png");
+    frame.Save(file, new PngBitmapEncoderOptions());
+    Console.WriteLine($"saved {file}");
+    window.Close();
 }
 
 // R145: a dialog at its own fixed size; every visible button must be inside it.
