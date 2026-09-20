@@ -313,7 +313,8 @@ public sealed class DatevKassenbuchAsciiService
             var byRate = new Dictionary<decimal,long>();
             await using var q = c.CreateCommand();
             q.CommandText = """
-                SELECT quantity,unit_price_cents,vat_rate,line_total_cents,
+                SELECT CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
+                       unit_price_cents,vat_rate,line_total_cents,
                        COALESCE(vat_allocations_json,'')
                 FROM sale_items
                 WHERE sale_id=$sale
@@ -325,7 +326,7 @@ public sealed class DatevKassenbuchAsciiService
             {
                 var line = new CartLine
                 {
-                    Quantity = Convert.ToDecimal(r.GetDouble(0)),
+                    Quantity = QuantityStorage.FromMilli(r.GetInt64(0)),
                     UnitPriceCents = r.GetInt64(1),
                     VatRate = Convert.ToDecimal(r.GetDouble(2)),
                     VatAllocations = VatAllocationStorage.Deserialize(r.GetString(4))
