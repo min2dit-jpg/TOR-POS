@@ -47,7 +47,7 @@ public static class R171ReviewTests
 
         assert(
             settings.Contains("OpenFolderPickerAsync", StringComparison.Ordinal) &&
-            settings.Contains(""DSFINVK_EXPORT"", StringComparison.Ordinal) &&
+            settings.Contains("\"DSFINVK_EXPORT\"", StringComparison.Ordinal) &&
             settings.Contains("kein Zielordner ausgewählt", StringComparison.Ordinal),
             "R171 DSFinV-K export lets the operator choose a destination and audits successful exports");
 
@@ -60,7 +60,7 @@ public static class R171ReviewTests
             FindRepoFile("Desktop/src/TorPos.Infrastructure/DsfinvkExportService.cs"));
         assert(
             service.Contains("z.CreatedAt >= from && z.CreatedAt <= to", StringComparison.Ordinal) &&
-            service.Contains(""NO_CLOSING"", StringComparison.Ordinal) &&
+            service.Contains("\"NO_CLOSING\"", StringComparison.Ordinal) &&
             service.Contains("Exportiert werden nur abgeschlossene Zeiträume", StringComparison.Ordinal),
             "R171 backend range selection remains fail-closed around completed Z reports");
 
@@ -87,6 +87,41 @@ public static class R171ReviewTests
             versionCheck.Contains("$revisionNumber -lt $highestReview", StringComparison.Ordinal) &&
             versionCheck.Contains("Desktop/README.md", StringComparison.Ordinal),
             "R171 CI rejects a release revision that falls behind a newer R###ReviewTests contract and checks Desktop README too");
+
+        assert(
+            settings.Contains("new DsfinvkDeliveryWindow(", StringComparison.Ordinal) &&
+            settings.Contains(".ShowDialog(this)", StringComparison.Ordinal),
+            "R171 successful DSFinV-K export immediately offers a delivery assistant instead of leaving the operator to find the folder manually");
+
+        var delivery = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.App/DsfinvkDeliveryWindow.cs"));
+        assert(
+            delivery.Contains("AUF USB KOPIEREN", StringComparison.Ordinal) &&
+            delivery.Contains("ANDEREN USB-/ORDNER WÄHLEN", StringComparison.Ordinal) &&
+            delivery.Contains("DSFINV-K PER E-MAIL SENDEN", StringComparison.Ordinal) &&
+            delivery.Contains("STEUERBERATER-ADRESSE", StringComparison.Ordinal),
+            "R171 delivery assistant offers removable-media copy, manual folder choice and email to the saved tax-adviser address");
+
+        assert(
+            delivery.Contains("ZipFile.CreateFromDirectory(", StringComparison.Ordinal) &&
+            delivery.Contains("includeBaseDirectory: true", StringComparison.Ordinal) &&
+            delivery.Contains("MaxMailZipBytes = 15L * 1024 * 1024", StringComparison.Ordinal) &&
+            delivery.Contains("SendFilesAsync(", StringComparison.Ordinal),
+            "R171 email delivery packages the complete DSFinV-K folder into one bounded ZIP attachment");
+
+        assert(
+            delivery.Contains(".unvollstaendig", StringComparison.Ordinal) &&
+            delivery.Contains("SearchOption.AllDirectories", StringComparison.Ordinal) &&
+            delivery.Contains("Directory.Move(working, final)", StringComparison.Ordinal),
+            "R171 USB delivery copies the complete export tree through an incomplete working folder before presenting a finished folder");
+
+        var mime = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/MailMimeBuilder.cs"));
+        assert(
+            mime.Contains("\".zip\" => \"application/zip\"", StringComparison.Ordinal) &&
+            mime.Contains("\".csv\" => \"text/csv\"", StringComparison.Ordinal) &&
+            mime.Contains("\".xml\" => \"application/xml\"", StringComparison.Ordinal),
+            "R171 mail MIME generation labels DSFinV-K ZIP/CSV/XML attachments correctly instead of declaring every file as PDF");
 
         return Task.CompletedTask;
     }
