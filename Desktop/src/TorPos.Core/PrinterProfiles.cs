@@ -103,7 +103,7 @@ public static class ReceiptPrinterProfiles
                 return new PrinterDeviceInfo(
                     printerName,
                     "Epson",
-                    "Bondrucker-Modell nicht eindeutig",
+                    "Modell nicht eindeutig",
                     driverName,
                     portName,
                     DetectConnection(portName, haystack),
