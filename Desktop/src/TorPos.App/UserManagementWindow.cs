@@ -12,9 +12,11 @@ public sealed class UserManagementWindow : Window
     private readonly TabControl _tabs = new();
     private readonly TextBlock _status = new();
     private readonly List<UserEditor> _editors = new();
-    private readonly TextBox _adminCurrentPassword = new() { PasswordChar = '●' };
-    private readonly TextBox _adminNewPassword = new() { PasswordChar = '●' };
-    private readonly TextBox _adminNewPin = new() { PasswordChar = '●', MaxLength = 4 };
+    // R164: rebuilt with every tab reload so Avalonia never sees one TextBox
+    // attached to both the old and the new admin StackPanel.
+    private TextBox _adminCurrentPassword = null!;
+    private TextBox _adminNewPassword = null!;
+    private TextBox _adminNewPin = null!;
 
     public UserManagementWindow(
         IAuthenticationService authentication,
@@ -139,9 +141,9 @@ public sealed class UserManagementWindow : Window
 
     private Control BuildAdminCredentialPanel()
     {
-        _adminCurrentPassword.Text = "";
-        _adminNewPassword.Text = "";
-        _adminNewPin.Text = "";
+        _adminCurrentPassword = new TextBox { PasswordChar = '●' };
+        _adminNewPassword = new TextBox { PasswordChar = '●' };
+        _adminNewPin = new TextBox { PasswordChar = '●', MaxLength = 4 };
 
         var change = new Button
         {
