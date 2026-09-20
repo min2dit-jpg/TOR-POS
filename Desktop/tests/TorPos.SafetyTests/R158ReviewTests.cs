@@ -16,8 +16,7 @@ public static class R158ReviewTests
             "R158 Waren, Einstellungen, Kasse and Berichte use header-plus-fill grids instead of content-height stack panels");
 
         assert(
-            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"240,*\"", StringComparison.Ordinal) &&
-            axaml.Split("Grid.Row=\"1\" ColumnDefinitions=\"230,*\"", StringSplitOptions.None).Length - 1 >= 3,
+            axaml.Split("Grid.Row=\"1\" ColumnDefinitions=\"270,*\"", StringSplitOptions.None).Length - 1 >= 4,
             "R158 the fill row still occupies the remaining vertical space after the R159 sidebar redesign");
 
         assert(
