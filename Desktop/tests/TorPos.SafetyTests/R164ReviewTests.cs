@@ -1,3 +1,4 @@
+using TorPos.App;
 using Avalonia;
 using Avalonia.Controls;
 using TorPos.Core;
