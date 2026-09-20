@@ -229,27 +229,75 @@ public sealed class CartLine
     public bool HasPromotion =>
         PromotionId > 0 &&
         PromotionPercent > 0 &&
-        PromotionDiscountUnitCents > 0;
+        (PromotionDiscountUnitCents > 0 || IsWeighted);
 
     public long EffectiveListUnitPriceCents =>
         ListUnitPriceCents > 0
             ? ListUnitPriceCents
             : UnitPriceCents + PromotionDiscountUnitCents;
 
-    public long LineTotalCents =>
+    public long ListLineTotalCentsFor(decimal quantity) =>
         (long)Math.Round(
-            Quantity * UnitPriceCents,
+            quantity * EffectiveListUnitPriceCents,
             MidpointRounding.AwayFromZero);
+
+    public long PromotionDiscountCentsFor(decimal quantity)
+    {
+        if (!HasPromotion || quantity <= 0m)
+            return 0L;
+
+        if (!IsWeighted)
+        {
+            return (long)Math.Round(
+                quantity * PromotionDiscountUnitCents,
+                MidpointRounding.AwayFromZero);
+        }
+
+        // R174: weighted sales need line-level allocation. A per-kg discount
+        // stored as whole cents can create half-cent intermediate values
+        // (e.g. 0.500 kg × 19.90 EUR/kg × 10%). Calculate the promotion from
+        // the immutable list price + percentage and round only once at line
+        // level. Pfand remains excluded exactly as for piece articles.
+        var merchandiseUnitCents =
+            Math.Max(0L, EffectiveListUnitPriceCents - PfandCents);
+        var discount =
+            (long)Math.Round(
+                quantity * merchandiseUnitCents *
+                (Math.Clamp(PromotionPercent, 0, 100) / 100m),
+                MidpointRounding.AwayFromZero);
+
+        return Math.Clamp(
+            discount,
+            0L,
+            Math.Max(0L, ListLineTotalCentsFor(quantity)));
+    }
+
+    public long LineTotalCentsFor(decimal quantity)
+    {
+        if (quantity <= 0m)
+            return 0L;
+
+        if (IsWeighted && HasPromotion)
+        {
+            return Math.Max(
+                0L,
+                ListLineTotalCentsFor(quantity) -
+                PromotionDiscountCentsFor(quantity));
+        }
+
+        return (long)Math.Round(
+            quantity * UnitPriceCents,
+            MidpointRounding.AwayFromZero);
+    }
+
+    public long LineTotalCents =>
+        LineTotalCentsFor(Quantity);
 
     public long ListLineTotalCents =>
-        (long)Math.Round(
-            Quantity * EffectiveListUnitPriceCents,
-            MidpointRounding.AwayFromZero);
+        ListLineTotalCentsFor(Quantity);
 
     public long PromotionDiscountCents =>
-        (long)Math.Round(
-            Quantity * PromotionDiscountUnitCents,
-            MidpointRounding.AwayFromZero);
+        PromotionDiscountCentsFor(Quantity);
 }
 
 /// <summary>
