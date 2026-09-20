@@ -55,7 +55,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 6 dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 8 dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -181,6 +181,11 @@ async Task RunAsync()
 
         window.Close();
     }
+
+    // R161: brand-critical startup and login screens are part of the visual
+    // regression set so the old TOR placeholder/magnifier cannot return.
+    await SnapshotDialogAsync(new StartupLoadingWindow(), "startup-loading", check, failures, output);
+    await SnapshotDialogAsync(new LoginWindow(auth, settings), "login", check, failures, output);
 
     // R156: Verkaufsart and all tender choices now live in one payment hub.
     // Snapshot it explicitly so moving controls out of the header cannot turn
