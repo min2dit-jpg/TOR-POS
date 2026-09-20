@@ -97,7 +97,9 @@ public sealed class CustomerDisplayWindow : Window
                 {
                     new TextBlock
                     {
-                        Text = $"{name}   ({line.Quantity:0.##} × {Formatting.Money(line.UnitPriceCents)})",
+                        Text = line.IsWeighted
+                            ? $"{name}   ({WeightedSales.QuantityLabel(line.Quantity)} × {Formatting.Money(line.UnitPriceCents)}/kg)"
+                            : $"{name}   ({line.Quantity:0.##} × {Formatting.Money(line.UnitPriceCents)})",
                         FontSize = 20, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap
                     },
                     new TextBlock
