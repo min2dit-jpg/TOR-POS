@@ -123,7 +123,8 @@ public async Task<IReadOnlyList<DuplicateArticleRow>> GetDuplicatesAsync(Cancell
                    COALESCE(g.name,'Standard'),
                    c.name,
                    p.name,p.sku,p.barcode,
-                   COALESCE(p.stock_quantity,0),COALESCE(p.min_stock_quantity,0),
+                   COALESCE(p.stock_milli,CAST(ROUND(COALESCE(p.stock_quantity,0)*1000.0) AS INTEGER)),
+                   COALESCE(p.min_stock_milli,CAST(ROUND(COALESCE(p.min_stock_quantity,0)*1000.0) AS INTEGER)),
                    p.unit,p.base_price_cents,COALESCE(p.purchase_price_cents,0),
                    COALESCE(p.last_inventory_at,'')
             FROM products p
@@ -140,7 +141,7 @@ public async Task<IReadOnlyList<DuplicateArticleRow>> GetDuplicatesAsync(Cancell
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
         {
-            result.Add(new InventoryArticleRow(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5), Convert.ToDecimal(r.GetDouble(6)), Convert.ToDecimal(r.GetDouble(7)), r.GetString(8), r.GetInt64(9), r.GetInt64(10), r.GetString(11)));
+            result.Add(new InventoryArticleRow(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5), QuantityStorage.FromMilli(r.GetInt64(6)), QuantityStorage.FromMilli(r.GetInt64(7)), r.GetString(8), r.GetInt64(9), r.GetInt64(10), r.GetString(11)));
         }
 
         return result;
@@ -159,10 +160,12 @@ public async Task SetInventoryAsync(long productId, decimal quantity, string act
         q.CommandText = """
             UPDATE products
             SET stock_quantity=$qty,
+                stock_milli=$qtyMilli,
                 last_inventory_at=$at
             WHERE id=$id;
             """;
         q.Parameters.AddWithValue("$qty", Convert.ToDouble(quantity));
+        q.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(quantity));
         q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
         q.Parameters.AddWithValue("$id", productId);
         await q.ExecuteNonQueryAsync(ct);
@@ -188,12 +191,14 @@ public async Task SetInventoryAsync(long productId, decimal quantity, string act
         q.CommandText = """
             UPDATE products
             SET stock_quantity=$new,
+                stock_milli=$newMilli,
                 last_inventory_at=$at
             WHERE id=$id
-              AND ABS(COALESCE(stock_quantity,0)-$expected) < 0.000001;
+              AND COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER))=$expectedMilli;
             """;
         q.Parameters.AddWithValue("$new", Convert.ToDouble(newQuantity));
-        q.Parameters.AddWithValue("$expected", Convert.ToDouble(expectedQuantity));
+        q.Parameters.AddWithValue("$newMilli", QuantityStorage.ToMilli(newQuantity));
+        q.Parameters.AddWithValue("$expectedMilli", QuantityStorage.ToMilli(expectedQuantity));
         q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
         q.Parameters.AddWithValue("$id", productId);
         var changed = await q.ExecuteNonQueryAsync(ct);
@@ -228,8 +233,10 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
         q.CommandText = """
             SELECT COALESCE(g.name,'Standard'),c.name,p.name,p.sku,p.barcode,
                    p.base_price_cents,COALESCE(m.vat_rate,p.vat_rate),p.pfand_cents,
-                   p.unit,p.is_active,COALESCE(p.stock_quantity,0),
-                   COALESCE(p.min_stock_quantity,0),COALESCE(p.purchase_price_cents,0),
+                   p.unit,p.is_active,
+                   COALESCE(p.stock_milli,CAST(ROUND(COALESCE(p.stock_quantity,0)*1000.0) AS INTEGER)),
+                   COALESCE(p.min_stock_milli,CAST(ROUND(COALESCE(p.min_stock_quantity,0)*1000.0) AS INTEGER)),
+                   COALESCE(p.purchase_price_cents,0),
                    COALESCE(m.im_haus_applicable,1)
             FROM products p
             JOIN categories c ON c.id=p.category_id
@@ -249,7 +256,7 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
         {
-            await writer.WriteLineAsync(string.Join(";", new[] { Csv(r.GetString(0)), Csv(r.GetString(1)), Csv(r.GetString(2)), Csv(r.GetString(3)), Csv(r.GetString(4)), r.GetInt64(5).ToString(CultureInfo.InvariantCulture), Convert.ToDecimal(r.GetDouble(6)).ToString("0.##", CultureInfo.InvariantCulture), r.GetInt64(7).ToString(CultureInfo.InvariantCulture), Csv(r.GetString(8)), r.GetInt32(9).ToString(CultureInfo.InvariantCulture), Convert.ToDecimal(r.GetDouble(10)).ToString("0.###", CultureInfo.InvariantCulture), Convert.ToDecimal(r.GetDouble(11)).ToString("0.###", CultureInfo.InvariantCulture), r.GetInt64(12).ToString(CultureInfo.InvariantCulture), r.GetInt64(13) != 0 ? "1" : "0" }));
+            await writer.WriteLineAsync(string.Join(";", new[] { Csv(r.GetString(0)), Csv(r.GetString(1)), Csv(r.GetString(2)), Csv(r.GetString(3)), Csv(r.GetString(4)), r.GetInt64(5).ToString(CultureInfo.InvariantCulture), Convert.ToDecimal(r.GetDouble(6)).ToString("0.##", CultureInfo.InvariantCulture), r.GetInt64(7).ToString(CultureInfo.InvariantCulture), Csv(r.GetString(8)), r.GetInt32(9).ToString(CultureInfo.InvariantCulture), QuantityStorage.FromMilli(r.GetInt64(10)).ToString("0.###", CultureInfo.InvariantCulture), QuantityStorage.FromMilli(r.GetInt64(11)).ToString("0.###", CultureInfo.InvariantCulture), r.GetInt64(12).ToString(CultureInfo.InvariantCulture), r.GetInt64(13) != 0 ? "1" : "0" }));
         }
 
         return targetPath;
@@ -1885,7 +1892,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             q.CommandText = """
                 UPDATE products SET category_id=$c,name=$n,sku=CASE WHEN TRIM($sku)='' THEN sku ELSE $sku END,barcode=$ean,
                   base_price_cents=$price,vat_rate=$vat,pfand_cents=$pfand,unit=$unit,
-                  is_active=$active,stock_quantity=$stock,min_stock_quantity=$minstock,purchase_price_cents=$purchase,
+                  is_active=$active,stock_quantity=$stock,stock_milli=$stockMilli,min_stock_quantity=$minstock,min_stock_milli=$minStockMilli,purchase_price_cents=$purchase,
                   im_haus_applicable=$imHaus
                 WHERE id=$id;
                 """;
@@ -1894,8 +1901,8 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         else
         {
             q.CommandText = """
-                INSERT INTO products(category_id,name,sku,barcode,base_price_cents,vat_rate,pfand_cents,unit,is_active,stock_quantity,min_stock_quantity,purchase_price_cents,edition_scope,im_haus_applicable)
-                VALUES($c,$n,$sku,$ean,$price,$vat,$pfand,$unit,$active,$stock,$minstock,$purchase,$scope,$imHaus);
+                INSERT INTO products(category_id,name,sku,barcode,base_price_cents,vat_rate,pfand_cents,unit,is_active,stock_quantity,stock_milli,min_stock_quantity,min_stock_milli,purchase_price_cents,edition_scope,im_haus_applicable)
+                VALUES($c,$n,$sku,$ean,$price,$vat,$pfand,$unit,$active,$stock,$stockMilli,$minstock,$minStockMilli,$purchase,$scope,$imHaus);
                 """;
         }
         q.Parameters.AddWithValue("$imHaus", imHausApplicable ? 1 : 0);
@@ -1909,7 +1916,9 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         q.Parameters.AddWithValue("$unit", unit ?? "Stück");
         q.Parameters.AddWithValue("$active", active ? 1 : 0);
         q.Parameters.AddWithValue("$stock", Convert.ToDouble(stock));
+        q.Parameters.AddWithValue("$stockMilli", QuantityStorage.ToMilli(stock));
         q.Parameters.AddWithValue("$minstock", Convert.ToDouble(Math.Max(0m, minStock)));
+        q.Parameters.AddWithValue("$minStockMilli", QuantityStorage.ToMilli(Math.Max(0m, minStock)));
         q.Parameters.AddWithValue("$purchase", Math.Max(0, purchasePrice));
         q.Parameters.AddWithValue("$scope", CurrentEditionScope(c, tx));
         await q.ExecuteNonQueryAsync(ct);
