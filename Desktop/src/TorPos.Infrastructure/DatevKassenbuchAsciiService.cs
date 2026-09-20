@@ -371,7 +371,7 @@ public sealed class DatevKassenbuchAsciiService
             }
         }
 
-        if (Math.Abs(expectedCashSales - z.CashCents) > 1)
+        if (expectedCashSales != z.CashCents)
             throw new InvalidOperationException(
                 $"DATEV-Kassenbuch-Abgleich fehlgeschlagen: Z Bar {Money(z.CashCents)} €, " +
                 $"berechnet {Money(expectedCashSales)} €.");
