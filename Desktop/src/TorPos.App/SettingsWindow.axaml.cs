@@ -2607,10 +2607,56 @@ private Control TsePage()
 
         var exportCenter = Section("Prüfungsdaten / Export");
 
-        var exportButtons = new StackPanel
+        var today = DateTimeOffset.Now;
+        var dsFrom = new DatePicker
+        {
+            MinWidth = 190,
+            SelectedDate = new DateTimeOffset(
+                today.Year,
+                1,
+                1,
+                0,
+                0,
+                0,
+                today.Offset)
+        };
+        var dsTo = new DatePicker
+        {
+            MinWidth = 190,
+            SelectedDate = today
+        };
+
+        Form(
+            exportCenter,
+            "DSFinV-K · Von",
+            dsFrom,
+            "Erster gewünschter Kalendertag.");
+        Form(
+            exportCenter,
+            "DSFinV-K · Bis",
+            dsTo,
+            "Letzter gewünschter Kalendertag · einschließlich.");
+
+        exportCenter.Children.Add(InfoCard(
+            "Zeitraum-Regel",
+            "Von/Bis wählt den Prüfungszeitraum. DSFinV-K bleibt Z-Bericht-basiert: TOR exportiert nur vollständig abgeschlossene Kassenabschluss-Zeiträume, deren Z-Abschluss im gewählten Zeitraum liegt. Vorgänge nach dem letzten Z-Bericht werden nicht als abgeschlossen ausgegeben.",
+            AppTheme.InfoCardBg));
+
+        DsfinvkExportRange SelectedDsfinvkRange()
+        {
+            if (dsFrom.SelectedDate is null || dsTo.SelectedDate is null)
+                throw new InvalidOperationException("Start- und Enddatum für DSFinV-K auswählen.");
+
+            return DsfinvkExportRange.ForDates(
+                DateOnly.FromDateTime(dsFrom.SelectedDate.Value.DateTime),
+                DateOnly.FromDateTime(dsTo.SelectedDate.Value.DateTime));
+        }
+
+        var exportButtons = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 10
+            ItemSpacing = 10,
+            LineSpacing = 10
         };
 
         var auditExport = new Button
@@ -2625,6 +2671,16 @@ private Control TsePage()
             Content = "DSFINV-K 2.4 PRÜFEN",
             MinHeight = 48,
             MinWidth = 190
+        };
+
+        var dsExport = new Button
+        {
+            Content = "DSFINV-K 2.4 EXPORTIEREN",
+            MinHeight = 48,
+            MinWidth = 220,
+            FontWeight = FontWeight.Bold,
+            Background = AppTheme.SuccessGreen,
+            BorderBrush = AppTheme.SuccessGreenBorder
         };
 
         auditExport.Click += async (_,_) =>
@@ -2666,28 +2722,18 @@ private Control TsePage()
         {
             try
             {
-                var to =
-                    DateTimeOffset.Now;
-
-                var from =
-                    new DateTimeOffset(
-                        to.Year,
-                        1,
-                        1,
-                        0,
-                        0,
-                        0,
-                        to.Offset);
-
+                var range = SelectedDsfinvkRange();
                 var report =
                     await _dsfinvkExport.ValidateAsync(
-                        from,
-                        to);
+                        range.FromInclusive,
+                        range.ToInclusive);
 
+                var warnings = report.Issues.Count(x => !x.Blocking);
                 var text =
                     report.Ready
-                        ? "DSFinV-K 2.4 Preflight: bereit."
-                        : "DSFinV-K 2.4 weiterhin gesperrt: " +
+                        ? $"DSFinV-K 2.4 Preflight bereit · {range.FromDate:dd.MM.yyyy}–{range.ToDate:dd.MM.yyyy}" +
+                          (warnings > 0 ? $" · {warnings} Hinweis(e)" : "")
+                        : "DSFinV-K 2.4 gesperrt: " +
                           string.Join(
                               " | ",
                               report.Issues
@@ -2704,15 +2750,84 @@ private Control TsePage()
             }
         };
 
+        dsExport.Click += async (_,_) =>
+        {
+            dsExport.IsEnabled = false;
+            dsCheck.IsEnabled = false;
+            try
+            {
+                var range = SelectedDsfinvkRange();
+                var report = await _dsfinvkExport.ValidateAsync(
+                    range.FromInclusive,
+                    range.ToInclusive);
+
+                if (!report.Ready)
+                {
+                    StatusText.Text =
+                        "DSFinV-K Export gesperrt: " +
+                        string.Join(
+                            " | ",
+                            report.Issues
+                                .Where(x => x.Blocking)
+                                .Select(x => x.Message));
+                    return;
+                }
+
+                var folders = await StorageProvider.OpenFolderPickerAsync(
+                    new FolderPickerOpenOptions
+                    {
+                        Title = "Zielordner für DSFinV-K Export auswählen",
+                        AllowMultiple = false
+                    });
+
+                var folder = folders.FirstOrDefault();
+                if (folder is null)
+                {
+                    StatusText.Text = "DSFinV-K Export abgebrochen · kein Zielordner ausgewählt.";
+                    return;
+                }
+
+                var targetDirectory = folder.Path.LocalPath;
+                var path = await _dsfinvkExport.ExportAsync(
+                    range.FromInclusive,
+                    range.ToInclusive,
+                    targetDirectory);
+
+                await _audit.WriteAsync(
+                    _currentUser.Username,
+                    "DSFINVK_EXPORT",
+                    "DSFINV_K",
+                    $"{range.FromDate:yyyy-MM-dd}/{range.ToDate:yyyy-MM-dd}",
+                    path);
+
+                var warnings = report.Issues.Count(x => !x.Blocking);
+                StatusText.Text =
+                    $"DSFinV-K 2.4 exportiert · {range.FromDate:dd.MM.yyyy}–{range.ToDate:dd.MM.yyyy} · {path}" +
+                    (warnings > 0 ? $" · {warnings} Hinweis(e) im Exportprotokoll" : "");
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text =
+                    "DSFinV-K Export fehlgeschlagen: " +
+                    ex.Message;
+            }
+            finally
+            {
+                dsExport.IsEnabled = true;
+                dsCheck.IsEnabled = true;
+            }
+        };
+
         exportButtons.Children.Add(auditExport);
         exportButtons.Children.Add(dsCheck);
+        exportButtons.Children.Add(dsExport);
         exportCenter.Children.Add(exportButtons);
         exportCenter.Children.Add(ReadOnlyRow(
             "TSE TAR",
             "TSE-Aktivierung → TSE TAR EXPORT. BMF verlangt das TAR-Format für TSE-Daten bei Prüfung."));
         exportCenter.Children.Add(ReadOnlyRow(
             "DSFinV-K",
-            "TOR erzeugt keinen unvollständigen Prüfdatensatz. Export bleibt bis vollständigem Z-/TSE-Datenmodell und offiziellem Descriptor gesperrt."));
+            "Start- und Enddatum sind frei wählbar. Vor dem Export prüft TOR den gewählten Zeitraum; fehlerhafte oder nicht abgeschlossene Daten werden nicht als fertiger Prüfdatensatz ausgegeben."));
         page.Children.Add(exportCenter);
 
         page.Children.Add(InfoCard(
