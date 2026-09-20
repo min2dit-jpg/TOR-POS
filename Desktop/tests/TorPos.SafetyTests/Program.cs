@@ -422,6 +422,7 @@ await R150ReviewTests.Run(Assert);
 await R153ReviewTests.Run(root,Assert);
 await R154ReviewTests.Run(root,Assert);
 await R155ReviewTests.Run(root,Assert);
+await R156ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
