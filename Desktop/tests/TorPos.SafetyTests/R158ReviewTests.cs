@@ -16,13 +16,14 @@ public static class R158ReviewTests
             "R158 Waren, Einstellungen, Kasse and Berichte use header-plus-fill grids instead of content-height stack panels");
 
         assert(
-            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"1.05*,1*,1.15*\"", StringComparison.Ordinal) &&
-            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"1.18*,1*,0.86*\"", StringComparison.Ordinal),
-            "R158 Einstellungen and Kasse card rows occupy the remaining vertical space");
+            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"240,*\"", StringComparison.Ordinal) &&
+            axaml.Split("Grid.Row=\"1\" ColumnDefinitions=\"230,*\"", StringSplitOptions.None).Length - 1 >= 3,
+            "R158 the fill row still occupies the remaining vertical space after the R159 sidebar redesign");
 
         assert(
-            axaml.Contains("Grid.Row=\"1\" ColumnDefinitions=\"*,*,*\" RowDefinitions=\"*,*\"", StringComparison.Ordinal),
-            "R158 Berichte uses two equal-height rows so upper and lower cards align cleanly to the bottom");
+            axaml.Contains("Classes=\"hubdetail\"", StringComparison.Ordinal) &&
+            axaml.Contains("x:Name=\"ReportsFiscalPanel\"", StringComparison.Ordinal),
+            "R158 the Berichte workspace still stretches through a wide detail surface instead of shrinking to content height");
 
         return Task.CompletedTask;
     }
