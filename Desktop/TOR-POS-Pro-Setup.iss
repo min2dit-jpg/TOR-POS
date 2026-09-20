@@ -8,7 +8,7 @@
 ; R121: had drifted to 0.7.33.751 while TorRelease.Version was already .820 -
 ; the installer's "Programme und Features" entry showed a version the app did
 ; not report. Keep this in step with TorPos.Core.TorRelease.Version.
-#define MyAppVersion "0.7.33.871"
+#define MyAppVersion "0.7.33.872"
 ; R145: releases carry a name; shown in the wizard and in Programme und Features.
 #define MyAppReleaseName "Merd-M"
 #define MyAppPublisher "TOR Kassensysteme"
