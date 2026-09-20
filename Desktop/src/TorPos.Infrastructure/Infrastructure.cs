@@ -2786,7 +2786,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 throw new InvalidOperationException(
                     $"Position \"{originalLine.ProductName}\": nur {remaining} von {originalLine.Quantity} für eine Retoure übrig, {request.Quantity} angefordert.");
 
-            var lineTotal = (long)Math.Round(request.Quantity * originalLine.UnitPriceCents, MidpointRounding.AwayFromZero);
+            var lineTotal = originalLine.LineTotalCentsFor(request.Quantity);
             totalCents += lineTotal;
             returnLines.Add((originalLine, request.Quantity, lineTotal));
         }
@@ -2881,12 +2881,12 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Parameters.AddWithValue("$pfand", originalLine.PfandCents);
                 q.Parameters.AddWithValue("$total", lineTotal);
                 q.Parameters.AddWithValue("$listUnit", originalLine.EffectiveListUnitPriceCents);
-                q.Parameters.AddWithValue("$listTotal", (long)Math.Round(quantity * originalLine.EffectiveListUnitPriceCents, MidpointRounding.AwayFromZero));
+                q.Parameters.AddWithValue("$listTotal", originalLine.ListLineTotalCentsFor(quantity));
                 q.Parameters.AddWithValue("$promotionId", originalLine.PromotionId);
                 q.Parameters.AddWithValue("$promotionName", originalLine.PromotionName);
                 q.Parameters.AddWithValue("$promotionPercent", originalLine.PromotionPercent);
                 q.Parameters.AddWithValue("$promotionUnit", originalLine.PromotionDiscountUnitCents);
-                q.Parameters.AddWithValue("$promotionTotal", (long)Math.Round(quantity * originalLine.PromotionDiscountUnitCents, MidpointRounding.AwayFromZero));
+                q.Parameters.AddWithValue("$promotionTotal", originalLine.PromotionDiscountCentsFor(quantity));
                 q.Parameters.AddWithValue("$promotionStart", originalLine.PromotionStartDate);
                 q.Parameters.AddWithValue("$promotionEnd", originalLine.PromotionEndDate);
                 q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(originalLine));
