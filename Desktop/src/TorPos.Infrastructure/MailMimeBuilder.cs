@@ -51,8 +51,17 @@ public static class MailMimeBuilder
             var data = await File.ReadAllBytesAsync(path, ct);
             var fileName = Path.GetFileName(path);
             var escaped = Uri.EscapeDataString(fileName);
+            var contentType = Path.GetExtension(fileName).ToLowerInvariant() switch
+            {
+                ".pdf" => "application/pdf",
+                ".zip" => "application/zip",
+                ".csv" => "text/csv",
+                ".xml" => "application/xml",
+                ".txt" => "text/plain",
+                _ => "application/octet-stream"
+            };
             sb.Append("--").Append(boundary).Append("\r\n");
-            sb.Append("Content-Type: application/pdf\r\n");
+            sb.Append("Content-Type: ").Append(contentType).Append("\r\n");
             sb.Append("Content-Transfer-Encoding: base64\r\n");
             sb.Append("Content-Disposition: attachment; filename*=UTF-8''").Append(escaped).Append("\r\n\r\n");
             foreach (var line in Base64Lines(data)) sb.Append(line).Append("\r\n");
