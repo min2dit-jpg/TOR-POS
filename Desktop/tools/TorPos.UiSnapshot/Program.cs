@@ -54,7 +54,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 5 dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 6 dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -153,6 +153,16 @@ async Task RunAsync()
         window.Close();
     }
 
+    // R156: Verkaufsart and all tender choices now live in one payment hub.
+    // Snapshot it explicitly so moving controls out of the header cannot turn
+    // into an untested dialog overflow on a till.
+    await SnapshotDialogAsync(
+        new PaymentChoiceWindow(cashEnabled: true, cardEnabled: true, allowImHaus: true),
+        "payment-choice",
+        check,
+        failures,
+        output);
+
     // R145: the receipt choice after a sale and the digital receipt window.
     await SnapshotDialogAsync(new ReceiptChoiceWindow(1500, testReceipt: false), "receipt-choice", check, failures, output);
     var link = new DigitalReceiptWindow();
@@ -203,16 +213,16 @@ static async Task SnapshotDialogAsync(Window window, string name, bool check, Li
     window.Close();
 }
 
-// R126: the defects the HP till showed, as rules. Buttons a cashier needs to
-// finish a sale or hand over the till must be entirely on screen; the TSE
-// outage badge (a legal state) must not be clipped by the header; and the
-// numpad keys must stay tall enough to hit and to read.
+// R126/R156: the defects the HP till showed, as rules. After R156, payment
+// choices no longer belong in the header at all; the remaining session action
+// and the TSE outage badge must stay entirely on screen, and numpad keys must
+// stay tall enough to hit and to read.
 static void CheckLayout(Window window, int width, int height, List<string> failures)
 {
     var size = $"{width}x{height}";
     var host = window.FindControl<Control>("HeaderMainHost");
 
-    foreach (var name in new[] { "LogoutButton", "MixedPaymentButton", "ImHausToggleButton", "TseOutageBadge" })
+    foreach (var name in new[] { "LogoutButton", "TseOutageBadge" })
     {
         var control = window.FindControl<Control>(name);
         if (control is null) { failures.Add($"{size}: {name} not found"); continue; }

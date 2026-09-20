@@ -708,7 +708,6 @@ public partial class MainWindow:Window
     private void RefreshSalesActionState()
     {
         var hasCart = _engine.Cart.Count > 0;
-        RefreshImHausToggle();
         ClearButton.IsEnabled=!CartLocked && _currentUser.Can(UserPermissions.Sale);
         EditionActionButton.IsEnabled=!CartLocked && _currentUser.Can(UserPermissions.Sale);
         QuickItemButton.IsEnabled=!CartLocked && _currentUser.Can(UserPermissions.Sale);
@@ -717,8 +716,6 @@ public partial class MainWindow:Window
         // This avoids a dead tap on an empty cart and makes the intended flow obvious.
         CashButton.IsEnabled = !CartLocked && _saleAllowed && _cashEnabledBySettings && hasCart;
         CardButton.IsEnabled = !CartLocked && _saleAllowed && _cardEnabledBySettings && hasCart;
-        // R101: a split payment needs both tender types actually enabled.
-        MixedPaymentButton.IsEnabled = !CartLocked && _saleAllowed && _cashEnabledBySettings && _cardEnabledBySettings && hasCart;
         QuickCheckoutButton.IsEnabled =
             !CartLocked &&
             _saleAllowed &&
@@ -2112,7 +2109,7 @@ public partial class MainWindow:Window
             if(parked is null) { ScannerStatus.Text="Bestellung ist nicht mehr offen.";return; }
             _operationId=Guid.NewGuid().ToString("N");_engine.Restore(parked.Lines,parked.DiscountCents);
             _activeParkedReceiptId=parked.Id;_activeParkNumber=parked.ParkNumber;
-            _imHaus=parked.ImHaus;RefreshImHausToggle();
+            _imHaus=parked.ImHaus;
             await ResumeTseVorgangAsync(parked);
             UpdateCart();
         } catch(Exception ex) { ShowOperationalError("BESTELLÜBERSICHT", ex); }
@@ -2375,7 +2372,6 @@ public partial class MainWindow:Window
         _activeParkedReceiptId = parked.Id;
         _activeParkNumber = parked.ParkNumber;
         _imHaus = parked.ImHaus;
-        RefreshImHausToggle();
         await ResumeTseVorgangAsync(parked);
         UpdateCart();
 
@@ -2625,33 +2621,65 @@ public partial class MainWindow:Window
     }
 
     private async void OnCashClick(object? sender, RoutedEventArgs e) =>
-        await CheckoutAsync(PaymentMethod.Cash, invokedByQuickCheckout: false);
+        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
 
     private async void OnCardClick(object? sender, RoutedEventArgs e) =>
-        await CheckoutAsync(PaymentMethod.Card, invokedByQuickCheckout: false);
+        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
 
-    private async void OnQuickCheckoutClick(object? sender, RoutedEventArgs e)
+    private async void OnQuickCheckoutClick(object? sender, RoutedEventArgs e) =>
+        await OpenPaymentWindowAsync(invokedByQuickCheckout: true);
+
+    private bool IsImbissBusiness() =>
+        string.Equals(
+            (InstallationEdition.ReadLocked()
+                ?? _settingsCache.GetText("business.mode", "IMBISS")).Trim(),
+            "IMBISS",
+            StringComparison.OrdinalIgnoreCase);
+
+    private async Task OpenPaymentWindowAsync(bool invokedByQuickCheckout)
     {
         if (CartLocked || _engine.Cart.Count == 0 || !CanCompleteSale())
             return;
 
-        var method = QuickCheckoutPolicy.ResolveMethod(
-            _settingsCache,
-            _cashEnabledBySettings,
-            _cardEnabledBySettings);
-
-        if (method is null)
-        {
-            method = await new PaymentChoiceWindow(
+        var allowImHaus = IsImbissBusiness();
+        var choice = await new PaymentChoiceWindow(
                 _cashEnabledBySettings,
-                _cardEnabledBySettings)
-                .ShowDialog<PaymentMethod?>(this);
-        }
+                _cardEnabledBySettings,
+                allowImHaus,
+                allowImHaus && _imHaus)
+            .ShowDialog<PaymentChoiceResult?>(this);
 
-        if (method is null)
+        if (choice is null)
             return;
 
-        await CheckoutAsync(method.Value, invokedByQuickCheckout: true);
+        _imHaus = allowImHaus && choice.ImHaus;
+
+        // R156: choosing IM HAUS changes the effective VAT snapshot. Refreshing
+        // the current cart also persists the choice before any external payment
+        // effect is admitted. A new customer is reset to AUSSER HAUS below.
+        UpdateCart();
+
+        long cashPortionCents = 0;
+        if (choice.Method == PaymentMethod.Mixed)
+        {
+            var total = CaptureCheckout(PaymentMethod.Mixed).TotalCents;
+            if (total <= 0)
+            {
+                ScannerStatus.Text = "GEMISCHT nicht möglich · Pfand-Auszahlung nur BAR.";
+                return;
+            }
+
+            var cashPortion = await new MixedPaymentWindow(total).ShowDialog<long?>(this);
+            if (cashPortion is null)
+                return;
+
+            cashPortionCents = cashPortion.Value;
+        }
+
+        await CheckoutAsync(
+            choice.Method,
+            invokedByQuickCheckout,
+            cashPortionCents);
     }
 
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
@@ -2668,40 +2696,6 @@ public partial class MainWindow:Window
         _tseVorgang.CancelledLines.Count == 0
             ? null
             : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
-
-    private async void OnMixedPaymentClick(object? sender, RoutedEventArgs e)
-    {
-        if (CartLocked || _engine.Cart.Count == 0 || !CanCompleteSale()) return;
-        var total = CaptureCheckout(PaymentMethod.Mixed).TotalCents;
-        // R149: a payout of returned deposit is only ever cash.
-        if (total <= 0)
-        {
-            ScannerStatus.Text = "GEMISCHT nicht möglich · Pfand-Auszahlung nur BAR.";
-            return;
-        }
-        var cashPortion = await new MixedPaymentWindow(total).ShowDialog<long?>(this);
-        if (cashPortion is null) return;
-        await CheckoutAsync(PaymentMethod.Mixed, invokedByQuickCheckout: false, cashPortionCents: cashPortion.Value);
-    }
-
-    private void OnImHausToggleClick(object? s, RoutedEventArgs e)
-    {
-        if (CartLocked || !_currentUser.Can(UserPermissions.Sale))
-            return;
-        _imHaus = !_imHaus;
-        RefreshImHausToggle();
-    }
-
-    private void RefreshImHausToggle()
-    {
-        var business = (InstallationEdition.ReadLocked()
-            ?? _settingsCache.GetText("business.mode", "IMBISS")).Trim().ToUpperInvariant();
-        ImHausToggleButton.IsVisible = business == "IMBISS";
-        ImHausToggleButton.IsEnabled = !CartLocked && _currentUser.Can(UserPermissions.Sale);
-        ImHausToggleText.Text = _imHaus ? "IM HAUS · 19%" : "AUSSER HAUS";
-        ImHausToggleButton.Background = new SolidColorBrush(
-            Color.Parse(_imHaus ? "#8A5A1E" : "#26445E"));
-    }
 
     private void SetCheckoutBusy(bool busy)
     {
@@ -3304,7 +3298,6 @@ public partial class MainWindow:Window
         _scanProcessing = false;
         _lastScan = 0;
         _imHaus = false;
-        RefreshImHausToggle();
         ClearNumericInput();
         CartList.SelectedIndex = -1;
         _productPage = 0;
@@ -4946,23 +4939,11 @@ public partial class MainWindow:Window
         _cashEnabledBySettings = _settingsCache.GetBool("pay.cash.enabled", true);
         _cardEnabledBySettings = _settingsCache.GetBool("pay.card.enabled", true);
 
-        var quickMethod = QuickCheckoutPolicy.ResolveMethod(
-            _settingsCache,
-            _cashEnabledBySettings,
-            _cardEnabledBySettings);
-
-        QuickCheckoutText.Text = quickMethod switch
-        {
-            PaymentMethod.Cash => _settingsCache.GetBool("pay.quick.cash_exact", false)
-                ? "BAR PASSEND"
-                : "BAR SCHNELL",
-            PaymentMethod.Card => "KARTE SCHNELL",
-            _ => "KASSIEREN"
-        };
-
-        QuickCheckoutSubText.Text = quickMethod is null
-            ? "F5 · ZAHLART"
-            : "F5 · STANDARD";
+        // R156: F5 is now the single payment hub. It always opens the
+        // payment page so Verkaufsart (AUSSER HAUS / IM HAUS) and the three
+        // tender choices BAR / KARTE / GEMISCHT remain visible together.
+        QuickCheckoutText.Text = "KASSIEREN";
+        QuickCheckoutSubText.Text = "F5 · ZAHLART";
 
         ClearButton.IsEnabled = _currentUser.Can(UserPermissions.Sale);
         EditionActionButton.IsEnabled = _currentUser.Can(UserPermissions.Sale) &&
