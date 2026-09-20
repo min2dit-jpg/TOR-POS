@@ -2742,11 +2742,11 @@ public partial class MainWindow:Window
                 _cardEnabledBySettings,
                 allowImHaus,
                 defaultImHaus: false,
-                preferredMethod,
+                preferredMethod: preferredMethod,
                 simulation: IsSimulation,
                 training: _currentUser.IsTraining,
-                cashLabel,
-                cardLabel)
+                cashLabel: cashLabel,
+                cardLabel: cardLabel)
             .ShowDialog<PaymentChoiceResult?>(this);
 
         if (choice is null)
