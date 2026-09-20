@@ -748,7 +748,9 @@ public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
         q.CommandText = """
-            SELECT i.product_name,COALESCE(SUM(i.quantity),0),COALESCE(SUM(i.line_total_cents),0)
+            SELECT i.product_name,
+                   COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0),
+                   COALESCE(SUM(i.line_total_cents),0)
             FROM sale_items i
             JOIN sales s ON s.id=i.sale_id
             WHERE COALESCE(s.transaction_type,'SALE')='SALE'
@@ -758,7 +760,7 @@ public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct
             """;
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
-            lines.Add(GermanFormat.Line($"{r.GetString(0)} | {r.GetDouble(1):0.###} | {Money(r.GetInt64(2))}"));
+            lines.Add(GermanFormat.Line($"{r.GetString(0)} | {QuantityStorage.FromMilli(r.GetInt64(1)):0.###} | {Money(r.GetInt64(2))}"));
         return new ReportDocument("VERKAUFSSTATISTIK", lines, DateTimeOffset.Now);
     });
 }// R90: previously summed EVERY sales row regardless of transaction_type,
