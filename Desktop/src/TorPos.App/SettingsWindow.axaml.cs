@@ -1176,9 +1176,9 @@ public partial class SettingsWindow : Window
     {
         var page = Page(
             "DATEV",
-            "Standard-Datei zuerst: DATEV Kassenbuch Standard-ASCII/CSV ohne API-Kosten. Optional kann TOR die erzeugte Datei nach dem Z-Abschluss automatisch an den gespeicherten Steuerberater senden.");
+            "Standard-Datei zuerst: DATEV Kassenbuch Standard-ASCII/CSV ohne DATEV Developer-API. Optional kann TOR die erzeugte Datei nach dem Z-Abschluss automatisch an den gespeicherten Steuerberater senden.");
 
-        var free = Section("STANDARD-DATEI · KEINE DATEV-API / KEINE API-ZUSATZKOSTEN");
+        var free = Section("STANDARD-DATEI · KEINE DATEV DEVELOPER-API ERFORDERLICH");
         free.Children.Add(ToggleRow(Check(
             DatevKassenbuchAsciiService.SettingEnabled,
             "DATEV Kassenbuch Standard-ASCII / CSV verwenden")));
@@ -1232,7 +1232,7 @@ public partial class SettingsWindow : Window
             "Noch nicht produktiv freigeschaltet. TOR verwendet keine erfundenen DATEV-Endpunkte oder OAuth-Parameter."));
         online.Children.Add(ReadOnlyRow(
             "Priorität",
-            "Der kostenlose Standard-ASCII/CSV Weg oben funktioniert unabhängig von dieser späteren Online-API."));
+            "Der Standard-ASCII/CSV-Dateiweg oben funktioniert unabhängig von dieser späteren Online-API."));
         page.Children.Add(online);
 
         page.Children.Add(InfoCard(
