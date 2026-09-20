@@ -40,7 +40,7 @@ jobs:
 
       - name: Repository hijyenini doğrula
         run: |
-          pwsh -NoProfile -File tools/Verify-Repository-Hygiene.ps1
+          pwsh -NoProfile -File tools/Verify-Repository-Hygiene.ps1 -RequireGit
 
       - name: Fiskal production kilidini doğrula
         run: |
