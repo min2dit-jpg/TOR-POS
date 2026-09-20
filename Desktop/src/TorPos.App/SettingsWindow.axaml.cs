@@ -62,6 +62,12 @@ public partial class SettingsWindow : Window
         PlaceholderText = "Google App-Passwort eingeben"
     };
     private string _reportSmtpPasswordProtected = "";
+    private readonly TextBlock _torMailStatus = new()
+    {
+        Text = "TOR-Mail-Status wird geladen …",
+        TextWrapping = TextWrapping.Wrap,
+        FontWeight = FontWeight.SemiBold
+    };
     private readonly TextBlock _googleMailStatus = new()
     {
         Text = "Google-Verbindung wird geladen …",
@@ -1186,7 +1192,7 @@ public partial class SettingsWindow : Window
             free,
             "Steuerberater-E-Mail",
             Text(DatevKassenbuchAsciiService.SettingRecipient),
-            "Leer = Empfänger aus Berichte & E-Mail verwenden. Versand nutzt die dort gespeicherte Gmail-/SMTP-Verbindung.");
+            "Leer = Empfänger aus Berichte & E-Mail verwenden. Standardmäßig reicht TOR Mail: nur Empfänger-Adresse, ohne Google-/SMTP-Einrichtung am Kunden-PC.");
         free.Children.Add(ReadOnlyRow(
             "DATEV-Format",
             "Standard-ASCII für Kassenbewegungen · 13 Spalten · Semikolon · Belegdatum TTMM · Währung/VorzBetrag/RechNr/Belegtext/UStSatz usw."));
@@ -1273,7 +1279,78 @@ public partial class SettingsWindow : Window
         delivery.Children.Add(ReadOnlyRow("Sicherheitsregel", "Der E-Mail-Versand erzeugt KEINEN Z-Bericht, keinen Tagesabschluss und keinen Kassenabschluss."));
         page.Children.Add(delivery);
 
-        var google = Section("Google-Konto / Gmail API (empfohlen)");
+        var torMail = Section("TOR Mail · empfohlen · keine Google-/SMTP-Einrichtung");
+        torMail.Children.Add(new TextBlock
+        {
+            Text = "Der Kunde trägt nur die Empfänger-E-Mail ein. Der Absender und die SMTP-Zugangsdaten liegen ausschließlich auf dem TOR POS Cloud-Server und werden niemals auf der Kasse gespeichert.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.80
+        });
+        torMail.Children.Add(_torMailStatus);
+        var torUse = new Button { Content = "TOR MAIL ALS VERSANDWEG VERWENDEN", MinHeight = 48, MinWidth = 280, FontWeight = FontWeight.Bold };
+        var torTest = new Button { Content = "TOR MAIL TEST-E-MAIL SENDEN", MinHeight = 46, MinWidth = 250, FontWeight = FontWeight.SemiBold };
+        var torButtons = new[] { torUse, torTest };
+
+        torUse.Click += async (_, _) =>
+        {
+            if (App.CloudSync is not { } cloud)
+            {
+                _torMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar.";
+                return;
+            }
+            var config = await cloud.ConfigurationAsync();
+            if (config is null || !config.Enabled)
+            {
+                _torMailStatus.Text = "TOR POS Cloud zuerst unter Geräte einrichten und aktivieren.";
+                return;
+            }
+            await _settings.SaveManyAsync(new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["reports.email.transport"] = "tor"
+            });
+            await RefreshTorMailStatusAsync();
+            await RefreshGoogleMailStatusAsync();
+            StatusText.Text = "TOR Mail ist jetzt der aktive Versandweg.";
+        };
+
+        torTest.Click += async (_, _) =>
+        {
+            if (App.CloudSync is not { } cloud)
+            {
+                _torMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar.";
+                return;
+            }
+            foreach (var b in torButtons) b.IsEnabled = false;
+            try
+            {
+                var service = new ReportEmailService(
+                    _settings,
+                    new BusinessManagementService(new SqliteDatabase(AppPaths.DatabasePath), _settings, _audit),
+                    cloud: cloud);
+                StatusText.Text = "TOR Mail Test-E-Mail wird gesendet …";
+                await service.SendTorMailTestAsync(_text["reports.email.recipient"].Text ?? "");
+                _torMailStatus.Text = "TOR Mail bereit ✓\nTest-E-Mail wurde über den TOR POS Cloud-Versanddienst gesendet.";
+                StatusText.Text = "TOR Mail Test-E-Mail erfolgreich gesendet.";
+            }
+            catch (Exception ex)
+            {
+                _torMailStatus.Text = "TOR Mail Test fehlgeschlagen:\n" + ex.Message;
+                StatusText.Text = "TOR Mail Test-E-Mail fehlgeschlagen.";
+            }
+            finally { foreach (var b in torButtons) b.IsEnabled = true; }
+        };
+
+        torMail.Children.Add(torUse);
+        torMail.Children.Add(torTest);
+        torMail.Children.Add(new TextBlock
+        {
+            Text = "Voraussetzung: TOR POS Cloud muss unter Geräte eingerichtet sein. Der zentrale Mail-Absender wird einmalig von TOR auf dem Cloud-Server konfiguriert; der Kunde benötigt dafür kein Google-Konto, App-Passwort oder SMTP-Wissen.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.68
+        });
+        page.Children.Add(torMail);
+
+        var google = Section("Google-Konto / Gmail API (Alternative)");
         google.Children.Add(new TextBlock
         {
             Text = "Kein Gmail-Passwort und kein App-Passwort in TOR POS: MIT GOOGLE ANMELDEN erzeugt einen einmaligen QR-Code. Der Inhaber scannt ihn mit dem Handy und bestätigt die Berechtigung direkt bei Google.",
@@ -1359,7 +1436,7 @@ public partial class SettingsWindow : Window
         });
         page.Children.Add(google);
 
-        var smtp = Section("E-Mail-Ausgang / SMTP (Fallback)");
+        var smtp = Section("Eigener E-Mail-Ausgang / SMTP (Alternative)");
         Form(smtp, "Absender-E-Mail", Text("reports.email.sender"));
         Form(smtp, "SMTP-Server", Text("reports.email.smtp.host"), "Für Gmail: smtp.gmail.com");
         Form(smtp, "SMTP-Port", Text("reports.email.smtp.port"), "Für Gmail: 587 (STARTTLS).");
@@ -1382,6 +1459,19 @@ public partial class SettingsWindow : Window
             StatusText.Text = "Gmail-Standard gesetzt: smtp.gmail.com · Port 587 · STARTTLS";
         };
         smtp.Children.Add(gmailPreset);
+
+        var useSmtp = new Button { Content = "SMTP ALS VERSANDWEG VERWENDEN", MinHeight = 42, MinWidth = 250, FontWeight = FontWeight.SemiBold };
+        useSmtp.Click += async (_,_) =>
+        {
+            await _settings.SaveManyAsync(new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["reports.email.transport"] = "smtp"
+            });
+            await RefreshTorMailStatusAsync();
+            await RefreshGoogleMailStatusAsync();
+            StatusText.Text = "SMTP ist jetzt der aktive Versandweg.";
+        };
+        smtp.Children.Add(useSmtp);
 
         var smtpDetails = new TextBox
         {
@@ -2947,6 +3037,7 @@ private Control TsePage()
         else
             _reportSmtpPassword.PlaceholderText = "Gespeichertes Passwort nicht lesbar · neu eingeben";
 
+        await RefreshTorMailStatusAsync();
         await RefreshGoogleMailStatusAsync();
         await RefreshDatevStatusAsync();
 
@@ -3004,14 +3095,14 @@ private Control TsePage()
                 throw new InvalidOperationException("Maskierte Zeichen sind kein SMTP App-Passwort. Bitte das echte App-Passwort eingeben oder das Feld leer lassen.");
 
             var monthlyEmailEnabled = values.GetValueOrDefault("reports.email.monthly.enabled", "false") == "true";
-            var activeTransport = (await _settings.GetAsync("reports.email.transport", "smtp")).Trim().ToLowerInvariant();
+            var activeTransport = (await _settings.GetAsync("reports.email.transport", "tor")).Trim().ToLowerInvariant();
             string smtpPasswordForValidation;
             if (!string.IsNullOrWhiteSpace(enteredSmtpPassword))
             {
                 smtpPasswordForValidation = ReportEmailService.NormalizeAppPassword(enteredSmtpPassword);
                 _reportSmtpPasswordProtected = TorSecretProtector.Protect(smtpPasswordForValidation);
             }
-            else if (monthlyEmailEnabled && activeTransport != "google" && !string.IsNullOrWhiteSpace(_reportSmtpPasswordProtected))
+            else if (monthlyEmailEnabled && activeTransport == "smtp" && !string.IsNullOrWhiteSpace(_reportSmtpPasswordProtected))
             {
                 smtpPasswordForValidation = ReportEmailService.ResolveAppPassword("", _reportSmtpPasswordProtected);
             }
@@ -3023,7 +3114,14 @@ private Control TsePage()
 
             if (monthlyEmailEnabled)
             {
-                if (activeTransport == "google")
+                if (activeTransport == "tor")
+                {
+                    try { _ = new System.Net.Mail.MailAddress(values.GetValueOrDefault("reports.email.recipient", "")); }
+                    catch { throw new InvalidOperationException("Gültige Empfänger-E-Mail fehlt."); }
+                    if (App.CloudSync is not { } cloud || await cloud.ConfigurationAsync() is not { Enabled: true })
+                        throw new InvalidOperationException("TOR Mail benötigt eine aktivierte TOR POS Cloud-Verbindung unter Geräte.");
+                }
+                else if (activeTransport == "google")
                 {
                     var googleConnectionId = (await _settings.GetAsync("reports.email.google.connection_id", "")).Trim();
                     if (string.IsNullOrWhiteSpace(googleConnectionId))
@@ -3031,7 +3129,7 @@ private Control TsePage()
                     try { _ = new System.Net.Mail.MailAddress(values.GetValueOrDefault("reports.email.recipient", "")); }
                     catch { throw new InvalidOperationException("Gültige Empfänger-E-Mail fehlt."); }
                 }
-                else
+                else if (activeTransport == "smtp")
                 {
                     ReportEmailService.Validate(new ReportEmailService.MailConfig(
                         values.GetValueOrDefault("reports.email.recipient", ""),
@@ -3041,6 +3139,10 @@ private Control TsePage()
                         values.GetValueOrDefault("reports.email.smtp.ssl", "true") != "false",
                         values.GetValueOrDefault("reports.email.smtp.user", ""),
                         smtpPasswordForValidation));
+                }
+                else
+                {
+                    throw new InvalidOperationException("Unbekannter E-Mail-Versandweg.");
                 }
             }
 
@@ -3364,6 +3466,41 @@ private Control TsePage()
         return true;
     }
 
+    private async Task RefreshTorMailStatusAsync()
+    {
+        try
+        {
+            var transport = (await _settings.GetAsync("reports.email.transport", "tor")).Trim().ToLowerInvariant();
+            if (App.CloudSync is not { } cloud)
+            {
+                _torMailStatus.Text = "TOR Mail: Cloud-Dienst nicht verfügbar.";
+                return;
+            }
+
+            var config = await cloud.ConfigurationAsync();
+            if (config is null || !config.Enabled)
+            {
+                _torMailStatus.Text = "TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv.";
+                return;
+            }
+
+            _torMailStatus.Text =
+                "TOR POS Cloud verbunden ✓\n" +
+                "Aktiver Versandweg: " + (transport switch
+                {
+                    "tor" => "TOR Mail",
+                    "google" => "Google / Gmail API",
+                    "smtp" => "eigener SMTP",
+                    _ => transport
+                }) +
+                "\nBeim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist.";
+        }
+        catch (Exception ex)
+        {
+            _torMailStatus.Text = "TOR-Mail-Status konnte nicht gelesen werden: " + ex.Message;
+        }
+    }
+
     private async Task RefreshGoogleMailStatusAsync()
     {
         try
@@ -3375,14 +3512,21 @@ private Control TsePage()
             }
             using var gmail = new GoogleGmailService(_settings, cloud);
             var state = await gmail.GetConnectionAsync();
-            var transport = (await _settings.GetAsync("reports.email.transport", "smtp")).Trim().ToLowerInvariant();
+            var transport = (await _settings.GetAsync("reports.email.transport", "tor")).Trim().ToLowerInvariant();
+            var active = transport switch
+            {
+                "tor" => "TOR Mail",
+                "google" => "Gmail API / OAuth",
+                "smtp" => "eigener SMTP",
+                _ => transport
+            };
             if (state.Connected)
             {
-                _googleMailStatus.Text = $"Google verbunden ✓  {state.AccountEmail}\nAktiver Versandweg: {(transport == "google" ? "Gmail API / OAuth" : "SMTP-Fallback")}";
+                _googleMailStatus.Text = $"Google verbunden ✓  {state.AccountEmail}\nAktiver Versandweg: {active}";
             }
             else
             {
-                _googleMailStatus.Text = $"Noch kein Google-Konto verbunden.\nAktiver Versandweg: {(transport == "google" ? "Google (erneute Anmeldung erforderlich)" : "SMTP-Fallback")}";
+                _googleMailStatus.Text = $"Noch kein Google-Konto verbunden.\nAktiver Versandweg: {active}";
             }
         }
         catch (Exception ex)
