@@ -433,6 +433,7 @@ await R163ReviewTests.Run(Assert);
 await R164ReviewTests.Run(Assert);
 await R165ReviewTests.Run(Assert);
 await R167ReviewTests.Run(root,Assert);
+await R168ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -463,7 +464,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // suffix support, catalog refresh and explicit scan feedback.
 // R167: 11 reviewed checks lock the multi-brand terminal catalogue, verified
 // ZVT routes, fail-closed proprietary profiles and first-run/setup assistants.
-const int ExpectedSafetyChecks = 997;
+// R168: 7 reviewed checks lock one visible KASSIEREN entry point, one-page
+// BAR/KARTE/GEMISCHT details and removal of the duplicate cashier buttons.
+const int ExpectedSafetyChecks = 1004;
 
 if (checks != ExpectedSafetyChecks)
 {
