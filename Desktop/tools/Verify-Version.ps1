@@ -63,7 +63,7 @@ if (-not $desktopReadme.Contains($desktopCurrent)) {
 # R149: every mirrored file still agreed on R149 while R150+ review contracts
 # and product changes were already present. The highest R###ReviewTests.cs file
 # now forms a lower bound for the declared release revision.
-$revisionMatch = [regex]::Match($revision, '^R([0-9]+))
+$revisionMatch = [regex]::Match($revision, '^R([0-9]+)')
 if (-not $revisionMatch.Success) {
     throw "Versionspruefung: TorRelease.Revision hat kein R###-Format: '$revision'."
 }
@@ -72,7 +72,7 @@ $revisionNumber = [int]$revisionMatch.Groups[1].Value
 $reviewRevisions = @(
     Get-ChildItem -LiteralPath 'tests/TorPos.SafetyTests' -Filter 'R*ReviewTests.cs' -File |
         ForEach-Object {
-            $m = [regex]::Match($_.Name, '^R([0-9]+)ReviewTests\.cs)
+            $m = [regex]::Match($_.Name, '^R([0-9]+)ReviewTests[.]cs')
             if ($m.Success) { [int]$m.Groups[1].Value }
         }
 )
