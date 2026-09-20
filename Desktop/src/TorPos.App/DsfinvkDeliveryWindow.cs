@@ -22,6 +22,7 @@ public sealed class DsfinvkDeliveryWindow : Window
     private readonly string _exportFolder;
     private readonly DateOnly _from;
     private readonly DateOnly _to;
+    private readonly string _actor;
 
     private readonly ComboBox _usb = new()
     {
@@ -49,13 +50,15 @@ public sealed class DsfinvkDeliveryWindow : Window
         IAuditLog audit,
         string exportFolder,
         DateOnly from,
-        DateOnly to)
+        DateOnly to,
+        string actor)
     {
         _settings = settings;
         _audit = audit;
         _exportFolder = exportFolder;
         _from = from;
         _to = to;
+        _actor = string.IsNullOrWhiteSpace(actor) ? "SYSTEM" : actor.Trim();
 
         if (!Directory.Exists(_exportFolder))
             throw new DirectoryNotFoundException(
@@ -258,7 +261,7 @@ public sealed class DsfinvkDeliveryWindow : Window
                 : _reportRecipient;
 
         _status.Text =
-            "Export lokal gespeichert. USB kopieren veya E-Mail senden seçilebilir.";
+            "Export lokal gespeichert. USB kopieren oder E-Mail senden seçilebilir.";
     }
 
     private void RefreshUsb()
@@ -295,7 +298,7 @@ public sealed class DsfinvkDeliveryWindow : Window
         _usb.SelectedIndex = items.Count > 0 ? 0 : -1;
         if (items.Count == 0)
             _status.Text =
-                "Kein Wechselmedium automatisch erkannt. USB einstecken und aktualisieren veya ANDEREN USB-/ORDNER WÄHLEN benutzen.";
+                "Kein Wechselmedium automatisch erkannt. USB einstecken und aktualisieren oder ANDEREN USB-/ORDNER WÄHLEN benutzen.";
     }
 
     private async Task CopyToAsync(string root, string destinationType)
@@ -333,7 +336,7 @@ public sealed class DsfinvkDeliveryWindow : Window
             });
 
             await _audit.WriteAsync(
-                "SYSTEM",
+                _actor,
                 "DSFINVK_EXPORT_COPY",
                 "DSFINV_K",
                 $"{_from:yyyy-MM-dd}/{_to:yyyy-MM-dd}",
@@ -418,7 +421,7 @@ public sealed class DsfinvkDeliveryWindow : Window
                 new[] { zip });
 
             await _audit.WriteAsync(
-                "SYSTEM",
+                _actor,
                 "DSFINVK_EXPORT_EMAIL",
                 "DSFINV_K",
                 $"{_from:yyyy-MM-dd}/{_to:yyyy-MM-dd}",
