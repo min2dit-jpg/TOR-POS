@@ -927,6 +927,26 @@ public partial class SettingsWindow : Window
         var page = Page("Drucker / Yazıcılar & Geräte",
             "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden.");
 
+        var printerAssistant = new Button
+        {
+            Content = "DRUCKER-ZENTRALE · EPSON / STAR AUTOMATISCH ERKENNEN",
+            MinHeight = 54,
+            FontWeight = FontWeight.Bold,
+            Background = AppTheme.SuccessGreen,
+            BorderBrush = AppTheme.SuccessGreenBorder
+        };
+        printerAssistant.Click += async (_, _) =>
+        {
+            if (!_currentUser.IsAdmin) return;
+            await new PrinterSetupWindow(_settings, _receiptPrinter).ShowDialog(this);
+            await LoadAsync();
+        };
+        page.Children.Add(printerAssistant);
+        page.Children.Add(InfoCard(
+            "Automatische Druckererkennung",
+            "TOR liest die in Windows installierten Drucker, Treiber und Ports und erkennt verbreitete Epson-TM- sowie Star-mC/TSP-Bondrucker. Ein konkretes Modell wird nur bei eindeutiger Kennung übernommen; bei unklarem Modell muss der Benutzer die Auswahl bestätigen.",
+            AppTheme.InfoCardBg));
+
         var terminalAssistant = new Button
         {
             Content = "KARTENTERMINAL VERBINDEN · MARKE AUSWÄHLEN",
@@ -976,7 +996,61 @@ public partial class SettingsWindow : Window
         var devices = Section("Terminal & TSE");
         devices.Children.Add(refresh); devices.Children.Add(status);
         page.Children.Add(devices);
-        page.Children.Add(ToggleRow(Check("device.drawer.enabled", "Kassenlade verwenden")));
+
+        var drawerEnabled = Check("device.drawer.enabled", "Kassenlade verwenden");
+        page.Children.Add(ToggleRow(drawerEnabled));
+        var drawerSection = Section("Kassenschublade · Verbindungstest");
+        var drawerStatus = new TextBlock
+        {
+            Text = "Noch nicht getestet. Der Test erzeugt keinen Verkauf und keinen Bon.",
+            TextWrapping = TextWrapping.Wrap
+        };
+        var drawerTest = new Button
+        {
+            Content = "KASSENSCHUBLADE TESTEN",
+            MinHeight = 46,
+            FontWeight = FontWeight.Bold
+        };
+        drawerTest.Click += async (_, _) =>
+        {
+            var printerName = _text.TryGetValue("device.receipt_printer.name", out var printerBox)
+                ? (printerBox.Text ?? "").Trim()
+                : "";
+
+            if (printerName.Length == 0)
+            {
+                drawerStatus.Text = "Zuerst einen Bondrucker auswählen bzw. über die DRUCKER-ZENTRALE übernehmen.";
+                return;
+            }
+
+            drawerTest.IsEnabled = false;
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await _receiptPrinter.TestCashDrawerAsync(printerName, timeout.Token);
+                drawerStatus.Text =
+                    "✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
+                    "TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.";
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("R169 settings drawer test", ex);
+                drawerStatus.Text = "⚠ Kassenschubladen-Test fehlgeschlagen: " + ex.Message;
+            }
+            finally
+            {
+                drawerTest.IsEnabled = true;
+            }
+        };
+        drawerSection.Children.Add(drawerTest);
+        drawerSection.Children.Add(drawerStatus);
+        drawerSection.Children.Add(new TextBlock
+        {
+            Text = "Der Test sendet genau einen ESC-p/StarPRNT-Impuls über den ausgewählten Bondrucker. Kein Verkauf, keine TSE-Transaktion, kein Bon.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.72
+        });
+        page.Children.Add(drawerSection);
 
         // R104: a genuine second screen (e.g. HP L7010t POS-Monitor), same
         // "own fullscreen window on a configured screen" mechanism as the
