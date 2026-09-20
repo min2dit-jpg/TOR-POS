@@ -268,6 +268,7 @@ public sealed class SaleEngine
             ProductId = productId,
             ProductName = name,
             Quantity = quantity,
+            Unit = "Stück",
             UnitPriceCents = price,
             ListUnitPriceCents = price,
             VatRate = vatRate,
@@ -287,6 +288,9 @@ public sealed class SaleEngine
     {
         if (IsReadOnly || quantity <= 0m)
             return;
+
+        if (product.IsWeighted && (variant is not null || product.IsCombo))
+            throw new InvalidOperationException("Gewichtsartikel unterstützen keine Varianten oder Menüs.");
 
         var merchandisePrice =
             unitPriceOverrideCents ??
@@ -345,6 +349,7 @@ public sealed class SaleEngine
             VariantName = variantName,
             Barcode = product.Barcode,
             Quantity = quantity,
+            Unit = product.IsWeighted ? "kg" : (string.IsNullOrWhiteSpace(product.Unit) ? "Stück" : product.Unit),
             UnitPriceCents = actualPrice,
             ListUnitPriceCents = listPrice,
             VatRate = product.VatRate,
@@ -406,6 +411,7 @@ public sealed class SaleEngine
                 VariantName = line.VariantName,
                 Barcode = line.Barcode,
                 Quantity = line.Quantity,
+                Unit = line.Unit,
                 UnitPriceCents = line.UnitPriceCents,
                 ListUnitPriceCents = line.EffectiveListUnitPriceCents,
                 VatRate = line.VatRate,
