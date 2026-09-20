@@ -1,12 +1,20 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R173|0.7.33.873|Merd-M -->
+<!-- TOR_RELEASE:R174|0.7.33.874|Merd-M -->
 
 ## Aktueller Release
 
-**R173 · Merd-M · 0.7.33.873**
+**R174 · Merd-M · 0.7.33.874**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R174
+
+- Kampanya takvimi artık açık Z-/işletme dönemini izler; gece yarısında devam eden servis sırasında kampanya tarihi istemeden değişmez.
+- Gramajlı ürünlerde kampanya desteği cent-exact line-level hesapla etkinleştirildi; checkout ve Teilretoure aynı matematiği kullanır.
+- Checkout snapshot gramajlı satırlarda kg birimini korur.
+- PowerShell 5.1 simulator doğrulaması uyumlu hale getirildi; kaynak ZIP'inde repository hygiene açıkça skip edilirken CI -RequireGit ile fail-closed kalır.
+- R174 için 8 yeni regresyon kontrolü eklendi; safety baseline 1070 kontrol olarak güncellendi.
 
 ### R173
 
