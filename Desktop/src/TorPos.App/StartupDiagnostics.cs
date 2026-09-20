@@ -289,16 +289,17 @@ public sealed class StartupLoadingWindow : Window
     {
         try
         {
-            var uri = new Uri("avares://TorPos.App/Assets/TorPos-Brand.jpg");
-            using var stream = AssetLoader.Open(uri);
+            using var stream = AssetLoader.Open(
+                new Uri("avares://TorPos.App/Assets/TorPos-Brand.jpg"));
+
             return new Border
             {
-                Width = 150,
-                Height = 150,
-                CornerRadius = new CornerRadius(75),
+                CornerRadius = new CornerRadius(82),
+                Width = 164,
+                Height = 164,
                 ClipToBounds = true,
                 BorderBrush = new SolidColorBrush(Color.Parse("#279CFF")),
-                BorderThickness = new Thickness(1),
+                BorderThickness = new Thickness(1.5),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Child = new Image
                 {
@@ -309,26 +310,28 @@ public sealed class StartupLoadingWindow : Window
         }
         catch
         {
-            // The splash must never block application startup. If the bundled
-            // brand asset cannot be read, keep a neutral TOR-POS fallback.
-            return new Border
-            {
-                Background = new SolidColorBrush(Color.Parse("#07111F")),
-                CornerRadius = new CornerRadius(75),
-                Width = 150,
-                Height = 150,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = "TOR-POS",
-                    Foreground = Brushes.White,
-                    FontSize = 28,
-                    FontWeight = FontWeight.Bold,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                }
-            };
+            // Fallback below. The splash must never block application startup.
         }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#07111F")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#279CFF")),
+            BorderThickness = new Thickness(1.5),
+            CornerRadius = new CornerRadius(82),
+            Width = 164,
+            Height = 164,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = "TOR-POS",
+                Foreground = Brushes.White,
+                FontSize = 25,
+                FontWeight = FontWeight.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
     }
 
     private static Control CreateTitle() =>
