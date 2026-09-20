@@ -434,6 +434,7 @@ await R164ReviewTests.Run(Assert);
 await R165ReviewTests.Run(Assert);
 await R167ReviewTests.Run(root,Assert);
 R168ReviewTests.Run(Assert);
+await R169ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -466,7 +467,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // ZVT routes, fail-closed proprietary profiles and first-run/setup assistants.
 // R168: 7 reviewed checks lock one visible KASSIEREN entry point, one-page
 // BAR/KARTE/GEMISCHT details and removal of the duplicate cashier buttons.
-const int ExpectedSafetyChecks = 1004;
+// R169: 12 reviewed checks lock conservative Epson/Star printer recognition,
+// Windows driver/port discovery, first-run/settings integration and the
+// explicit no-sale/no-receipt cash-drawer connection test.
+const int ExpectedSafetyChecks = 1016;
 
 if (checks != ExpectedSafetyChecks)
 {
