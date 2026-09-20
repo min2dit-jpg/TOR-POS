@@ -188,7 +188,7 @@ public sealed class TorCloudSyncService : IAsyncDisposable
     public TorCloudSyncService(SqliteDatabase db,ICloudSecretProtector? secrets=null,HttpMessageHandler? handler=null)
     {
         _outbox=new(db);_secrets=secrets??new WindowsCloudSecretProtector();
-        _http=new HttpClient(handler??new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(12)};
+        _http=new HttpClient(handler??new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(70)};
     }
     public static Uri Endpoint(string baseUrl,string suffix)
     {
@@ -224,9 +224,9 @@ public sealed class TorCloudSyncService : IAsyncDisposable
             if(enabled)RequestStockRefresh();
         }finally{_gate.Release();}
     }
-    private async Task<JsonElement> RequestAsync(TorCloudConfiguration config,string route,object? body,CancellationToken ct)
+    private async Task<JsonElement> RequestAsync(TorCloudConfiguration config,string route,object? body,CancellationToken ct,int timeoutSeconds=20)
     {
-        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         using var request=new HttpRequestMessage(body is null?HttpMethod.Get:HttpMethod.Post,Endpoint(config.BaseUrl,route));
         request.Headers.Add("X-Device-Code",config.DeviceCode);request.Headers.Add("X-Device-Token",_secrets.Unprotect(config.ProtectedToken));
         if(body is not null)request.Content=JsonContent.Create(body);
@@ -302,13 +302,14 @@ public sealed class TorCloudSyncService : IAsyncDisposable
             });
         }
 
-        await DeviceApiAsync("api/v1/devices/mail/send",new
+        var config=await ConfigurationAsync()??throw new InvalidOperationException("TOR POS Cloud zuerst unter Geräte konfigurieren und speichern.");
+        await RequestAsync(config,"api/v1/devices/mail/send",new
         {
             recipient=recipient.Trim(),
             subject,
             body,
             attachments=files
-        },ct);
+        },ct,60);
     }
 
     public async Task<JsonElement> DeviceApiAsync(string route,object? body,CancellationToken ct=default)
