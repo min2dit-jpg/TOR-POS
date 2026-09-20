@@ -10,9 +10,8 @@ public static class R168ReviewTests
         var paymentCode = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/PaymentChoiceWindow.cs"));
 
         assert(
-            mainAxaml.Contains(
-                "Grid.Row=\"4\" Grid.Column=\"2\" Grid.ColumnSpan=\"2\"\n                    x:Name=\"QuickCheckoutButton\"",
-                StringComparison.Ordinal),
+            mainAxaml.Contains("Grid.Row=\"4\" Grid.Column=\"2\" Grid.ColumnSpan=\"2\"", StringComparison.Ordinal) &&
+            mainAxaml.Contains("x:Name=\"QuickCheckoutButton\" Classes=\"action\" Click=\"OnQuickCheckoutClick\"", StringComparison.Ordinal),
             "R168 the visible KASSIEREN button is moved to the old BAR/KARTE bottom area and spans both columns");
 
         assert(
