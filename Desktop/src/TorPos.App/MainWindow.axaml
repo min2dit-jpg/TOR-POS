@@ -395,25 +395,10 @@
           </StackPanel>
         </Grid>
 
-        <!-- R126: never clipped - these three are needed to finish a sale
-             correctly (Im Haus VAT, split payment) and to hand over the till. -->
+        <!-- R156: Verkaufsart (AUSSER HAUS / IM HAUS) and GEMISCHT now live
+             in the payment window. The header keeps only the session action,
+             which prevents payment controls from crowding the top row. -->
         <StackPanel Grid.Column="2" x:Name="HeaderActionsPanel" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button x:Name="ImHausToggleButton" IsVisible="False" Click="OnImHausToggleClick"
-                  Background="#26445E" BorderBrush="#5B879F" BorderThickness="1"
-                  CornerRadius="8" Padding="12,8">
-            <TextBlock x:Name="ImHausToggleText" Text="AUSSER HAUS" Foreground="#DDEEFF" FontWeight="Bold" FontSize="12"/>
-          </Button>
-          <!-- R101: append-only, deliberately kept out of the fully-packed
-               4x4 numpad/payment Grid below - same low-risk placement
-               reasoning as ImHausToggleButton above. -->
-          <Button x:Name="MixedPaymentButton" Click="OnMixedPaymentClick"
-                  Background="#5B3E8A" BorderBrush="#A98AE0" BorderThickness="1"
-                  CornerRadius="8" Padding="12,8">
-            <Button.Effect>
-              <DropShadowEffect Color="#A98AE0" BlurRadius="12" OffsetX="0" OffsetY="0" Opacity="0.5"/>
-            </Button.Effect>
-            <TextBlock Text="GEMISCHT" Foreground="#F0E8FF" FontWeight="Bold" FontSize="12"/>
-          </Button>
           <Button x:Name="LogoutButton"
                   Content="ABMELDEN"
                   Click="OnLogoutClick"
