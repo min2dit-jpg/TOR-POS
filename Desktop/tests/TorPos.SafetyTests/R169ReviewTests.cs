@@ -86,8 +86,9 @@ public static class R169ReviewTests
             service.Contains("GetInstalledPrinterDevices()", StringComparison.Ordinal) &&
             service.Contains("GetPrinter(handle, 2", StringComparison.Ordinal) &&
             service.Contains("pDriverName", StringComparison.Ordinal) &&
-            service.Contains("pPortName", StringComparison.Ordinal),
-            "R169 discovery reads Windows queue, driver and port metadata instead of relying on display name alone");
+            service.Contains("pPortName", StringComparison.Ordinal) &&
+            service.Contains("ReceiptPaperSizeFor(printerName", StringComparison.Ordinal),
+            "R169 discovery reads Windows queue, driver and port metadata and applies the recognized 58/80 mm paper profile");
 
         var drawerMethod = Slice(
             service,
