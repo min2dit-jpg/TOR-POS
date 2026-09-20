@@ -1,5 +1,6 @@
 using TorPos.App;
 
+// R164 runs the live reload path in UiSnapshot, where Avalonia is fully initialized.
 public static class R164ReviewTests
 {
     public static Task Run(
