@@ -4993,8 +4993,7 @@ public partial class MainWindow:Window
             FiscalModeText.Foreground =
                 _fiscalReadiness.ProductionAllowed ? AppTheme.AccentTeal : AppTheme.WarningAmber;
 
-            var cashLabel=_settingsCache.GetText("pay.cash.label","Bar").ToUpperInvariant();
-            var cardLabel=_settingsCache.GetText("pay.card.label","Karte").ToUpperInvariant();
+
         }
         catch (Exception ex)
         {
@@ -5177,17 +5176,6 @@ public partial class MainWindow:Window
         ReportsMenu.IsEnabled = _currentUser.IsAdmin ||
             _currentUser.Can(UserPermissions.ZReport) ||
             _currentUser.Can(UserPermissions.ViewReceiptHistory);
-        var cashLabel=_settingsCache.GetText("pay.cash.label","Bar").ToUpperInvariant();
-        var cardLabel=_settingsCache.GetText("pay.card.label","Karte").ToUpperInvariant();
-
-        if (!license.IsActive)
-        {
-        }
-
-        if (_currentUser.IsTraining)
-        {
-        }
-
         RefreshReceiptModeButtons();
         UiLanguage.Apply(this);
         RefreshOrderDisplayWindow(business);
