@@ -430,7 +430,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
 // immutable file/hash, migration/audit and tamper protection.
-const int ExpectedSafetyChecks = 932;
+// R156: 9 reviewed checks lock the payment hub, fresh-sale AUSSER HAUS default,
+// IM HAUS VAT snapshot, GEMISCHT split and multi-size UI snapshot coverage.
+const int ExpectedSafetyChecks = 941;
 
 if (checks != ExpectedSafetyChecks)
 {
