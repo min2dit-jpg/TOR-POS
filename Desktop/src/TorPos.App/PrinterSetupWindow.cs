@@ -218,7 +218,8 @@ public sealed class PrinterSetupWindow : Window
             var exact = _items.Count(x => x.Device.IsReceiptPrinter && x.Device.ExactModel);
             _status.Text =
                 $"{_items.Count} Windows-Drucker gefunden · {recognized} Epson/Star-Bondrucker erkannt · {exact} Modell eindeutig. " +
-                "Auswahl prüfen, TESTBON DRUCKEN ve danach DIESEN DRUCKER VERWENDEN.";
+                "Büro-/PDF-/Faxdrucker bleiben sichtbar, werden aber nicht als Bondrucker freigegeben. " +
+                "Auswahl prüfen, TESTBON DRUCKEN und danach DIESEN DRUCKER VERWENDEN.";
             ApplySelection();
         }
         catch (TimeoutException)
@@ -269,13 +270,21 @@ public sealed class PrinterSetupWindow : Window
             $"Schubladenport: {(d.CashDrawerPortSupported ? "Profil unterstützt" : "nicht automatisch bestätigt")}";
         _recognition.Text = (d.ExactModel ? "✓ " : "⚠ ") + d.RecognitionNote;
 
-        _use.IsEnabled = d.Ready != false;
-        _test.IsEnabled = d.Ready != false;
+        var usableReceiptPrinter = d.IsReceiptPrinter && d.Ready != false;
+        _use.IsEnabled = usableReceiptPrinter;
+        _test.IsEnabled = usableReceiptPrinter;
         _drawer.IsVisible = SelectedRole.DrawerAllowed;
         _drawer.IsEnabled =
             SelectedRole.DrawerAllowed &&
-            d.Ready != false &&
+            usableReceiptPrinter &&
             d.CashDrawerPortSupported;
+
+        if (!d.IsReceiptPrinter)
+        {
+            _recognition.Text =
+                "ⓘ " + d.RecognitionNote +
+                " Dieser Windows-Drucker kann hier nicht als Bondrucker übernommen werden.";
+        }
     }
 
     private async Task UseAsync()
