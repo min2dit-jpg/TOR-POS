@@ -137,22 +137,20 @@ function buildManagedMime(config, mail) {
   return lines.join('\r\n');
 }
 
-function socketConnected(socket, timeoutMs = 20000) {
-  if (!socket.connecting) return Promise.resolve();
+function socketConnected(socket, secure = false, timeoutMs = 20000) {
+  if (!secure && !socket.connecting) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => done(new Error('SMTP-Verbindung Zeitüberschreitung.')), timeoutMs);
+    const event = secure ? 'secureConnect' : 'connect';
     const done = err => {
       clearTimeout(timer);
-      socket.off('connect', onConnect);
-      socket.off('secureConnect', onSecure);
+      socket.off(event, onReady);
       socket.off('error', onError);
       if (err) reject(err); else resolve();
     };
-    const onConnect = () => done();
-    const onSecure = () => done();
+    const onReady = () => done();
     const onError = err => done(err);
-    socket.once('connect', onConnect);
-    socket.once('secureConnect', onSecure);
+    socket.once(event, onReady);
     socket.once('error', onError);
   });
 }
@@ -206,9 +204,12 @@ async function smtpCommand(socket, command, expected) {
 async function sendManagedMail(config, mail, timeoutMs = 60000) {
   if (!isManagedMailConfigured(config)) throw Object.assign(new Error('TOR Mail ist auf dem Cloud-Server noch nicht konfiguriert.'), { statusCode: 503 });
   const mime = buildManagedMime(config, mail);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
   let socket;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try { socket?.destroy(new Error('TOR Mail Versand Zeitüberschreitung.')); } catch {}
+  }, timeoutMs);
   try {
     socket = config.mode === 'tls'
       ? tls.connect({ host: config.host, port: config.port, servername: config.host, minVersion: 'TLSv1.2', rejectUnauthorized: true })
@@ -242,7 +243,7 @@ async function sendManagedMail(config, mail, timeoutMs = 60000) {
     if (final.code !== 250) throw new Error(`SMTP DATA abgelehnt: ${final.code}`);
     try { await smtpCommand(socket, 'QUIT', [221]); } catch {}
   } catch (err) {
-    if (controller.signal.aborted) throw Object.assign(new Error('TOR Mail Versand Zeitüberschreitung.'), { statusCode: 504 });
+    if (timedOut) throw Object.assign(new Error('TOR Mail Versand Zeitüberschreitung.'), { statusCode: 504 });
     throw err;
   } finally {
     clearTimeout(timer);
