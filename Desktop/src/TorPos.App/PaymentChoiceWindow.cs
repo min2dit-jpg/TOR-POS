@@ -347,45 +347,54 @@ public sealed class PaymentChoiceWindow : Window
         };
         Grid.SetColumn(_accept, 1);
 
+        var paymentBody = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Spacing = 2,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = "ZAHLUNG",
+                                FontSize = 26,
+                                FontWeight = FontWeight.Bold,
+                                Foreground = Brushes.White
+                            },
+                            new TextBlock
+                            {
+                                Text = "Eine Seite: Verkaufsart, Zahlart und Betrag",
+                                FontSize = 12,
+                                Foreground = Muted
+                            }
+                        }
+                    },
+                    serviceType,
+                    paymentType,
+                    detailHost,
+                    _validation
+                }
+            }
+        };
+
+        var paymentLayout = new Grid
+        {
+            RowDefinitions = new RowDefinitions("*,Auto"),
+            RowSpacing = 12,
+            Children = { paymentBody, footer }
+        };
+        Grid.SetRow(footer, 1);
+
         Content = new Border
         {
             Padding = new Thickness(22),
-            Child = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Content = new StackPanel
-                {
-                    Spacing = 12,
-                    Children =
-                    {
-                        new StackPanel
-                        {
-                            Spacing = 2,
-                            Children =
-                            {
-                                new TextBlock
-                                {
-                                    Text = "ZAHLUNG",
-                                    FontSize = 26,
-                                    FontWeight = FontWeight.Bold,
-                                    Foreground = Brushes.White
-                                },
-                                new TextBlock
-                                {
-                                    Text = "Eine Seite: Verkaufsart, Zahlart und Betrag",
-                                    FontSize = 12,
-                                    Foreground = Muted
-                                }
-                            }
-                        },
-                        serviceType,
-                        paymentType,
-                        detailHost,
-                        _validation,
-                        footer
-                    }
-                }
-            }
+            Child = paymentLayout
         };
 
         RefreshServiceType();
