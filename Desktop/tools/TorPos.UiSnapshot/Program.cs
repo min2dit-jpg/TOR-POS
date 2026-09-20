@@ -196,7 +196,11 @@ async Task RunAsync()
     // Snapshot it explicitly so moving controls out of the header cannot turn
     // into an untested dialog overflow on a till.
     await SnapshotDialogAsync(
-        new PaymentChoiceWindow(cashEnabled: true, cardEnabled: true, allowImHaus: true),
+        new PaymentChoiceWindow(
+            totalCents: 1890,
+            cashEnabled: true,
+            cardEnabled: true,
+            allowImHaus: true),
         "payment-choice",
         check,
         failures,
