@@ -189,9 +189,10 @@ public static class R156ReviewTests
 
         assert(
             paymentCode.Contains("AUSSER HAUS\\nSTANDARD", StringComparison.Ordinal) &&
-            paymentCode.Contains("Content = \"IM HAUS\"", StringComparison.Ordinal) &&
+            paymentCode.Contains("ChoiceButton(\"IM HAUS\")", StringComparison.Ordinal) &&
             paymentCode.Contains("GEMISCHT\\nBAR + KARTE", StringComparison.Ordinal) &&
-            paymentCode.Contains("IsEnabled = cashEnabled && cardEnabled", StringComparison.Ordinal),
+            paymentCode.Contains("cashEnabled && cardEnabled", StringComparison.Ordinal) &&
+            paymentCode.Contains("IsEnabled = enabled", StringComparison.Ordinal),
             "R156 the payment window visibly offers AUSSER HAUS, IM HAUS and GEMISCHT, with GEMISCHT enabled only when both tenders exist");
 
         assert(
