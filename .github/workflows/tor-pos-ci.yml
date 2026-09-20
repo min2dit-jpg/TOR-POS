@@ -231,6 +231,29 @@ jobs:
 
       # upload-artifact paths are relative to the repository root, not to the
       # job's working-directory.
+      # R172: publish the exact committed repository tree as source code.
+      # git archive includes only tracked files, so build outputs, secrets,
+      # .git metadata and local developer files are never added accidentally.
+      - name: Kaynak kodu ZIP paketini olustur
+        run: |
+          Push-Location ..
+          try {
+            git archive --format=zip --output="Desktop/ci-results/TOR-POS-Source-${{ github.sha }}.zip" HEAD
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Kaynak kodu ZIP paketini sakla
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-POS-Source-${{ github.sha }}
+          path: Desktop/ci-results/TOR-POS-Source-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
       - name: Hata ve test gunluklerini sakla
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
