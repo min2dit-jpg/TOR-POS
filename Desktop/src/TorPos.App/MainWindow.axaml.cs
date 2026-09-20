@@ -726,8 +726,6 @@ public partial class MainWindow:Window
 
         // Payment buttons should visually communicate when checkout is possible.
         // This avoids a dead tap on an empty cart and makes the intended flow obvious.
-        CashButton.IsEnabled = !CartLocked && _saleAllowed && _cashEnabledBySettings && hasCart;
-        CardButton.IsEnabled = !CartLocked && _saleAllowed && _cardEnabledBySettings && hasCart;
         QuickCheckoutButton.IsEnabled =
             !CartLocked &&
             _saleAllowed &&
@@ -768,24 +766,24 @@ public partial class MainWindow:Window
 
         // Kassierer-Schnelltasten: scanner digits are collected by TextInput
         // (R165), so function keys remain independent from barcode capture.
-        if (e.Key == Key.F1 && CashButton.IsEnabled)
+        if (e.Key == Key.F1 && QuickCheckoutButton.IsEnabled && _cashEnabledBySettings)
         {
             e.Handled = true;
-            OnCashClick(CashButton, new RoutedEventArgs());
+            _ = OpenPaymentWindowAsync(PaymentMethod.Cash);
             return;
         }
 
-        if (e.Key == Key.F2 && CardButton.IsEnabled)
+        if (e.Key == Key.F2 && QuickCheckoutButton.IsEnabled && _cardEnabledBySettings)
         {
             e.Handled = true;
-            OnCardClick(CardButton, new RoutedEventArgs());
+            _ = OpenPaymentWindowAsync(PaymentMethod.Card);
             return;
         }
 
         if (e.Key == Key.F5 && QuickCheckoutButton.IsEnabled)
         {
             e.Handled = true;
-            OnQuickCheckoutClick(QuickCheckoutButton, new RoutedEventArgs());
+            _ = OpenPaymentWindowAsync(null);
             return;
         }
 
@@ -2713,13 +2711,13 @@ public partial class MainWindow:Window
     }
 
     private async void OnCashClick(object? sender, RoutedEventArgs e) =>
-        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
+        await OpenPaymentWindowAsync(PaymentMethod.Cash);
 
     private async void OnCardClick(object? sender, RoutedEventArgs e) =>
-        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
+        await OpenPaymentWindowAsync(PaymentMethod.Card);
 
     private async void OnQuickCheckoutClick(object? sender, RoutedEventArgs e) =>
-        await OpenPaymentWindowAsync(invokedByQuickCheckout: true);
+        await OpenPaymentWindowAsync(null);
 
     private bool IsImbissBusiness() =>
         string.Equals(
@@ -2728,17 +2726,27 @@ public partial class MainWindow:Window
             "IMBISS",
             StringComparison.OrdinalIgnoreCase);
 
-    private async Task OpenPaymentWindowAsync(bool invokedByQuickCheckout)
+    private async Task OpenPaymentWindowAsync(PaymentMethod? preferredMethod)
     {
         if (CartLocked || _engine.Cart.Count == 0 || !CanCompleteSale())
             return;
 
         var allowImHaus = IsImbissBusiness();
+        var total = CaptureCheckout(PaymentMethod.Cash).TotalCents;
+        var cashLabel = _settingsCache.GetText("pay.cash.label", "Bar");
+        var cardLabel = _settingsCache.GetText("pay.card.label", "Karte");
+
         var choice = await new PaymentChoiceWindow(
+                total,
                 _cashEnabledBySettings,
                 _cardEnabledBySettings,
                 allowImHaus,
-                allowImHaus && _imHaus)
+                defaultImHaus: false,
+                preferredMethod: preferredMethod,
+                simulation: IsSimulation,
+                training: _currentUser.IsTraining,
+                cashLabel: cashLabel,
+                cardLabel: cardLabel)
             .ShowDialog<PaymentChoiceResult?>(this);
 
         if (choice is null)
@@ -2746,32 +2754,16 @@ public partial class MainWindow:Window
 
         _imHaus = allowImHaus && choice.ImHaus;
 
-        // R156: choosing IM HAUS changes the effective VAT snapshot. Refreshing
-        // the current cart also persists the choice before any external payment
-        // effect is admitted. A new customer is reset to AUSSER HAUS below.
+        // R156/R166: Verkaufsart and tender-specific inputs are captured in the
+        // one payment surface before any external payment effect is admitted.
         UpdateCart();
-
-        long cashPortionCents = 0;
-        if (choice.Method == PaymentMethod.Mixed)
-        {
-            var total = CaptureCheckout(PaymentMethod.Mixed).TotalCents;
-            if (total <= 0)
-            {
-                ScannerStatus.Text = "GEMISCHT nicht möglich · Pfand-Auszahlung nur BAR.";
-                return;
-            }
-
-            var cashPortion = await new MixedPaymentWindow(total).ShowDialog<long?>(this);
-            if (cashPortion is null)
-                return;
-
-            cashPortionCents = cashPortion.Value;
-        }
 
         await CheckoutAsync(
             choice.Method,
-            invokedByQuickCheckout,
-            cashPortionCents);
+            invokedByQuickCheckout: false,
+            choice.CashPortionCents,
+            choice.Cash,
+            choice.UiConfirmed);
     }
 
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
@@ -2797,7 +2789,12 @@ public partial class MainWindow:Window
         RefreshSalesActionState();
     }
 
-    private async Task CheckoutAsync(PaymentMethod method, bool invokedByQuickCheckout, long cashPortionCents = 0)
+    private async Task CheckoutAsync(
+        PaymentMethod method,
+        bool invokedByQuickCheckout,
+        long cashPortionCents = 0,
+        CashPaymentResult? precollectedCash = null,
+        bool paymentUiConfirmed = false)
     {
         if (CartLocked || _engine.Cart.Count==0 || !CanCompleteSale()) return;
         var snapshot=CaptureCheckout(method, cashPortionCents);
@@ -2832,15 +2829,22 @@ public partial class MainWindow:Window
             }
             if (method==PaymentMethod.Cash && snapshot.TotalCents <= 0)
             {
-                // R149: nothing to tender. A payout is confirmed once the money is handed over.
+                // R166: payout/zero-total confirmation is already part of the
+                // unified payment surface. Keep the legacy fallback for callers
+                // that do not provide the confirmation.
                 if (snapshot.TotalCents < 0 &&
+                    !paymentUiConfirmed &&
                     !await new DepositPayoutWindow(-snapshot.TotalCents).ShowDialog<bool>(this))
                     return;
-                cash = new CashPaymentResult(0, 0);
+                cash = precollectedCash ?? new CashPaymentResult(0, 0);
             }
             else if (method==PaymentMethod.Cash)
             {
-                if (QuickCheckoutPolicy.UseExactCashWithoutDialog(
+                if (precollectedCash is not null)
+                {
+                    cash = precollectedCash;
+                }
+                else if (QuickCheckoutPolicy.UseExactCashWithoutDialog(
                     _settingsCache,
                     method,
                     invokedByQuickCheckout))
@@ -2886,7 +2890,9 @@ public partial class MainWindow:Window
                             snapshot.ImHaus)
                 };
 
-                if((method==PaymentMethod.Card || method==PaymentMethod.Mixed) && !_currentUser.IsTraining &&
+                if((method==PaymentMethod.Card || method==PaymentMethod.Mixed) &&
+                    !_currentUser.IsTraining &&
+                    !paymentUiConfirmed &&
                     !await new CardTestPaymentWindow(snapshot.EffectiveCardPortionCents).ShowDialog<bool>(this)) return;
                 await _audit.WriteAsync(_currentUser.Username,"TEST_SALE_COMPLETED","SIMULATION",snapshot.OperationId,
                     $"total_cents={snapshot.TotalCents}; payment={method}; no_fiscal_sale=true");
@@ -4951,8 +4957,6 @@ public partial class MainWindow:Window
             {
                 SetFiscalModeLabel("TRAINING · KEINE ECHTE BUCHUNG", "TRAINING", "TRAINING");
                 FiscalModeText.Foreground = AppTheme.WarningAmber;
-                CashButtonText.Text = "BAR · TRAINING";
-                CardButtonText.Text = "KARTE · TRAINING";
                 return;
             }
 
@@ -4968,8 +4972,6 @@ public partial class MainWindow:Window
                         $"DEMO · {days} T",
                         "DEMO");
                     FiscalModeText.Foreground = AppTheme.WarningAmber;
-                    CashButtonText.Text = "BAR · DEMO";
-                    CardButtonText.Text = "KARTE · DEMO";
                     return;
                 }
 
@@ -4977,8 +4979,6 @@ public partial class MainWindow:Window
                 // a customer license. No real sale is committed in this mode.
                 SetFiscalModeLabel("TESTBETRIEB · KEINE LIZENZ · KEINE ECHTE BUCHUNG", "TEST · KEINE LIZENZ", "TEST");
                 FiscalModeText.Foreground = AppTheme.WarningAmber;
-                CashButtonText.Text = "BAR · TEST";
-                CardButtonText.Text = "KARTE · TEST";
                 return;
             }
 
@@ -4993,16 +4993,7 @@ public partial class MainWindow:Window
             FiscalModeText.Foreground =
                 _fiscalReadiness.ProductionAllowed ? AppTheme.AccentTeal : AppTheme.WarningAmber;
 
-            var cashLabel=_settingsCache.GetText("pay.cash.label","Bar").ToUpperInvariant();
-            var cardLabel=_settingsCache.GetText("pay.card.label","Karte").ToUpperInvariant();
 
-            CashButtonText.Text = _fiscalReadiness.ProductionAllowed
-                ? cashLabel
-                : cashLabel + " · TEST";
-
-            CardButtonText.Text = _fiscalReadiness.ProductionAllowed
-                ? cardLabel
-                : cardLabel + " · TEST";
         }
         catch (Exception ex)
         {
@@ -5168,7 +5159,7 @@ public partial class MainWindow:Window
         // payment page so Verkaufsart (AUSSER HAUS / IM HAUS) and the three
         // tender choices BAR / KARTE / GEMISCHT remain visible together.
         QuickCheckoutText.Text = "KASSIEREN";
-        QuickCheckoutSubText.Text = "F5 · ZAHLART";
+        QuickCheckoutSubText.Text = "F5 · ZAHLUNG";
 
         ClearButton.IsEnabled = _currentUser.Can(UserPermissions.Sale);
         EditionActionButton.IsEnabled = _currentUser.Can(UserPermissions.Sale) &&
@@ -5185,29 +5176,6 @@ public partial class MainWindow:Window
         ReportsMenu.IsEnabled = _currentUser.IsAdmin ||
             _currentUser.Can(UserPermissions.ZReport) ||
             _currentUser.Can(UserPermissions.ViewReceiptHistory);
-        var cashLabel=_settingsCache.GetText("pay.cash.label","Bar").ToUpperInvariant();
-        var cardLabel=_settingsCache.GetText("pay.card.label","Karte").ToUpperInvariant();
-
-        CashButtonText.Text = _fiscalReadiness?.ProductionAllowed == true
-            ? cashLabel
-            : cashLabel + " · TEST";
-
-        CardButtonText.Text = _fiscalReadiness?.ProductionAllowed == true
-            ? cardLabel
-            : cardLabel + " · TEST";
-
-        if (!license.IsActive)
-        {
-            CashButtonText.Text = cashLabel + " · TEST";
-            CardButtonText.Text = cardLabel + " · TEST";
-        }
-
-        if (_currentUser.IsTraining)
-        {
-            CashButtonText.Text = "BAR · TRAINING";
-            CardButtonText.Text = "KARTE · TRAINING";
-        }
-
         RefreshReceiptModeButtons();
         UiLanguage.Apply(this);
         RefreshOrderDisplayWindow(business);

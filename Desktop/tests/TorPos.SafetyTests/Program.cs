@@ -432,6 +432,7 @@ await R162ReviewTests.Run(root,Assert,Reject);
 await R163ReviewTests.Run(Assert);
 await R164ReviewTests.Run(Assert);
 await R165ReviewTests.Run(Assert);
+await R166ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -460,7 +461,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // employee-management double-load UI regression path.
 // R165: 5 reviewed checks lock keyboard-wedge scanner capture, ENTER/TAB
 // suffix support, catalog refresh and explicit scan feedback.
-const int ExpectedSafetyChecks = 986;
+// R166: 8 reviewed checks lock one visible cashier payment button and a
+// single payment surface for BAR/KARTE/GEMISCHT without second-step dialogs.
+const int ExpectedSafetyChecks = 994;
 
 if (checks != ExpectedSafetyChecks)
 {
