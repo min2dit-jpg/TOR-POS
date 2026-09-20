@@ -69,6 +69,17 @@ public sealed class ProductEditorWindow : Window
     private readonly TextBox _price = new();
     private readonly TextBox _purchasePrice = new();
     private readonly TextBox _pfand = new();
+    private readonly CheckBox _soldByWeight = new()
+    {
+        Content = "Verkauf nach Gewicht (Gramm / Kilogramm) · Preis pro kg",
+        FontWeight = FontWeight.SemiBold
+    };
+    private readonly TextBlock _weightHint = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        Foreground = AppTheme.AccentTeal,
+        IsVisible = false
+    };
     private readonly ComboBox _unit = new();
     private readonly TextBox _stock = new();
     private readonly TextBox _minStock = new();
@@ -166,6 +177,7 @@ public sealed class ProductEditorWindow : Window
                 "Portion"
             };
         _unit.SelectedIndex = 0;
+        _soldByWeight.IsCheckedChanged += (_,_) => ApplyWeightMode();
 
         _variantList.ItemsSource =
             _variants;
@@ -589,10 +601,14 @@ public sealed class ProductEditorWindow : Window
             _sku,
             "TOR vergibt für jeden Artikel automatisch eine fortlaufende Artikelnummer. Bestehende Nummern bleiben erhalten.");
 
+        editor.Children.Add(_soldByWeight);
+        editor.Children.Add(_weightHint);
+
         Field(
             editor,
             "Verkaufspreis €",
-            _price);
+            _price,
+            "Bei Gewichtsartikeln ist dies der Preis pro kg. Beispiel: 19,90 = 19,90 €/kg.");
 
         Field(
             editor,
@@ -1781,6 +1797,30 @@ public sealed class ProductEditorWindow : Window
                 : -1;
     }
 
+    private void ApplyWeightMode()
+    {
+        var weighted = _soldByWeight.IsChecked == true;
+        _weightHint.IsVisible = weighted;
+        _weightHint.Text = weighted
+            ? "Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt."
+            : "";
+
+        if (weighted)
+        {
+            _unit.SelectedItem = "kg";
+            _unit.IsEnabled = false;
+            _pfand.Text = "0,00";
+            _pfand.IsEnabled = false;
+        }
+        else
+        {
+            _unit.IsEnabled = true;
+            _pfand.IsEnabled = InstallationEdition.ReadLocked() == "KIOSK";
+            if (string.Equals(_unit.SelectedItem?.ToString(), "kg", StringComparison.OrdinalIgnoreCase))
+                _unit.SelectedItem = "Stück";
+        }
+    }
+
     private void NewArticle()
     {
         _selectedArticle = null;
@@ -1793,7 +1833,10 @@ public sealed class ProductEditorWindow : Window
         _price.Text = "";
         _purchasePrice.Text = "0,00";
         _pfand.Text = "0,00";
+        _soldByWeight.IsChecked = false;
+        _unit.IsEnabled = true;
         _unit.SelectedIndex = 0;
+        _weightHint.IsVisible = false;
         _stock.Text = "0";
         _minStock.Text = "0";
 
@@ -1943,8 +1986,9 @@ public sealed class ProductEditorWindow : Window
                 System.Globalization.CultureInfo
                     .GetCultureInfo("de-DE"));
 
-        _unit.SelectedItem =
-            product.Unit;
+        _soldByWeight.IsChecked = product.IsWeighted;
+        _unit.SelectedItem = product.IsWeighted ? "kg" : product.Unit;
+        ApplyWeightMode();
 
         _stock.Text = product.StockQuantity.ToString(
             "0.###",
@@ -2541,10 +2585,21 @@ public sealed class ProductEditorWindow : Window
                 throw new InvalidOperationException("Einkaufspreis ist ungültig.");
             }
 
+            var weighted = _soldByWeight.IsChecked == true ||
+                           string.Equals(_unit.SelectedItem?.ToString(), "kg", StringComparison.OrdinalIgnoreCase);
+
             long pfand = 0;
-            if (InstallationEdition.ReadLocked() == "KIOSK" &&
+            if (!weighted &&
+                InstallationEdition.ReadLocked() == "KIOSK" &&
                 !Formatting.TryParseMoney(_pfand.Text, out pfand))
             {
+                pfand = 0;
+            }
+
+            if (weighted)
+            {
+                if (price <= 0)
+                    throw new InvalidOperationException("Gewichtsartikel benötigen einen Verkaufspreis pro kg größer 0.");
                 pfand = 0;
             }
 
@@ -2608,9 +2663,9 @@ public sealed class ProductEditorWindow : Window
                     PfandCents =
                         pfand,
                     Unit =
-                        _unit.SelectedItem?
-                            .ToString() ??
-                        "Stück",
+                        weighted
+                            ? "kg"
+                            : (_unit.SelectedItem?.ToString() ?? "Stück"),
                     ImagePath =
                         imagePath,
                     IsActive = true,
@@ -2623,6 +2678,9 @@ public sealed class ProductEditorWindow : Window
 
             var variants=_variants.Select((x,index)=>new ProductVariant(0,product.Id,x.Name,x.PriceCents,index)).ToArray();
             var comboItems=BuildComboItems(product.Id);
+
+            if (weighted && (variants.Length > 0 || comboItems.Length > 0))
+                throw new InvalidOperationException("Gewichtsartikel dürfen keine Varianten oder Menü-/Combo-Bestandteile haben.");
 
             if (comboItems.Length > 0)
             {
@@ -2675,7 +2733,9 @@ public sealed class ProductEditorWindow : Window
                 .FirstOrDefault(
                     x => x.Id == id);
 
-            _imageText.Text = $"Gespeichert · Art.-Nr. {_selectedArticle?.Sku ?? "–"} · Bestand {stock:0.###} {_unit.SelectedItem?.ToString() ?? "Stück"} · Mindestbestand {minStock:0.###} · MwSt. {category.VatRate:0} %";
+            _imageText.Text = weighted
+                ? $"Gespeichert · Art.-Nr. {_selectedArticle?.Sku ?? "–"} · GEWICHTSARTIKEL · {Formatting.Money(price)}/kg · Bestand {stock:0.###} kg · Mindestbestand {minStock:0.###} kg · MwSt. {category.VatRate:0} %"
+                : $"Gespeichert · Art.-Nr. {_selectedArticle?.Sku ?? "–"} · Bestand {stock:0.###} {_unit.SelectedItem?.ToString() ?? "Stück"} · Mindestbestand {minStock:0.###} · MwSt. {category.VatRate:0} %";
         }
         catch (Exception ex)
         {
