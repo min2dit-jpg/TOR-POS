@@ -475,9 +475,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // R170: 12 reviewed checks lock gram/kg normalization, manual disconnected
 // weighing, kg receipt/stock semantics, scale settings and fail-closed
 // connected-scale preparation.
-// R171: 10 reviewed checks lock DSFinV-K Von/Bis export, complete Z-period
-// semantics and current release metadata / anti-drift CI enforcement.
-const int ExpectedSafetyChecks = 1038;
+// R171: 15 reviewed checks lock DSFinV-K Von/Bis export, complete Z-period
+// semantics, USB/e-mail delivery, ZIP MIME handling and current release
+// metadata / anti-drift CI enforcement.
+const int ExpectedSafetyChecks = 1043;
 
 if (checks != ExpectedSafetyChecks)
 {
