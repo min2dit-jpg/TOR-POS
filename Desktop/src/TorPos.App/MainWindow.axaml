@@ -316,16 +316,19 @@
 
     <!-- R159: site-like left navigation + one wide content surface. -->
     <Style Selector="Button.hubnav">
-      <Setter Property="MinHeight" Value="50"/>
-      <Setter Property="Margin" Value="0,0,0,7"/>
-      <Setter Property="Padding" Value="14,10"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Margin" Value="0,3"/>
+      <Setter Property="Padding" Value="14,6"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Background" Value="#14283D"/>
       <Setter Property="Foreground" Value="#DCE9F5"/>
       <Setter Property="BorderBrush" Value="#355F80"/>
       <Setter Property="BorderThickness" Value="1.2"/>
       <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontSize" Value="15"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style Selector="Button.hubnav:pointerover /template/ ContentPresenter">
@@ -926,11 +929,13 @@
               </Border>
               <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
-                  <StackPanel>
+                  <UniformGrid Rows="3" Columns="1"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch">
                     <Button x:Name="GoodsNavArticles" Classes="hubnav active" Tag="ARTIKEL" Content="Artikel" Click="OnGoodsHubSectionClick"/>
                     <Button x:Name="GoodsNavInventory" Classes="hubnav" Tag="BESTAND" Content="Bestand / Inventur" Click="OnGoodsHubSectionClick"/>
                     <Button x:Name="GoodsNavExchange" Classes="hubnav" Tag="DATENAUSTAUSCH" Content="Datenaustausch" Click="OnGoodsHubSectionClick"/>
-                  </StackPanel>
+                  </UniformGrid>
                 </Border>
                 <Grid Grid.Column="1">
                   <Border x:Name="GoodsArticlesPanel" Classes="hubdetail">
@@ -994,21 +999,21 @@
               </Border>
               <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                      <Button x:Name="SettingsNavCash" Classes="hubnav active" Tag="Kasse &amp; Bedienung" Content="Kasse &amp; Bedienung" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavCompany" Classes="hubnav" Tag="Firma &amp; Bon" Content="Firma &amp; Bon" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavArticle" Classes="hubnav" Tag="Artikel &amp; Steuern" Content="Artikel &amp; Steuern" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavPayment" Classes="hubnav" Tag="Zahlung" Content="Zahlung" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavDevices" Classes="hubnav" Tag="Geräte" Content="Geräte" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavPersonnel" Classes="hubnav" Tag="Personal" Content="Personal" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavMail" Classes="hubnav" Tag="Berichte &amp; E-Mail" Content="Berichte &amp; E-Mail" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavDatev" Classes="hubnav" Tag="DATEV" Content="DATEV" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavBackup" Classes="hubnav" Tag="Datensicherung" Content="Datensicherung" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavUpdate" Classes="hubnav" Tag="Software &amp; Update" Content="Software &amp; Update" Click="OnSettingsHubSectionClick"/>
-                      <Button x:Name="SettingsNavTechnician" Classes="hubnav" Tag="Erweitert / Techniker" Content="Erweitert / Techniker" Click="OnSettingsHubSectionClick"/>
-                    </StackPanel>
-                  </ScrollViewer>
+                  <UniformGrid Rows="11" Columns="1"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch">
+                    <Button x:Name="SettingsNavCash" Classes="hubnav active" Tag="Kasse &amp; Bedienung" Content="Kasse &amp; Bedienung" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavCompany" Classes="hubnav" Tag="Firma &amp; Bon" Content="Firma &amp; Bon" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavArticle" Classes="hubnav" Tag="Artikel &amp; Steuern" Content="Artikel &amp; Steuern" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavPayment" Classes="hubnav" Tag="Zahlung" Content="Zahlung" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavDevices" Classes="hubnav" Tag="Geräte" Content="Geräte" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavPersonnel" Classes="hubnav" Tag="Personal" Content="Personal" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavMail" Classes="hubnav" Tag="Berichte &amp; E-Mail" Content="Berichte &amp; E-Mail" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavDatev" Classes="hubnav" Tag="DATEV" Content="DATEV" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavBackup" Classes="hubnav" Tag="Datensicherung" Content="Datensicherung" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavUpdate" Classes="hubnav" Tag="Software &amp; Update" Content="Software &amp; Update" Click="OnSettingsHubSectionClick"/>
+                    <Button x:Name="SettingsNavTechnician" Classes="hubnav" Tag="Erweitert / Techniker" Content="Erweitert / Techniker" Click="OnSettingsHubSectionClick"/>
+                  </UniformGrid>
                 </Border>
                 <Border Grid.Column="1" Classes="hubdetail">
                   <StackPanel Spacing="8">
@@ -1052,11 +1057,13 @@
               </Border>
               <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
-                  <StackPanel>
+                  <UniformGrid Rows="3" Columns="1"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch">
                     <Button x:Name="CashNavOperation" Classes="hubnav active" Tag="BETRIEB" Content="Betrieb" Click="OnCashHubSectionClick"/>
                     <Button x:Name="CashNavReceipt" Classes="hubnav" Tag="BON" Content="Bon / Abrechnung" Click="OnCashHubSectionClick"/>
                     <Button x:Name="CashNavCorrection" Classes="hubnav" Tag="KORREKTUREN" Content="Korrekturen" Click="OnCashHubSectionClick"/>
-                  </StackPanel>
+                  </UniformGrid>
                 </Border>
                 <Grid Grid.Column="1">
                   <Border x:Name="CashOperationPanel" Classes="hubdetail">
@@ -1115,13 +1122,15 @@
               </Border>
               <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
-                  <StackPanel>
+                  <UniformGrid Rows="5" Columns="1"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch">
                     <Button x:Name="ReportsNavDaily" Classes="hubnav active" Tag="TAGESKONTROLLE" Content="Tageskontrolle" Click="OnReportsHubSectionClick"/>
                     <Button x:Name="ReportsNavSales" Classes="hubnav" Tag="VERKAUF" Content="Verkauf / Bestand" Click="OnReportsHubSectionClick"/>
                     <Button x:Name="ReportsNavArchive" Classes="hubnav" Tag="ARCHIV" Content="Archiv / Personal" Click="OnReportsHubSectionClick"/>
                     <Button x:Name="ReportsNavMail" Classes="hubnav" Tag="MAIL" Content="E-Mail / PDF" Click="OnReportsHubSectionClick"/>
                     <Button x:Name="ReportsNavFiscal" Classes="hubnav" Tag="FINANZAMT" Content="Finanzamt / Export" Click="OnReportsHubSectionClick"/>
-                  </StackPanel>
+                  </UniformGrid>
                 </Border>
                 <Grid Grid.Column="1">
                   <Border x:Name="ReportsDailyPanel" Classes="hubdetail">
