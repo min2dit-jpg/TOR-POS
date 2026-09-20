@@ -1,3 +1,4 @@
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -150,6 +151,34 @@ async Task RunAsync()
         var file = Path.Combine(output, $"main-{width}x{height}.png");
         frame.Save(file, new PngBitmapEncoderOptions());
         Console.WriteLine($"saved {file}");
+
+        // R159: the menu workspace changed from a card wall to site-like
+        // sidebar navigation. Capture the real overlays at representative
+        // till/laptop sizes so the resulting CI artifact can be reviewed.
+        if ((width == 1024 && height == 640) || (width == 1366 && height == 768))
+        {
+            var showHub = typeof(MainWindow).GetMethod(
+                "ShowMenuHub",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("ShowMenuHub reflection hook missing.");
+
+            foreach (var section in new[] { "WAREN", "EINSTELLUNGEN", "KASSE", "BERICHTE" })
+            {
+                showHub.Invoke(window, new object[] { section });
+                for (var i = 0; i < 4; i++)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(20);
+                }
+
+                var hubFrame = window.CaptureRenderedFrame()
+                    ?? throw new InvalidOperationException($"No {section} frame rendered.");
+                var hubFile = Path.Combine(output, $"hub-{section.ToLowerInvariant()}-{width}x{height}.png");
+                hubFrame.Save(hubFile, new PngBitmapEncoderOptions());
+                Console.WriteLine($"saved {hubFile}");
+            }
+        }
+
         window.Close();
     }
 
