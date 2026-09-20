@@ -289,20 +289,19 @@ public sealed class PromotionManagementWindow : Window
             _campaigns =
                 await _service.GetAllAsync();
 
-            var today =
-                DateOnly.FromDateTime(
-                    DateTime.Now);
+            var businessDate =
+                await _service.GetBusinessDateAsync();
 
             _campaignList.ItemsSource =
                 _campaigns.Select(x =>
-                    $"{x.StatusFor(today),-11} · " +
+                    $"{x.StatusFor(businessDate),-11} · " +
                     $"{x.DiscountPercent,2}% · " +
                     $"{x.Name} · {x.TargetName} · " +
                     $"{x.StartDate:dd.MM.yyyy}–{x.EndDate:dd.MM.yyyy}")
                 .ToArray();
 
             _status.Text =
-                $"{_campaigns.Count} Angebot(e) geladen.";
+                $"{_campaigns.Count} Angebot(e) geladen · Betriebstag {businessDate:dd.MM.yyyy}.";
         }
         catch (Exception ex)
         {
