@@ -64,11 +64,18 @@ public static class R171ReviewTests
             service.Contains("Exportiert werden nur abgeschlossene Zeiträume", StringComparison.Ordinal),
             "R171 backend range selection remains fail-closed around completed Z reports");
 
+        var revisionNumber =
+            int.TryParse(
+                TorRelease.Revision.TrimStart('R', 'r'),
+                out var parsedRevision)
+                ? parsedRevision
+                : 0;
         assert(
-            TorRelease.Revision == "R171" &&
-            TorRelease.Version == "0.7.33.871" &&
-            TorRelease.UserAgentVersion == "0.7.33-R171",
-            "R171 authoritative runtime release metadata advanced from the stale R149 value");
+            revisionNumber >= 171 &&
+            TorRelease.Version != "0.7.33.849" &&
+            TorRelease.Revision != "R149" &&
+            TorRelease.UserAgentVersion.EndsWith("-" + TorRelease.Revision, StringComparison.Ordinal),
+            "R171 authoritative runtime release metadata advanced from the stale R149 value and remains forward-compatible");
 
         var changelogPath = FindRepoFile("CHANGELOG.md");
         var repositoryRoot = Path.GetDirectoryName(changelogPath)
@@ -76,10 +83,14 @@ public static class R171ReviewTests
         var rootReadme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
         var desktopReadme = File.ReadAllText(FindRepoFile("Desktop/README.md"));
         var changelog = File.ReadAllText(changelogPath);
+        var currentMarker =
+            $"TOR_RELEASE:{TorRelease.Revision}|{TorRelease.Version}|{TorRelease.ReleaseName}";
+        var currentDesktop =
+            $"Aktueller Stand:** {TorRelease.Revision} · {TorRelease.ReleaseName} · {TorRelease.Version}";
         assert(
-            rootReadme.Contains("TOR_RELEASE:R171|0.7.33.871|Merd-M", StringComparison.Ordinal) &&
-            desktopReadme.Contains("Aktueller Stand:** R171 · Merd-M · 0.7.33.871", StringComparison.Ordinal) &&
-            changelog.Contains("TOR_RELEASE:R171|0.7.33.871|Merd-M", StringComparison.Ordinal),
+            rootReadme.Contains(currentMarker, StringComparison.Ordinal) &&
+            desktopReadme.Contains(currentDesktop, StringComparison.Ordinal) &&
+            changelog.Contains(currentMarker, StringComparison.Ordinal),
             "R171 root README, Desktop README and release index agree on the current release");
 
         var versionCheck = File.ReadAllText(
