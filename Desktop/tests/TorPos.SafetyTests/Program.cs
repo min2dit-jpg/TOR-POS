@@ -425,6 +425,7 @@ await R155ReviewTests.Run(root,Assert);
 await R156ReviewTests.Run(root,Assert);
 await R157ReviewTests.Run(Assert);
 await R158ReviewTests.Run(Assert);
+await R159ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -439,7 +440,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // grouped/aligned payment dialog without changing checkout behavior.
 // R158: 4 reviewed checks lock stretched full-height menu cards across the
 // Waren, Einstellungen, Kasse and Berichte workspaces.
-const int ExpectedSafetyChecks = 953;
+// R159: 5 reviewed checks lock the site-like sidebar/detail navigation and
+// the single-file Windows download package.
+const int ExpectedSafetyChecks = 958;
 
 if (checks != ExpectedSafetyChecks)
 {

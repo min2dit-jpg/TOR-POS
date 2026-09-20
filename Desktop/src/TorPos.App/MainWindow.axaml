@@ -280,21 +280,27 @@
     </Style>
 
     <Style Selector="Button.menuhubaction">
-      <Setter Property="MinHeight" Value="50"/>
-      <Setter Property="Padding" Value="12,9"/>
-      <Setter Property="Margin" Value="0,0,0,7"/>
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="MinHeight" Value="62"/>
+      <Setter Property="Padding" Value="16,12"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="Background" Value="#172C42"/>
       <Setter Property="Foreground" Value="#EEF7FF"/>
       <Setter Property="BorderBrush" Value="#3D607E"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="FontSize" Value="14"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="ContentTemplate">
         <DataTemplate>
-          <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding}"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     HorizontalAlignment="Stretch"/>
         </DataTemplate>
       </Setter>
     </Style>
@@ -306,6 +312,51 @@
       <Setter Property="Background" Value="#54252E"/>
       <Setter Property="BorderBrush" Value="#7D3D47"/>
       <Setter Property="Foreground" Value="#FFDDDF"/>
+    </Style>
+
+    <!-- R159: site-like left navigation + one wide content surface. -->
+    <Style Selector="Button.hubnav">
+      <Setter Property="MinHeight" Value="50"/>
+      <Setter Property="Margin" Value="0,0,0,7"/>
+      <Setter Property="Padding" Value="14,10"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Background" Value="#14283D"/>
+      <Setter Property="Foreground" Value="#DCE9F5"/>
+      <Setter Property="BorderBrush" Value="#355F80"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.hubnav:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1A3650"/>
+      <Setter Property="BorderBrush" Value="#53E0C0"/>
+    </Style>
+    <Style Selector="Button.hubnav.active">
+      <Setter Property="Background" Value="#16463E"/>
+      <Setter Property="Foreground" Value="#F1FFF9"/>
+      <Setter Property="BorderBrush" Value="#53E0C0"/>
+    </Style>
+    <Style Selector="Border.hubdetail">
+      <Setter Property="Background" Value="#101925"/>
+      <Setter Property="BorderBrush" Value="#31526C"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
+      <Setter Property="CornerRadius" Value="11"/>
+      <Setter Property="Padding" Value="22"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="TextBlock.hubdetailtitle">
+      <Setter Property="Foreground" Value="#F7FBFF"/>
+      <Setter Property="FontSize" Value="27"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Margin" Value="0,4,0,6"/>
+    </Style>
+    <Style Selector="TextBlock.hubdetailhint">
+      <Setter Property="Foreground" Value="#A7BACC"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,0,0,18"/>
     </Style>
 
   </Window.Styles>
@@ -849,7 +900,7 @@
                     FontWeight="Bold"/>
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
               <TextBlock x:Name="MenuHubTitleText" Text="WAREN" Foreground="#53E0C0" FontSize="15" FontWeight="Bold"/>
-              <TextBlock x:Name="MenuHubSubtitleText" Text="Schnellzugriff" Foreground="#8EA8BE" FontSize="10"/>
+              <TextBlock x:Name="MenuHubSubtitleText" Text="Schnellzugriff" Foreground="#A7BACC" FontSize="12"/>
             </StackPanel>
             <TextBlock Grid.Column="2"
                        Text="TOR POS · SCHNELLZUGRIFF"
@@ -868,37 +919,66 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="WAREN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="Warenverwaltung" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="Warenverwaltung" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Artikel, Bestand und Datenaustausch direkt und übersichtlich erreichen."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                <Border Grid.Column="0" Classes="menuhubcard">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <StackPanel>
-                    <TextBlock Text="ARTIKEL" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Artikelverwaltung · Anlegen / Ändern / Scanner" Click="OnProductsClick"/>
-                    <Button Classes="menuhubaction" Content="ANGEBOTE / AKTIONEN" Click="OnPromotionsClick"/>
-                    <Button Classes="menuhubaction" Content="Duplikate anzeigen" Click="OnDuplicatesClick"/>
-                    <Button Classes="menuhubaction" Content="EAN-Etiketten drucken" Click="OnLabelsClick"/>
+                    <Button x:Name="GoodsNavArticles" Classes="hubnav active" Tag="ARTIKEL" Content="Artikel" Click="OnGoodsHubSectionClick"/>
+                    <Button x:Name="GoodsNavInventory" Classes="hubnav" Tag="BESTAND" Content="Bestand / Inventur" Click="OnGoodsHubSectionClick"/>
+                    <Button x:Name="GoodsNavExchange" Classes="hubnav" Tag="DATENAUSTAUSCH" Content="Datenaustausch" Click="OnGoodsHubSectionClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Classes="menuhubcard">
-                  <StackPanel>
-                    <TextBlock Text="BESTAND / INVENTUR" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Inventur · Scanner &amp; Bestand" Click="OnInventoryClick"/>
-                    <Button Classes="menuhubaction" Content="Warenbestand · Bericht" Click="OnInventoryReportMenuClick"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Classes="menuhubcard">
-                  <StackPanel>
-                    <TextBlock Text="DATENAUSTAUSCH" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Artikel importieren · CSV" Click="OnImportArticlesClick"/>
-                    <Button Classes="menuhubaction" Content="Artikel exportieren · CSV" Click="OnExportArticlesClick"/>
-                    <Button Classes="menuhubaction" Content="Import aus TOR-Datenbank" Click="OnImportDatabaseClick"/>
-                    <Button Classes="menuhubaction menuhubdanger" Content="Programm beenden" Click="OnProgramExitMenuClick"/>
-                  </StackPanel>
-                </Border>
+                <Grid Grid.Column="1">
+                  <Border x:Name="GoodsArticlesPanel" Classes="hubdetail">
+                    <StackPanel>
+                      <TextBlock Text="WAREN · ARTIKEL" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Artikel"/>
+                      <TextBlock Classes="hubdetailhint" Text="Stammdaten, Aktionen, Duplikate und Etiketten an einem Ort."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Artikelverwaltung · Anlegen / Ändern / Scanner" Click="OnProductsClick"/>
+                          <Button Classes="menuhubaction" Content="ANGEBOTE / AKTIONEN" Click="OnPromotionsClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Duplikate anzeigen" Click="OnDuplicatesClick"/>
+                          <Button Classes="menuhubaction" Content="EAN-Etiketten drucken" Click="OnLabelsClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="GoodsInventoryPanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="WAREN · BESTAND" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Bestand / Inventur"/>
+                      <TextBlock Classes="hubdetailhint" Text="Scannerbasierte Inventur und aktueller Warenbestand."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0" Classes="menuhubaction" Content="Inventur · Scanner &amp; Bestand" Click="OnInventoryClick"/>
+                        <Button Grid.Column="1" Classes="menuhubaction" Content="Warenbestand · Bericht" Click="OnInventoryReportMenuClick"/>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="GoodsExchangePanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="WAREN · DATENAUSTAUSCH" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Datenaustausch"/>
+                      <TextBlock Classes="hubdetailhint" Text="Artikel importieren, exportieren oder aus einer TOR-Datenbank übernehmen."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Artikel importieren · CSV" Click="OnImportArticlesClick"/>
+                          <Button Classes="menuhubaction" Content="Artikel exportieren · CSV" Click="OnExportArticlesClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Import aus TOR-Datenbank" Click="OnImportDatabaseClick"/>
+                          <Button Classes="menuhubaction menuhubdanger" Content="Programm beenden" Click="OnProgramExitMenuClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </Grid>
               </Grid>
             </Grid>
 
@@ -907,39 +987,54 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="EINSTELLUNGEN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="System &amp; Betrieb konfigurieren" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
-                  <TextBlock Text="Die häufigsten Einstellungen sind nach Aufgabe gruppiert – ohne verschachtelte Menüs."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                  <TextBlock Text="System &amp; Betrieb konfigurieren" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
+                  <TextBlock Text="Wie im Online-Simulator: Bereich links wählen, Inhalt rechts öffnen."
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="1.05*,1*,1.15*" ColumnSpacing="12">
-                <Border Grid.Column="0" Classes="menuhubcard menuhubbalanced menuhubprimary">
-                  <StackPanel>
-                    <TextBlock Text="KASSE &amp; VERKAUF" Foreground="#7FE6CB" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
-                    <TextBlock Classes="menuhubsectionhint" Text="Bedienablauf, Artikelregeln und Zahlarten"/>
-                    <Button Classes="menuhubaction" Content="Kasse &amp; Bedienung" Click="OnCashOperationSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Artikel &amp; Steuern" Click="OnArticleTaxSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Zahlung" Click="OnGroupedPaymentSettingsMenuClick"/>
-                  </StackPanel>
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                      <Button x:Name="SettingsNavCash" Classes="hubnav active" Tag="Kasse &amp; Bedienung" Content="Kasse &amp; Bedienung" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavCompany" Classes="hubnav" Tag="Firma &amp; Bon" Content="Firma &amp; Bon" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavArticle" Classes="hubnav" Tag="Artikel &amp; Steuern" Content="Artikel &amp; Steuern" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavPayment" Classes="hubnav" Tag="Zahlung" Content="Zahlung" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavDevices" Classes="hubnav" Tag="Geräte" Content="Geräte" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavPersonnel" Classes="hubnav" Tag="Personal" Content="Personal" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavMail" Classes="hubnav" Tag="Berichte &amp; E-Mail" Content="Berichte &amp; E-Mail" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavDatev" Classes="hubnav" Tag="DATEV" Content="DATEV" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavBackup" Classes="hubnav" Tag="Datensicherung" Content="Datensicherung" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavUpdate" Classes="hubnav" Tag="Software &amp; Update" Content="Software &amp; Update" Click="OnSettingsHubSectionClick"/>
+                      <Button x:Name="SettingsNavTechnician" Classes="hubnav" Tag="Erweitert / Techniker" Content="Erweitert / Techniker" Click="OnSettingsHubSectionClick"/>
+                    </StackPanel>
+                  </ScrollViewer>
                 </Border>
-                <Border Grid.Column="1" Classes="menuhubcard menuhubbalanced menuhubfinance">
-                  <StackPanel>
-                    <TextBlock Text="UNTERNEHMEN" Foreground="#9CC3FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
-                    <TextBlock Classes="menuhubsectionhint" Text="Firmendaten, Bon, Personal und Versand"/>
-                    <Button Classes="menuhubaction" Content="Firma &amp; Bon" Click="OnCompanyReceiptSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Personal" Click="OnGroupedPersonnelSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Berichte &amp; E-Mail" Click="OnGroupedReportsEmailSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="DATEV · Kassenbuch / CSV" Click="OnDatevSettingsMenuClick"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Classes="menuhubcard menuhubbalanced">
-                  <StackPanel>
-                    <TextBlock Text="SYSTEM" Foreground="#9CC3FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
-                    <TextBlock Classes="menuhubsectionhint" Text="Geräte, Sicherung, Updates und Techniker"/>
-                    <Button Classes="menuhubaction" Content="Geräte" Click="OnGroupedDeviceSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Datensicherung" Click="OnGroupedBackupSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Software &amp; Update" Click="OnSoftwareUpdateSettingsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Erweitert / Techniker" Click="OnTechnicianSettingsMenuClick"/>
+                <Border Grid.Column="1" Classes="hubdetail">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="EINSTELLUNGEN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                    <TextBlock x:Name="SettingsDetailTitle" Classes="hubdetailtitle" Text="Kasse &amp; Bedienung"/>
+                    <TextBlock x:Name="SettingsDetailHint" Classes="hubdetailhint"
+                               Text="Alltagseinstellungen für Verkauf, Anzeige und Bedienung."/>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                      <Border Background="#172C42" BorderBrush="#3D607E" BorderThickness="1.2" CornerRadius="9" Padding="18" MinHeight="78" HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="4">
+                          <TextBlock x:Name="SettingsDetailCardOne" Text="Start &amp; Anzeige" Foreground="#F7FBFF" FontSize="15" FontWeight="Bold"/>
+                          <TextBlock Text="Einstellungen öffnen" Foreground="#A7BACC" FontSize="12"/>
+                        </StackPanel>
+                      </Border>
+                      <Border Grid.Column="1" Background="#172C42" BorderBrush="#3D607E" BorderThickness="1.2" CornerRadius="9" Padding="18" MinHeight="78" HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="4">
+                          <TextBlock x:Name="SettingsDetailCardTwo" Text="Kassenfunktionen" Foreground="#F7FBFF" FontSize="15" FontWeight="Bold"/>
+                          <TextBlock Text="Einstellungen öffnen" Foreground="#A7BACC" FontSize="12"/>
+                        </StackPanel>
+                      </Border>
+                    </Grid>
+                    <Button x:Name="SettingsDetailOpenButton"
+                            Classes="menuhubaction"
+                            Content="AUSGEWÄHLTEN BEREICH ÖFFNEN"
+                            Margin="0,12,0,0"
+                            Click="OnSettingsDetailOpenClick"/>
                   </StackPanel>
                 </Border>
               </Grid>
@@ -950,39 +1045,61 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="KASSE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="Kassenfunktionen" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="Kassenfunktionen" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Bestellungen, Bons, Abschluss und Korrekturen an einem Ort."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="1.18*,1*,0.86*" ColumnSpacing="12">
-                <Border Grid.Column="0" Classes="menuhubcard menuhubbalanced menuhubprimary">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <StackPanel>
-                    <TextBlock Text="BETRIEB" Foreground="#7FE6CB" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
-                    <TextBlock Classes="menuhubsectionhint" Text="Offene Vorgänge, Bestellungen und Diagnose"/>
-                    <Button Classes="menuhubaction" Content="Bestellübersicht · Vorbereitung / Abholung" Click="OnOrderBoardClick"/>
-                    <Button Classes="menuhubaction" Content="Zahlung prüfen / fortsetzen" Click="OnCheckoutReviewClick"/>
-                    <Button Classes="menuhubaction" Content="Druckwarteschlange prüfen" Click="OnPrinterReviewClick"/>
-                    <Button Classes="menuhubaction" Content="Systemstatus / Diagnose" Click="OnDiagnosticsClick"/>
+                    <Button x:Name="CashNavOperation" Classes="hubnav active" Tag="BETRIEB" Content="Betrieb" Click="OnCashHubSectionClick"/>
+                    <Button x:Name="CashNavReceipt" Classes="hubnav" Tag="BON" Content="Bon / Abrechnung" Click="OnCashHubSectionClick"/>
+                    <Button x:Name="CashNavCorrection" Classes="hubnav" Tag="KORREKTUREN" Content="Korrekturen" Click="OnCashHubSectionClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Classes="menuhubcard menuhubbalanced menuhubfinance">
-                  <StackPanel>
-                    <TextBlock Text="BON / ABRECHNUNG" Foreground="#9CC3FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
-                    <TextBlock Classes="menuhubsectionhint" Text="Heutige Bons, Kassenbewegung und Abschluss"/>
-                    <Button Classes="menuhubaction" Content="Bon-Historie · Heute" Click="OnReceiptHistoryClick"/>
-                    <Button Classes="menuhubaction" Content="Einlage / Entnahme" Click="OnCashMovementClick"/>
-                    <Button Classes="menuhubaction" Content="Z-Bericht" Click="OnZReportClick"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Classes="menuhubcard menuhubbalanced menuhubcorrection">
-                  <StackPanel>
-                    <TextBlock Text="KORREKTUREN" Foreground="#FFADB7" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
-                    <TextBlock Classes="menuhubsectionhint" Text="Nur für bewusste Korrektur- und Rückgabevorgänge"/>
-                    <Button Classes="menuhubaction menuhubdanger" Content="Bon stornieren" Click="OnBonStornoClick"/>
-                    <Button Classes="menuhubaction menuhubdanger" Content="Teilretoure · einzelne Artikel" Click="OnPartialReturnClick"/>
-                  </StackPanel>
-                </Border>
+                <Grid Grid.Column="1">
+                  <Border x:Name="CashOperationPanel" Classes="hubdetail">
+                    <StackPanel>
+                      <TextBlock Text="KASSE · BETRIEB" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Betrieb"/>
+                      <TextBlock Classes="hubdetailhint" Text="Offene Vorgänge, Bestellungen und Diagnose."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Bestellübersicht · Vorbereitung / Abholung" Click="OnOrderBoardClick"/>
+                          <Button Classes="menuhubaction" Content="Zahlung prüfen / fortsetzen" Click="OnCheckoutReviewClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Druckwarteschlange prüfen" Click="OnPrinterReviewClick"/>
+                          <Button Classes="menuhubaction" Content="Systemstatus / Diagnose" Click="OnDiagnosticsClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="CashReceiptPanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="KASSE · BON / ABRECHNUNG" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Bon / Abrechnung"/>
+                      <TextBlock Classes="hubdetailhint" Text="Heutige Bons, Kassenbewegung und Tagesabschluss."/>
+                      <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0" Classes="menuhubaction" Content="Bon-Historie · Heute" Click="OnReceiptHistoryClick"/>
+                        <Button Grid.Column="1" Classes="menuhubaction" Content="Einlage / Entnahme" Click="OnCashMovementClick"/>
+                        <Button Grid.Column="2" Classes="menuhubaction" Content="Z-Bericht" Click="OnZReportClick"/>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="CashCorrectionPanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="KASSE · KORREKTUREN" Foreground="#FFADB7" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Korrekturen"/>
+                      <TextBlock Classes="hubdetailhint" Text="Bewusste Korrektur- und Rückgabevorgänge."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0" Classes="menuhubaction menuhubdanger" Content="Bon stornieren" Click="OnBonStornoClick"/>
+                        <Button Grid.Column="1" Classes="menuhubaction menuhubdanger" Content="Teilretoure · einzelne Artikel" Click="OnPartialReturnClick"/>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </Grid>
               </Grid>
             </Grid>
 
@@ -991,68 +1108,106 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="BERICHTE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="Berichte &amp; Finanzamt" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="Berichte &amp; Finanzamt" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Tageskontrolle, Warenberichte und Fiskal-Exporte klar nach Aufgabe gruppiert."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="*,*,*" RowDefinitions="*,*" ColumnSpacing="10" RowSpacing="10">
-                <Border Grid.Row="0" Grid.Column="0" Classes="menuhubcard">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <StackPanel>
-                    <TextBlock Text="TAGESKONTROLLE" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Berichtszentrum" Click="OnReportCenterClick"/>
-                    <Button Classes="menuhubaction" Content="X-Bericht" Click="OnXReportMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Kassensturz" Click="OnCashCountReportMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Kassenjournal" Click="OnCashJournalMenuClick"/>
+                    <Button x:Name="ReportsNavDaily" Classes="hubnav active" Tag="TAGESKONTROLLE" Content="Tageskontrolle" Click="OnReportsHubSectionClick"/>
+                    <Button x:Name="ReportsNavSales" Classes="hubnav" Tag="VERKAUF" Content="Verkauf / Bestand" Click="OnReportsHubSectionClick"/>
+                    <Button x:Name="ReportsNavArchive" Classes="hubnav" Tag="ARCHIV" Content="Archiv / Personal" Click="OnReportsHubSectionClick"/>
+                    <Button x:Name="ReportsNavMail" Classes="hubnav" Tag="MAIL" Content="E-Mail / PDF" Click="OnReportsHubSectionClick"/>
+                    <Button x:Name="ReportsNavFiscal" Classes="hubnav" Tag="FINANZAMT" Content="Finanzamt / Export" Click="OnReportsHubSectionClick"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Row="0" Grid.Column="1" Classes="menuhubcard">
-                  <StackPanel>
-                    <TextBlock Text="VERKAUF / BESTAND" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Umsatzberichte" Click="OnTurnoverReportsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Monatsbericht / Monatsumsatz" Click="OnMonthlyTurnoverMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Verkaufsstatistik · Artikel" Click="OnSalesStatisticsMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Warenbestand" Click="OnInventoryReportMenuClick"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Row="0" Grid.Column="2" Classes="menuhubcard">
-                  <StackPanel>
-                    <TextBlock Text="ARCHIV / PERSONAL" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Z-Abschluss-Journal" Click="OnZArchiveMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Bedienerabrechnung" Click="OnOperatorSettlementMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Personalüberwachung" Click="OnPersonnelMonitoringMenuClick"/>
-                    <Button Classes="menuhubaction" Content="Stornobericht" Click="OnStornoReportMenuClick"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Row="1" Grid.Column="0" Classes="menuhubcard">
-                  <StackPanel>
-                    <TextBlock Text="E-MAIL / PDF" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Button Classes="menuhubaction" Content="Berichte &amp; E-Mail Einstellungen" Click="OnGroupedReportsEmailSettingsMenuClick"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Classes="menuhubcard">
-                  <StackPanel>
-                    <TextBlock Text="FINANZAMT / EXPORT" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                      <StackPanel Grid.Column="0">
-                        <Button Classes="menuhubaction" Content="Export Buchungsdaten" Click="OnBookingExportMenuClick"/>
-                        <Button Classes="menuhubaction" Content="Programmierungsprotokoll" Click="OnProgrammingProtocolMenuClick"/>
-                        <Button Classes="menuhubaction" Content="Kassenmeldung § 146a Abs. 4 AO" Click="OnKassenmeldungMenuClick"/>
-                        <Button Classes="menuhubaction" Content="Fiskal-Prüfung" Click="OnFiscalAuditMenuClick"/>
-                      </StackPanel>
-                      <StackPanel Grid.Column="1">
-                        <Button Classes="menuhubaction" Content="GDPdU / GoBD Tools" Click="OnGdpduToolsMenuClick"/>
-                        <Button Classes="menuhubaction" Content="DSFinV-K Export" Click="OnDsfinvkExportMenuClick"/>
-                        <Button Classes="menuhubaction" Content="TSE Export" Click="OnTseExportMenuClick"/>
-                        <Button Classes="menuhubaction" Content="DATEV Kassenbuch CSV · Journal" Click="OnDatevAsciiJournalMenuClick"/>
-                        <Button Classes="menuhubaction" Content="DATEV Kassenarchiv API · Journal" Click="OnDatevJournalMenuClick"/>
-                      </StackPanel>
-                    </Grid>
-                  </StackPanel>
-                </Border>
+                <Grid Grid.Column="1">
+                  <Border x:Name="ReportsDailyPanel" Classes="hubdetail">
+                    <StackPanel>
+                      <TextBlock Text="BERICHTE · TAGESKONTROLLE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Tageskontrolle"/>
+                      <TextBlock Classes="hubdetailhint" Text="Zwischenstand, Kassensturz und Kassenjournal."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Berichtszentrum" Click="OnReportCenterClick"/>
+                          <Button Classes="menuhubaction" Content="X-Bericht" Click="OnXReportMenuClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Kassensturz" Click="OnCashCountReportMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Kassenjournal" Click="OnCashJournalMenuClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="ReportsSalesPanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="BERICHTE · VERKAUF / BESTAND" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Verkauf / Bestand"/>
+                      <TextBlock Classes="hubdetailhint" Text="Umsatz, Monatswerte, Artikelstatistik und Warenbestand."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Umsatzberichte" Click="OnTurnoverReportsMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Monatsbericht / Monatsumsatz" Click="OnMonthlyTurnoverMenuClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Verkaufsstatistik · Artikel" Click="OnSalesStatisticsMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Warenbestand" Click="OnInventoryReportMenuClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="ReportsArchivePanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="BERICHTE · ARCHIV / PERSONAL" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Archiv / Personal"/>
+                      <TextBlock Classes="hubdetailhint" Text="Z-Abschlüsse, Bediener, Personal und Stornoauswertung."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Z-Abschluss-Journal" Click="OnZArchiveMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Bedienerabrechnung" Click="OnOperatorSettlementMenuClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Personalüberwachung" Click="OnPersonnelMonitoringMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Stornobericht" Click="OnStornoReportMenuClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="ReportsMailPanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="BERICHTE · E-MAIL / PDF" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="E-Mail / PDF"/>
+                      <TextBlock Classes="hubdetailhint" Text="Berichtsversand und automatische E-Mail-Einstellungen."/>
+                      <Button Classes="menuhubaction" Content="Berichte &amp; E-Mail Einstellungen" Click="OnGroupedReportsEmailSettingsMenuClick"/>
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="ReportsFiscalPanel" Classes="hubdetail" IsVisible="False">
+                    <StackPanel>
+                      <TextBlock Text="BERICHTE · FINANZAMT / EXPORT" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
+                      <TextBlock Classes="hubdetailtitle" Text="Finanzamt / Export"/>
+                      <TextBlock Classes="hubdetailhint" Text="Buchungsdaten, Meldungen, DSFinV-K, TSE und DATEV."/>
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="Export Buchungsdaten" Click="OnBookingExportMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Programmierungsprotokoll" Click="OnProgrammingProtocolMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Kassenmeldung § 146a Abs. 4 AO" Click="OnKassenmeldungMenuClick"/>
+                          <Button Classes="menuhubaction" Content="Fiskal-Prüfung" Click="OnFiscalAuditMenuClick"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
+                          <Button Classes="menuhubaction" Content="GDPdU / GoBD Tools" Click="OnGdpduToolsMenuClick"/>
+                          <Button Classes="menuhubaction" Content="DSFinV-K Export" Click="OnDsfinvkExportMenuClick"/>
+                          <Button Classes="menuhubaction" Content="TSE Export" Click="OnTseExportMenuClick"/>
+                          <Button Classes="menuhubaction" Content="DATEV Kassenbuch CSV · Journal" Click="OnDatevAsciiJournalMenuClick"/>
+                          <Button Classes="menuhubaction" Content="DATEV Kassenarchiv API · Journal" Click="OnDatevJournalMenuClick"/>
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </Grid>
               </Grid>
             </Grid>
-
           </Grid>
         </ScrollViewer>
       </Grid>

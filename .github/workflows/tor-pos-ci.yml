@@ -123,22 +123,36 @@ jobs:
           $uiExit = $LASTEXITCODE
           if ($uiExit -ne 0) { exit $uiExit }
 
-      # CI publishes a self-contained Windows x64 folder so a tester can
-      # unzip and run TOR POS without installing a matching .NET runtime.
-      - name: Windows x64 test paketini olustur
+      # R159: publish as a self-contained single-file app. The package root
+      # contains one obvious TOR-POS.exe; documentation stays in its own folder.
+      - name: Windows x64 tek EXE test paketini olustur
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
-          Remove-Item -Recurse -Force ci-results/publish -ErrorAction SilentlyContinue
-          dotnet publish src/TorPos.App/TorPos.App.csproj -c Release -r win-x64 --self-contained true -o ci-results/publish --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/publish.log
+          Remove-Item -Recurse -Force ci-results/publish,ci-results/package -ErrorAction SilentlyContinue
+          dotnet publish src/TorPos.App/TorPos.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o ci-results/publish --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/publish.log
           $publishExit = $LASTEXITCODE
           if ($publishExit -ne 0) { exit $publishExit }
-          if (-not (Test-Path ci-results/publish/TorPos.App.exe)) { throw 'TOR POS executable was not produced.' }
 
-      - name: Windows x64 test paketini sakla
+          $sourceExe = 'ci-results/publish/TorPos.App.exe'
+          if (-not (Test-Path $sourceExe)) { throw 'TOR POS single-file executable was not produced.' }
+
+          New-Item -ItemType Directory -Force -Path ci-results/package | Out-Null
+          Copy-Item $sourceExe ci-results/package/TOR-POS.exe
+
+          if (Test-Path ci-results/publish/Dokumentation) {
+            Copy-Item -Recurse ci-results/publish/Dokumentation ci-results/package/Dokumentation
+          }
+
+          $rootFiles = Get-ChildItem ci-results/package -File
+          if ($rootFiles.Count -ne 1 -or $rootFiles[0].Name -ne 'TOR-POS.exe') {
+            throw 'Package root must contain only TOR-POS.exe.'
+          }
+
+      - name: Windows x64 tek EXE test paketini sakla
         uses: actions/upload-artifact@v7
         with:
           name: TOR-POS-Windows-x64-${{ github.sha }}
-          path: Desktop/ci-results/publish/**
+          path: Desktop/ci-results/package/**
           if-no-files-found: error
           retention-days: 14
           compression-level: 6

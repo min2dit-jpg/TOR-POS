@@ -3719,6 +3719,135 @@ public partial class MainWindow:Window
         }
     }
 
+    private string _selectedSettingsHubSection = "Kasse & Bedienung";
+
+    private static void MarkHubNavActive(Button active, params Button[] buttons)
+    {
+        foreach (var button in buttons)
+        {
+            button.Classes.Remove("active");
+            if (ReferenceEquals(button, active))
+                button.Classes.Add("active");
+        }
+    }
+
+    private void ShowGoodsHubSection(string section)
+    {
+        GoodsArticlesPanel.IsVisible = section == "ARTIKEL";
+        GoodsInventoryPanel.IsVisible = section == "BESTAND";
+        GoodsExchangePanel.IsVisible = section == "DATENAUSTAUSCH";
+        var active = section switch
+        {
+            "BESTAND" => GoodsNavInventory,
+            "DATENAUSTAUSCH" => GoodsNavExchange,
+            _ => GoodsNavArticles
+        };
+        MarkHubNavActive(active, GoodsNavArticles, GoodsNavInventory, GoodsNavExchange);
+    }
+
+    private void OnGoodsHubSectionClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string section })
+            ShowGoodsHubSection(section);
+    }
+
+    private void ShowCashHubSection(string section)
+    {
+        CashOperationPanel.IsVisible = section == "BETRIEB";
+        CashReceiptPanel.IsVisible = section == "BON";
+        CashCorrectionPanel.IsVisible = section == "KORREKTUREN";
+        var active = section switch
+        {
+            "BON" => CashNavReceipt,
+            "KORREKTUREN" => CashNavCorrection,
+            _ => CashNavOperation
+        };
+        MarkHubNavActive(active, CashNavOperation, CashNavReceipt, CashNavCorrection);
+    }
+
+    private void OnCashHubSectionClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string section })
+            ShowCashHubSection(section);
+    }
+
+    private void ShowReportsHubSection(string section)
+    {
+        ReportsDailyPanel.IsVisible = section == "TAGESKONTROLLE";
+        ReportsSalesPanel.IsVisible = section == "VERKAUF";
+        ReportsArchivePanel.IsVisible = section == "ARCHIV";
+        ReportsMailPanel.IsVisible = section == "MAIL";
+        ReportsFiscalPanel.IsVisible = section == "FINANZAMT";
+        var active = section switch
+        {
+            "VERKAUF" => ReportsNavSales,
+            "ARCHIV" => ReportsNavArchive,
+            "MAIL" => ReportsNavMail,
+            "FINANZAMT" => ReportsNavFiscal,
+            _ => ReportsNavDaily
+        };
+        MarkHubNavActive(active, ReportsNavDaily, ReportsNavSales, ReportsNavArchive, ReportsNavMail, ReportsNavFiscal);
+    }
+
+    private void OnReportsHubSectionClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string section })
+            ShowReportsHubSection(section);
+    }
+
+    private void ShowSettingsHubSection(string section)
+    {
+        _selectedSettingsHubSection = section;
+
+        var (hint, cardOne, cardTwo) = section switch
+        {
+            "Firma & Bon" => ("Firmendaten, Bonkopf, Rechnung und sichtbare Belegdaten.", "Firmendaten", "Bon & Rechnung"),
+            "Artikel & Steuern" => ("Steuersätze, Warengruppen und Artikelregeln.", "Steuersätze", "Warengruppen"),
+            "Zahlung" => ("Bar, Karte, SumUp und weitere Zahlarten konfigurieren.", "Barzahlung", "Kartenzahlung / SumUp"),
+            "Geräte" => ("Bondrucker, Schublade, Kundenanzeige, Scanner und Cloud.", "Drucker & Schublade", "Anzeige / Scanner / Cloud"),
+            "Personal" => ("Benutzer, Rollen, Rechte und Bediener-PIN verwalten.", "Benutzer", "Rollen & Rechte"),
+            "Berichte & E-Mail" => ("Berichte, TOR Mail und automatischen Versand einrichten.", "Berichte", "TOR Mail / Monatsversand"),
+            "DATEV" => ("Kassenbuch Standard-ASCII und DATEV-Anbindungen verwalten.", "Kassenbuch Standard-ASCII", "Kassenarchiv / Steuerberater"),
+            "Datensicherung" => ("Automatische Sicherung, Zielordner und Wiederherstellung.", "Automatische Sicherung", "Wiederherstellung"),
+            "Software & Update" => ("Programmversion, Update-Kanal und Aktualisierung.", "Version", "Updates"),
+            "Erweitert / Techniker" => ("Geschützter Bereich für TSE, Fiskal, Netzwerk und Diagnose.", "TSE / Fiskal", "Netzwerk / Diagnose"),
+            _ => ("Alltagseinstellungen für Verkauf, Anzeige und Bedienung.", "Start & Anzeige", "Kassenfunktionen")
+        };
+
+        SettingsDetailTitle.Text = section;
+        SettingsDetailHint.Text = hint;
+        SettingsDetailCardOne.Text = cardOne;
+        SettingsDetailCardTwo.Text = cardTwo;
+
+        var active = section switch
+        {
+            "Firma & Bon" => SettingsNavCompany,
+            "Artikel & Steuern" => SettingsNavArticle,
+            "Zahlung" => SettingsNavPayment,
+            "Geräte" => SettingsNavDevices,
+            "Personal" => SettingsNavPersonnel,
+            "Berichte & E-Mail" => SettingsNavMail,
+            "DATEV" => SettingsNavDatev,
+            "Datensicherung" => SettingsNavBackup,
+            "Software & Update" => SettingsNavUpdate,
+            "Erweitert / Techniker" => SettingsNavTechnician,
+            _ => SettingsNavCash
+        };
+        MarkHubNavActive(active,
+            SettingsNavCash, SettingsNavCompany, SettingsNavArticle, SettingsNavPayment,
+            SettingsNavDevices, SettingsNavPersonnel, SettingsNavMail, SettingsNavDatev,
+            SettingsNavBackup, SettingsNavUpdate, SettingsNavTechnician);
+    }
+
+    private void OnSettingsHubSectionClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string section })
+            ShowSettingsHubSection(section);
+    }
+
+    private async void OnSettingsDetailOpenClick(object? sender, RoutedEventArgs e) =>
+        await OpenSettingsPageAsync(_selectedSettingsHubSection);
+
     private void ShowMenuHub(string section)
     {
         MenuHubOverlay.IsVisible = true;
@@ -3736,6 +3865,11 @@ public partial class MainWindow:Window
             "BERICHTE" => "Tageskontrolle · Verkauf / Bestand · Finanzamt",
             _ => "Schnellzugriff"
         };
+
+        if (section == "WAREN") ShowGoodsHubSection("ARTIKEL");
+        if (section == "EINSTELLUNGEN") ShowSettingsHubSection("Kasse & Bedienung");
+        if (section == "KASSE") ShowCashHubSection("BETRIEB");
+        if (section == "BERICHTE") ShowReportsHubSection("TAGESKONTROLLE");
 
         ScannerStatus.Text = $"{section} · Schnellzugriff geöffnet";
     }
