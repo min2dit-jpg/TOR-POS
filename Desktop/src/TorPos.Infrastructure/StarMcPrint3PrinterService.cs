@@ -48,8 +48,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         _worker = Task.Run(ProcessQueueAsync);
     }
 
-    public string SupportedModel => "Star mC-Print3 MCP31CBI";
-    public string DriverMode => "Star Windows Driver / GDI";
+    public string SupportedModel => "Epson / Star Windows-Bondrucker";
+    public string DriverMode => "Windows Driver / GDI + RAW ESC/POS/StarPRNT";
 
     private const uint PrinterStatusPaused = 0x00000001;
     private const uint PrinterStatusError = 0x00000002;
@@ -68,6 +68,32 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
     [DllImport("winspool.drv", SetLastError = true)]
     private static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PRINTER_INFO_2
+    {
+        public IntPtr pServerName;
+        public IntPtr pPrinterName;
+        public IntPtr pShareName;
+        public IntPtr pPortName;
+        public IntPtr pDriverName;
+        public IntPtr pComment;
+        public IntPtr pLocation;
+        public IntPtr pDevMode;
+        public IntPtr pSepFile;
+        public IntPtr pPrintProcessor;
+        public IntPtr pDatatype;
+        public IntPtr pParameters;
+        public IntPtr pSecurityDescriptor;
+        public uint Attributes;
+        public uint Priority;
+        public uint DefaultPriority;
+        public uint StartTime;
+        public uint UntilTime;
+        public uint Status;
+        public uint cJobs;
+        public uint AveragePPM;
+    }
 
     internal static string? PrinterStatusProblem(uint status)
     {
@@ -122,6 +148,48 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         }
     }
 
+    private static bool TryReadWindowsPrinterIdentity(
+        string printerName,
+        out string driverName,
+        out string portName)
+    {
+        driverName = "";
+        portName = "";
+
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(printerName))
+            return false;
+
+        if (!OpenPrinter(printerName, out var handle, IntPtr.Zero) || handle == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            _ = GetPrinter(handle, 2, IntPtr.Zero, 0, out var needed);
+            if (needed == 0)
+                return false;
+
+            var buffer = Marshal.AllocHGlobal(checked((int)needed));
+            try
+            {
+                if (!GetPrinter(handle, 2, buffer, needed, out _))
+                    return false;
+
+                var info = Marshal.PtrToStructure<PRINTER_INFO_2>(buffer);
+                driverName = Marshal.PtrToStringUni(info.pDriverName) ?? "";
+                portName = Marshal.PtrToStringUni(info.pPortName) ?? "";
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            _ = ClosePrinter(handle);
+        }
+    }
+
     public IReadOnlyList<string> GetInstalledPrinterNames()
     {
         if (!OperatingSystem.IsWindows())
@@ -138,6 +206,49 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         {
             return Array.Empty<string>();
         }
+    }
+
+    public IReadOnlyList<PrinterDeviceInfo> GetInstalledPrinterDevices()
+    {
+        var names = GetInstalledPrinterNames();
+        if (names.Count == 0)
+            return Array.Empty<PrinterDeviceInfo>();
+
+        var result = new List<PrinterDeviceInfo>(names.Count);
+        foreach (var name in names)
+        {
+            _ = TryReadWindowsPrinterIdentity(name, out var driver, out var port);
+            var detected = ReceiptPrinterProfiles.Detect(name, driver, port);
+            var settings = new PrinterSettings { PrinterName = name };
+
+            bool? ready = null;
+            string status;
+            if (!settings.IsValid)
+            {
+                ready = false;
+                status = "Windows-Druckerwarteschlange ist ungültig.";
+            }
+            else if (TryReadWindowsPrinterStatus(name, out var liveStatus))
+            {
+                var problem = PrinterStatusProblem(liveStatus);
+                ready = problem is null;
+                status = problem ?? "BEREIT";
+            }
+            else
+            {
+                status = "Windows-Warteschlange vorhanden; Live-Gerätestatus nicht verfügbar.";
+            }
+
+            result.Add(detected with { Ready = ready, Status = status });
+        }
+
+        return result
+            .OrderByDescending(x => x.IsReceiptPrinter)
+            .ThenByDescending(x => x.ExactModel)
+            .ThenBy(x => x.Manufacturer, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.PrinterName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public Task<PrinterProbeResult> ProbeAsync(
@@ -166,24 +277,27 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             }
             else
             {
-                var installed = GetInstalledPrinterNames();
+                var installed = GetInstalledPrinterDevices();
                 if (installed.Count == 0)
                 {
                     return new PrinterProbeResult(
                         false,
-                        "Keine Windows-Drucker gefunden. Star Windows Software / Treiber installieren.");
+                        "Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren.");
                 }
 
-                selected = installed.FirstOrDefault(IsPreferredStarMcPrint3Name);
-                selected ??= installed.FirstOrDefault(x =>
-                    x.Contains("Star", StringComparison.OrdinalIgnoreCase));
+                var preferred = installed
+                    .Where(x => x.IsReceiptPrinter && x.Ready != false)
+                    .OrderByDescending(x => x.ExactModel)
+                    .FirstOrDefault();
 
-                if (selected is null)
+                if (preferred is null)
                 {
                     return new PrinterProbeResult(
                         false,
-                        "Star mC-Print3 / MCP31 Windows-Drucker nicht gefunden.");
+                        "Kein geprüftes Epson-/Star-Bondruckerprofil automatisch erkannt. Drucker manuell auswählen.");
                 }
+
+                selected = preferred.PrinterName;
             }
 
             var settings = new PrinterSettings { PrinterName = selected };
@@ -206,11 +320,19 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                     SupportedModel);
             }
 
+            _ = TryReadWindowsPrinterIdentity(selected, out var selectedDriver, out var selectedPort);
+            var profile = ReceiptPrinterProfiles.Detect(selected, selectedDriver, selectedPort);
+            var model = profile.ExactModel
+                ? $"{profile.Manufacturer} {profile.Model}"
+                : profile.IsReceiptPrinter
+                    ? $"{profile.Manufacturer} · Modell nicht eindeutig"
+                    : "Windows-Drucker";
+
             return new PrinterProbeResult(
                 true,
-                $"Star mC-Print3 bereit: {selected}",
+                $"{model} bereit: {selected}",
                 selected,
-                SupportedModel);
+                model);
         }, ct);
     }
 
@@ -234,6 +356,32 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             FiscalTestMode: true);
 
         return EnqueueAsync(job, null, null, printerName, isTest: true, ct);
+    }
+
+    public async Task TestCashDrawerAsync(
+        string printerName,
+        CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Windows printer driver required.");
+        if (string.IsNullOrWhiteSpace(printerName))
+            throw new InvalidOperationException("Bondrucker wurde noch nicht ausgewählt.");
+
+        var settings = new PrinterSettings { PrinterName = printerName.Trim() };
+        if (!settings.IsValid)
+            throw new InvalidOperationException($"Drucker nicht verfügbar: {printerName}");
+
+        if (TryReadWindowsPrinterStatus(printerName, out var status) &&
+            PrinterStatusProblem(status) is { } problem)
+            throw new InvalidOperationException(problem);
+
+        ct.ThrowIfCancellationRequested();
+        await Task.Run(
+            () => RawPrinterIo.SendRaw(
+                printerName.Trim(),
+                StarPrntRawCommands.OpenCashDrawer(),
+                "TOR POS - Kassenschublade Test"),
+            ct).ConfigureAwait(false);
     }
 
     public Task PrintReceiptAsync(
