@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 23;
+    public const int TargetSchemaVersion = 24;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1529,6 +1529,162 @@ public sealed class SchemaMigrationService
                         """;
 
                     await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                24,
+                "R172_FIXED_POINT_QUANTITIES",
+                static async (c, tx, ct) =>
+                {
+                    // R172: future quantity/stock writes use scaled INTEGER
+                    // (1 unit = 1000 milli-units; for kg this is 1 gram).
+                    // Historical append-only rows keep quantity_milli=0 and are
+                    // read through the legacy REAL fallback. This avoids
+                    // rewriting immutable fiscal history during migration.
+                    var statements = new[]
+                    {
+                        "ALTER TABLE products ADD COLUMN stock_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE products ADD COLUMN min_stock_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE product_combo_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE sale_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE parked_receipt_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE training_receipt_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE aborted_vorgang_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE order_bestellung_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE sale_cancelled_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;",
+                        "ALTER TABLE training_cancelled_items ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 0;"
+                    };
+
+                    foreach (var sql in statements)
+                    {
+                        await using var q = c.CreateCommand();
+                        q.Transaction = tx;
+                        q.CommandText = sql;
+                        await q.ExecuteNonQueryAsync(ct);
+                    }
+
+                    await using (var backfill = c.CreateCommand())
+                    {
+                        backfill.Transaction = tx;
+                        backfill.CommandText = """
+                            UPDATE products
+                            SET stock_milli=CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER),
+                                min_stock_milli=CAST(ROUND(COALESCE(min_stock_quantity,0)*1000.0) AS INTEGER);
+
+                            UPDATE product_combo_items
+                            SET quantity_milli=CAST(ROUND(quantity*1000.0) AS INTEGER);
+
+                            UPDATE parked_receipt_items
+                            SET quantity_milli=CAST(ROUND(quantity*1000.0) AS INTEGER);
+                            """;
+                        await backfill.ExecuteNonQueryAsync(ct);
+                    }
+
+                    // Mutable/master rows are guarded so REAL remains only a
+                    // compatibility mirror and can never drift away from the
+                    // authoritative INTEGER value.
+                    await using (var guards = c.CreateCommand())
+                    {
+                        guards.Transaction = tx;
+                        guards.CommandText = """
+                            CREATE TRIGGER IF NOT EXISTS trg_products_fixed_quantity_insert
+                            AFTER INSERT ON products
+                            WHEN NEW.stock_milli<>CAST(ROUND(COALESCE(NEW.stock_quantity,0)*1000.0) AS INTEGER)
+                              OR NEW.min_stock_milli<>CAST(ROUND(COALESCE(NEW.min_stock_quantity,0)*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'product fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_products_fixed_quantity_update
+                            AFTER UPDATE OF stock_quantity,stock_milli,min_stock_quantity,min_stock_milli ON products
+                            WHEN NEW.stock_milli<>CAST(ROUND(COALESCE(NEW.stock_quantity,0)*1000.0) AS INTEGER)
+                              OR NEW.min_stock_milli<>CAST(ROUND(COALESCE(NEW.min_stock_quantity,0)*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'product fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_combo_fixed_quantity_insert
+                            AFTER INSERT ON product_combo_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'combo fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_combo_fixed_quantity_update
+                            AFTER UPDATE OF quantity,quantity_milli ON product_combo_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'combo fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_parked_fixed_quantity_insert
+                            AFTER INSERT ON parked_receipt_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'parked fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_parked_fixed_quantity_update
+                            AFTER UPDATE OF quantity,quantity_milli ON parked_receipt_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'parked fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_sale_fixed_quantity_insert
+                            AFTER INSERT ON sale_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'sale fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_training_fixed_quantity_insert
+                            AFTER INSERT ON training_receipt_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'training fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_aborted_fixed_quantity_insert
+                            AFTER INSERT ON aborted_vorgang_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'aborted fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_order_fixed_quantity_insert
+                            AFTER INSERT ON order_bestellung_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'order fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_sale_cancelled_fixed_quantity_insert
+                            AFTER INSERT ON sale_cancelled_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'cancelled sale fixed quantity mismatch');
+                            END;
+
+                            CREATE TRIGGER IF NOT EXISTS trg_training_cancelled_fixed_quantity_insert
+                            AFTER INSERT ON training_cancelled_items
+                            WHEN NEW.quantity_milli=0
+                              OR NEW.quantity_milli<>CAST(ROUND(NEW.quantity*1000.0) AS INTEGER)
+                            BEGIN
+                              SELECT RAISE(ABORT,'cancelled training fixed quantity mismatch');
+                            END;
+                            """;
+                        await guards.ExecuteNonQueryAsync(ct);
+                    }
                 })
         };
 
