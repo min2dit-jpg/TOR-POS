@@ -860,11 +860,11 @@
           </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalContentAlignment="Stretch">
           <Grid Margin="12">
 
             <!-- WAREN -->
-            <StackPanel x:Name="GoodsHubPanel" IsVisible="False" Spacing="10">
+            <Grid x:Name="GoodsHubPanel" IsVisible="False" RowDefinitions="Auto,*" RowSpacing="10">
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="WAREN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
@@ -873,7 +873,7 @@
                              Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+              <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="10">
                 <Border Grid.Column="0" Classes="menuhubcard">
                   <StackPanel>
                     <TextBlock Text="ARTIKEL" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
@@ -900,10 +900,10 @@
                   </StackPanel>
                 </Border>
               </Grid>
-            </StackPanel>
+            </Grid>
 
             <!-- EINSTELLUNGEN -->
-            <StackPanel x:Name="SettingsHubPanel" IsVisible="False" Spacing="10">
+            <Grid x:Name="SettingsHubPanel" IsVisible="False" RowDefinitions="Auto,*" RowSpacing="10">
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="EINSTELLUNGEN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
@@ -912,7 +912,7 @@
                              Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid ColumnDefinitions="1.05*,1*,1.15*" ColumnSpacing="12">
+              <Grid Grid.Row="1" ColumnDefinitions="1.05*,1*,1.15*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard menuhubbalanced menuhubprimary">
                   <StackPanel>
                     <TextBlock Text="KASSE &amp; VERKAUF" Foreground="#7FE6CB" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
@@ -943,10 +943,10 @@
                   </StackPanel>
                 </Border>
               </Grid>
-            </StackPanel>
+            </Grid>
 
             <!-- KASSE -->
-            <StackPanel x:Name="CashHubPanel" IsVisible="False" Spacing="10">
+            <Grid x:Name="CashHubPanel" IsVisible="False" RowDefinitions="Auto,*" RowSpacing="10">
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="KASSE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
@@ -955,7 +955,7 @@
                              Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid ColumnDefinitions="1.18*,1*,0.86*" ColumnSpacing="12">
+              <Grid Grid.Row="1" ColumnDefinitions="1.18*,1*,0.86*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard menuhubbalanced menuhubprimary">
                   <StackPanel>
                     <TextBlock Text="BETRIEB" Foreground="#7FE6CB" FontSize="12" FontWeight="Bold" Margin="0,0,0,3"/>
@@ -984,10 +984,10 @@
                   </StackPanel>
                 </Border>
               </Grid>
-            </StackPanel>
+            </Grid>
 
             <!-- BERICHTE -->
-            <StackPanel x:Name="ReportsHubPanel" IsVisible="False" Spacing="10">
+            <Grid x:Name="ReportsHubPanel" IsVisible="False" RowDefinitions="Auto,*" RowSpacing="10">
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="BERICHTE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
@@ -996,7 +996,7 @@
                              Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+              <Grid Grid.Row="1" ColumnDefinitions="*,*,*" RowDefinitions="*,*" ColumnSpacing="10" RowSpacing="10">
                 <Border Grid.Row="0" Grid.Column="0" Classes="menuhubcard">
                   <StackPanel>
                     <TextBlock Text="TAGESKONTROLLE" Foreground="#9CC3FF" FontSize="11" FontWeight="Bold" Margin="0,0,0,9"/>
@@ -1051,7 +1051,7 @@
                   </StackPanel>
                 </Border>
               </Grid>
-            </StackPanel>
+            </Grid>
 
           </Grid>
         </ScrollViewer>

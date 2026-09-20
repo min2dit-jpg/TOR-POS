@@ -424,6 +424,7 @@ await R154ReviewTests.Run(root,Assert);
 await R155ReviewTests.Run(root,Assert);
 await R156ReviewTests.Run(root,Assert);
 await R157ReviewTests.Run(Assert);
+await R158ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -436,7 +437,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // GEMISCHT split and multi-size UI snapshot coverage.
 // R157: 5 reviewed checks lock the new TOR POS header branding and the
 // grouped/aligned payment dialog without changing checkout behavior.
-const int ExpectedSafetyChecks = 949;
+// R158: 4 reviewed checks lock stretched full-height menu cards across the
+// Waren, Einstellungen, Kasse and Berichte workspaces.
+const int ExpectedSafetyChecks = 953;
 
 if (checks != ExpectedSafetyChecks)
 {
