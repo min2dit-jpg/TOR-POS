@@ -36,7 +36,7 @@ public sealed record DatevKassenbuchAsciiRow(
     string Message);
 
 /// <summary>
-/// R155 - zero-cost DATEV Kassenbuch online file path.
+/// R155 - DATEV Kassenbuch Standard-ASCII file path without a DATEV API integration.
 ///
 /// DATEV Kassenbuch online accepts Kassenbewegungen in its Standard-ASCII
 /// format (13 columns, semicolon separated). No DATEV API membership or
@@ -236,7 +236,7 @@ public sealed class DatevKassenbuchAsciiService
         var lines = new List<string>
         {
             "DATEV KASSENBUCH · STANDARD-ASCII / CSV",
-            "Kostenfreier Dateiweg ohne DATEV API.",
+            "Standard-Dateiweg ohne DATEV Developer-API in TOR POS.",
             "",
             "Z-Nr. | CSV | E-Mail | Empfänger | Fehler"
         };
