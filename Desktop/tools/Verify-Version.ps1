@@ -53,4 +53,34 @@ foreach ($doc in @('README.md', 'CHANGELOG.md')) {
     }
 }
 
+$desktopReadme = Read-RequiredFile 'README.md'
+$desktopCurrent = "**Aktueller Stand:** $revision · $releaseName · $version"
+if (-not $desktopReadme.Contains($desktopCurrent)) {
+    throw "Versionspruefung fehlgeschlagen: Desktop/README.md enthaelt nicht '$desktopCurrent'."
+}
+
+# R171: mirror equality alone did not catch the real drift that happened after
+# R149: every mirrored file still agreed on R149 while R150+ review contracts
+# and product changes were already present. The highest R###ReviewTests.cs file
+# now forms a lower bound for the declared release revision.
+$revisionMatch = [regex]::Match($revision, '^R([0-9]+))
+if (-not $revisionMatch.Success) {
+    throw "Versionspruefung: TorRelease.Revision hat kein R###-Format: '$revision'."
+}
+$revisionNumber = [int]$revisionMatch.Groups[1].Value
+
+$reviewRevisions = @(
+    Get-ChildItem -LiteralPath 'tests/TorPos.SafetyTests' -Filter 'R*ReviewTests.cs' -File |
+        ForEach-Object {
+            $m = [regex]::Match($_.Name, '^R([0-9]+)ReviewTests\.cs)
+            if ($m.Success) { [int]$m.Groups[1].Value }
+        }
+)
+if ($reviewRevisions.Count -gt 0) {
+    $highestReview = ($reviewRevisions | Measure-Object -Maximum).Maximum
+    if ($revisionNumber -lt $highestReview) {
+        throw "Versionspruefung fehlgeschlagen: Release $revision ist aelter als vorhandener R$highestReview-Reviewvertrag. ReleaseInfo/README/Manifest/Installer aktualisieren."
+    }
+}
+
 Write-Host "VERSION CONSISTENCY OK: $revision · $releaseName · $version"
