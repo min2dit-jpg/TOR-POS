@@ -280,22 +280,27 @@
     </Style>
 
     <Style Selector="Button.menuhubaction">
-      <Setter Property="MinHeight" Value="50"/>
-      <Setter Property="Padding" Value="12,9"/>
-      <Setter Property="Margin" Value="0,0,0,7"/>
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="MinHeight" Value="62"/>
+      <Setter Property="Padding" Value="16,12"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="Background" Value="#172C42"/>
       <Setter Property="Foreground" Value="#EEF7FF"/>
       <Setter Property="BorderBrush" Value="#3D607E"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="FontSize" Value="14"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="ContentTemplate">
         <DataTemplate>
-          <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding}"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     HorizontalAlignment="Stretch"/>
         </DataTemplate>
       </Setter>
     </Style>
@@ -311,16 +316,16 @@
 
     <!-- R159: site-like left navigation + one wide content surface. -->
     <Style Selector="Button.hubnav">
-      <Setter Property="MinHeight" Value="42"/>
-      <Setter Property="Margin" Value="0,0,0,6"/>
-      <Setter Property="Padding" Value="12,8"/>
+      <Setter Property="MinHeight" Value="50"/>
+      <Setter Property="Margin" Value="0,0,0,7"/>
+      <Setter Property="Padding" Value="14,10"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
       <Setter Property="Background" Value="#14283D"/>
       <Setter Property="Foreground" Value="#DCE9F5"/>
       <Setter Property="BorderBrush" Value="#355F80"/>
-      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
       <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontSize" Value="14"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style Selector="Button.hubnav:pointerover /template/ ContentPresenter">
@@ -335,21 +340,23 @@
     <Style Selector="Border.hubdetail">
       <Setter Property="Background" Value="#101925"/>
       <Setter Property="BorderBrush" Value="#31526C"/>
-      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderThickness" Value="1.2"/>
       <Setter Property="CornerRadius" Value="11"/>
-      <Setter Property="Padding" Value="18"/>
+      <Setter Property="Padding" Value="22"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
     </Style>
     <Style Selector="TextBlock.hubdetailtitle">
       <Setter Property="Foreground" Value="#F7FBFF"/>
-      <Setter Property="FontSize" Value="22"/>
+      <Setter Property="FontSize" Value="27"/>
       <Setter Property="FontWeight" Value="Bold"/>
-      <Setter Property="Margin" Value="0,3,0,4"/>
+      <Setter Property="Margin" Value="0,4,0,6"/>
     </Style>
     <Style Selector="TextBlock.hubdetailhint">
-      <Setter Property="Foreground" Value="#8EA8BE"/>
-      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="#A7BACC"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
-      <Setter Property="Margin" Value="0,0,0,14"/>
+      <Setter Property="Margin" Value="0,0,0,18"/>
     </Style>
 
   </Window.Styles>
@@ -893,7 +900,7 @@
                     FontWeight="Bold"/>
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
               <TextBlock x:Name="MenuHubTitleText" Text="WAREN" Foreground="#53E0C0" FontSize="15" FontWeight="Bold"/>
-              <TextBlock x:Name="MenuHubSubtitleText" Text="Schnellzugriff" Foreground="#8EA8BE" FontSize="10"/>
+              <TextBlock x:Name="MenuHubSubtitleText" Text="Schnellzugriff" Foreground="#A7BACC" FontSize="12"/>
             </StackPanel>
             <TextBlock Grid.Column="2"
                        Text="TOR POS · SCHNELLZUGRIFF"
@@ -912,12 +919,12 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="WAREN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="Warenverwaltung" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="Warenverwaltung" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Artikel, Bestand und Datenaustausch direkt und übersichtlich erreichen."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="230,*" ColumnSpacing="12">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <StackPanel>
                     <Button x:Name="GoodsNavArticles" Classes="hubnav active" Tag="ARTIKEL" Content="Artikel" Click="OnGoodsHubSectionClick"/>
@@ -932,11 +939,11 @@
                       <TextBlock Classes="hubdetailtitle" Text="Artikel"/>
                       <TextBlock Classes="hubdetailhint" Text="Stammdaten, Aktionen, Duplikate und Etiketten an einem Ort."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Artikelverwaltung · Anlegen / Ändern / Scanner" Click="OnProductsClick"/>
                           <Button Classes="menuhubaction" Content="ANGEBOTE / AKTIONEN" Click="OnPromotionsClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Duplikate anzeigen" Click="OnDuplicatesClick"/>
                           <Button Classes="menuhubaction" Content="EAN-Etiketten drucken" Click="OnLabelsClick"/>
                         </StackPanel>
@@ -960,11 +967,11 @@
                       <TextBlock Classes="hubdetailtitle" Text="Datenaustausch"/>
                       <TextBlock Classes="hubdetailhint" Text="Artikel importieren, exportieren oder aus einer TOR-Datenbank übernehmen."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Artikel importieren · CSV" Click="OnImportArticlesClick"/>
                           <Button Classes="menuhubaction" Content="Artikel exportieren · CSV" Click="OnExportArticlesClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Import aus TOR-Datenbank" Click="OnImportDatabaseClick"/>
                           <Button Classes="menuhubaction menuhubdanger" Content="Programm beenden" Click="OnProgramExitMenuClick"/>
                         </StackPanel>
@@ -980,12 +987,12 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="EINSTELLUNGEN" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="System &amp; Betrieb konfigurieren" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="System &amp; Betrieb konfigurieren" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Wie im Online-Simulator: Bereich links wählen, Inhalt rechts öffnen."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="240,*" ColumnSpacing="12">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
@@ -1010,16 +1017,16 @@
                     <TextBlock x:Name="SettingsDetailHint" Classes="hubdetailhint"
                                Text="Alltagseinstellungen für Verkauf, Anzeige und Bedienung."/>
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                      <Border Background="#172C42" BorderBrush="#3D607E" BorderThickness="1" CornerRadius="8" Padding="14">
+                      <Border Background="#172C42" BorderBrush="#3D607E" BorderThickness="1.2" CornerRadius="9" Padding="18" MinHeight="78" HorizontalAlignment="Stretch">
                         <StackPanel Spacing="4">
-                          <TextBlock x:Name="SettingsDetailCardOne" Text="Start &amp; Anzeige" Foreground="#F7FBFF" FontWeight="Bold"/>
-                          <TextBlock Text="Einstellungen öffnen" Foreground="#8EA8BE" FontSize="10"/>
+                          <TextBlock x:Name="SettingsDetailCardOne" Text="Start &amp; Anzeige" Foreground="#F7FBFF" FontSize="15" FontWeight="Bold"/>
+                          <TextBlock Text="Einstellungen öffnen" Foreground="#A7BACC" FontSize="12"/>
                         </StackPanel>
                       </Border>
-                      <Border Grid.Column="1" Background="#172C42" BorderBrush="#3D607E" BorderThickness="1" CornerRadius="8" Padding="14">
+                      <Border Grid.Column="1" Background="#172C42" BorderBrush="#3D607E" BorderThickness="1.2" CornerRadius="9" Padding="18" MinHeight="78" HorizontalAlignment="Stretch">
                         <StackPanel Spacing="4">
-                          <TextBlock x:Name="SettingsDetailCardTwo" Text="Kassenfunktionen" Foreground="#F7FBFF" FontWeight="Bold"/>
-                          <TextBlock Text="Einstellungen öffnen" Foreground="#8EA8BE" FontSize="10"/>
+                          <TextBlock x:Name="SettingsDetailCardTwo" Text="Kassenfunktionen" Foreground="#F7FBFF" FontSize="15" FontWeight="Bold"/>
+                          <TextBlock Text="Einstellungen öffnen" Foreground="#A7BACC" FontSize="12"/>
                         </StackPanel>
                       </Border>
                     </Grid>
@@ -1038,12 +1045,12 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="KASSE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="Kassenfunktionen" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="Kassenfunktionen" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Bestellungen, Bons, Abschluss und Korrekturen an einem Ort."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="230,*" ColumnSpacing="12">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <StackPanel>
                     <Button x:Name="CashNavOperation" Classes="hubnav active" Tag="BETRIEB" Content="Betrieb" Click="OnCashHubSectionClick"/>
@@ -1058,11 +1065,11 @@
                       <TextBlock Classes="hubdetailtitle" Text="Betrieb"/>
                       <TextBlock Classes="hubdetailhint" Text="Offene Vorgänge, Bestellungen und Diagnose."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Bestellübersicht · Vorbereitung / Abholung" Click="OnOrderBoardClick"/>
                           <Button Classes="menuhubaction" Content="Zahlung prüfen / fortsetzen" Click="OnCheckoutReviewClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Druckwarteschlange prüfen" Click="OnPrinterReviewClick"/>
                           <Button Classes="menuhubaction" Content="Systemstatus / Diagnose" Click="OnDiagnosticsClick"/>
                         </StackPanel>
@@ -1101,12 +1108,12 @@
               <Border Background="#102235" BorderBrush="#294765" BorderThickness="1" CornerRadius="11" Padding="14">
                 <StackPanel Spacing="3">
                   <TextBlock Text="BERICHTE" Foreground="#53E0C0" FontSize="10" FontWeight="Bold"/>
-                  <TextBlock Text="Berichte &amp; Finanzamt" Foreground="#F7FBFF" FontSize="22" FontWeight="Bold"/>
+                  <TextBlock Text="Berichte &amp; Finanzamt" Foreground="#F7FBFF" FontSize="28" FontWeight="Bold"/>
                   <TextBlock Text="Tageskontrolle, Warenberichte und Fiskal-Exporte klar nach Aufgabe gruppiert."
-                             Foreground="#91A8BB" FontSize="11" TextWrapping="Wrap"/>
+                             Foreground="#A7BACC" FontSize="13" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-              <Grid Grid.Row="1" ColumnDefinitions="230,*" ColumnSpacing="12">
+              <Grid Grid.Row="1" ColumnDefinitions="270,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="menuhubcard" Padding="10">
                   <StackPanel>
                     <Button x:Name="ReportsNavDaily" Classes="hubnav active" Tag="TAGESKONTROLLE" Content="Tageskontrolle" Click="OnReportsHubSectionClick"/>
@@ -1123,11 +1130,11 @@
                       <TextBlock Classes="hubdetailtitle" Text="Tageskontrolle"/>
                       <TextBlock Classes="hubdetailhint" Text="Zwischenstand, Kassensturz und Kassenjournal."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Berichtszentrum" Click="OnReportCenterClick"/>
                           <Button Classes="menuhubaction" Content="X-Bericht" Click="OnXReportMenuClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Kassensturz" Click="OnCashCountReportMenuClick"/>
                           <Button Classes="menuhubaction" Content="Kassenjournal" Click="OnCashJournalMenuClick"/>
                         </StackPanel>
@@ -1140,11 +1147,11 @@
                       <TextBlock Classes="hubdetailtitle" Text="Verkauf / Bestand"/>
                       <TextBlock Classes="hubdetailhint" Text="Umsatz, Monatswerte, Artikelstatistik und Warenbestand."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Umsatzberichte" Click="OnTurnoverReportsMenuClick"/>
                           <Button Classes="menuhubaction" Content="Monatsbericht / Monatsumsatz" Click="OnMonthlyTurnoverMenuClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Verkaufsstatistik · Artikel" Click="OnSalesStatisticsMenuClick"/>
                           <Button Classes="menuhubaction" Content="Warenbestand" Click="OnInventoryReportMenuClick"/>
                         </StackPanel>
@@ -1157,11 +1164,11 @@
                       <TextBlock Classes="hubdetailtitle" Text="Archiv / Personal"/>
                       <TextBlock Classes="hubdetailhint" Text="Z-Abschlüsse, Bediener, Personal und Stornoauswertung."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Z-Abschluss-Journal" Click="OnZArchiveMenuClick"/>
                           <Button Classes="menuhubaction" Content="Bedienerabrechnung" Click="OnOperatorSettlementMenuClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Personalüberwachung" Click="OnPersonnelMonitoringMenuClick"/>
                           <Button Classes="menuhubaction" Content="Stornobericht" Click="OnStornoReportMenuClick"/>
                         </StackPanel>
@@ -1182,13 +1189,13 @@
                       <TextBlock Classes="hubdetailtitle" Text="Finanzamt / Export"/>
                       <TextBlock Classes="hubdetailhint" Text="Buchungsdaten, Meldungen, DSFinV-K, TSE und DATEV."/>
                       <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="Export Buchungsdaten" Click="OnBookingExportMenuClick"/>
                           <Button Classes="menuhubaction" Content="Programmierungsprotokoll" Click="OnProgrammingProtocolMenuClick"/>
                           <Button Classes="menuhubaction" Content="Kassenmeldung § 146a Abs. 4 AO" Click="OnKassenmeldungMenuClick"/>
                           <Button Classes="menuhubaction" Content="Fiskal-Prüfung" Click="OnFiscalAuditMenuClick"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Stretch">
                           <Button Classes="menuhubaction" Content="GDPdU / GoBD Tools" Click="OnGdpduToolsMenuClick"/>
                           <Button Classes="menuhubaction" Content="DSFinV-K Export" Click="OnDsfinvkExportMenuClick"/>
                           <Button Classes="menuhubaction" Content="TSE Export" Click="OnTseExportMenuClick"/>
