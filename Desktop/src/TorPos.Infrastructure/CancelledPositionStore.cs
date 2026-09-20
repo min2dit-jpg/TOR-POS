@@ -58,7 +58,8 @@ internal static class CancelledPositionStore
             SELECT product_id,product_name,variant_name,barcode,quantity,unit_price_cents,vat_rate,pfand_cents,
                    list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
                    COALESCE(vat_allocations_json,''),
-                   COALESCE(menu_components_json,'')
+                   COALESCE(menu_components_json,''),
+                   COALESCE((SELECT p.unit FROM products p WHERE p.id={table}.product_id),'Stück')
             FROM {table} WHERE {OwnerColumn(table)}=$o ORDER BY id;
             """;
         q.Parameters.AddWithValue("$o", ownerId);
@@ -81,7 +82,8 @@ internal static class CancelledPositionStore
                 PromotionPercent = r.GetInt32(11),
                 PromotionDiscountUnitCents = r.GetInt64(12),
                 VatAllocations = VatAllocationStorage.Deserialize(r.GetString(13)),
-                MenuComponents = MenuComponentStorage.Deserialize(r.GetString(14))
+                MenuComponents = MenuComponentStorage.Deserialize(r.GetString(14)),
+                Unit = r.GetString(15)
             });
         }
 
