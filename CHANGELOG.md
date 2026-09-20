@@ -1,12 +1,18 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R149|0.7.33.849|Merd-M -->
+<!-- TOR_RELEASE:R171|0.7.33.871|Merd-M -->
 
 ## Aktueller Release
 
-**R149 · Merd-M · 0.7.33.849**
+**R171 · Merd-M · 0.7.33.871**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R171
+
+- DSFinV-K 2.4 Export: frei wählbare Von-/Bis-Kalendertage, Preflight und Zielordnerauswahl; Export bleibt auf vollständige Z-Abschlusszeiträume begrenzt.
+- Release-Metadaten nach R149-Stagnation auf R171 / 0.7.33.871 synchronisiert; Versionsprüfung wird gegen neue Review-Revisionen gehärtet.
+- R169/R170 Funktionen (Drucker-Zentrale, Kassenschubladen-Test, Gewichtsartikel/Waage) sind damit erstmals in einer fortgeschriebenen zentralen Release-Revision enthalten.
 
 ## Warum es viele R*-Dateien gibt
 
