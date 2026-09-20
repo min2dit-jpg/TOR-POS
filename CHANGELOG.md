@@ -1,12 +1,19 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R171|0.7.33.871|Merd-M -->
+<!-- TOR_RELEASE:R172|0.7.33.872|Merd-M -->
 
 ## Aktueller Release
 
-**R171 · Merd-M · 0.7.33.871**
+**R172 · Merd-M · 0.7.33.872**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R172
+
+- SQLite: verbliebene unabhängige Schreibpfade für Karten-Erstattungsstatus, DATEV-Outbox/Kassenbuch und Schema-Migrationen laufen über die zentrale FIFO-IoQueue; WAL/busy-timeout bleiben aktiv.
+- Swissbit: native WORM-API Geräte-, Transaktions-, Aktivierungs- und TAR-Aufrufe laufen standardmäßig in einem isolierten Hilfsprozess mit Hard-Timeout; bei Timeout/Abbruch wird der Worker-Prozess beendet und der bestehende TSE-Ausfallpfad greift.
+- Mengen/Bestand: neue Primärspeicherung als skalierte INTEGER-Milli-Einheiten (1 kg = 1000, also 1 g = 1); REAL-Spalten bleiben nur als Abwärtskompatibilitäts-Mirror/Fallback für Altbestände erhalten.
+- CI: R172-Regressionsvertrag prüft FIFO-Single-Writer, Watchdog-Isolation, Fixed-Point-Pfade und erzeugt nach erfolgreicher Prüfung ein ZIP des exakt committed Source-Trees.
 
 ### R171
 
