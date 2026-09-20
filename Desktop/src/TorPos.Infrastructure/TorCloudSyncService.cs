@@ -57,12 +57,12 @@ public sealed class TorCloudOutbox
         {
             var found=false;
             using var combo=c.CreateCommand(); combo.Transaction=tx;
-            combo.CommandText="SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id;";
+            combo.CommandText="SELECT component_product_id,CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END FROM product_combo_items WHERE product_id=$id;";
             combo.Parameters.AddWithValue("$id",line.ProductId);
             using var r=combo.ExecuteReader();
             while(r.Read())
             {
-                found=true; var id=r.GetInt64(0); var qty=line.Quantity*Convert.ToDecimal(r.GetDouble(1));
+                found=true; var id=r.GetInt64(0); var qty=line.Quantity*QuantityStorage.FromMilli(r.GetInt64(1));
                 consumption[id]=consumption.GetValueOrDefault(id)+qty;
             }
             if(!found) consumption[line.ProductId]=consumption.GetValueOrDefault(line.ProductId)+line.Quantity;
@@ -109,8 +109,12 @@ public sealed class TorCloudOutbox
     public Task EnqueueStockAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx)??throw new InvalidOperationException("Cloud zuerst speichern.");
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="""
-            SELECT p.id,p.name,p.sku,p.barcode,COALESCE(p.stock_quantity,0),p.unit,p.base_price_cents,
-                   c.name,COALESCE(g.name,'Standard'),COALESCE(p.min_stock_quantity,0),COALESCE(p.purchase_price_cents,0)
+            SELECT p.id,p.name,p.sku,p.barcode,
+                   COALESCE(p.stock_milli,CAST(ROUND(COALESCE(p.stock_quantity,0)*1000.0) AS INTEGER)),
+                   p.unit,p.base_price_cents,
+                   c.name,COALESCE(g.name,'Standard'),
+                   COALESCE(p.min_stock_milli,CAST(ROUND(COALESCE(p.min_stock_quantity,0)*1000.0) AS INTEGER)),
+                   COALESCE(p.purchase_price_cents,0)
             FROM products p
             JOIN categories c ON c.id=p.category_id
             LEFT JOIN category_master_data m ON m.category_id=c.id
@@ -126,9 +130,9 @@ public sealed class TorCloudOutbox
         var items=new List<object>();
         using(var r=q.ExecuteReader())while(r.Read())items.Add(new {
             product_key=r.GetInt64(0).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            name=r.GetString(1),sku=r.GetString(2),barcode=r.GetString(3),quantity=r.GetDouble(4),
+            name=r.GetString(1),sku=r.GetString(2),barcode=r.GetString(3),quantity=QuantityStorage.FromMilli(r.GetInt64(4)),
             unit=r.GetString(5),price_cents=r.GetInt64(6),category_name=r.GetString(7),group_name=r.GetString(8),
-            min_stock_quantity=r.GetDouble(9),purchase_price_cents=r.GetInt64(10)});
+            min_stock_quantity=QuantityStorage.FromMilli(r.GetInt64(9)),purchase_price_cents=r.GetInt64(10)});
         if(items.Count>5000)throw new InvalidOperationException("R48 unterstützt vollständige Artikel-/Bestandsübertragung bis 5000 aktive Artikel. Es wurden keine Artikel übertragen.");
         var e=Event("stock.snapshot",new {items});
         if(Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(e))>900000)throw new InvalidOperationException("Bestandsdaten zu groß. Es wurden keine Artikel übertragen.");
