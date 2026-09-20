@@ -435,6 +435,7 @@ await R165ReviewTests.Run(Assert);
 await R167ReviewTests.Run(root,Assert);
 R168ReviewTests.Run(Assert);
 await R169ReviewTests.Run(Assert);
+await R170ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -470,7 +471,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // R169: 12 reviewed checks lock conservative Epson/Star printer recognition,
 // Windows driver/port discovery, first-run/settings integration and the
 // explicit no-sale/no-receipt cash-drawer connection test.
-const int ExpectedSafetyChecks = 1016;
+// R170: 12 reviewed checks lock gram/kg normalization, manual disconnected
+// weighing, kg receipt/stock semantics, scale settings and fail-closed
+// connected-scale preparation.
+const int ExpectedSafetyChecks = 1028;
 
 if (checks != ExpectedSafetyChecks)
 {
