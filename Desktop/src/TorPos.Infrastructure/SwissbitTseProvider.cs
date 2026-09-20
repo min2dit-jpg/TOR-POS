@@ -17,7 +17,7 @@ public sealed class SwissbitHardwareTseProvider : ITseProvider
         ISwissbitSdkBridge? bridge = null)
     {
         _bridge = bridge ??
-            new SwissbitWormApiBridge();
+            new SwissbitWatchdogBridge();
     }
 
     public string ProviderId =>
