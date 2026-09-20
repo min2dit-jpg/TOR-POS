@@ -990,14 +990,20 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
                 Text(name, bold);
 
-                // R123: "1,5 x" on a German Beleg, whatever the Windows culture.
-                var qty = GermanFormat.Number(item.Quantity, "0.##");
+                // R123/R170: quantity is German-formatted; weighed sales
+                // explicitly show kg and the €/kg price basis.
+                var qty = item.IsWeighted
+                    ? WeightedSales.QuantityLabel(item.Quantity)
+                    : GermanFormat.Number(item.Quantity, "0.##");
 
                 if (item.HasPromotion)
                 {
                     Text(
-                        $"{qty} x {Money(item.EffectiveListUnitPriceCents)}  →  " +
-                        $"{Money(item.UnitPriceCents)}     {Money(item.LineTotalCents)}",
+                        item.IsWeighted
+                            ? $"{qty} x {Money(item.EffectiveListUnitPriceCents)}/kg  →  " +
+                              $"{Money(item.UnitPriceCents)}/kg     {Money(item.LineTotalCents)}"
+                            : $"{qty} x {Money(item.EffectiveListUnitPriceCents)}  →  " +
+                              $"{Money(item.UnitPriceCents)}     {Money(item.LineTotalCents)}",
                         normal);
 
                     Text(
@@ -1009,7 +1015,11 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                 {
                     var unit = Money(item.UnitPriceCents);
                     var total = Money(item.LineTotalCents);
-                    Text($"{qty} x {unit}     {total}", normal);
+                    Text(
+                        item.IsWeighted
+                            ? $"{qty} x {unit}/kg     {total}"
+                            : $"{qty} x {unit}     {total}",
+                        normal);
                 }
 
                 if (item.PfandCents > 0)
