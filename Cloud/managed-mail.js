@@ -213,7 +213,7 @@ async function sendManagedMail(config, mail, timeoutMs = 60000) {
     socket = config.mode === 'tls'
       ? tls.connect({ host: config.host, port: config.port, servername: config.host, minVersion: 'TLSv1.2', rejectUnauthorized: true })
       : net.connect({ host: config.host, port: config.port });
-    await socketConnected(socket);
+    await socketConnected(socket, config.mode === 'tls');
     let greeting = await smtpResponse(socket);
     if (greeting.code !== 220) throw new Error(`SMTP-Begrüßung abgelehnt: ${greeting.code}`);
 
@@ -222,7 +222,7 @@ async function sendManagedMail(config, mail, timeoutMs = 60000) {
     if (config.mode === 'starttls') {
       await smtpCommand(socket, 'STARTTLS', [220]);
       const secured = tls.connect({ socket, servername: config.host, minVersion: 'TLSv1.2', rejectUnauthorized: true });
-      await socketConnected(secured);
+      await socketConnected(secured, true);
       socket = secured;
       await smtpCommand(socket, 'EHLO torpos-cloud', [250]);
     }
