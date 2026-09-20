@@ -2804,6 +2804,15 @@ private Control TsePage()
                 StatusText.Text =
                     $"DSFinV-K 2.4 exportiert · {range.FromDate:dd.MM.yyyy}–{range.ToDate:dd.MM.yyyy} · {path}" +
                     (warnings > 0 ? $" · {warnings} Hinweis(e) im Exportprotokoll" : "");
+
+                await new DsfinvkDeliveryWindow(
+                        _settings,
+                        _audit,
+                        path,
+                        range.FromDate,
+                        range.ToDate,
+                        _currentUser.Username)
+                    .ShowDialog(this);
             }
             catch (Exception ex)
             {
