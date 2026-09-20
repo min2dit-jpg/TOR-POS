@@ -12,9 +12,9 @@ public sealed class UserManagementWindow : Window
     private readonly TabControl _tabs = new();
     private readonly TextBlock _status = new();
     private readonly List<UserEditor> _editors = new();
-    private readonly TextBox _adminCurrentPassword = new() { PasswordChar = '●' };
-    private readonly TextBox _adminNewPassword = new() { PasswordChar = '●' };
-    private readonly TextBox _adminNewPin = new() { PasswordChar = '●', MaxLength = 4 };
+    private TextBox? _adminCurrentPassword;
+    private TextBox? _adminNewPassword;
+    private TextBox? _adminNewPin;
 
     public UserManagementWindow(
         IAuthenticationService authentication,
@@ -139,9 +139,17 @@ public sealed class UserManagementWindow : Window
 
     private Control BuildAdminCredentialPanel()
     {
-        _adminCurrentPassword.Text = "";
-        _adminNewPassword.Text = "";
-        _adminNewPin.Text = "";
+        // R164: this panel can be rebuilt after SaveAsync/LoadAsync. Avalonia
+        // controls may have only one visual parent, so create fresh input
+        // controls every time instead of reusing the previous StackPanel's
+        // TextBox instances.
+        _adminCurrentPassword = new TextBox { PasswordChar = '●' };
+        _adminNewPassword = new TextBox { PasswordChar = '●' };
+        _adminNewPin = new TextBox { PasswordChar = '●', MaxLength = 4 };
+
+        var currentPassword = _adminCurrentPassword;
+        var newPasswordBox = _adminNewPassword;
+        var newPinBox = _adminNewPin;
 
         var change = new Button
         {
@@ -155,20 +163,20 @@ public sealed class UserManagementWindow : Window
         {
             try
             {
-                var newPassword = _adminNewPassword.Text ?? "";
-                var newPin = _adminNewPin.Text ?? "";
+                var newPassword = newPasswordBox.Text ?? "";
+                var newPin = newPinBox.Text ?? "";
 
                 if (newPassword.Length < 4)
                     throw new InvalidOperationException("Das neue Admin-Passwort muss mindestens 4 Zeichen haben.");
 
                 await _authentication.ChangeAdminCredentialsAsync(
-                    _adminCurrentPassword.Text ?? "",
+                    currentPassword.Text ?? "",
                     newPassword,
                     newPin);
 
-                _adminCurrentPassword.Text = "";
-                _adminNewPassword.Text = "";
-                _adminNewPin.Text = "";
+                currentPassword.Text = "";
+                newPasswordBox.Text = "";
+                newPinBox.Text = "";
                 _status.Text = "Admin-Passwort und PIN wurden geändert.";
             }
             catch (Exception ex)
@@ -201,11 +209,11 @@ public sealed class UserManagementWindow : Window
                         Opacity = 0.68
                     },
                     new TextBlock { Text = "Aktuelles Admin-Passwort", Opacity = 0.72 },
-                    _adminCurrentPassword,
+                    currentPassword,
                     new TextBlock { Text = "Neues Admin-Passwort", Opacity = 0.72 },
-                    _adminNewPassword,
+                    newPasswordBox,
                     new TextBlock { Text = "Neue 4-stellige Admin-PIN", Opacity = 0.72 },
-                    _adminNewPin,
+                    newPinBox,
                     change
                 }
             }
