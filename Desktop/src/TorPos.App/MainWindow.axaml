@@ -340,10 +340,11 @@
            status texts (full -> compact -> minimal) so that last resort is
            not normally reached. -->
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <Border Background="#2CC4A7" CornerRadius="10" Width="44" Height="44"
-                BoxShadow="0 0 14 1 #802CC4A7">
-          <TextBlock Text="TOR" Foreground="#07140F" FontSize="15" FontWeight="Bold"
-                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Border CornerRadius="22" Width="44" Height="44" ClipToBounds="True"
+                BorderBrush="#279CFF" BorderThickness="1"
+                BoxShadow="0 0 14 1 #80279CFF">
+          <Image Source="avares://TorPos.App/Assets/TorPos-Brand.jpg"
+                 Stretch="UniformToFill"/>
         </Border>
 
         <Grid Grid.Column="1" x:Name="HeaderMainHost" ColumnDefinitions="*,Auto,Auto,Auto"
