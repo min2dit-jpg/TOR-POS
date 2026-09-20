@@ -252,11 +252,11 @@ public sealed class UserManagementWindow : Window
             AddField(fields, "Neues Passwort", _password,
                 user.CredentialsConfigured
                     ? "Leer lassen = vorhandenes Passwort behalten."
-                    : "Standard ist 1234. Mindestens 4 Zeichen; kann geändert werden.");
+                    : "Zum Aktivieren reicht Passwort oder PIN. Passwort: mindestens 4 Zeichen.");
             AddField(fields, "Neue 4-stellige PIN", _pin,
                 user.CredentialsConfigured
                     ? "Leer lassen = vorhandene PIN behalten."
-                    : "Vor der ersten Aktivierung eine PIN vergeben.");
+                    : "Optional: 4 Ziffern. Leer lassen = Anmeldung nur per Passwort.");
             fields.Children.Add(_active);
 
             var permissionPanel = new WrapPanel

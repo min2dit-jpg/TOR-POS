@@ -157,6 +157,49 @@ jobs:
           retention-days: 14
           compression-level: 6
 
+      # R162: the ZIP is a portable test artifact. Customers need the real
+      # installer because it owns Program Files, uninstall registration and the
+      # TOR POS desktop shortcut.
+      - name: Inno Setup kur
+        run: |
+          $isccCandidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Kunden Setup EXE olustur
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $isccCandidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'Inno Setup ISCC.exe not found.' }
+
+          Remove-Item -Recurse -Force installer-output -ErrorAction SilentlyContinue
+          & $iscc "/DMyPublishDir=ci-results\publish" "/DMyOutputBaseFilename=TOR-POS-Setup" "TOR-POS-Pro-Setup.iss" 2>&1 |
+            Tee-Object -FilePath ci-results/installer.log
+          $setupExit = $LASTEXITCODE
+          if ($setupExit -ne 0) { exit $setupExit }
+          if (-not (Test-Path installer-output/TOR-POS-Setup.exe)) {
+            throw 'TOR POS customer setup was not produced.'
+          }
+
+      - name: Kunden Setup EXE sakla
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-POS-Setup-${{ github.sha }}
+          path: Desktop/installer-output/TOR-POS-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
       # upload-artifact paths are relative to the repository root, not to the
       # job's working-directory.
       - name: Hata ve test gunluklerini sakla
