@@ -2127,14 +2127,14 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Transaction = (SqliteTransaction)tx;
             q.CommandText = """
                 INSERT INTO sale_items(
-                  sale_id,product_id,product_name,variant_name,barcode,quantity,
+                  sale_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,
                   unit_price_cents,vat_rate,pfand_cents,line_total_cents,
                   list_unit_price_cents,list_line_total_cents,
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
                   promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json)
                 VALUES(
-                  $sale,$product,$name,$variant,$barcode,$qty,
+                  $sale,$product,$name,$variant,$barcode,$qty,$qtyMilli,
                   $price,$vat,$pfand,$total,
                   $listUnit,$listTotal,
                   $promotionId,$promotionName,$promotionPercent,
