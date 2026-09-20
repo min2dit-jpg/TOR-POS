@@ -270,102 +270,106 @@ public sealed class DatevKassenarchivService
         return new ReportDocument("DATEV KASSENARCHIV · JOURNAL", lines, DateTimeOffset.Now);
     }
 
-    public async Task<string> MarkWaitingForOfficialApiAsync(
+    public Task<string> MarkWaitingForOfficialApiAsync(
         long outboxId,
         string actor,
         CancellationToken ct = default)
-    {
-        var row = await GetByIdAsync(outboxId, ct)
-            ?? throw new InvalidOperationException("DATEV-Outbox-Eintrag nicht gefunden.");
-        VerifyPackageHash(row);
+        => IoQueue.RunAsync(async () =>
+        {
+            var row = await GetByIdAsync(outboxId, ct)
+                ?? throw new InvalidOperationException("DATEV-Outbox-Eintrag nicht gefunden.");
+            VerifyPackageHash(row);
 
-        var now = DateTimeOffset.Now;
-        const string message =
-            "Online-Transport noch nicht freigeschaltet: offizielle DATEV Developer-Portal API/Auth-Konfiguration erforderlich.";
+            var now = DateTimeOffset.Now;
+            const string message =
+                "Online-Transport noch nicht freigeschaltet: offizielle DATEV Developer-Portal API/Auth-Konfiguration erforderlich.";
 
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            UPDATE datev_kassenarchiv_outbox
-            SET state='WAITING_API',
-                attempt_count=attempt_count+1,
-                last_attempt_at=$at,
-                last_error=$error
-            WHERE id=$id AND state<>'SENT';
-            """;
-        q.Parameters.AddWithValue("$at", now.ToString("O"));
-        q.Parameters.AddWithValue("$error", message);
-        q.Parameters.AddWithValue("$id", outboxId);
-        await q.ExecuteNonQueryAsync(ct);
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE datev_kassenarchiv_outbox
+                SET state='WAITING_API',
+                    attempt_count=attempt_count+1,
+                    last_attempt_at=$at,
+                    last_error=$error
+                WHERE id=$id AND state<>'SENT';
+                """;
+            q.Parameters.AddWithValue("$at", now.ToString("O"));
+            q.Parameters.AddWithValue("$error", message);
+            q.Parameters.AddWithValue("$id", outboxId);
+            await q.ExecuteNonQueryAsync(ct);
 
-        await _audit.WriteAsync(
-            actor,
-            "DATEV_KASSENARCHIV_WAITING_API",
-            "DATEV_OUTBOX",
-            outboxId.ToString(),
-            $"sha256={row.PackageSha256}",
-            ct);
+            await _audit.WriteAsync(
+                actor,
+                "DATEV_KASSENARCHIV_WAITING_API",
+                "DATEV_OUTBOX",
+                outboxId.ToString(),
+                $"sha256={row.PackageSha256}",
+                ct);
 
-        return message;
-    }
+            return message;
+        });
 
-    private async Task<long> InsertPreparingAsync(ZArchiveRow z, CancellationToken ct)
-    {
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            INSERT INTO datev_kassenarchiv_outbox(
-              z_archive_id,z_number,created_at,period_from,period_to,state)
-            VALUES($za,$zn,$created,$from,$to,'PREPARING')
-            ON CONFLICT(z_archive_id) DO UPDATE SET
-              state=CASE
-                WHEN datev_kassenarchiv_outbox.package_sha256<>'' THEN datev_kassenarchiv_outbox.state
-                ELSE 'PREPARING'
-              END;
-            SELECT id FROM datev_kassenarchiv_outbox WHERE z_archive_id=$za;
-            """;
-        q.Parameters.AddWithValue("$za", z.Id);
-        q.Parameters.AddWithValue("$zn", z.ZNumber);
-        q.Parameters.AddWithValue("$created", DateTimeOffset.Now.ToString("O"));
-        q.Parameters.AddWithValue("$from", z.PeriodFrom.ToString("O"));
-        q.Parameters.AddWithValue("$to", z.PeriodTo.ToString("O"));
-        return Convert.ToInt64(await q.ExecuteScalarAsync(ct));
-    }
+    private Task<long> InsertPreparingAsync(ZArchiveRow z, CancellationToken ct)
+        => IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                INSERT INTO datev_kassenarchiv_outbox(
+                  z_archive_id,z_number,created_at,period_from,period_to,state)
+                VALUES($za,$zn,$created,$from,$to,'PREPARING')
+                ON CONFLICT(z_archive_id) DO UPDATE SET
+                  state=CASE
+                    WHEN datev_kassenarchiv_outbox.package_sha256<>'' THEN datev_kassenarchiv_outbox.state
+                    ELSE 'PREPARING'
+                  END;
+                SELECT id FROM datev_kassenarchiv_outbox WHERE z_archive_id=$za;
+                """;
+            q.Parameters.AddWithValue("$za", z.Id);
+            q.Parameters.AddWithValue("$zn", z.ZNumber);
+            q.Parameters.AddWithValue("$created", DateTimeOffset.Now.ToString("O"));
+            q.Parameters.AddWithValue("$from", z.PeriodFrom.ToString("O"));
+            q.Parameters.AddWithValue("$to", z.PeriodTo.ToString("O"));
+            return Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+        });
 
-    private async Task MarkReadyAsync(long id, string path, string sha, CancellationToken ct)
-    {
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            UPDATE datev_kassenarchiv_outbox
-            SET state='READY',
-                package_path=$path,
-                package_sha256=$sha,
-                last_error=''
-            WHERE id=$id AND package_sha256='';
-            """;
-        q.Parameters.AddWithValue("$path", path);
-        q.Parameters.AddWithValue("$sha", sha);
-        q.Parameters.AddWithValue("$id", id);
-        var changed = await q.ExecuteNonQueryAsync(ct);
-        if (changed != 1)
-            throw new InvalidOperationException("DATEV-Paket konnte nicht atomar als READY gespeichert werden.");
-    }
+    private Task MarkReadyAsync(long id, string path, string sha, CancellationToken ct)
+        => IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE datev_kassenarchiv_outbox
+                SET state='READY',
+                    package_path=$path,
+                    package_sha256=$sha,
+                    last_error=''
+                WHERE id=$id AND package_sha256='';
+                """;
+            q.Parameters.AddWithValue("$path", path);
+            q.Parameters.AddWithValue("$sha", sha);
+            q.Parameters.AddWithValue("$id", id);
+            var changed = await q.ExecuteNonQueryAsync(ct);
+            if (changed != 1)
+                throw new InvalidOperationException("DATEV-Paket konnte nicht atomar als READY gespeichert werden.");
+        });
 
-    private async Task MarkPreparationFailedAsync(long id, string error, CancellationToken ct)
-    {
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            UPDATE datev_kassenarchiv_outbox
-            SET state=CASE WHEN package_sha256='' THEN 'PREPARE_FAILED' ELSE state END,
-                last_error=CASE WHEN package_sha256='' THEN $error ELSE last_error END
-            WHERE id=$id;
-            """;
-        q.Parameters.AddWithValue("$error", error);
-        q.Parameters.AddWithValue("$id", id);
-        await q.ExecuteNonQueryAsync(ct);
-    }
+    private Task MarkPreparationFailedAsync(long id, string error, CancellationToken ct)
+        => IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE datev_kassenarchiv_outbox
+                SET state=CASE WHEN package_sha256='' THEN 'PREPARE_FAILED' ELSE state END,
+                    last_error=CASE WHEN package_sha256='' THEN $error ELSE last_error END
+                WHERE id=$id;
+                """;
+            q.Parameters.AddWithValue("$error", error);
+            q.Parameters.AddWithValue("$id", id);
+            await q.ExecuteNonQueryAsync(ct);
+        });
 
     private async Task<DatevKassenarchivOutboxEntry?> GetByIdAsync(long id, CancellationToken ct)
     {
