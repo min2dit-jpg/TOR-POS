@@ -6,6 +6,17 @@ Start: `START-TOR-CLOUD.bat` (Windows), oder `TOR_CLOUD_DEMO=true node server.js
 Node 22.13+ mit `node:sqlite`. Standard: 127.0.0.1:8787.
 Demo: demo@torpos.local / TorDemo2026!; Gerät DEMO-KASSE-01 / tor-demo-device-token-2026.
 
+## R155 neu: TOR Mail ohne Kunden-Google/SMTP
+- Standardweg für automatische Monatsberichte und DATEV-Dateien: Der Kunde trägt an der Kasse nur die Empfänger-E-Mail ein.
+- Die Kasse authentifiziert sich mit ihrem vorhandenen Gerätetoken an `POST /api/v1/devices/mail/send`.
+- Absender und SMTP-Zugangsdaten liegen ausschließlich als Server-Secrets in `/etc/tor-pos-cloud.env`; sie werden nie an die Kasse ausgeliefert.
+- Erlaubt sind nur PDF/CSV, maximal 10 Anhänge, 6 MB je Datei und 8 MB insgesamt.
+- Standardlimits pro registrierter Kasse: 20 Sendungen/Stunde und 100/24 Stunden.
+- Das Versandjournal speichert Empfänger/Betreff nur als Hash sowie Status/Größe; Mailtext und Anhänge werden nicht als Mailjournal archiviert.
+- Google OAuth und kundeneigenes SMTP bleiben als Alternativen vorhanden.
+- Für produktive Zustellbarkeit einen TOR-eigenen Mail-Absender mit SPF, DKIM und DMARC konfigurieren. Beispielvariablen stehen in `deploy/tor-pos-cloud.env.example`.
+- `GET /api/health` meldet `managed_mail_configured=true`, sobald die zentrale Mailkonfiguration vollständig ist.
+
 ## R149 neu: Leergut und Verkaufsereignisse
 - `sale.completed` akzeptiert `discount_cents` (ältere Kassen: nur `manual_discount_cents`), `MIXED` und eine
   Pfand-Auszahlung (negativer Gesamtbetrag, nur bar). Vorher lehnte die Cloud jeden Verkauf einer echt buchenden
@@ -94,7 +105,7 @@ Das mit Code-Signing signierte Desktop-Setup erzeugen und dann z. B.:
 `updates/manifest.json` ist in diesem Paket absichtlich `enabled=false`.
 
 ## Prüfung
-`npm run check` und `npm test`. Stand R149: 41/41 Tests.
+`npm run check` und `npm test`. Stand R155: 48/48 Cloud-Tests.
 
 
 > Güvenlik notu: Canlı/uzak otomatik güncelleme, TOR/Demirkaan GmbH code-signing sertifikasının thumbprint değeri `TorRelease.UpdateSignerThumbprint` içine sabitlenmeden bilinçli olarak engellenir. Manifest içindeki thumbprint tek başına güven kaynağı değildir.
