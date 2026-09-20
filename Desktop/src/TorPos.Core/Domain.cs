@@ -150,6 +150,14 @@ public sealed class Product
     public bool ImHausApplicable { get; set; } = true;
     public long PfandCents { get; set; }
     public string Unit { get; set; } = "Stück";
+
+    // R170: weighted articles are normalized to kg. The cashier may enter
+    // grams or kilograms, but stock, returns and line quantity all use kg.
+    // "kg" is deliberately the explicit opt-in so legacy articles using
+    // other units never become weighed articles by accident.
+    public bool IsWeighted =>
+        string.Equals(Unit, "kg", StringComparison.OrdinalIgnoreCase);
+
     public string ImagePath { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
@@ -174,6 +182,12 @@ public sealed class CartLine
     public string VariantName { get; init; } = "";
     public string Barcode { get; init; } = "";
     public decimal Quantity { get; set; } = 1m;
+
+    // R170: commercial unit snapshot used by cashier/receipt formatting.
+    // For weighed sales this is kg and Quantity is the exact sold kg amount.
+    public string Unit { get; init; } = "Stück";
+    public bool IsWeighted =>
+        string.Equals(Unit, "kg", StringComparison.OrdinalIgnoreCase);
 
     // Actual unit price after Angebot, including Pfand where applicable.
     public long UnitPriceCents { get; init; }
