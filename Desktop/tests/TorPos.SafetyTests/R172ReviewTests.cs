@@ -39,11 +39,13 @@ public static class R172ReviewTests
         var infrastructure = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
         assert(
-            infrastructure.Contains("stock_milli=$stockMilli", StringComparison.Ordinal) &&
-            infrastructure.Contains("min_stock_milli=$minStockMilli", StringComparison.Ordinal) &&
+            infrastructure.Contains("stock_milli=", StringComparison.Ordinal) &&
+            infrastructure.Contains("min_stock_milli=", StringComparison.Ordinal) &&
             infrastructure.Contains("quantity_milli", StringComparison.Ordinal) &&
             infrastructure.Contains("QuantityStorage.ToMilli(", StringComparison.Ordinal) &&
-            infrastructure.Contains("QuantityStorage.FromMilli(", StringComparison.Ordinal),
+            infrastructure.Contains("QuantityStorage.FromMilli(", StringComparison.Ordinal) &&
+            infrastructure.Contains("$qtyMilli", StringComparison.Ordinal) &&
+            infrastructure.Contains("$minstockmilli", StringComparison.Ordinal),
             "R172 product, sale and parked-receipt persistence use fixed-point integer quantities as the primary path");
 
         var training = File.ReadAllText(
