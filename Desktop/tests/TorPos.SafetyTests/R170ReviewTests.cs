@@ -64,7 +64,8 @@ public static class R170ReviewTests
         var editor = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/ProductEditorWindow.cs"));
         assert(
             editor.Contains("Verkauf nach Gewicht (Gramm / Kilogramm) · Preis pro kg", StringComparison.Ordinal) &&
-            editor.Contains("weighted ? \"kg\"", StringComparison.Ordinal) &&
+            editor.Contains("var weighted =", StringComparison.Ordinal) &&
+            editor.Contains("? \"kg\"", StringComparison.Ordinal) &&
             editor.Contains("Gewichtsartikel dürfen keine Varianten oder Menü-/Combo-Bestandteile haben.", StringComparison.Ordinal),
             "R170 article editor explicitly configures weighed sales, forces kg storage and prevents incompatible menu/variant setups");
 
