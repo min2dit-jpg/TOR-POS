@@ -181,7 +181,9 @@ public sealed partial class BusinessManagementService
             await using (var q = c.CreateCommand())
             {
                 q.CommandText = """
-                    SELECT i.product_name,COALESCE(SUM(i.quantity),0),COALESCE(SUM(i.line_total_cents),0)
+                    SELECT i.product_name,
+                           COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0),
+                           COALESCE(SUM(i.line_total_cents),0)
                     FROM sale_items i JOIN sales s ON s.id=i.sale_id
                     WHERE COALESCE(s.transaction_type,'SALE')='SALE'
                       AND s.created_at_utc >= $from AND s.created_at_utc < $to
@@ -333,7 +335,9 @@ public sealed partial class BusinessManagementService
             await using (var q = c.CreateCommand())
             {
                 q.CommandText = """
-                    SELECT p.name,p.barcode,COALESCE(p.stock_quantity,0),COALESCE(p.min_stock_quantity,0),
+                    SELECT p.name,p.barcode,
+                           COALESCE(p.stock_milli,CAST(ROUND(COALESCE(p.stock_quantity,0)*1000.0) AS INTEGER)),
+                           COALESCE(p.min_stock_milli,CAST(ROUND(COALESCE(p.min_stock_quantity,0)*1000.0) AS INTEGER)),
                            p.base_price_cents,COALESCE(p.purchase_price_cents,0),COALESCE(g.name,'Standard'),c.name,p.unit
                     FROM products p JOIN categories c ON c.id=p.category_id
                     LEFT JOIN category_master_data m ON m.category_id=c.id
