@@ -906,14 +906,27 @@ public partial class SettingsWindow : Window
     private Control DevicesPage()
     {
         var page = Page("Drucker / Yazıcılar & Geräte",
-            "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. A4-Drucker sind für Testausgaben ebenfalls auswählbar.");
-        var sumup = new Button { Content = "SUMUP SOLO · VERBINDUNG / 1,00 € TEST", MinHeight = 48 };
-        sumup.Click += async (_, _) =>
+            "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Kartenterminal için marka seçimi aşağıdaki asistan üzerinden yapılır.");
+
+        var terminalAssistant = new Button
+        {
+            Content = "KARTENTERMINAL VERBINDEN · MARKE AUSWÄHLEN",
+            MinHeight = 54,
+            FontWeight = FontWeight.Bold,
+            Background = AppTheme.InfoBlue,
+            BorderBrush = AppTheme.InfoBlueBorder
+        };
+        terminalAssistant.Click += async (_, _) =>
         {
             if (!_currentUser.IsAdmin) return;
-            await new SumUpConnectionWindow().ShowDialog(this);
+            await new PaymentTerminalSetupWindow(_settings, _paymentTerminal).ShowDialog(this);
+            await LoadAsync();
         };
-        page.Children.Add(sumup);
+        page.Children.Add(terminalAssistant);
+        page.Children.Add(InfoCard(
+            "Terminal-Assistent",
+            "PAYONE, CCV, Sparkasse/S-Händlerservice, SumUp, myPOS, readyMini/readyPay, PayPal Zettle (iZettle), Flatpay ve weitere ZVT-Terminals sind als getrennte Profile hinterlegt. TOR aktiviert automatische Zahlungen nur für tatsächlich freigegebene Integrationswege.",
+            AppTheme.InfoCardBg));
         page.Children.Add(PrinterSelection("Bondrucker", "device.receipt_printer"));
         if (InstallationEdition.ReadLocked() == "IMBISS")
         {
