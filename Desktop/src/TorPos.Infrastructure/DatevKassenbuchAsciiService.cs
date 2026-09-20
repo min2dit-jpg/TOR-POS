@@ -486,61 +486,63 @@ public sealed class DatevKassenbuchAsciiService
         return sb.ToString();
     }
 
-    private async Task<long> InsertOrCompleteAsync(
+    private Task<long> InsertOrCompleteAsync(
         ZArchiveRow z,
         string csvPath,
         string sha,
         string pdfPath,
         CancellationToken ct)
-    {
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            INSERT INTO datev_kassenbuch_ascii_exports(
-              z_archive_id,z_number,created_at,csv_path,csv_sha256,pdf_path,email_state)
-            VALUES($za,$zn,$at,$csv,$sha,$pdf,'READY')
-            ON CONFLICT(z_archive_id) DO UPDATE SET
-              csv_path=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN excluded.csv_path ELSE datev_kassenbuch_ascii_exports.csv_path END,
-              csv_sha256=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN excluded.csv_sha256 ELSE datev_kassenbuch_ascii_exports.csv_sha256 END,
-              pdf_path=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN excluded.pdf_path ELSE datev_kassenbuch_ascii_exports.pdf_path END,
-              email_state=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN 'READY' ELSE datev_kassenbuch_ascii_exports.email_state END;
-            SELECT id FROM datev_kassenbuch_ascii_exports WHERE z_archive_id=$za;
-            """;
-        q.Parameters.AddWithValue("$za", z.Id);
-        q.Parameters.AddWithValue("$zn", z.ZNumber);
-        q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
-        q.Parameters.AddWithValue("$csv", csvPath);
-        q.Parameters.AddWithValue("$sha", sha);
-        q.Parameters.AddWithValue("$pdf", pdfPath);
-        return Convert.ToInt64(await q.ExecuteScalarAsync(ct));
-    }
+        => IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                INSERT INTO datev_kassenbuch_ascii_exports(
+                  z_archive_id,z_number,created_at,csv_path,csv_sha256,pdf_path,email_state)
+                VALUES($za,$zn,$at,$csv,$sha,$pdf,'READY')
+                ON CONFLICT(z_archive_id) DO UPDATE SET
+                  csv_path=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN excluded.csv_path ELSE datev_kassenbuch_ascii_exports.csv_path END,
+                  csv_sha256=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN excluded.csv_sha256 ELSE datev_kassenbuch_ascii_exports.csv_sha256 END,
+                  pdf_path=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN excluded.pdf_path ELSE datev_kassenbuch_ascii_exports.pdf_path END,
+                  email_state=CASE WHEN datev_kassenbuch_ascii_exports.csv_sha256='' THEN 'READY' ELSE datev_kassenbuch_ascii_exports.email_state END;
+                SELECT id FROM datev_kassenbuch_ascii_exports WHERE z_archive_id=$za;
+                """;
+            q.Parameters.AddWithValue("$za", z.Id);
+            q.Parameters.AddWithValue("$zn", z.ZNumber);
+            q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+            q.Parameters.AddWithValue("$csv", csvPath);
+            q.Parameters.AddWithValue("$sha", sha);
+            q.Parameters.AddWithValue("$pdf", pdfPath);
+            return Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+        });
 
-    private async Task UpdateEmailStateAsync(
+    private Task UpdateEmailStateAsync(
         long id,
         string recipient,
         string state,
         string error,
         DateTimeOffset? sentAt,
         CancellationToken ct)
-    {
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            UPDATE datev_kassenbuch_ascii_exports
-            SET email_state=$state,
-                email_recipient=$recipient,
-                email_attempts=email_attempts+1,
-                email_sent_at=COALESCE($sent,email_sent_at),
-                last_error=$error
-            WHERE id=$id;
-            """;
-        q.Parameters.AddWithValue("$state", state);
-        q.Parameters.AddWithValue("$recipient", recipient);
-        q.Parameters.AddWithValue("$sent", sentAt?.ToString("O") ?? (object)DBNull.Value);
-        q.Parameters.AddWithValue("$error", error);
-        q.Parameters.AddWithValue("$id", id);
-        await q.ExecuteNonQueryAsync(ct);
-    }
+        => IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE datev_kassenbuch_ascii_exports
+                SET email_state=$state,
+                    email_recipient=$recipient,
+                    email_attempts=email_attempts+1,
+                    email_sent_at=COALESCE($sent,email_sent_at),
+                    last_error=$error
+                WHERE id=$id;
+                """;
+            q.Parameters.AddWithValue("$state", state);
+            q.Parameters.AddWithValue("$recipient", recipient);
+            q.Parameters.AddWithValue("$sent", sentAt?.ToString("O") ?? (object)DBNull.Value);
+            q.Parameters.AddWithValue("$error", error);
+            q.Parameters.AddWithValue("$id", id);
+            await q.ExecuteNonQueryAsync(ct);
+        });
 
     private async Task<DatevKassenbuchAsciiExport?> FindByZAsync(long zId, CancellationToken ct)
     {
