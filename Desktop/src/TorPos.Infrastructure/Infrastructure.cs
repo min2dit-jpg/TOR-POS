@@ -1867,44 +1867,42 @@ public sealed class CardRefundLockRepository : ICardRefundLockRepository
         return Convert.ToInt64(await q.ExecuteScalarAsync(ct)) > 0;
     }
 
-    public async Task<string> BeginAsync(long originalSaleId, string kind, long amountCents, CancellationToken ct = default)
-    {
-        var id = Guid.NewGuid().ToString("N");
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = """
-            INSERT INTO card_refund_attempts(id,original_sale_id,kind,amount_cents,state,created_at)
-            VALUES($id,$sale,$kind,$amount,'UNKNOWN',$now);
-            """;
-        q.Parameters.AddWithValue("$id", id);
-        q.Parameters.AddWithValue("$sale", originalSaleId);
-        q.Parameters.AddWithValue("$kind", kind);
-        q.Parameters.AddWithValue("$amount", amountCents);
-        q.Parameters.AddWithValue("$now", DateTimeOffset.Now.ToString("O"));
-        try
+    public Task<string> BeginAsync(long originalSaleId, string kind, long amountCents, CancellationToken ct = default)
+        => IoQueue.RunAsync(async () =>
         {
-            await q.ExecuteNonQueryAsync(ct);
-        }
-        catch (SqliteException ex) when (ex.SqliteErrorCode == 19 &&
-            ex.Message.Contains("ux_card_refund_one_unknown_per_sale"))
-        {
-            // The caller's own HasUnresolvedAsync check already covers the
-            // normal sequential case; this index is the authoritative guard
-            // against two concurrent refund attempts on the same original
-            // sale racing past that check at the same time.
-            throw new InvalidOperationException("Für diesen Bon läuft bereits eine ungeklärte Kartenerstattung.");
-        }
-        return id;
-    }
+            var id = Guid.NewGuid().ToString("N");
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                INSERT INTO card_refund_attempts(id,original_sale_id,kind,amount_cents,state,created_at)
+                VALUES($id,$sale,$kind,$amount,'UNKNOWN',$now);
+                """;
+            q.Parameters.AddWithValue("$id", id);
+            q.Parameters.AddWithValue("$sale", originalSaleId);
+            q.Parameters.AddWithValue("$kind", kind);
+            q.Parameters.AddWithValue("$amount", amountCents);
+            q.Parameters.AddWithValue("$now", DateTimeOffset.Now.ToString("O"));
+            try
+            {
+                await q.ExecuteNonQueryAsync(ct);
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 19 &&
+                ex.Message.Contains("ux_card_refund_one_unknown_per_sale"))
+            {
+                throw new InvalidOperationException("Für diesen Bon läuft bereits eine ungeklärte Kartenerstattung.");
+            }
+            return id;
+        });
 
-    public async Task ClearAsync(string attemptId, CancellationToken ct = default)
-    {
-        await using var c = _db.OpenConnection();
-        await using var q = c.CreateCommand();
-        q.CommandText = "DELETE FROM card_refund_attempts WHERE id=$id AND state='UNKNOWN';";
-        q.Parameters.AddWithValue("$id", attemptId);
-        await q.ExecuteNonQueryAsync(ct);
-    }
+    public Task ClearAsync(string attemptId, CancellationToken ct = default)
+        => IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = "DELETE FROM card_refund_attempts WHERE id=$id AND state='UNKNOWN';";
+            q.Parameters.AddWithValue("$id", attemptId);
+            await q.ExecuteNonQueryAsync(ct);
+        });
 
     public async Task<IReadOnlyList<CardRefundAttempt>> GetUnresolvedAsync(CancellationToken ct = default)
     {
@@ -1928,28 +1926,29 @@ public sealed class CardRefundLockRepository : ICardRefundLockRepository
         return result;
     }
 
-    public async Task ResolveAsync(string attemptId, string actor, string note, CancellationToken ct = default)
-    {
-        await using var c = _db.OpenConnection();
-        await using var tx = await c.BeginTransactionAsync(ct);
-        await using (var q = c.CreateCommand())
+    public Task ResolveAsync(string attemptId, string actor, string note, CancellationToken ct = default)
+        => IoQueue.RunAsync(async () =>
         {
-            q.Transaction = (SqliteTransaction)tx;
-            q.CommandText = """
-                UPDATE card_refund_attempts
-                SET state='RESOLVED', resolved_at=$at, resolved_by=$actor, resolution_note=$note
-                WHERE id=$id AND state='UNKNOWN';
-                """;
-            q.Parameters.AddWithValue("$id", attemptId);
-            q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
-            q.Parameters.AddWithValue("$actor", string.IsNullOrWhiteSpace(actor) ? "unknown" : actor.Trim());
-            q.Parameters.AddWithValue("$note", note ?? "");
-            if (await q.ExecuteNonQueryAsync(ct) != 1)
-                throw new InvalidOperationException("Diese Kartenerstattung wurde bereits geklärt oder existiert nicht mehr.");
-        }
-        await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "CARD_REFUND_RESOLVED", "CARD_REFUND_ATTEMPT", attemptId, note ?? "", ct);
-    }
+            await using var c = _db.OpenConnection();
+            await using var tx = await c.BeginTransactionAsync(ct);
+            await using (var q = c.CreateCommand())
+            {
+                q.Transaction = (SqliteTransaction)tx;
+                q.CommandText = """
+                    UPDATE card_refund_attempts
+                    SET state='RESOLVED', resolved_at=$at, resolved_by=$actor, resolution_note=$note
+                    WHERE id=$id AND state='UNKNOWN';
+                    """;
+                q.Parameters.AddWithValue("$id", attemptId);
+                q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+                q.Parameters.AddWithValue("$actor", string.IsNullOrWhiteSpace(actor) ? "unknown" : actor.Trim());
+                q.Parameters.AddWithValue("$note", note ?? "");
+                if (await q.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException("Diese Kartenerstattung wurde bereits geklärt oder existiert nicht mehr.");
+            }
+            await tx.CommitAsync(ct);
+            await _audit.WriteAsync(actor, "CARD_REFUND_RESOLVED", "CARD_REFUND_ATTEMPT", attemptId, note ?? "", ct);
+        });
 }
 
 public sealed class SaleRepository : ISaleRepository
