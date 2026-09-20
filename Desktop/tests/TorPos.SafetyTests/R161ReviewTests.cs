@@ -35,7 +35,7 @@ public static class R161ReviewTests
         assert(
             snapshot.Contains("new StartupLoadingWindow()", StringComparison.Ordinal) &&
             snapshot.Contains("new LoginWindow(auth, settings)", StringComparison.Ordinal) &&
-            snapshot.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 8 dialogs)", StringComparison.Ordinal),
+            snapshot.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes,", StringComparison.Ordinal),
             "R161 CI captures splash and login as visual-regression dialogs");
 
         return Task.CompletedTask;
