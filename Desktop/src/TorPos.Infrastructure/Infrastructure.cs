@@ -1459,8 +1459,10 @@ public async Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationTok
         {
             q.CommandText = """
               SELECT id,category_id,name,sku,barcode,base_price_cents,vat_rate,pfand_cents,
-                     unit,image_path,is_active,sort_order,COALESCE(stock_quantity,0),
-                     COALESCE(min_stock_quantity,0),COALESCE(purchase_price_cents,0),
+                     unit,image_path,is_active,sort_order,
+                     COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)),
+                     COALESCE(min_stock_milli,CAST(ROUND(COALESCE(min_stock_quantity,0)*1000.0) AS INTEGER)),
+                     COALESCE(purchase_price_cents,0),
                      COALESCE(im_haus_applicable,1)
               FROM products
               WHERE is_active=1
@@ -1511,7 +1513,11 @@ public async Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationTok
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-              SELECT ci.product_id,ci.component_product_id,p.name,ci.quantity,ci.sort_order,
+              SELECT ci.product_id,ci.component_product_id,p.name,
+                     CASE WHEN COALESCE(ci.quantity_milli,0)<>0
+                          THEN ci.quantity_milli
+                          ELSE CAST(ROUND(ci.quantity*1000.0) AS INTEGER) END,
+                     ci.sort_order,
                      COALESCE(ci.choice_group,'')
               FROM product_combo_items ci
               JOIN products p ON p.id=ci.component_product_id
@@ -1525,7 +1531,7 @@ public async Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationTok
                     r.GetInt64(0),
                     r.GetInt64(1),
                     r.GetString(2),
-                    Convert.ToDecimal(r.GetDouble(3)),
+                    QuantityStorage.FromMilli(r.GetInt64(3)),
                     r.GetInt32(4),
                     r.GetString(5));
                 if (!comboByProduct.TryGetValue(item.ProductId,out var items)) comboByProduct[item.ProductId]=items=new();
@@ -1554,9 +1560,9 @@ public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal ex
         using var tx = c.BeginTransaction();
         if(count is not null && p.Id != 0) {
             using var check=c.CreateCommand();check.Transaction=tx;
-            check.CommandText="SELECT COALESCE(stock_quantity,0) FROM products WHERE id=$id";check.Parameters.AddWithValue("$id",p.Id);
+            check.CommandText="SELECT COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)) FROM products WHERE id=$id";check.Parameters.AddWithValue("$id",p.Id);
             var old=check.ExecuteScalar();
-            if(old is null || Convert.ToDecimal(old)!=expected) throw new InvalidOperationException("Bestand wurde inzwischen geändert. Bitte Artikel neu laden.");
+            if(old is null || Convert.ToInt64(old)!=QuantityStorage.ToMilli(expected)) throw new InvalidOperationException("Bestand wurde inzwischen geändert. Bitte Artikel neu laden.");
         }
         decimal inheritedVat;
         bool inheritedImHaus;
@@ -1594,10 +1600,10 @@ public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal ex
                   INSERT INTO products(
                     category_id,name,sku,barcode,base_price_cents,
                     vat_rate,pfand_cents,unit,image_path,is_active,sort_order,
-                    min_stock_quantity,purchase_price_cents,edition_scope,im_haus_applicable)
+                    min_stock_quantity,min_stock_milli,purchase_price_cents,edition_scope,im_haus_applicable)
                   VALUES(
                     $cat,$name,$sku,$bar,$price,
-                    $vat,$pfand,$unit,$img,$active,$sort,$minstock,$purchase,$scope,$imHaus);
+                    $vat,$pfand,$unit,$img,$active,$sort,$minstock,$minstockmilli,$purchase,$scope,$imHaus);
                   SELECT last_insert_rowid();
                   """ : """
                   UPDATE products
@@ -1613,6 +1619,7 @@ public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal ex
                       is_active=$active,
                       sort_order=$sort,
                       min_stock_quantity=$minstock,
+                      min_stock_milli=$minstockmilli,
                       purchase_price_cents=$purchase,
                       im_haus_applicable=$imHaus
                   WHERE id=$id;
@@ -1633,13 +1640,14 @@ public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal ex
         q.Parameters.AddWithValue("$active", p.IsActive ? 1 : 0);
         q.Parameters.AddWithValue("$sort", p.SortOrder);
         q.Parameters.AddWithValue("$minstock", Convert.ToDouble(Math.Max(0m, p.MinStockQuantity)));
+        q.Parameters.AddWithValue("$minstockmilli", QuantityStorage.ToMilli(Math.Max(0m, p.MinStockQuantity)));
         q.Parameters.AddWithValue("$purchase", Math.Max(0, p.PurchasePriceCents));
         q.Parameters.AddWithValue("$scope", CurrentEditionScope(c, tx));
         var id=Convert.ToInt64(await q.ExecuteScalarAsync(ct));
         if(count is not null) {
             using var stock=c.CreateCommand();stock.Transaction=tx;
-            stock.CommandText="UPDATE products SET stock_quantity=$qty,last_inventory_at=$at WHERE id=$id; INSERT INTO audit_log(created_at,actor,event_type,entity_type,entity_id,details) VALUES($at,$actor,'INVENTORY_COUNT_SET','PRODUCT',$id,$details);";
-            stock.Parameters.AddWithValue("$qty",Convert.ToDouble(count.Value));stock.Parameters.AddWithValue("$at",DateTimeOffset.Now.ToString("O"));stock.Parameters.AddWithValue("$id",id);stock.Parameters.AddWithValue("$actor",actor);stock.Parameters.AddWithValue("$details",$"{expected} -> {count}");await stock.ExecuteNonQueryAsync(ct);
+            stock.CommandText="UPDATE products SET stock_quantity=$qty,stock_milli=$qtyMilli,last_inventory_at=$at WHERE id=$id; INSERT INTO audit_log(created_at,actor,event_type,entity_type,entity_id,details) VALUES($at,$actor,'INVENTORY_COUNT_SET','PRODUCT',$id,$details);";
+            stock.Parameters.AddWithValue("$qty",Convert.ToDouble(count.Value));stock.Parameters.AddWithValue("$qtyMilli",QuantityStorage.ToMilli(count.Value));stock.Parameters.AddWithValue("$at",DateTimeOffset.Now.ToString("O"));stock.Parameters.AddWithValue("$id",id);stock.Parameters.AddWithValue("$actor",actor);stock.Parameters.AddWithValue("$details",$"{expected} -> {count}");await stock.ExecuteNonQueryAsync(ct);
         }
         if(variants is not null)await ReplaceVariantsInTransactionAsync(c,tx,id,variants,ct);
         if(comboItems is not null)await ReplaceComboItemsInTransactionAsync(c,tx,id,comboItems,ct);
@@ -1703,10 +1711,10 @@ private static async Task ReplaceComboItemsInTransactionAsync(SqliteConnection c
         var previous = new List<(long Id,decimal Quantity,string Group)>();
         await using(var read=c.CreateCommand()) {
             read.Transaction=tx;
-            read.CommandText="SELECT component_product_id,quantity,COALESCE(choice_group,'') FROM product_combo_items WHERE product_id=$id ORDER BY component_product_id;";
+            read.CommandText="SELECT component_product_id,CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,COALESCE(choice_group,'') FROM product_combo_items WHERE product_id=$id ORDER BY component_product_id;";
             read.Parameters.AddWithValue("$id",productId);await using var r=await read.ExecuteReaderAsync(ct);
             while(await r.ReadAsync(ct))
-                previous.Add((r.GetInt64(0),Convert.ToDecimal(r.GetDouble(1)),r.GetString(2)));
+                previous.Add((r.GetInt64(0),QuantityStorage.FromMilli(r.GetInt64(1)),r.GetString(2)));
         }
         var recipeChanged=!previous.SequenceEqual(
             normalized.OrderBy(x=>x.ComponentProductId)
@@ -1743,10 +1751,11 @@ private static async Task ReplaceComboItemsInTransactionAsync(SqliteConnection c
         {
             await using var q=c.CreateCommand();
             q.Transaction=(SqliteTransaction)tx;
-            q.CommandText="INSERT INTO product_combo_items(product_id,component_product_id,quantity,sort_order,choice_group) VALUES($p,$c,$q,$s,$g);";
+            q.CommandText="INSERT INTO product_combo_items(product_id,component_product_id,quantity,quantity_milli,sort_order,choice_group) VALUES($p,$c,$q,$qm,$s,$g);";
             q.Parameters.AddWithValue("$p",productId);
             q.Parameters.AddWithValue("$c",normalized[i].ComponentProductId);
             q.Parameters.AddWithValue("$q",Convert.ToDouble(normalized[i].Quantity));
+            q.Parameters.AddWithValue("$qm",QuantityStorage.ToMilli(normalized[i].Quantity));
             q.Parameters.AddWithValue("$s",i);
             q.Parameters.AddWithValue("$g",normalized[i].ChoiceGroup);
             await q.ExecuteNonQueryAsync(ct);
@@ -1758,13 +1767,13 @@ public async Task<IReadOnlyList<ProductComboItem>> GetComboItemsAsync(long produ
     {
         var result=new List<ProductComboItem>();
         await using var c=_db.OpenConnection(); await using var q=c.CreateCommand();
-        q.CommandText="SELECT ci.product_id,ci.component_product_id,p.name,ci.quantity,ci.sort_order,COALESCE(ci.choice_group,'') FROM product_combo_items ci JOIN products p ON p.id=ci.component_product_id WHERE ci.product_id=$id ORDER BY ci.sort_order,ci.component_product_id;";
+        q.CommandText="SELECT ci.product_id,ci.component_product_id,p.name,CASE WHEN COALESCE(ci.quantity_milli,0)<>0 THEN ci.quantity_milli ELSE CAST(ROUND(ci.quantity*1000.0) AS INTEGER) END,ci.sort_order,COALESCE(ci.choice_group,'') FROM product_combo_items ci JOIN products p ON p.id=ci.component_product_id WHERE ci.product_id=$id ORDER BY ci.sort_order,ci.component_product_id;";
         q.Parameters.AddWithValue("$id",productId); await using var r=await q.ExecuteReaderAsync(ct);
         while(await r.ReadAsync(ct)) result.Add(new ProductComboItem(
             r.GetInt64(0),
             r.GetInt64(1),
             r.GetString(2),
-            Convert.ToDecimal(r.GetDouble(3)),
+            QuantityStorage.FromMilli(r.GetInt64(3)),
             r.GetInt32(4),
             r.GetString(5)));
         return (IReadOnlyList<ProductComboItem>)result;
@@ -1845,8 +1854,8 @@ public async Task<IReadOnlyList<ExtraItem>> GetExtrasAsync(CancellationToken ct 
             ImagePath=r.GetString(9),
             IsActive=r.GetInt64(10)==1,
             SortOrder=r.GetInt32(11),
-            StockQuantity=Convert.ToDecimal(r.GetDouble(12)),
-            MinStockQuantity=Convert.ToDecimal(r.GetDouble(13)),
+            StockQuantity=QuantityStorage.FromMilli(r.GetInt64(12)),
+            MinStockQuantity=QuantityStorage.FromMilli(r.GetInt64(13)),
             PurchasePriceCents=r.GetInt64(14),
             ImHausApplicable=r.GetInt64(15)!=0
         };
@@ -2137,7 +2146,8 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Parameters.AddWithValue("$name", line.ProductName);
             q.Parameters.AddWithValue("$variant", line.VariantName);
             q.Parameters.AddWithValue("$barcode", line.Barcode);
-            q.Parameters.AddWithValue("$qty", line.Quantity);
+            q.Parameters.AddWithValue("$qty", Convert.ToDouble(line.Quantity));
+            q.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(line.Quantity));
             q.Parameters.AddWithValue("$price", line.UnitPriceCents);
             q.Parameters.AddWithValue("$vat", line.VatRate);
             q.Parameters.AddWithValue("$pfand", line.PfandCents);
@@ -2168,8 +2178,10 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                 {
                     await using var stock = c.CreateCommand();
                     stock.Transaction = (SqliteTransaction)tx;
-                    stock.CommandText = "UPDATE products SET stock_quantity=COALESCE(stock_quantity,0)-$qty WHERE id=$id;";
-                    stock.Parameters.AddWithValue("$qty", Convert.ToDouble(line.Quantity*component.Quantity));
+                    stock.CommandText = "UPDATE products SET stock_quantity=COALESCE(stock_quantity,0)-$qty,stock_milli=COALESCE(stock_milli,0)-$qtyMilli WHERE id=$id;";
+                    var stockDelta = line.Quantity * component.Quantity;
+                    stock.Parameters.AddWithValue("$qty", Convert.ToDouble(stockDelta));
+                    stock.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(stockDelta));
                     stock.Parameters.AddWithValue("$id", component.Id);
                     await stock.ExecuteNonQueryAsync(ct);
                 }
@@ -2397,7 +2409,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-                SELECT id,product_id,product_name,variant_name,barcode,quantity,
+                SELECT id,product_id,product_name,variant_name,barcode,
+                       CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
                        unit_price_cents,vat_rate,pfand_cents,
                        list_unit_price_cents,
                        promotion_id,promotion_name,promotion_percent,
@@ -2419,7 +2432,7 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                     ProductName = r.GetString(2),
                     VariantName = r.GetString(3),
                     Barcode = r.GetString(4),
-                    Quantity = Convert.ToDecimal(r.GetDouble(5)),
+                    Quantity = QuantityStorage.FromMilli(r.GetInt64(5)),
                     UnitPriceCents = r.GetInt64(6),
                     VatRate = Convert.ToDecimal(r.GetDouble(7)),
                     PfandCents = r.GetInt64(8),
@@ -2603,14 +2616,14 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                 q.Transaction = (SqliteTransaction)tx;
                 q.CommandText = """
                     INSERT INTO sale_items(
-                      sale_id,product_id,product_name,variant_name,barcode,quantity,
+                      sale_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,
                       unit_price_cents,vat_rate,pfand_cents,line_total_cents,
                       list_unit_price_cents,list_line_total_cents,
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
                       promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json)
                     VALUES(
-                      $sale,$product,$name,$variant,$barcode,$qty,
+                      $sale,$product,$name,$variant,$barcode,$qty,$qtyMilli,
                       $price,$vat,$pfand,$total,
                       $listUnit,$listTotal,
                       $promotionId,$promotionName,$promotionPercent,
@@ -2622,7 +2635,8 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                 q.Parameters.AddWithValue("$name", line.ProductName);
                 q.Parameters.AddWithValue("$variant", line.VariantName);
                 q.Parameters.AddWithValue("$barcode", line.Barcode);
-                q.Parameters.AddWithValue("$qty", line.Quantity);
+                q.Parameters.AddWithValue("$qty", Convert.ToDouble(line.Quantity));
+                q.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(line.Quantity));
                 q.Parameters.AddWithValue("$price", line.UnitPriceCents);
                 q.Parameters.AddWithValue("$vat", line.VatRate);
                 q.Parameters.AddWithValue("$pfand", line.PfandCents);
@@ -2758,13 +2772,13 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
             {
                 q.Transaction = (SqliteTransaction)tx;
                 q.CommandText = """
-                    SELECT COALESCE(SUM(i.quantity),0)
+                    SELECT COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0)
                     FROM sale_items i
                     JOIN sales s ON s.id=i.sale_id
                     WHERE i.original_sale_item_id=$item AND s.transaction_type='RETURN';
                     """;
                 q.Parameters.AddWithValue("$item", request.SaleItemId);
-                alreadyReturned = Convert.ToDecimal(await q.ExecuteScalarAsync(ct));
+                alreadyReturned = QuantityStorage.FromMilli(Convert.ToInt64(await q.ExecuteScalarAsync(ct)));
             }
 
             var remaining = originalLine.Quantity - alreadyReturned;
@@ -2839,7 +2853,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Transaction = (SqliteTransaction)tx;
                 q.CommandText = """
                     INSERT INTO sale_items(
-                      sale_id,product_id,product_name,variant_name,barcode,quantity,
+                      sale_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,
                       unit_price_cents,vat_rate,pfand_cents,line_total_cents,
                       list_unit_price_cents,list_line_total_cents,
                       promotion_id,promotion_name,promotion_percent,
@@ -2847,7 +2861,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       promotion_start_date,promotion_end_date,
                       vat_allocations_json,menu_components_json,original_sale_item_id)
                     VALUES(
-                      $sale,$product,$name,$variant,$barcode,$qty,
+                      $sale,$product,$name,$variant,$barcode,$qty,$qtyMilli,
                       $price,$vat,$pfand,$total,
                       $listUnit,$listTotal,
                       $promotionId,$promotionName,$promotionPercent,
@@ -2860,7 +2874,8 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Parameters.AddWithValue("$name", originalLine.ProductName);
                 q.Parameters.AddWithValue("$variant", originalLine.VariantName);
                 q.Parameters.AddWithValue("$barcode", originalLine.Barcode);
-                q.Parameters.AddWithValue("$qty", quantity);
+                q.Parameters.AddWithValue("$qty", Convert.ToDouble(quantity));
+                q.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(quantity));
                 q.Parameters.AddWithValue("$price", originalLine.UnitPriceCents);
                 q.Parameters.AddWithValue("$vat", originalLine.VatRate);
                 q.Parameters.AddWithValue("$pfand", originalLine.PfandCents);
@@ -2931,11 +2946,11 @@ private static async Task<IReadOnlyList<(long Id, decimal Quantity)>> StockCompo
     await using (var combo = c.CreateCommand())
     {
         combo.Transaction = tx;
-        combo.CommandText = "SELECT component_product_id,quantity FROM product_combo_items WHERE product_id=$id AND COALESCE(choice_group,'')='' ORDER BY sort_order;";
+        combo.CommandText = "SELECT component_product_id,CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END FROM product_combo_items WHERE product_id=$id AND COALESCE(choice_group,'')='' ORDER BY sort_order;";
         combo.Parameters.AddWithValue("$id", line.ProductId);
         await using var cr = await combo.ExecuteReaderAsync(ct);
         while (await cr.ReadAsync(ct))
-            components.Add((cr.GetInt64(0), Convert.ToDecimal(cr.GetDouble(1))));
+            components.Add((cr.GetInt64(0), QuantityStorage.FromMilli(cr.GetInt64(1))));
     }
 
     if (components.Count == 0)
@@ -2959,8 +2974,10 @@ private static async Task ReverseStockAsync(
     {
         await using var stock = c.CreateCommand();
         stock.Transaction = tx;
-        stock.CommandText = "UPDATE products SET stock_quantity=COALESCE(stock_quantity,0)+$qty WHERE id=$id;";
-        stock.Parameters.AddWithValue("$qty", Convert.ToDouble(quantity * component.Quantity));
+        stock.CommandText = "UPDATE products SET stock_quantity=COALESCE(stock_quantity,0)+$qty,stock_milli=COALESCE(stock_milli,0)+$qtyMilli WHERE id=$id;";
+        var stockDelta = quantity * component.Quantity;
+        stock.Parameters.AddWithValue("$qty", Convert.ToDouble(stockDelta));
+        stock.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(stockDelta));
         stock.Parameters.AddWithValue("$id", component.Id);
         await stock.ExecuteNonQueryAsync(ct);
     }
@@ -3355,7 +3372,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             q.CommandText = """
                 INSERT INTO parked_receipt_items(
                   parked_receipt_id,product_id,product_name,variant_name,
-                  barcode,quantity,unit_price_cents,vat_rate,pfand_cents,line_total_cents,
+                  barcode,quantity,quantity_milli,unit_price_cents,vat_rate,pfand_cents,line_total_cents,
                   list_unit_price_cents,list_line_total_cents,
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
@@ -3363,7 +3380,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                   vat_allocations_json,menu_components_json)
                 VALUES(
                   $parked,$product,$name,$variant,
-                  $barcode,$qty,$price,$vat,$pfand,$total,
+                  $barcode,$qty,$qtyMilli,$price,$vat,$pfand,$total,
                   $listUnit,$listTotal,
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
@@ -3375,7 +3392,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             q.Parameters.AddWithValue("$name", line.ProductName);
             q.Parameters.AddWithValue("$variant", line.VariantName);
             q.Parameters.AddWithValue("$barcode", line.Barcode);
-            q.Parameters.AddWithValue("$qty", line.Quantity);
+            q.Parameters.AddWithValue("$qty", Convert.ToDouble(line.Quantity));
+            q.Parameters.AddWithValue("$qtyMilli", QuantityStorage.ToMilli(line.Quantity));
             q.Parameters.AddWithValue("$price", line.UnitPriceCents);
             q.Parameters.AddWithValue("$vat", line.VatRate);
             q.Parameters.AddWithValue("$imHaus", line.ImHausApplicable ? 1 : 0);
@@ -3404,7 +3422,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
         var result = new List<CartLine>();
         await using var q = c.CreateCommand();
         q.CommandText = """
-            SELECT product_id,product_name,variant_name,barcode,quantity,
+            SELECT product_id,product_name,variant_name,barcode,
+                   CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
                    unit_price_cents,vat_rate,pfand_cents,
                    list_unit_price_cents,
                    promotion_id,promotion_name,promotion_percent,
@@ -3429,7 +3448,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                 ProductName = r.GetString(1),
                 VariantName = r.GetString(2),
                 Barcode = r.GetString(3),
-                Quantity = Convert.ToDecimal(r.GetDouble(4)),
+                Quantity = QuantityStorage.FromMilli(r.GetInt64(4)),
                 UnitPriceCents = r.GetInt64(5),
                 VatRate = Convert.ToDecimal(r.GetDouble(6)),
                 PfandCents = r.GetInt64(7),
