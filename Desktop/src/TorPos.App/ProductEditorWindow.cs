@@ -2387,6 +2387,13 @@ public sealed class ProductEditorWindow : Window
             return;
         }
 
+        if (_selectedArticle.IsWeighted)
+        {
+            _imageText.Text =
+                "ANGEBOT: Gewichtsartikel sind in R170 von Artikel-/Warengruppen-Angeboten ausgenommen, damit Teil-kг-Verkäufe centgenau bleiben. Normaler Bon-Rabatt bleibt möglich.";
+            return;
+        }
+
         var category =
             _catalog.Categories.FirstOrDefault(
                 x => x.Id == _selectedArticle.CategoryId);
