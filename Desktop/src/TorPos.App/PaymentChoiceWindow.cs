@@ -508,19 +508,22 @@ public sealed class PaymentChoiceWindow : Window
         Close(new PaymentChoiceResult(PaymentMethod.Card, _imHaus));
     }
 
-    private static Border DetailPanel(params Control[] controls) => new()
+    private static Border DetailPanel(params Control[] controls)
     {
-        Background = Panel,
-        BorderBrush = PanelBorder,
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(10),
-        Padding = new Thickness(14, 12),
-        Child = new StackPanel
+        var panel = new StackPanel { Spacing = 10 };
+        foreach (var control in controls)
+            panel.Children.Add(control);
+
+        return new Border
         {
-            Spacing = 10,
-            Children = { controls }
-        }
-    };
+            Background = Panel,
+            BorderBrush = PanelBorder,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14, 12),
+            Child = panel
+        };
+    }
 
     private static Control BuildAmountRow(string label, TextBlock value)
     {
