@@ -457,7 +457,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // manifest packaging for the customer installer.
 // R164: 3 reviewed checks lock fresh admin TextBoxes on reload and the real
 // employee-management double-load UI regression path.
-const int ExpectedSafetyChecks = 981;
+// R165: 5 reviewed checks lock keyboard-wedge scanner capture, ENTER/TAB
+// suffix support, catalog refresh and explicit scan feedback.
+const int ExpectedSafetyChecks = 986;
 
 if (checks != ExpectedSafetyChecks)
 {
