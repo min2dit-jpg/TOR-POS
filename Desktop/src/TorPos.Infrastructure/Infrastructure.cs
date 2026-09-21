@@ -91,6 +91,7 @@ public static class AppPaths
     /// <summary>R133: TSE TAR exports TOR creates itself (after activation), kept with the till's data.</summary>
     public static string TseExportsPath => Path.Combine(DataDirectory, "TseExports");
     public static string EditionLockPath => Path.Combine(DataDirectory, "edition.lock");
+    public static string PermanentEditionLockPath => Path.Combine(DataDirectory, "edition.permanent.lock");
     public static string FirstRunAdminPath => Path.Combine(DataDirectory, "first-run-admin.cfg");
     public static string SecurityInitializedPath => Path.Combine(DataDirectory, "security.initialized");
     public static string CommercialLicensePath => Path.Combine(DataDirectory, "commercial-license.json");
