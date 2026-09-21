@@ -1465,6 +1465,7 @@ public partial class MainWindow:Window
             // refuses to proceed without evidence of this.
             var cardPortion = original.EffectiveCardPortionCents;
             var cardRefundEvidence = "";
+            var cardRefundAttemptId = "";
             if (cardPortion > 0)
             {
                 // R106: a durable lock against a duplicate refund attempt -
@@ -1479,14 +1480,14 @@ public partial class MainWindow:Window
                 }
 
                 ScannerStatus.Text = "BON STORNO · Karten-Anteil wird am Terminal erstattet …";
-                var attemptId = await _cardRefundLocks.BeginAsync(saleId, "STORNO", cardPortion);
+                cardRefundAttemptId = await _cardRefundLocks.BeginAsync(saleId, "STORNO", cardPortion);
                 var refund = await _checkoutApplication.RefundStornoCardPortionAsync(cardPortion, actionId);
                 if (refund is null || refund.Outcome != PaymentTerminalOutcome.Approved)
                 {
                     // Definite (not ambiguous) outcome - safe to clear the
                     // lock immediately, nothing to reconcile.
                     if (refund is null || refund.Outcome != PaymentTerminalOutcome.Unknown)
-                        await _cardRefundLocks.ClearAsync(attemptId);
+                        await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
                     await WriteControlledActionAsync(
                         actionId, "REJECTED", "SALE_STORNO", reason,
@@ -1499,11 +1500,16 @@ public partial class MainWindow:Window
                         : $"BON STORNO ABGEBROCHEN · Karten-Erstattung nicht bestätigt · {refund?.Message ?? "Terminal nicht erreichbar"}";
                     return;
                 }
-                await _cardRefundLocks.ClearAsync(attemptId);
+                // R176: keep the APPROVED refund lock until the matching
+                // immutable DB reversal has committed. A crash/failure in
+                // between must leave a reconciliation lock, never make the
+                // same real-world refund silently retryable.
                 cardRefundEvidence = $"outcome=APPROVED; terminal_code={refund.OutcomeCode}; terminal_id={refund.TerminalId}; trace={refund.TraceNumber}";
             }
 
             var storno = await _sales.RecordStornoAsync(saleId, _currentUser.Username, reason, cardRefundEvidence);
+            if (cardRefundAttemptId.Length > 0)
+                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
             await WriteControlledActionAsync(
                 actionId, "APPLIED", "SALE_STORNO", reason,
@@ -1652,6 +1658,7 @@ public partial class MainWindow:Window
             var returnCardPortion = returnQuote.CardPortionCents;
 
             var cardRefundEvidence = "";
+            var cardRefundAttemptId = "";
             if (returnCardPortion > 0)
             {
                 // R106: same durable duplicate-refund lock as BON STORNO -
@@ -1665,12 +1672,12 @@ public partial class MainWindow:Window
                 }
 
                 ScannerStatus.Text = "TEILRETOURE · Karten-Anteil wird am Terminal erstattet …";
-                var attemptId = await _cardRefundLocks.BeginAsync(saleId, "RETURN", returnCardPortion);
+                cardRefundAttemptId = await _cardRefundLocks.BeginAsync(saleId, "RETURN", returnCardPortion);
                 var refund = await _checkoutApplication.RefundStornoCardPortionAsync(returnCardPortion, actionId);
                 if (refund is null || refund.Outcome != PaymentTerminalOutcome.Approved)
                 {
                     if (refund is null || refund.Outcome != PaymentTerminalOutcome.Unknown)
-                        await _cardRefundLocks.ClearAsync(attemptId);
+                        await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
                     await WriteControlledActionAsync(
                         actionId, "REJECTED", "SALE_RETURN", reason,
@@ -1683,11 +1690,16 @@ public partial class MainWindow:Window
                         : $"TEILRETOURE ABGEBROCHEN · Karten-Erstattung nicht bestätigt · {refund?.Message ?? "Terminal nicht erreichbar"}";
                     return;
                 }
-                await _cardRefundLocks.ClearAsync(attemptId);
+                // R176: keep the APPROVED refund lock until the matching
+                // immutable DB reversal has committed. A crash/failure in
+                // between must leave a reconciliation lock, never make the
+                // same real-world refund silently retryable.
                 cardRefundEvidence = $"outcome=APPROVED; terminal_code={refund.OutcomeCode}; terminal_id={refund.TerminalId}; trace={refund.TraceNumber}";
             }
 
             var returned = await _sales.RecordReturnAsync(saleId, requestedLines, _currentUser.Username, reason, cardRefundEvidence);
+            if (cardRefundAttemptId.Length > 0)
+                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
             await WriteControlledActionAsync(
                 actionId, "APPLIED", "SALE_RETURN", reason,
