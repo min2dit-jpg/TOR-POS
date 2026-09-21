@@ -1,5 +1,6 @@
 using TorPos.Core;
 
+// R180 cashier-only scanner regression contract: scanning must never navigate away.
 public static class R180ReviewTests
 {
     public static Task Run(string root, Action<bool,string> assert)
