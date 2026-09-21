@@ -1173,39 +1173,50 @@ async function handler(req, res) {
     }
 
     if(req.method==='GET' && pathname==='/api/v1/updates/check'){
-      const current=String(url.searchParams.get('version')||'0'),edition=String(url.searchParams.get('edition')||'KIOSK').toUpperCase();
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false});
+      const current=String(url.searchParams.get('version')||'0');
+      const edition=String(url.searchParams.get('edition')||'KIOSK').toUpperCase();
+      const requestedChannel=String(url.searchParams.get('channel')||'STABLE').toUpperCase();
+      const channel=requestedChannel==='PILOT'?'PILOT':'STABLE';
+      const manifestName=channel==='PILOT'?'pilot-manifest.json':'manifest.json';
+      const manifestPath=path.join(UPDATES,manifestName);
+      if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false,channel});
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Update-Manifest ist ungültig.'});}
       const allowed=Array.isArray(m.editions)?m.editions.map(x=>String(x).toUpperCase()):['KIOSK','IMBISS'];
-      if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false});
+      if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false,channel});
       const file=path.basename(String(m.filename||''));const full=path.join(UPDATES,file);
       if(!file || !fs.existsSync(full) || !/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'Update-Datei/Prüfsumme nicht bereit.'});
       const publicRoot=String(process.env.TOR_CLOUD_PUBLIC_URL||'').trim();let origin;
       if(publicRoot){origin=new URL(publicRoot.endsWith('/')?publicRoot:publicRoot+'/');}
       else{const scheme=COOKIE_SECURE?'https':'http';origin=new URL(`${scheme}://${req.headers.host}`);}
       const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,origin).toString();
-      return json(res,200,{ok:true,update_available:true,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
+      return json(res,200,{ok:true,update_available:true,channel,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
     }
 
     if(req.method==='GET' && pathname.startsWith('/updates/')){
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return text(res,404,'Nicht gefunden');
-      let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return text(res,404,'Nicht gefunden');}
-      const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/updates/'.length));
-      if(!m.enabled || requested!==expected || requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+      const requested=decodeURIComponent(pathname.slice('/updates/'.length));
+      if(requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+
+      let m=null;
+      for(const name of ['manifest.json','pilot-manifest.json']){
+        const manifestPath=path.join(UPDATES,name);
+        if(!fs.existsSync(manifestPath))continue;
+        try{
+          const candidate=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+          if(candidate.enabled && path.basename(String(candidate.filename||''))===requested){m=candidate;break;}
+        }catch{}
+      }
+      if(!m)return text(res,404,'Nicht gefunden');
+
+      const expected=path.basename(String(m.filename||''));
       const full=path.join(UPDATES,expected);if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');const stat=fs.statSync(full);
-      // R120: verify the bytes actually being served against the manifest
-      // hash. The publishing script checks Authenticode, but nothing checked
-      // the file again at serve time - so anything that could write into the
-      // updates directory bypassed that gate completely. Cheap enough here:
-      // this endpoint is hit once per update, not per request.
+      // R178: a file is downloadable only while referenced by an enabled
+      // STABLE or PILOT manifest. The bytes are re-hashed at serve time.
       const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
       if(served!==String(m.sha256||'').toUpperCase()){
         console.error('Update refused: sha256 of',expected,'does not match manifest');
         return text(res,409,'Update-Datei stimmt nicht mit dem Manifest überein.');
       }
       res.writeHead(200,{'Content-Type':'application/vnd.microsoft.portable-executable','Content-Length':stat.size,'Content-Disposition':`attachment; filename="${expected}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-      // R120: an aborted download used to raise an unhandled 'error' on the
-      // stream and take the whole server process down with it.
       const stream=fs.createReadStream(full);
       stream.on('error',err=>{console.error('Update stream failed:',err.message);res.destroy();});
       return stream.pipe(res);
