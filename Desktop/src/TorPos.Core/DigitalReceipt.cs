@@ -86,6 +86,70 @@ public static class DiscountProration
     }
 }
 
+
+/// <summary>
+/// R179: allocates one partial return from the cumulative totals of all earlier
+/// returns. Prorating every fragment independently can lose or create cents;
+/// allocating F(previous + current) - F(previous) makes the fragments telescope
+/// exactly to the original discounted payment and to its cash/card split.
+/// </summary>
+public sealed record CumulativeReturnAllocation(
+    long RawCents,
+    long DiscountCents,
+    long TotalCents,
+    long CashCents,
+    long CardCents);
+
+public static class CumulativeReturnProration
+{
+    public static CumulativeReturnAllocation Allocate(
+        long previousRawCents,
+        long currentRawCents,
+        long previousTotalCents,
+        long previousCashCents,
+        long originalSubtotalCents,
+        long originalTotalCents,
+        long originalCashCents)
+    {
+        if (previousRawCents < 0 || currentRawCents < 0 ||
+            previousTotalCents < 0 || previousCashCents < 0)
+            throw new ArgumentOutOfRangeException(nameof(currentRawCents));
+        if (originalSubtotalCents < 0 || originalTotalCents < 0 || originalCashCents < 0 ||
+            originalTotalCents > originalSubtotalCents || originalCashCents > originalTotalCents)
+            throw new ArgumentOutOfRangeException(nameof(originalTotalCents));
+
+        var cumulativeRaw = checked(previousRawCents + currentRawCents);
+        if (cumulativeRaw > originalSubtotalCents)
+            throw new InvalidOperationException("Retoure überschreitet die ursprüngliche Zwischensumme.");
+
+        var cumulativeTotal = DiscountProration.Prorate(
+            cumulativeRaw,
+            originalSubtotalCents,
+            originalTotalCents);
+        var currentTotal = cumulativeTotal - previousTotalCents;
+
+        var cumulativeCash = originalTotalCents > 0
+            ? (long)Math.Round(
+                (decimal)cumulativeTotal * originalCashCents / originalTotalCents,
+                MidpointRounding.AwayFromZero)
+            : 0L;
+        var currentCash = cumulativeCash - previousCashCents;
+        var currentCard = currentTotal - currentCash;
+        var currentDiscount = currentRawCents - currentTotal;
+
+        if (currentTotal < 0 || currentDiscount < 0 || currentCash < 0 || currentCard < 0 ||
+            cumulativeTotal > originalTotalCents || cumulativeCash > originalCashCents)
+            throw new InvalidOperationException("Kumulative Retourenverteilung ist inkonsistent.");
+
+        return new CumulativeReturnAllocation(
+            currentRawCents,
+            currentDiscount,
+            currentTotal,
+            currentCash,
+            currentCard);
+    }
+}
+
 /// <summary>
 /// R145: the customer's digital receipt (TOR Digital Receipt Cloud).
 ///
