@@ -1,12 +1,16 @@
 {
   "enabled": false,
-  "version": "0.7.33.45",
-  "revision": "R45-Update-Lizenz-2FA",
+  "version": "0.7.33.878",
+  "revision": "R178",
   "published_at": "",
   "mandatory": false,
-  "editions": ["KIOSK", "IMBISS"],
-  "filename": "TOR-POS-Pro-Setup.exe",
+  "editions": [
+    "KIOSK",
+    "IMBISS"
+  ],
+  "filename": "",
   "sha256": "",
   "signer_thumbprint": "",
-  "release_notes": "Update erst nach Freigabe veröffentlichen."
+  "release_notes": "STABLE kanalında yalnızca imzalı ve onaylanmış sürüm PUBLISH-UPDATE.ps1 ile yayınlanır.",
+  "channel": "STABLE"
 }
