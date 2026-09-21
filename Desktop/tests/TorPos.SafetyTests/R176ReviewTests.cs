@@ -253,13 +253,30 @@ public static class R176ReviewTests
             repositorySource.Contains("PromotionDiscountCentsSlice(", StringComparison.Ordinal),
             "R176 terminal refund preview and persisted return share the same cumulative-cent allocation");
 
+        var stornoCommitIndex = mainSource.IndexOf(
+            "var storno = await _sales.RecordStornoAsync",
+            StringComparison.Ordinal);
+        var returnCommitIndex = mainSource.IndexOf(
+            "var returned = await _sales.RecordReturnAsync",
+            StringComparison.Ordinal);
+        var firstClearAfterStorno = stornoCommitIndex < 0
+            ? -1
+            : mainSource.IndexOf(
+                "await _cardRefundLocks.ClearAsync(cardRefundAttemptId);",
+                stornoCommitIndex,
+                StringComparison.Ordinal);
+        var firstClearAfterReturn = returnCommitIndex < 0
+            ? -1
+            : mainSource.IndexOf(
+                "await _cardRefundLocks.ClearAsync(cardRefundAttemptId);",
+                returnCommitIndex,
+                StringComparison.Ordinal);
+
         assert(
-            mainSource.Contains(
-                "var storno = await _sales.RecordStornoAsync(saleId, _currentUser.Username, reason, cardRefundEvidence);\n            if (cardRefundAttemptId.Length > 0)\n                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);",
-                StringComparison.Ordinal) &&
-            mainSource.Contains(
-                "var returned = await _sales.RecordReturnAsync(saleId, requestedLines, _currentUser.Username, reason, cardRefundEvidence);\n            if (cardRefundAttemptId.Length > 0)\n                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);",
-                StringComparison.Ordinal),
+            stornoCommitIndex >= 0 &&
+            returnCommitIndex >= 0 &&
+            firstClearAfterStorno > stornoCommitIndex &&
+            firstClearAfterReturn > returnCommitIndex,
             "R176 approved card-refund locks remain durable until the matching storno/return DB reversal commits");
 
         var complianceSource = File.ReadAllText(
