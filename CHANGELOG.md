@@ -1,12 +1,21 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R176|0.7.33.876|Merd-M -->
+<!-- TOR_RELEASE:R177|0.7.33.877|Merd-M -->
 
 ## Aktueller Release
 
-**R176 · Merd-M · 0.7.33.876**
+**R177 · Merd-M · 0.7.33.877**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R177
+
+- Kassenschublade: der bei Geräte → Kassenschublade erfolgreiche RAW-Impuls wird jetzt auch im echten Zahlungsweg verwendet. Die Lade öffnet nach dem dauerhaften SALE-Commit bei BAR bzw. GEMISCHT mit Baranteil; Bon-Ausgabe, Digitalbeleg und BON EIN/AUS beeinflussen die Öffnung nicht mehr.
+- Die alte Kopplung der Schublade an `PrintReceipt` wurde entfernt, damit ein Papierbon die Lade nicht doppelt öffnet und ein Digitalbeleg die Öffnung nicht verhindert.
+- Hardware-Test/Simulation verwendet denselben Zahlungs-Schubladenpfad (außer Training), damit die Funktion auch vor fiskaler Produktivfreigabe real getestet werden kann.
+- Scanner: die Kassieroberfläche besitzt nun ein transparentes echtes TextBox-Fokusziel wie die Artikelverwaltung. Nach Touch/Klick, Dialog-Rückkehr und Checkout wird der Scannerfokus automatisch wiederhergestellt.
+- Scanner: Enter/Tab bleibt sofortiger Abschluss; wenn der HID-Suffix unter Windows/Avalonia verloren geht, wird ein schneller numerischer Barcode-Block nach kurzem Idle trotzdem verarbeitet.
+- 6 neue R177-Regressionsprüfungen sichern Scanner-Fokus/Suffix-Fallback und die einmalige, bonunabhängige Schubladenöffnung.
 
 ### R176
 
