@@ -444,6 +444,7 @@ await R175ReviewTests.Run(root, Assert);
 await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
 await R179ReviewTests.Run(root, Assert);
+await R180ReviewTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -505,7 +506,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // R179: 10 reviewed checks lock cumulative partial-return tender allocation,
 // visible HID scanner capture/timing, the unified drawer switch and Cloud
 // reversal/weighted-promotion payload contracts.
-const int ExpectedSafetyChecks = 1114;
+// R180: 4 reviewed checks lock cashier-only unknown-EAN behavior,
+// KeyDown/TextInput de-duplication and the non-blinking scanner capture.
+const int ExpectedSafetyChecks = 1118;
 
 if (checks != ExpectedSafetyChecks)
 {
