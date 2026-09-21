@@ -1106,48 +1106,24 @@ public partial class MainWindow:Window
 
         if (p is not null)
         {
-            ScannerStatus.Text = $"SCAN OK · {p.Name}";
+            ScannerCapture.Text = code;
+            ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
+            ScannerStatus.Text = $"SCAN OK · {p.Name} · EAN {code}";
             ScannerStatus.Foreground = AppTheme.AccentTeal;
             await AddProduct(p);
         }
         else
         {
+            // R180: an unknown barcode must never navigate the cashier away from
+            // the sale screen. Earlier revisions opened ProductEditorWindow
+            // automatically whenever scanner.unknown_dialog was true. On a real
+            // checkout this looked as if the scanner itself jumped to Stammdaten.
+            // Keep the scanned code visible so hardware-prefix/duplication issues
+            // can be diagnosed directly at the till.
+            ScannerCapture.Text = code;
+            ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
             ScannerStatus.Text = $"EAN NICHT GEFUNDEN · {code}";
             ScannerStatus.Foreground = AppTheme.WarningAmber;
-
-            if (_settingsCache.GetBool("scanner.unknown_dialog", true))
-            {
-                if (!_currentUser.Can(UserPermissions.ManageProducts))
-                {
-                    ScannerStatus.Text =
-                        $"EAN NICHT GEFUNDEN · {code} · keine Stammdaten-Berechtigung.";
-                    return;
-                }
-
-                var saved = await new ProductEditorWindow(
-                        _repo,
-                        _catalog,
-                        _images,
-                        _management,
-                        _promotions,
-                        _currentUser,
-                        code)
-                    .ShowDialog<bool>(this);
-
-                if (saved)
-                {
-                    await _catalog.ReloadAsync();
-                    BuildCategories();
-                    SelectCategory(_categoryId);
-
-                    if (_catalog.TryGetByBarcode(code, out p) && p is not null)
-                    {
-                        ScannerStatus.Text = $"SCAN OK · {p.Name}";
-                        ScannerStatus.Foreground = AppTheme.AccentTeal;
-                        await AddProduct(p);
-                    }
-                }
-            }
         }
 
         var ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -1158,6 +1134,13 @@ public partial class MainWindow:Window
 
     private async void OnEanSearchClick(object? sender, RoutedEventArgs e)
     {
+        var typed = (ScannerCapture.Text ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(typed) && typed.All(char.IsDigit))
+        {
+            await ProcessBarcodeSafely(typed);
+            return;
+        }
+
         var code = await new EanSearchWindow().ShowDialog<string?>(this);
         if (string.IsNullOrWhiteSpace(code))
             return;
