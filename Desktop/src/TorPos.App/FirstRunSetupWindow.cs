@@ -194,10 +194,24 @@ public sealed class FirstRunSetupWindow : Window
     private async Task SaveAsync(bool finish = false)
     {
         var terminalProfile = SelectedTerminalProfile;
-        await _settings.SaveManyAsync(new Dictionary<string,string>
+        var companyName = (_company.Text ?? "").Trim();
+        var owner = (_owner.Text ?? "").Trim();
+        var street = (_street.Text ?? "").Trim();
+        var zip = (_zip.Text ?? "").Trim();
+        var city = (_city.Text ?? "").Trim();
+
+        var values = new Dictionary<string,string>
         {
-            ["company.name"] = (_company.Text ?? "").Trim(), ["company.owner"] = (_owner.Text ?? "").Trim(),
-            ["company.street"] = (_street.Text ?? "").Trim(), ["company.zip"] = (_zip.Text ?? "").Trim(), ["company.city"] = (_city.Text ?? "").Trim(),
+            ["company.name"] = companyName,
+            ["company.owner"] = owner,
+            ["company.street"] = street,
+            ["company.zip"] = zip,
+            ["company.city"] = city,
+            [InstallationEdition.ProfileKey(_edition, "company.name")] = companyName,
+            [InstallationEdition.ProfileKey(_edition, "company.owner")] = owner,
+            [InstallationEdition.ProfileKey(_edition, "company.street")] = street,
+            [InstallationEdition.ProfileKey(_edition, "company.zip")] = zip,
+            [InstallationEdition.ProfileKey(_edition, "company.city")] = city,
             ["device.receipt_printer.enabled"] = _printerEnabled.IsChecked == true ? "true" : "false",
             ["device.receipt_printer.name"] = _printerName.SelectedItem?.ToString() ?? "",
             ["payment.terminal.vendor"] = terminalProfile.Id,
@@ -205,8 +219,11 @@ public sealed class FirstRunSetupWindow : Window
             ["payment.terminal.ip"] = terminalProfile.RequiresNetworkEndpoint ? (_terminalIp.Text ?? "").Trim() : "",
             ["payment.terminal.port"] = terminalProfile.RequiresNetworkEndpoint ? (_terminalPort.Text ?? terminalProfile.DefaultPort.ToString()).Trim() : "",
             ["payment.terminal.protocol"] = terminalProfile.Protocol,
-            ["installation.first_run_completed"] = finish ? "true" : "false"
-        });
+            ["installation.first_run_completed"] = finish ? "true" : "false",
+            [$"installation.first_run_completed.{_edition}"] = finish ? "true" : "false"
+        };
+
+        await _settings.SaveManyAsync(values);
     }
 
     private async Task NextAsync()
