@@ -41,6 +41,8 @@ const TOTP_KEY = crypto.createHash('sha256').update(TOTP_KEY_MATERIAL || 'disabl
 // A short-lived QR pairing is completed in the user's phone browser. The Cloud keeps only
 // an encrypted refresh token and returns short-lived access tokens to the authenticated POS.
 const CLOUD_PUBLIC_URL = String(process.env.TOR_CLOUD_PUBLIC_URL || '').trim().replace(/\/$/, '');
+const UPDATE_PUBLIC_URL = String(process.env.TOR_UPDATE_PUBLIC_URL || '').trim().replace(/\/$/, '');
+
 const GOOGLE_OAUTH_CLIENT_ID = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_ID || '').trim();
 const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
 const GOOGLE_TOKEN_KEY_MATERIAL = String(process.env.TOR_CLOUD_GOOGLE_TOKEN_KEY || '').trim();
@@ -1185,9 +1187,13 @@ async function handler(req, res) {
       if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false,channel});
       const file=path.basename(String(m.filename||''));const full=path.join(UPDATES,file);
       if(!file || !fs.existsSync(full) || !/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'Update-Datei/Prüfsumme nicht bereit.'});
-      const publicRoot=String(process.env.TOR_CLOUD_PUBLIC_URL||'').trim();let origin;
-      if(publicRoot){origin=new URL(publicRoot.endsWith('/')?publicRoot:publicRoot+'/');}
-      else{const scheme=COOKIE_SECURE?'https':'http';origin=new URL(`${scheme}://${req.headers.host}`);}
+      let origin;
+      if(UPDATE_PUBLIC_URL){
+        origin=new URL(UPDATE_PUBLIC_URL.endsWith('/')?UPDATE_PUBLIC_URL:UPDATE_PUBLIC_URL+'/');
+      }else{
+        const scheme=forwardedProto(req)==='https'?'https':(COOKIE_SECURE?'https':'http');
+        origin=new URL(`${scheme}://${req.headers.host}`);
+      }
       const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,origin).toString();
       return json(res,200,{ok:true,update_available:true,channel,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
     }
