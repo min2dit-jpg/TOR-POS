@@ -1020,6 +1020,25 @@ public partial class SettingsWindow : Window
         var drawerEnabled = Check("device.drawer.enabled", "Kassenlade verwenden");
         page.Children.Add(ToggleRow(drawerEnabled));
         var drawerSection = Section("Kassenschublade · Verbindungstest");
+        var drawerProtocol = Combo(
+            "device.receipt_printer.drawer_protocol",
+            "AUTO",
+            "ESC_POS",
+            "STAR_PRNT");
+        var drawerChannel = Combo(
+            "device.receipt_printer.drawer_channel",
+            "1",
+            "2");
+        Form(
+            drawerSection,
+            "Protokoll",
+            drawerProtocol,
+            "AUTO nutzt das erkannte Druckerprofil. Bei generischem/inkorrektem Windows-Treiber ESC_POS oder STAR_PRNT manuell wählen.");
+        Form(
+            drawerSection,
+            "Ausgang",
+            drawerChannel,
+            "1 = Standardanschluss. Falls die Lade nicht reagiert, Ausgang 2 testen.");
         var drawerStatus = new TextBlock
         {
             Text = "Noch nicht getestet. Der Test erzeugt keinen Verkauf und keinen Bon.",
@@ -1046,11 +1065,23 @@ public partial class SettingsWindow : Window
             drawerTest.IsEnabled = false;
             try
             {
+                var protocol = drawerProtocol.SelectedItem?.ToString() ?? "AUTO";
+                var channel = int.TryParse(
+                    drawerChannel.SelectedItem?.ToString(),
+                    out var selectedChannel)
+                    ? Math.Clamp(selectedChannel, 1, 2)
+                    : 1;
+
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await _receiptPrinter.TestCashDrawerAsync(printerName, timeout.Token);
+                await _receiptPrinter.TestCashDrawerAsync(
+                    printerName,
+                    timeout.Token,
+                    channel,
+                    protocol);
                 drawerStatus.Text =
-                    "✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
-                    "TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.";
+                    $"✓ Schubladenbefehl an Windows übergeben · {protocol} · Ausgang {channel}. " +
+                    "Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
+                    "Wenn nicht: zuerst Ausgang 2, danach das andere Protokoll testen.";
             }
             catch (Exception ex)
             {
@@ -1066,7 +1097,7 @@ public partial class SettingsWindow : Window
         drawerSection.Children.Add(drawerStatus);
         drawerSection.Children.Add(new TextBlock
         {
-            Text = "Der Test sendet genau einen ESC-p/StarPRNT-Impuls über den ausgewählten Bondrucker. Kein Verkauf, keine TSE-Transaktion, kein Bon.",
+            Text = "Der Test sendet genau einen Schubladenimpuls mit dem gewählten Protokoll/Ausgang über den ausgewählten Bondrucker. Kein Verkauf, keine TSE-Transaktion, kein Bon.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.72
         });
