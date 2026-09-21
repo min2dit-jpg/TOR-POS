@@ -1,0 +1,13 @@
+{
+  "enabled": false,
+  "version": "0.7.33.878",
+  "revision": "R178",
+  "published_at": "",
+  "mandatory": false,
+  "editions": ["KIOSK", "IMBISS"],
+  "filename": "",
+  "sha256": "",
+  "signer_thumbprint": "",
+  "release_notes": "PILOT kanalında yalnızca kontrollü test müşterileri kullanılır.",
+  "channel": "PILOT"
+}
