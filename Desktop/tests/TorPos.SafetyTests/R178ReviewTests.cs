@@ -159,12 +159,24 @@ public static class R178ReviewTests
                 StringComparison.Ordinal),
             "R178 window TextInput fallback cannot duplicate characters already captured by the dedicated scanner sink");
 
+        var drawerPaymentMethodIndex = main.IndexOf(
+            "private async Task TryOpenCashDrawerAfterPaymentAsync",
+            StringComparison.Ordinal);
+        var drawerPaymentSource = drawerPaymentMethodIndex >= 0
+            ? main[drawerPaymentMethodIndex..Math.Min(
+                main.Length,
+                drawerPaymentMethodIndex + 6000)]
+            : "";
+
         assert(
-            main.Contains(
-                "await _settings.GetAsync(\n            \"device.drawer.enabled\"",
+            drawerPaymentSource.Contains(
+                "_settings.GetAsync(",
                 StringComparison.Ordinal) &&
-            main.Contains(
-                "await _settings.GetAsync(\n                \"device.receipt_printer.drawer_channel\"",
+            drawerPaymentSource.Contains(
+                "\"device.drawer.enabled\"",
+                StringComparison.Ordinal) &&
+            drawerPaymentSource.Contains(
+                "\"device.receipt_printer.drawer_channel\"",
                 StringComparison.Ordinal) &&
             settings.Contains(
                 "[\"device.drawer.enabled\"] = \"true\"",
