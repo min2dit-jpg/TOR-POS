@@ -1,12 +1,21 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R177|0.7.33.877|Merd-M -->
+<!-- TOR_RELEASE:R178|0.7.33.878|Merd-M -->
 
 ## Aktueller Release
 
-**R177 · Merd-M · 0.7.33.877**
+**R178 · Merd-M · 0.7.33.878**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R178
+
+- Release-/Qualifikationsdokumentation auf den aktuellen Main-Stand synchronisiert; veraltete R149-/881-Referenzen werden entfernt.
+- Architektur dokumentiert fiskaltrust/Swissbit nun korrekt als auf `main` integrierten Diagnose-/Client-Code, dessen produktiver Laufzeitpfad bis zur Realhardware-Abnahme weiterhin gesperrt bleibt.
+- Verfahrensdokumentations-Statusmatrix mit 40 Prüffeldern ergänzt; geprüfte Bereiche, offene Nachweise und externe Hardware-/Fiskalabnahmen werden getrennt ausgewiesen.
+- Storno/Retoure-Dokumentation präzisiert: `Kassenbeleg-V1`, umgekehrte Vorzeichen für Gegenbuchungen und `Bon_Referenzen` auf den Ursprungsbeleg werden getrennt beschrieben; die Ursprungsreferenz ist nicht Bestandteil der TSE-processData.
+- Keine fiskalische Produktionsfreigabe: alle sechs `FiscalRelease`-Nachweisflags bleiben unverändert geschlossen. Der automatische Safety-/Regression-Baseline bleibt bei 1104 Checks.
+- CI erzeugt nach erfolgreicher Prüfung weiterhin Kunden-Setup, Windows-Testpaket und ein ZIP des exakt committed Source-Trees für externe Code-Reviews.
 
 ### R177
 

@@ -1,6 +1,6 @@
 # TOR POS – Release Qualification
 
-Stand: 2026-09-19
+Stand: R178 · 2026-09-21
 
 Dieses Dokument trennt **Entwicklungsstand**, **automatische Tests**, **Hardware-Abnahme** und **Produktionsfreigabe**. Ein grüner Build allein ist keine fiskalische Freigabe.
 
@@ -8,16 +8,15 @@ Dieses Dokument trennt **Entwicklungsstand**, **automatische Tests**, **Hardware
 
 Die Softwareversion wird ausschließlich in `Desktop/src/TorPos.Core/ReleaseInfo.cs` geführt. CI prüft die Spiegelwerte in Manifest, App-Projekt, Installer, README und CHANGELOG.
 
+Aktueller Release-Stand dieser Dokumentation:
+
+**R178 · Merd-M · 0.7.33.878**
+
 ## Qualifikationsstufen
 
 ### 1. Development Revision
 
-Eine Änderung darf entwickelt und per PR geprüft werden. Draft-Branches für Hardware-/Integrationsarbeit sind ausdrücklich keine Produktionsfunktion.
-
-Beispiele:
-- `integration/fiskaltrust-sandbox`
-- `validation/swissbit-sdk-probe`
-- `r150/mixed-vat-menu-guard`
+Eine Änderung wird entwickelt und gegen die bestehenden Sicherheits-, Fach- und UI-Verträge geprüft. Integrationscode kann auf `main` vorhanden sein, ohne dadurch produktiv freigegeben zu sein.
 
 ### 2. Automated Qualified
 
@@ -27,35 +26,39 @@ Voraussetzungen:
 - UI-Snapshot-Check erfolgreich
 - Cloud Syntax/Test Suite erfolgreich
 - Versionskonsistenz erfolgreich
-- keine neuen ungeklärten Build-Warnings
+- Repository-Hygiene und fiskalische Release-Gates erfolgreich geprüft
 
 Ergebnis: Code ist automatisiert geprüft, aber noch nicht hardware- oder fiskalisch freigegeben.
 
+**R178-Baseline:** 1104 Safety-/Regression-Checks.
+
 ### 3. Hardware Acceptance
 
-Für Funktionen mit realer Hardware müssen die vorgesehenen Geräte tatsächlich angeschlossen werden.
+Für Funktionen mit realer Hardware müssen die vorgesehenen Geräte tatsächlich angeschlossen und mit dem konkreten Build geprüft werden.
 
 Für Swissbit/TSE mindestens:
-1. SDK/WORM API laden und Gerät erkennen
-2. TSE-Identität/Seriennummer erfassen
-3. kontrollierten BAR-Testvorgang ausführen
-4. Start/Finish und Signaturzähler prüfen
-5. ProcessType/ProcessData gegen TOR vergleichen
-6. DSFinV-K-Anhang-I-QR prüfen
-7. 80-mm-Beleg prüfen
+1. Gerät/Provider eindeutig erkennen
+2. TSE-Identität und Seriennummer erfassen
+3. Client-Registrierung mit der vorgesehenen Kasse prüfen
+4. kontrollierten BAR-Testvorgang ausführen
+5. Start/Finish und Signaturzähler prüfen
+6. ProcessType/ProcessData mit TOR vergleichen
+7. DSFinV-K-Anhang-I-QR und Belegdaten prüfen
 8. TAR-Export prüfen
-9. USB-/Geräteausfall dokumentieren
+9. TSE-/USB-Ausfall dokumentieren
 10. Neustart/Recovery prüfen
 
 Die Ergebnisse werden unter `verification/` abgelegt. Vorlage:
 `verification/HARDWARE-E2E-TEMPLATE.md`.
+
+Der read-only fiskaltrust/Swissbit-Probe vom 21.09.2026 ist ein Diagnose-Nachweis, aber **keine** vollständige Hardware Acceptance.
 
 ### 4. Release Candidate
 
 Erst nach grüner automatischer Prüfung und allen für den Release relevanten Hardware-Abnahmen.
 
 Zusätzlich:
-- mindestens eine unabhängige fachliche/technische Prüfung für Änderungen an VAT, TSE, DSFinV-K, Beleg- oder Recovery-Logik dokumentieren
+- unabhängige fachliche/technische Prüfung für Änderungen an VAT, TSE, DSFinV-K, Beleg- oder Recovery-Logik dokumentieren
 - offene fiskalische Release-Blocker prüfen
 - Third-Party-/Lizenzinventar prüfen
 - Setup-Hash archivieren
@@ -64,14 +67,43 @@ Zusätzlich:
 
 ### 5. Production Release
 
-Ein GitHub Release oder Kunden-Setup darf nur dann als **Produktionsrelease** bezeichnet werden, wenn alle für diesen Build erforderlichen automatischen und realen Abnahmen abgeschlossen sind.
+Ein Build darf nur dann als **fiskalisch produktionsfreigegeben** bezeichnet werden, wenn die dafür definierten automatischen und realen Nachweise vollständig vorliegen.
 
-Vorherige Builds dürfen höchstens eindeutig als Development/Validation/Pre-Release bezeichnet werden.
+Bis dahin bleibt der Build Development/Validation/Pre-Release für fiskalische Echtbuchungen, auch wenn Setup, UI und Funktionscode technisch erstellt werden können.
 
-## Aktueller Stand
+## Aktueller Fiskalstatus
 
-R149 ist weiterhin der dokumentierte Produktions-Basisstand. Die KassenSichV-2026-Härtung und BAR-TESTBON-Abnahmevorbereitung laufen als noch nicht produktiv freigegebene Validierungsänderungen. Der erwartete automatisierte Safety-Stand liegt nach dieser Härtung bei 881/881 Checks; CI muss zusätzlich 0 Compiler-Warnings und 0 Errors bestätigen. Die reale physische Swissbit-TSE-End-to-End-Abnahme, DSFinV-K-Prüfung, §6-Beleg/QR-Abnahme, Bestellung/Parken-, Pfand- und unabhängige Fiskalprüfung bleiben separate Freigabevoraussetzungen.
+R178 ist der aktuelle dokumentierte Entwicklungs-/Validierungsstand. Die frühere Angabe „R149 Produktions-Basisstand / 881 Checks“ ist veraltet.
 
-## Release-Tags
+Die zentralen `FiscalRelease`-Nachweise stehen weiterhin auf **false**:
 
-Für freigegebene Builds sollten Release-Tags/Release-Commits signiert werden, sobald der verwendete Git-Workflow dafür eingerichtet ist. Diese Git-Signatur verbessert die Software-Lieferkette, ersetzt aber niemals TSE-Signaturen oder gesetzliche Kassendaten.
+- `DsfinvkValidated`
+- `KassenSichVReceiptValidated`
+- `ParkedOrderTseValidated`
+- `PfandTaxValidated`
+- `PhysicalTseE2EValidated`
+- `IndependentFiscalReviewValidated`
+
+Daher bleibt die produktive fiskalische Buchung gesperrt.
+
+Zusätzlich bleibt der produktive Remote-Updatepfad gesperrt, solange kein TOR/Demirkaan-Code-Signing-Zertifikat als `UpdateSignerThumbprint` fest hinterlegt ist.
+
+## R178 Prüfziel
+
+R178 ändert keine fiskalische Buchungslogik gegenüber R177. Ziel ist die Synchronisierung von Release-Metadaten und Qualifikations-/Verfahrensdokumentation mit dem tatsächlich vorhandenen Code.
+
+Bei grüner CI müssen mindestens nachgewiesen sein:
+- Version R178 / 0.7.33.878 in allen Versionsspiegeln
+- vollständiger Build und Demo-Build
+- 1104/1104 Safety-/Regression-Checks
+- UI-Snapshot-Prüfung
+- Cloud-Checks
+- erzeugtes Windows-Testpaket
+- erzeugtes Kunden-Setup
+- ZIP des exakt committed Source-Trees
+
+## Release-Tags und Artefakte
+
+Freigegebene Release-Commits sollten signiert werden, sobald der verwendete GitHub-/Signing-Prozess dafür vollständig eingerichtet ist.
+
+CI-Artefakte sind Build-Nachweise und Verteilpakete; sie ersetzen keine Hardware- oder Fiskalabnahme.
