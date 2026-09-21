@@ -128,6 +128,41 @@ begin
   Result := ExpandConstant('{userappdata}\{#MyDataDirName}\first-run-admin.cfg');
 end;
 
+function FixedProductEdition(): String;
+begin
+  Result := Uppercase(Trim('{#MyProductEdition}'));
+end;
+
+function LegacyPermanentEditionLockPath(): String;
+begin
+  Result := ExpandConstant('{userappdata}\TOR-POS-Pro\edition.permanent.lock');
+end;
+
+function LegacySecurityMarkerPath(): String;
+begin
+  Result := ExpandConstant('{userappdata}\TOR-POS-Pro\security.initialized');
+end;
+
+function ReadLegacyPermanentEdition(): String;
+var
+  S: AnsiString;
+begin
+  Result := '';
+  if LoadStringFromFile(LegacyPermanentEditionLockPath(), S) then
+    Result := Uppercase(Trim(String(S)));
+end;
+
+function LegacyMatchesFixedEdition(): Boolean;
+var
+  FixedEdition: String;
+begin
+  FixedEdition := FixedProductEdition();
+  Result :=
+    (FixedEdition <> '') and
+    (ReadLegacyPermanentEdition() = FixedEdition);
+end;
+
+
 function ReadExistingEdition(): String;
 var
   S: AnsiString;
@@ -215,7 +250,8 @@ begin
     FileExists(ExpandConstant('{localappdata}\Programs\{#MyDefaultDirName}\{#MyAppExeName}'));
 
   SecurityAlreadyInitialized :=
-    ExistingInstallation and FileExists(SecurityMarkerPath());
+    (ExistingInstallation and FileExists(SecurityMarkerPath())) or
+    (LegacyMatchesFixedEdition() and FileExists(LegacySecurityMarkerPath()));
 
   EditionPage :=
     CreateInputOptionPage(
@@ -273,8 +309,13 @@ begin
     AdminPage.Edits[1].Enabled := False;
     AdminPage.Edits[2].Enabled := False;
     AdminPage.Edits[3].Enabled := False;
-    AdminPage.SubCaptionLabel.Caption :=
-      'Admin-Zugang ist auf diesem PC bereits eingerichtet. Ein Update überschreibt das bestehende Passwort und die PIN nicht.';
+    if LegacyMatchesFixedEdition() and (not ExistingInstallation) then
+      AdminPage.SubCaptionLabel.Caption :=
+        'Bestehende R181-Daten wurden für diese Produkt-Edition erkannt. ' +
+        'Der vorhandene Admin-Zugang wird bei der ersten sicheren Datenübernahme beibehalten.'
+    else
+      AdminPage.SubCaptionLabel.Caption :=
+        'Admin-Zugang ist auf diesem PC bereits eingerichtet. Ein Update überschreibt das bestehende Passwort und die PIN nicht.';
   end;
 end;
 
@@ -302,6 +343,26 @@ begin
     Result := ResultCode = 66;
 end;
 
+function LegacyTorPosProcessRunning(): Boolean;
+var
+  ResultCode: Integer;
+  PowerShellPath: String;
+begin
+  Result := False;
+  if not LegacyMatchesFixedEdition() then
+    Exit;
+
+  PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  if not FileExists(PowerShellPath) then
+    Exit;
+
+  if Exec(
+       PowerShellPath,
+       '-NoProfile -NonInteractive -Command "if (Get-Process -Name TorPos.App -ErrorAction SilentlyContinue) { exit 66 } else { exit 0 }"',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Result := ResultCode = 66;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -309,13 +370,13 @@ begin
   { R66.1: do not let Restart Manager scan/close unrelated applications.
     R66+ is protected by AppMutex. For R65 and older, explicitly check
     TorPos.App.exe immediately before file installation. }
-  if TorPosProcessRunning() then
+  if TorPosProcessRunning() or LegacyTorPosProcessRunning() then
   begin
     Result :=
       'TOR POS ist noch geöffnet.' + #13#10 + #13#10 +
-      'Bitte TOR POS normal schließen und kurz warten, bis das Programm vollständig beendet ist. ' +
+      'Bitte die laufende TOR-POS-Anwendung normal schließen und kurz warten, bis sie vollständig beendet ist. ' +
       'Danach die Installation erneut starten.' + #13#10 + #13#10 +
-      'Die Installation wird nicht erzwungen, damit keine offene Buchung, Sicherung oder Druckeroperation beschädigt wird.';
+      'Bei einer R181-Datenübernahme wird die alte Installation niemals im laufenden Betrieb kopiert.';
   end;
 end;
 
@@ -327,7 +388,8 @@ begin
     installer step, detect their TorPos.App.exe process explicitly. Never
     force-kill a POS process: it must be allowed to perform its normal backup
     and printer shutdown. }
-  if (CurPageID = AdminPage.ID) and TorPosProcessRunning() then
+  if (CurPageID = AdminPage.ID) and
+     (TorPosProcessRunning() or LegacyTorPosProcessRunning()) then
   begin
     MsgBox(
       'TOR POS ist noch geöffnet.' + #13#10 + #13#10 +
@@ -392,8 +454,10 @@ begin
     if not DirExists(DataDir) then
       ForceDirectories(DataDir);
 
-    { edition.lock is intentionally NOT created by the installer on a fresh PC.
-      The customer selects KIOSK or IMBISS on the first TOR POS login screen. }
+    { A dedicated KIOSK/DÖNER installer may have found a matching, permanently
+      bound R181 installation. In that case do NOT place new bootstrap credentials
+      into the target folder before the application performs its backup-first copy.
+      Fresh installations still receive the normal first-run bootstrap. }
 
     if not SecurityAlreadyInitialized then
     begin
