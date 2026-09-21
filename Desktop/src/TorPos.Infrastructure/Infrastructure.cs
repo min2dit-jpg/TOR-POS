@@ -72,7 +72,8 @@ public static class AppPaths
         get
         {
             var basePath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var path = DataDirectoryOverride ?? Path.Combine(basePath, "TOR-POS-Pro");
+            var productDirectory = ProductDataDirectoryName();
+            var path = DataDirectoryOverride ?? Path.Combine(basePath, productDirectory);
             Directory.CreateDirectory(path);
             Directory.CreateDirectory(Path.Combine(path, "ProductImages"));
             Directory.CreateDirectory(Path.Combine(path, "ReceiptAssets"));
@@ -101,7 +102,26 @@ public static class AppPaths
     public static string TrialIdentityDirectory =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "TOR-POS-Pro");
+            ProductDataDirectoryName());
+
+    public static string? ProductEdition
+    {
+        get
+        {
+            var raw = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+            if (string.Equals(raw, "KIOSK", StringComparison.OrdinalIgnoreCase)) return "KIOSK";
+            if (string.Equals(raw, "IMBISS", StringComparison.OrdinalIgnoreCase)) return "IMBISS";
+            return null;
+        }
+    }
+
+    public static string ProductDataDirectoryName() =>
+        ProductEdition switch
+        {
+            "KIOSK" => "TOR-KIOSK",
+            "IMBISS" => "TOR-DOENER",
+            _ => "TOR-POS-Pro"
+        };
     public static string TrialIdentityPath =>
         Path.Combine(TrialIdentityDirectory, "trial-installation.id");
 }
