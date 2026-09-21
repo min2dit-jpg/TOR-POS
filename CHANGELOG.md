@@ -1,12 +1,22 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R179|0.7.33.879|Merd-M -->
+<!-- TOR_RELEASE:R180|0.7.33.880|Merd-M -->
 
 ## Aktueller Release
 
-**R179 · Merd-M · 0.7.33.879**
+**R180 · Merd-M · 0.7.33.880**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R180
+
+- Scanner-Hotfix für den Kassiererbildschirm: ein unbekannter Barcode öffnet **nicht mehr automatisch Stammdaten/ProductEditor**.
+- Gelesene EAN bleibt im sichtbaren Barcode-Feld stehen; Status zeigt `EAN NICHT GEFUNDEN · <code>` statt den Verkaufsbildschirm zu verlassen.
+- Bekannte EAN zeigt `SCAN OK · <Artikel> · EAN <code>` und wird weiterhin direkt dem Warenkorb hinzugefügt.
+- `EAN SUCHEN` verarbeitet eine im sichtbaren Feld stehende numerische EAN direkt.
+- Die obsolete Einstellung `scanner.unknown_dialog` wurde aus UI und Defaults entfernt; Stammdaten werden nur noch bewusst durch den Benutzer geöffnet.
+- Vier neue Regressionsprüfungen sichern dieses Verhalten. Safety-Baseline: 1118 Checks.
+- Kassenschubladen- und R179-Cloud/Retourenänderungen bleiben unverändert erhalten.
 
 ### R179
 
