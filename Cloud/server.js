@@ -17,7 +17,7 @@ const {normalizeManagedMailPayload,smtpConfigFromEnv,isManagedMailConfigured,sen
 const {validateReceipt,renderReceiptPage,renderNotFoundPage,renderHomePage,renderReceiptPdf,ASSETS:RECEIPT_ASSETS}=require('./receipts');
 // R127: the version string was typed twice (startup log and /api/health) and
 // both still said R62 many revisions later. One constant now.
-const CLOUD_VERSION='0.13.0-R145';
+const CLOUD_VERSION='0.13.0-R178';
 const DEMO=process.env.TOR_CLOUD_DEMO==='true';
 const REQUIRE_OWNER_2FA = String(process.env.TOR_CLOUD_REQUIRE_OWNER_2FA ?? (!DEMO ? 'true' : 'false')).toLowerCase()==='true';
 
@@ -41,6 +41,9 @@ const TOTP_KEY = crypto.createHash('sha256').update(TOTP_KEY_MATERIAL || 'disabl
 // A short-lived QR pairing is completed in the user's phone browser. The Cloud keeps only
 // an encrypted refresh token and returns short-lived access tokens to the authenticated POS.
 const CLOUD_PUBLIC_URL = String(process.env.TOR_CLOUD_PUBLIC_URL || '').trim().replace(/\/$/, '');
+const UPDATE_PUBLIC_URL = String(process.env.TOR_UPDATE_PUBLIC_URL || '').trim().replace(/\/$/, '');
+const UPDATE_HOST = UPDATE_PUBLIC_URL ? new URL(UPDATE_PUBLIC_URL).hostname.toLowerCase() : '';
+
 const GOOGLE_OAUTH_CLIENT_ID = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_ID || '').trim();
 const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
 const GOOGLE_TOKEN_KEY_MATERIAL = String(process.env.TOR_CLOUD_GOOGLE_TOKEN_KEY || '').trim();
@@ -940,8 +943,14 @@ async function handler(req, res) {
     // HTTPS before anything else (Caddy redirects already; this is the second
     // line). The target is always the configured origin, never the Host header.
     if(forwardedProto(req)==='http'){
-      const onReceipt=!!RECEIPT_HOST&&requestHostname(req)===RECEIPT_HOST;
-      const origin=onReceipt?(RECEIPT_HTTPS?RECEIPT_ORIGIN:''):(CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
+      const requestHost=requestHostname(req);
+      const onReceipt=!!RECEIPT_HOST&&requestHost===RECEIPT_HOST;
+      const onUpdate=!!UPDATE_HOST&&requestHost===UPDATE_HOST;
+      const origin=onReceipt
+        ? (RECEIPT_HTTPS?RECEIPT_ORIGIN:'')
+        : onUpdate
+          ? (UPDATE_PUBLIC_URL.startsWith('https://')?new URL(UPDATE_PUBLIC_URL).origin:'')
+          : (CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
       if(origin){res.writeHead(308,{Location:origin+pathname,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
     }
     // R145: the receipt domain serves receipts and nothing else; no receipt is
@@ -1173,39 +1182,54 @@ async function handler(req, res) {
     }
 
     if(req.method==='GET' && pathname==='/api/v1/updates/check'){
-      const current=String(url.searchParams.get('version')||'0'),edition=String(url.searchParams.get('edition')||'KIOSK').toUpperCase();
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false});
+      const current=String(url.searchParams.get('version')||'0');
+      const edition=String(url.searchParams.get('edition')||'KIOSK').toUpperCase();
+      const requestedChannel=String(url.searchParams.get('channel')||'STABLE').toUpperCase();
+      const channel=requestedChannel==='PILOT'?'PILOT':'STABLE';
+      const manifestName=channel==='PILOT'?'pilot-manifest.json':'manifest.json';
+      const manifestPath=path.join(UPDATES,manifestName);
+      if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false,channel});
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Update-Manifest ist ungültig.'});}
       const allowed=Array.isArray(m.editions)?m.editions.map(x=>String(x).toUpperCase()):['KIOSK','IMBISS'];
-      if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false});
+      if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false,channel});
       const file=path.basename(String(m.filename||''));const full=path.join(UPDATES,file);
       if(!file || !fs.existsSync(full) || !/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'Update-Datei/Prüfsumme nicht bereit.'});
-      const publicRoot=String(process.env.TOR_CLOUD_PUBLIC_URL||'').trim();let origin;
-      if(publicRoot){origin=new URL(publicRoot.endsWith('/')?publicRoot:publicRoot+'/');}
-      else{const scheme=COOKIE_SECURE?'https':'http';origin=new URL(`${scheme}://${req.headers.host}`);}
+      let origin;
+      if(UPDATE_PUBLIC_URL){
+        origin=new URL(UPDATE_PUBLIC_URL.endsWith('/')?UPDATE_PUBLIC_URL:UPDATE_PUBLIC_URL+'/');
+      }else{
+        const scheme=forwardedProto(req)==='https'?'https':(COOKIE_SECURE?'https':'http');
+        origin=new URL(`${scheme}://${req.headers.host}`);
+      }
       const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,origin).toString();
-      return json(res,200,{ok:true,update_available:true,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
+      return json(res,200,{ok:true,update_available:true,channel,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
     }
 
     if(req.method==='GET' && pathname.startsWith('/updates/')){
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return text(res,404,'Nicht gefunden');
-      let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return text(res,404,'Nicht gefunden');}
-      const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/updates/'.length));
-      if(!m.enabled || requested!==expected || requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+      const requested=decodeURIComponent(pathname.slice('/updates/'.length));
+      if(requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+
+      let m=null;
+      for(const name of ['manifest.json','pilot-manifest.json']){
+        const manifestPath=path.join(UPDATES,name);
+        if(!fs.existsSync(manifestPath))continue;
+        try{
+          const candidate=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+          if(candidate.enabled && path.basename(String(candidate.filename||''))===requested){m=candidate;break;}
+        }catch{}
+      }
+      if(!m)return text(res,404,'Nicht gefunden');
+
+      const expected=path.basename(String(m.filename||''));
       const full=path.join(UPDATES,expected);if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');const stat=fs.statSync(full);
-      // R120: verify the bytes actually being served against the manifest
-      // hash. The publishing script checks Authenticode, but nothing checked
-      // the file again at serve time - so anything that could write into the
-      // updates directory bypassed that gate completely. Cheap enough here:
-      // this endpoint is hit once per update, not per request.
+      // R178: a file is downloadable only while referenced by an enabled
+      // STABLE or PILOT manifest. The bytes are re-hashed at serve time.
       const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
       if(served!==String(m.sha256||'').toUpperCase()){
         console.error('Update refused: sha256 of',expected,'does not match manifest');
         return text(res,409,'Update-Datei stimmt nicht mit dem Manifest überein.');
       }
       res.writeHead(200,{'Content-Type':'application/vnd.microsoft.portable-executable','Content-Length':stat.size,'Content-Disposition':`attachment; filename="${expected}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-      // R120: an aborted download used to raise an unhandled 'error' on the
-      // stream and take the whole server process down with it.
       const stream=fs.createReadStream(full);
       stream.on('error',err=>{console.error('Update stream failed:',err.message);res.destroy();});
       return stream.pipe(res);

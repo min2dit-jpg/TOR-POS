@@ -4,6 +4,7 @@ param(
  [Parameter(Mandatory=$true)][string]$Revision,
  [Parameter(Mandatory=$true)][string]$SignerThumbprint,
  [switch]$Mandatory,
+ [ValidateSet("STABLE","PILOT")][string]$Channel = "STABLE",
  [string]$ReleaseNotes = ""
 )
 $ErrorActionPreference='Stop'
@@ -24,7 +25,8 @@ try {
  if($actual -ne $expected){throw 'Signer stimmt nicht mit freigegebenem Zertifikat überein.'}
  if((Get-FileHash -LiteralPath $staging -Algorithm SHA256).Hash.ToUpperInvariant() -ne $sha){throw 'Setup während Prüfung verändert.'}
  @{source=$staging;version=$Version;revision=$Revision;sha256=$sha;signer_thumbprint=$expected;mandatory=[bool]$Mandatory;release_notes=$ReleaseNotes} | ConvertTo-Json | Set-Content -LiteralPath $inputFile -Encoding UTF8
- & node (Join-Path $root 'update-store.js') publish $updates $inputFile
+ $action=if($Channel -eq 'PILOT'){'publish-pilot'}else{'publish'}
+ & node (Join-Path $root 'update-store.js') $action $updates $inputFile
  if($LASTEXITCODE -ne 0){throw 'Veröffentlichung fehlgeschlagen; vorheriges Manifest bleibt gültig.'}
- Write-Host "TOR Update veröffentlicht: $Revision / $Version"
+ Write-Host "TOR Update veröffentlicht: $Revision / $Version / $Channel"
 } finally { Remove-Item -LiteralPath $staging,$inputFile -Force -ErrorAction SilentlyContinue }

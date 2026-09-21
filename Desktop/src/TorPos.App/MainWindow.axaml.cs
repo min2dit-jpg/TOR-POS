@@ -233,6 +233,7 @@ public partial class MainWindow:Window
         // Re-focus the transparent ScannerCapture after touch/click activity or
         // whenever this window becomes active again after a dialog.
         Activated += (_,_) => FocusScannerCaptureSoon();
+        ScannerCapture.TextChanged += OnScannerCaptureTextChanged;
         AddHandler(
             InputElement.PointerReleasedEvent,
             (_,_) => FocusScannerCaptureSoon(),
@@ -267,6 +268,7 @@ public partial class MainWindow:Window
             }
 
             var code = _scan;
+            ScannerCapture.Text = "";
             _scan = "";
             _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
@@ -842,6 +844,40 @@ public partial class MainWindow:Window
             DispatcherPriority.Background);
     }
 
+    private void OnScannerCaptureTextChanged(
+        object? sender,
+        TextChangedEventArgs e)
+    {
+        if (CartLocked || MenuHubOverlay.IsVisible)
+        {
+            _scan = "";
+            _scanStartedAt = 0;
+            return;
+        }
+
+        var text = ScannerCapture.Text ?? "";
+        if (text.Length == 0)
+            return;
+
+        var digits = new string(text.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+            return;
+
+        // R178: when the dedicated cashier scanner TextBox owns focus, its
+        // actual text is the source of truth. This handles HID devices whose
+        // physical key codes depend on keyboard layout but which type the EAN
+        // correctly into a normal TextBox (as already proven in Artikelverwaltung).
+        var now = Stopwatch.GetTimestamp();
+        if (_scanStartedAt == 0)
+            _scanStartedAt = now;
+
+        _scan = digits.Length <= 32
+            ? digits
+            : digits[^32..];
+        _lastScan = now;
+        ArmScannerNoSuffixTimer();
+    }
+
     private void OnGlobalScannerKeyDown(object? sender, KeyEventArgs e)
     {
         // R145: the card menu hub replaces the cashier workspace while open.
@@ -861,6 +897,35 @@ public partial class MainWindow:Window
             _scan = "";
             _scanStartedAt = 0;
             return;
+        }
+
+        // R178: if the real scanner sink owns focus, let digits reach the
+        // TextBox/TextChanged path. ENTER/TAB is always consumed here so a
+        // scanner suffix can never activate a Warengruppe/back/default button.
+        if (ScannerCapture.IsFocused)
+        {
+            if (e.Key is Key.Enter or Key.Tab)
+            {
+                e.Handled = true;
+                _scanNoEnterTimer.Stop();
+
+                var code = _scan;
+                ScannerCapture.Text = "";
+                _scan = "";
+                _scanStartedAt = 0;
+
+                if (code.Length >= 6 && !_scanProcessing)
+                {
+                    ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+                    ScannerStatus.Foreground = AppTheme.AccentBlue;
+                    _ = ProcessBarcodeSafely(code);
+                }
+
+                return;
+            }
+
+            if (Digit(e.Key) is not null)
+                return;
         }
 
         // R176: keyboard-wedge fallback for the real cashier screen. Product
@@ -957,6 +1022,14 @@ public partial class MainWindow:Window
 
     private void OnGlobalScannerTextInput(object? sender, TextInputEventArgs e)
     {
+        // Dedicated sink owns its own TextChanged stream. Do not append the
+        // same characters a second time via the Window-level fallback.
+        if (ScannerCapture.IsFocused)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (MenuHubOverlay.IsVisible || CartLocked)
         {
             _scan = "";
@@ -3299,16 +3372,26 @@ public partial class MainWindow:Window
         if (!cashMovement)
             return;
 
-        var enabled = _settingsCache.GetBool(
+        // R178: the settings test can change drawer/channel immediately.
+        // Read the durable settings here instead of relying on a possibly stale
+        // cashier cache so the payment path uses exactly what the successful
+        // hardware test stored.
+        var enabledText = await _settings.GetAsync(
             "device.drawer.enabled",
-            _settingsCache.GetBool("printer.drawer_kick.enabled", true));
+            "");
+        var enabled = string.IsNullOrWhiteSpace(enabledText)
+            ? _settingsCache.GetBool("printer.drawer_kick.enabled", true)
+            : string.Equals(
+                enabledText,
+                "true",
+                StringComparison.OrdinalIgnoreCase);
 
         if (!enabled)
             return;
 
-        var printerName = _settingsCache.GetText(
+        var printerName = (await _settings.GetAsync(
             "device.receipt_printer.name",
-            "");
+            "")).Trim();
 
         if (string.IsNullOrWhiteSpace(printerName))
         {
@@ -3322,12 +3405,14 @@ public partial class MainWindow:Window
 
         try
         {
-            var channel = Math.Clamp(
-                _settingsCache.GetInt(
-                    "device.receipt_printer.drawer_channel",
-                    1),
-                1,
-                2);
+            var channelText = await _settings.GetAsync(
+                "device.receipt_printer.drawer_channel",
+                "1");
+            var channel = int.TryParse(
+                channelText,
+                out var parsedChannel)
+                ? Math.Clamp(parsedChannel, 1, 2)
+                : 1;
 
             using var timeout = new CancellationTokenSource(
                 TimeSpan.FromSeconds(6));

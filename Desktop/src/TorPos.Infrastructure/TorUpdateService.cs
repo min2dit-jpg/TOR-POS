@@ -106,8 +106,9 @@ public sealed class TorUpdateService
             return new(false, "Kein TOR-Update-Server konfiguriert.");
 
         var root = ValidateServerUrl(baseUrl);
+        var channel = await ChannelAsync(ct);
         var endpoint = new Uri(root,
-            $"api/v1/updates/check?version={Uri.EscapeDataString(TorRelease.Version)}&revision={Uri.EscapeDataString(TorRelease.Revision)}&edition={Uri.EscapeDataString(edition)}");
+            $"api/v1/updates/check?version={Uri.EscapeDataString(TorRelease.Version)}&revision={Uri.EscapeDataString(TorRelease.Revision)}&edition={Uri.EscapeDataString(edition)}&channel={Uri.EscapeDataString(channel)}");
 
         using var handler = new HttpClientHandler { AllowAutoRedirect = false };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
@@ -141,8 +142,9 @@ public sealed class TorUpdateService
         ValidateManifest(root, manifest);
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
-            ["update.last_status"] = $"verfügbar:{manifest.Version}",
-            ["update.last_seen_version"] = manifest.Version
+            ["update.last_status"] = $"verfügbar:{manifest.Version}:{channel}",
+            ["update.last_seen_version"] = manifest.Version,
+            ["update.last_channel"] = channel
         }, ct);
         return new(true, $"Neue Version verfügbar: {manifest.Revision}", manifest);
     }
@@ -235,12 +237,33 @@ public sealed class TorUpdateService
         if (!File.Exists(staged.InstallerPath))
             throw new FileNotFoundException("Vorbereitetes Update wurde nicht gefunden.", staged.InstallerPath);
 
-        // Detached Windows helper: waits until TOR POS has fully closed (including the normal
-        // exit backup / printer shutdown) and only then starts the Inno Setup installer.
-        // Environment variables avoid command-line quoting problems with customer paths.
-        var command = "$target=[int]$env:TOR_UPDATE_PID;" +
-                      "while(Get-Process -Id $target -ErrorAction SilentlyContinue){Start-Sleep -Milliseconds 500};" +
-                      "Start-Process -FilePath $env:TOR_UPDATE_INSTALLER -ArgumentList '/SILENT','/NORESTART' -Verb RunAs;";
+        var appPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+            appPath = Path.Combine(AppContext.BaseDirectory, "TorPos.App.exe");
+        if (!File.Exists(appPath))
+            throw new FileNotFoundException("TOR POS Programmdatei für Neustart wurde nicht gefunden.", appPath);
+
+        Directory.CreateDirectory(AppPaths.UpdatesPath);
+        var resultPath = Path.Combine(AppPaths.UpdatesPath, "last-install-result.txt");
+
+        // R178: detached helper waits for a clean POS shutdown, runs the already
+        // hash+Authenticode-verified installer elevated, records its exit code,
+        // and restarts TOR POS only after a successful install.
+        var command =
+            "$target=[int]$env:TOR_UPDATE_PID;" +
+            "while(Get-Process -Id $target -ErrorAction SilentlyContinue){Start-Sleep -Milliseconds 500};" +
+            "$code=999;" +
+            "try{" +
+            "$p=Start-Process -FilePath $env:TOR_UPDATE_INSTALLER " +
+            "-ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru;" +
+            "$code=$p.ExitCode" +
+            "}catch{$code=998};" +
+            "$line=('version='+$env:TOR_UPDATE_VERSION+';exit='+$code+';utc='+[DateTimeOffset]::UtcNow.ToString('O'));" +
+            "Set-Content -LiteralPath $env:TOR_UPDATE_RESULT -Value $line -Encoding UTF8;" +
+            "if($code -eq 0 -and (Test-Path -LiteralPath $env:TOR_UPDATE_APP)){" +
+            "Start-Process -FilePath $env:TOR_UPDATE_APP" +
+            "}";
+
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
         var psi = new ProcessStartInfo("powershell.exe")
         {
@@ -253,7 +276,13 @@ public sealed class TorUpdateService
         psi.ArgumentList.Add(encoded);
         psi.Environment["TOR_UPDATE_PID"] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         psi.Environment["TOR_UPDATE_INSTALLER"] = staged.InstallerPath;
-        _ = Process.Start(psi) ?? throw new InvalidOperationException("Update-Helfer konnte nicht gestartet werden.");
+        psi.Environment["TOR_UPDATE_APP"] = appPath;
+        psi.Environment["TOR_UPDATE_RESULT"] = resultPath;
+        psi.Environment["TOR_UPDATE_VERSION"] = staged.Manifest.Version;
+
+        _ = Process.Start(psi) ??
+            throw new InvalidOperationException("Update-Helfer konnte nicht gestartet werden.");
+
         return "PowerShell update helper";
     }
 
@@ -273,14 +302,32 @@ public sealed class TorUpdateService
     public Task SetServerUrlAsync(string baseUrl, CancellationToken ct = default) =>
         _settings.SaveManyAsync(new Dictionary<string, string> { ["update.server_url"] = (baseUrl ?? "").Trim() }, ct);
 
+    public Task SetChannelAsync(string channel, CancellationToken ct = default)
+    {
+        var normalized = NormalizeChannel(channel);
+        return _settings.SaveManyAsync(
+            new Dictionary<string, string> { ["update.channel"] = normalized },
+            ct);
+    }
+
+    public async Task<string> ChannelAsync(CancellationToken ct = default) =>
+        NormalizeChannel(await _settings.GetAsync("update.channel", "STABLE", ct));
+
     public async Task<string> ResolveBaseUrlAsync(CancellationToken ct = default)
     {
         var explicitUrl = (await _settings.GetAsync("update.server_url", "", ct)).Trim();
-        if (explicitUrl.Length > 0) return explicitUrl;
-        var cloudRaw = await _settings.GetAsync("cloud.configuration", "", ct);
-        if (string.IsNullOrWhiteSpace(cloudRaw)) return "";
-        try { return JsonSerializer.Deserialize<TorCloudConfiguration>(cloudRaw)?.BaseUrl?.Trim() ?? ""; }
-        catch { return ""; }
+        if (explicitUrl.Length > 0)
+            return explicitUrl;
+
+        // R178: update delivery must not depend on TOR Cloud being configured.
+        // Every customer build has one pinned official HTTPS discovery origin.
+        return TorRelease.OfficialUpdateServerUrl;
+    }
+
+    private static string NormalizeChannel(string? channel)
+    {
+        var normalized = (channel ?? "").Trim().ToUpperInvariant();
+        return normalized == "PILOT" ? "PILOT" : "STABLE";
     }
 
     private static Uri ValidateServerUrl(string baseUrl)

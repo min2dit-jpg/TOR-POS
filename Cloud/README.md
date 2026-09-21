@@ -1,4 +1,4 @@
-# TOR POS Cloud v0.8.0 R48 · Stand R125
+# TOR POS Cloud · Stand R178
 
 Gemeinsamer Entwicklungsstand mit TOR POS Desktop R48. Lokale Demo, keine Fiskal-Produktivfreigabe.
 
@@ -47,8 +47,9 @@ Demo: demo@torpos.local / TorDemo2026!; Gerät DEMO-KASSE-01 / tor-demo-device-t
 - TOTP-Secret AES-256-GCM verschlüsselt. Live: `TOR_CLOUD_TOTP_KEY` (mind. 24 Zeichen) setzen.
 - Live-Betrieb verlangt für OWNER standardmäßig 2FA; steuerbar mit `TOR_CLOUD_REQUIRE_OWNER_2FA`.
 - Update-API: `/api/v1/updates/check` und kontrollierter `/updates/<Setup>` Download.
-- `PUBLISH-UPDATE.ps1` kopiert das Setup, berechnet SHA-256 und erzeugt das Manifest.
-- Produktive Update-URL sollte mit `TOR_CLOUD_PUBLIC_URL=https://...` fest vorgegeben werden.
+- R178: Kunden verwenden standardmäßig `https://updates.torpos.de/`; Server-Origin wird mit `TOR_UPDATE_PUBLIC_URL` festgelegt.
+- `PUBLISH-UPDATE.ps1` prüft/signiert Setup ve `-Channel PILOT|STABLE` ile ayrı manifestleri yayınlar.
+- PILOT saha kabulünden sonra STABLE'a terfi edilir; `DISABLE-UPDATE.ps1 -Channel ...` kanalı anında kapatır.
 
 ## Bestehende Sicherheit
 - Passwörter mit scrypt + Salt.
@@ -68,7 +69,7 @@ R125 - fertige Vorlagen in `deploy/`:
 |---|---|
 | `tor-pos-cloud.env.example` | alle Umgebungsvariablen für den Live-Betrieb, kommentiert |
 | `tor-pos-cloud.service` | systemd-Dienst (Neustart bei Fehler, sauberes Beenden, gehärtet) |
-| `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`, seit R145 für `api.<domain>` und `bon.<domain>` |
+| `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`; R178: getrennte `api.<domain>`, `bon.<domain>` und `updates.<domain>` Origins |
 
 **Datensicherung:** mit `TOR_CLOUD_BACKUP_DIR` schreibt der Server im laufenden Betrieb
 eine konsistente Kopie (`VACUUM INTO`), standardmäßig alle 24 h, die letzten 14 bleiben
@@ -98,11 +99,15 @@ Es gibt bewusst nur die Rolle `OWNER`: das Portal lässt keine andere Rolle zu, 
 wäre daher nicht anmeldbar. Ein Rollenmodell (z. B. nur lesender Zugriff) ist eine eigene Produktentscheidung.
 
 ## Updates veröffentlichen
-Das mit Code-Signing signierte Desktop-Setup erzeugen und dann z. B.:
+R178'den itibaren normal müşteriler STABLE, seçili saha testleri PILOT kanalını kullanır.
 
-`powershell -ExecutionPolicy Bypass -File .\PUBLISH-UPDATE.ps1 -SetupPath C:\Build\TOR-POS-Pro-Setup.exe -Version 0.7.33.48 -Revision R48 -SignerThumbprint ABCD... -ReleaseNotes "..."`
+PILOT:
+`powershell -ExecutionPolicy Bypass -File .\PUBLISH-UPDATE.ps1 -SetupPath C:\Build\TOR-POS-Pro-Setup.exe -Version 0.7.33.878 -Revision R178 -SignerThumbprint ABCD... -Channel PILOT -ReleaseNotes "..."`
 
-`updates/manifest.json` ist in diesem Paket absichtlich `enabled=false`.
+STABLE:
+`powershell -ExecutionPolicy Bypass -File .\PUBLISH-UPDATE.ps1 -SetupPath C:\Build\TOR-POS-Pro-Setup.exe -Version 0.7.33.878 -Revision R178 -SignerThumbprint ABCD... -Channel STABLE -ReleaseNotes "..."`
+
+`updates/manifest.json` (STABLE) ve `updates/pilot-manifest.json` bu pakette bilinçli olarak `enabled=false` başlar. Uzaktan müşteri kurulumu için ayrıca TOR code-signing sertifikasının thumbprint'i Desktop build içine pinlenmiş olmalıdır.
 
 ## Prüfung
 `npm run check` und `npm test`. Stand R155: 48/48 Cloud-Tests.

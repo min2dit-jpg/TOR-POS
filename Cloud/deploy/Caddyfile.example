@@ -1,15 +1,16 @@
 # R125/R145: HTTPS (TLS) in front of TOR POS Cloud with Caddy, which obtains and
 # renews the Let's Encrypt certificates by itself and redirects HTTP to HTTPS
 # automatically. Requirements: DNS names pointing at this server and ports
-# 80/443 open. Replace api.torpos.de / bon.torpos.de with the real domains and
-# set the same names in /etc/tor-pos-cloud.env (TOR_CLOUD_PUBLIC_URL,
-# TOR_CLOUD_RECEIPT_URL).
+# 80/443 open. Replace api.torpos.de / bon.torpos.de / updates.torpos.de with
+# the real domains and set the same names in /etc/tor-pos-cloud.env
+# (TOR_CLOUD_PUBLIC_URL, TOR_CLOUD_RECEIPT_URL, TOR_UPDATE_PUBLIC_URL).
 #
 #   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile && sudo systemctl reload caddy
 #
-# Two security domains (R145, docs/DIGITALER-KASSENBON.md):
-#   api.<domain>  till <-> Cloud, customer portal, updates - authentication required
-#   bon.<domain>  the customer's digital receipt - no login, only the receipt token
+# Three public origins:
+#   api.<domain>      till <-> Cloud and customer portal
+#   bon.<domain>      customer's digital receipt
+#   updates.<domain>  TOR POS update discovery + signed installer download
 
 api.torpos.de {
 	encode gzip
@@ -38,6 +39,37 @@ api.torpos.de {
 	# this just stops an oversized upload at the edge before it reaches Node.
 	request_body {
 		max_size 2MB
+	}
+}
+
+updates.torpos.de {
+	encode gzip
+
+	tls {
+		protocols tls1.2 tls1.3
+	}
+
+	# Only update discovery/download paths are expected on this origin.
+	@updatePaths path /api/v1/updates/check /updates/*
+	handle @updatePaths {
+		reverse_proxy 127.0.0.1:8787 {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+	handle {
+		respond "Nicht gefunden" 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Update origin accepts no request body.
+	request_body {
+		max_size 16KB
 	}
 }
 

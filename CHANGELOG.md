@@ -1,12 +1,25 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R177|0.7.33.877|Merd-M -->
+<!-- TOR_RELEASE:R178|0.7.33.878|Merd-M -->
 
 ## Aktueller Release
 
-**R177 · Merd-M · 0.7.33.877**
+**R178 · Merd-M · 0.7.33.878**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R178
+
+- Müşteri update teslimatı TOR Cloud kurulumuna bağımlı olmaktan çıkarıldı. Her build varsayılan olarak `https://updates.torpos.de/` adresindeki resmî TOR update servisini kullanır; teknisyen isterse test amacıyla ayrı endpoint tanımlayabilir.
+- İki dağıtım kanalı eklendi: `PILOT` kontrollü saha denemeleri için, `STABLE` normal müşteriler için. Eski istemcilerin kullandığı `manifest.json` STABLE olarak korunur; PILOT bağımsız `pilot-manifest.json` kullanır.
+- Update sunucusu yalnızca etkin STABLE/PILOT manifestinin referans verdiği hash-adlı installer dosyalarını servis eder ve download anında SHA-256'yı tekrar doğrular.
+- Yayın araçları `PUBLISH-UPDATE.ps1 -Channel STABLE|PILOT` ve `DISABLE-UPDATE.ps1 -Channel STABLE|PILOT` ile kanalları bağımsız yönetir.
+- İstemci update kontrolünde edition yanında kanal bilgisini de gönderir. Normal müşteri varsayılanı `STABLE`; PILOT seçimi yalnızca teknik ayarlarda yapılır.
+- İndirilen installer için mevcut SHA-256 + pinned Authenticode doğrulaması aynen korunur. TOR üretim code-signing sertifika thumbprint'i build içine sabitlenmeden uzaktan kurulum fail-closed kalır.
+- Update kurulumu öncesi veritabanı backup'ı oluşturulur. TOR POS temiz şekilde kapandıktan sonra installer yükseltilmiş yetkiyle sessiz çalışır, exit code kaydedilir ve yalnızca başarılı kurulumdan sonra TOR POS otomatik yeniden açılır.
+- Scanner saha düzeltmesi: satış ekranındaki gerçek `ScannerCapture` TextBox artık barkod verisinin birincil kaynağıdır. Scanner odaktayken ENTER/TAB suffix her durumda tüketilir; suffix bir Warengruppe/geri/default düğmesini tetikleyemez. Window-level TextInput fallback aynı karakterleri ikinci kez eklemez.
+- Kassenschublade saha düzeltmesi: test butonu ve gerçek BAR/GEMISCHT ödeme aynı `drawer_channel` değerini kullanır. Başarılı fiziksel test çekmeceyi otomatik etkinleştirir ve kullanılan kanalı kalıcı ayarlara yazar; ödeme yolu ayarı cache yerine doğrudan kalıcı settings'ten yeniden okur.
+- R178 için update-delivery regresyonları, pilot/stable yayın izolasyonu, resmî endpoint davranışı ve scanner/çekmece saha bulguları CI tarafından denetlenir.
 
 ### R177
 

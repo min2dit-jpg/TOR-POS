@@ -1020,6 +1020,15 @@ public partial class SettingsWindow : Window
         var drawerEnabled = Check("device.drawer.enabled", "Kassenlade verwenden");
         page.Children.Add(ToggleRow(drawerEnabled));
         var drawerSection = Section("Kassenschublade · Verbindungstest");
+        var drawerChannel = Combo(
+            "device.receipt_printer.drawer_channel",
+            "1",
+            "2");
+        Form(
+            drawerSection,
+            "Ausgang",
+            drawerChannel,
+            "Test und echte Barzahlung verwenden exakt denselben Ausgang. Standard: 1.");
         var drawerStatus = new TextBlock
         {
             Text = "Noch nicht getestet. Der Test erzeugt keinen Verkauf und keinen Bon.",
@@ -1046,11 +1055,34 @@ public partial class SettingsWindow : Window
             drawerTest.IsEnabled = false;
             try
             {
+                var channel = int.TryParse(
+                    drawerChannel.SelectedItem?.ToString(),
+                    out var selectedChannel)
+                    ? Math.Clamp(selectedChannel, 1, 2)
+                    : 1;
+
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await _receiptPrinter.TestCashDrawerAsync(printerName, timeout.Token);
+                await _receiptPrinter.TestCashDrawerAsync(
+                    printerName,
+                    timeout.Token,
+                    channel);
+
+                // R178: a successful physical drawer test is the clearest
+                // possible setup signal. Persist the same enable flag/channel
+                // immediately, so the subsequent BAR payment cannot use a
+                // different stale/default configuration.
+                await _settings.SaveManyAsync(
+                    new Dictionary<string, string>
+                    {
+                        ["device.drawer.enabled"] = "true",
+                        ["device.receipt_printer.drawer_channel"] =
+                            channel.ToString()
+                    });
+                drawerEnabled.IsChecked = true;
+
                 drawerStatus.Text =
-                    "✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
-                    "TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.";
+                    $"✓ Kassenschublade getestet und für Barzahlungen aktiviert · Ausgang {channel}. " +
+                    "Test und echte Zahlung verwenden jetzt dieselbe Einstellung.";
             }
             catch (Exception ex)
             {
@@ -3241,7 +3273,7 @@ private Control TsePage()
 
         page.Children.Add(InfoCard(
             "Sicher aktualisieren",
-            "TOR POS installiert niemals mitten in einem Verkauf oder einer ungeklärten Zahlung. Vor der Installation werden Setup-Prüfsumme/Signatur geprüft und eine Datenbanksicherung erstellt. Die technische Update-Server-Adresse bleibt im geschützten Technikerbereich.",
+            "TOR POS installiert niemals mitten in einem Verkauf oder einer ungeklärten Zahlung. Vor der Installation werden Setup-Prüfsumme/Signatur geprüft und eine Datenbanksicherung erstellt. STABLE ist der normale Kundenkanal; PILOT wird nur kontrolliert für Vorabtests verwendet.",
             AppTheme.InfoCardBg));
         return page;
     }
@@ -3263,10 +3295,12 @@ private Control TsePage()
         page.Children.Add(section);
 
         var update = Section("TOR Update · Technische Quelle");
-        var updateServer = new TextBox { MinHeight = 40, PlaceholderText = "Leer = TOR Cloud Server verwenden" };
+        var updateServer = new TextBox { MinHeight = 40, PlaceholderText = "Leer = offizieller TOR Update Server" };
         var updateStatus = new TextBlock { Text = "Update-Server wird geladen …", TextWrapping = TextWrapping.Wrap };
         Form(update, "Update-Server", updateServer,
-            "Nur für Installation/Service. Produktiv ausschließlich HTTPS; localhost darf für Entwicklung HTTP verwenden.");
+            $"Leer = {TorRelease.OfficialUpdateServerUrl} · Produktiv ausschließlich HTTPS; localhost nur für Entwicklung.");
+        Form(update, "Update-Kanal", Combo("update.channel", "STABLE", "PILOT"),
+            "STABLE = normale Kunden. PILOT = nur gezielt ausgewählte Testkassen vor der allgemeinen Freigabe.");
         var updateSave = new Button { Content = "UPDATE-SERVER SPEICHERN", MinHeight = 44 };
         updateSave.Click += async (_,_) =>
         {
@@ -3275,7 +3309,7 @@ private Control TsePage()
                 var updater = new TorUpdateService(_settings, _backup);
                 await updater.SetServerUrlAsync(updateServer.Text ?? "");
                 updateStatus.Text = string.IsNullOrWhiteSpace(updateServer.Text)
-                    ? "Gespeichert: TOR Cloud Server wird als Update-Quelle verwendet."
+                    ? $"Gespeichert: offizieller TOR Update Server {TorRelease.OfficialUpdateServerUrl}"
                     : "Technische Update-Quelle gespeichert.";
             }
             catch (Exception ex) { updateStatus.Text = "Update-Server: " + ex.Message; }
@@ -3288,7 +3322,7 @@ private Control TsePage()
             {
                 updateServer.Text = await _settings.GetAsync("update.server_url", "");
                 updateStatus.Text = string.IsNullOrWhiteSpace(updateServer.Text)
-                    ? "Keine separate Update-Quelle: TOR Cloud Server wird verwendet."
+                    ? $"Keine separate Update-Quelle: {TorRelease.OfficialUpdateServerUrl}"
                     : "Separate technische Update-Quelle ist konfiguriert.";
             }
             catch (Exception ex) { updateStatus.Text = "Update-Server: " + ex.Message; }
