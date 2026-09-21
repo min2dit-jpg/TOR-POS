@@ -316,6 +316,7 @@ public partial class App : Avalonia.Application
 
             string? ResolveLockedEdition()
             {
+                var builtEdition = ProductBuild.FixedEdition;
                 var permanent = InstallationEdition.ReadPermanent();
                 var kiosk = commercialLicense.Check("KIOSK");
                 var imbiss = commercialLicense.Check("IMBISS");
@@ -324,6 +325,28 @@ public partial class App : Avalonia.Application
                     : imbiss.IsActive
                         ? "IMBISS"
                         : null;
+
+                // R182 foundation: a dedicated TOR KIOSK / TOR DÖNER build is
+                // authoritative. The opposite edition is never offered even in
+                // licence-free validation mode.
+                if (builtEdition is not null)
+                {
+                    if (licensed is not null &&
+                        !string.Equals(licensed, builtEdition, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            $"Diese Lizenz gehört nicht zu {ProductBuild.ProductName}.");
+                    }
+
+                    if (permanent is not null &&
+                        !string.Equals(permanent, builtEdition, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            "Installations-Edition und Produkt-Build widersprechen sich.");
+                    }
+
+                    return builtEdition;
+                }
 
                 if (licensed is not null &&
                     permanent is not null &&
