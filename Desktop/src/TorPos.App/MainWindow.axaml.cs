@@ -3636,7 +3636,9 @@ public partial class MainWindow:Window
             // R101: opens for Mixed too whenever real cash actually changed
             // hands, not only for a pure Cash sale.
             (method == PaymentMethod.Cash || (method == PaymentMethod.Mixed && sale.CashPortionCents > 0)) && !isCopy &&
-                _settingsCache.GetBool("printer.drawer_kick.enabled", true),
+                _settingsCache.GetBool(
+                    "device.drawer.enabled",
+                    _settingsCache.GetBool("printer.drawer_kick.enabled", true)),
             // R137: DSFinV-K 2.7.2 - start of the first order transaction.
             sale.OrderStartedAt,
             TseClientId: sale.TseClientId,
@@ -3649,7 +3651,10 @@ public partial class MainWindow:Window
             CashDrawerChannel: Math.Clamp(
                 _settingsCache.GetInt("device.receipt_printer.drawer_channel", 1),
                 1,
-                2));
+                2),
+            CashDrawerProtocol: _settingsCache.GetText(
+                "device.receipt_printer.drawer_protocol",
+                "AUTO"));
     }
 
     private async Task PrintReceiptAndReportAsync(
