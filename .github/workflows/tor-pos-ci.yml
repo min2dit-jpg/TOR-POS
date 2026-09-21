@@ -104,6 +104,16 @@ jobs:
           dotnet build src/TorPos.App/TorPos.App.csproj -c Release --no-restore -m:1 -p:TorProductEdition=IMBISS --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/doener-build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Ayrik TOR KIOSK ve TOR DÖNER publish paketlerini olustur
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          Remove-Item -Recurse -Force publish\split -ErrorAction SilentlyContinue
+          pwsh -NoProfile -File BUILD-SPLIT-EDITIONS.ps1 -Configuration Release -Runtime win-x64 -OutputRoot publish\split 2>&1 |
+            Tee-Object -FilePath ci-results/split-publish.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path publish\split\TOR-KIOSK\TOR-KIOSK.exe)) { throw 'TOR KIOSK executable missing.' }
+          if (-not (Test-Path publish\split\TOR-DOENER\TOR-DOENER.exe)) { throw 'TOR DÖNER executable missing.' }
+
       # SafetyTests is an executable, not an xUnit/MSTest test project.
       # Do not substitute dotnet test: use the same entry point as the BAT file.
       - name: Mevcut guvenlik ve regresyon testlerini calistir
@@ -179,6 +189,36 @@ jobs:
             choco install innosetup --no-progress -y
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+
+      - name: Ayrik TOR KIOSK ve TOR DÖNER Setup EXElerini olustur
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $isccCandidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'Inno Setup ISCC.exe not found.' }
+
+          Remove-Item -Recurse -Force installer-output -ErrorAction SilentlyContinue
+          & $iscc "TOR-KIOSK-Setup.iss" 2>&1 | Tee-Object -FilePath ci-results/kiosk-installer.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $iscc "TOR-DOENER-Setup.iss" 2>&1 | Tee-Object -FilePath ci-results/doener-installer.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if (-not (Test-Path installer-output\TOR-KIOSK-Setup.exe)) { throw 'TOR KIOSK Setup missing.' }
+          if (-not (Test-Path installer-output\TOR-DOENER-Setup.exe)) { throw 'TOR DÖNER Setup missing.' }
+
+      - name: Ayrik Setup EXElerini sakla
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-POS-Split-Setups-${{ github.sha }}
+          path: |
+            Desktop/installer-output/TOR-KIOSK-Setup.exe
+            Desktop/installer-output/TOR-DOENER-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
       - name: Kunden Setup icin standart Windows publish olustur
         run: |
