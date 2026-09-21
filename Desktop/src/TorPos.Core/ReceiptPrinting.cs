@@ -92,7 +92,8 @@ public sealed record ReceiptPrintJob(
     DateTimeOffset? TseStartLogTime = null,
     string TseSignatureAlgorithm = "",
     string TseLogTimeFormat = "",
-    string TsePublicKey = "");
+    string TsePublicKey = "",
+    int CashDrawerChannel = 1);
 
 /// <summary>
 /// R140: TSE times on the receipt. AEAO zu § 146a Nr. 2.4.4: the data the TSE
@@ -154,17 +155,10 @@ public static class TseQrCodePayload
 }
 
 /// <summary>
-/// Raw StarPRNT/ESC-POS byte commands sent directly to the printer through
-/// the Windows RAW spooler datatype, bypassing GDI - this is how a receipt
-/// printer's built-in cutter and cash-drawer kick are triggered without a
-/// vendor SDK. TOR does not bundle or require the official Star StarIO10
-/// SDK for this: cut (GS V) and drawer kick (ESC p) are part of the
-/// standard StarPRNT/ESC-POS command set the mC-Print3 documents as
-/// supported, not a proprietary Star-only protocol.
-///
-/// DRAFT byte values, not yet confirmed against the physical MCP31CBI -
-/// treat as correct-by-documentation until verified in a real hardware
-/// acceptance test.
+/// Raw Epson ESC/POS and Star StarPRNT byte commands sent through the
+/// Windows RAW spooler datatype. R176 keeps the two protocols separate:
+/// Epson uses GS V / ESC p, while StarPRNT uses ESC d / ESC BEL + BEL/SUB.
+/// Physical opening/cutting remains part of printer hardware acceptance.
 /// </summary>
 public static class StarPrntRawCommands
 {
@@ -244,7 +238,8 @@ public interface IReceiptPrinterService : IAsyncDisposable
 
     Task TestCashDrawerAsync(
         string printerName,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int channel = 1);
 
     Task PrintReceiptAsync(
         ReceiptPrintJob job,
