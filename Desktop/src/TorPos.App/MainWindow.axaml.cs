@@ -3127,6 +3127,13 @@ public partial class MainWindow:Window
                     await OrderWorkflow.CompleteSimulationAsync(testParkedId,method,_currentUser.IsTraining);
                     await _audit.WriteAsync(_currentUser.Username,"PARK_CLOSED_TEST","PARKED_RECEIPT",testParkedId.ToString(),"Simulation completed; no fiscal sale");
                 }
+
+                // R177: hardware checkout tests must exercise the same drawer
+                // path even while fiscal production is intentionally locked.
+                await TryOpenCashDrawerAfterPaymentAsync(
+                    method,
+                    snapshot.EffectiveCashPortionCents);
+
                 ClearCompletedCart();
                 await RefreshParkedCountAsync();
                 ScannerStatus.Text = testPickup > 0
@@ -3274,6 +3281,73 @@ public partial class MainWindow:Window
         }
     }
 
+    private async Task TryOpenCashDrawerAfterPaymentAsync(
+        PaymentMethod method,
+        long cashPortionCents)
+    {
+        if (_currentUser.IsTraining)
+            return;
+
+        var cashMovement =
+            method == PaymentMethod.Cash ||
+            (method == PaymentMethod.Mixed && cashPortionCents > 0);
+
+        if (!cashMovement)
+            return;
+
+        var enabled = _settingsCache.GetBool(
+            "device.drawer.enabled",
+            _settingsCache.GetBool("printer.drawer_kick.enabled", true));
+
+        if (!enabled)
+            return;
+
+        var printerName = _settingsCache.GetText(
+            "device.receipt_printer.name",
+            "");
+
+        if (string.IsNullOrWhiteSpace(printerName))
+        {
+            ReportOperationalError(
+                "KASSENSCHUBLADE",
+                "Barzahlung gespeichert, aber kein Bondrucker für die Kassenschublade konfiguriert.",
+                null,
+                printerRelated: true);
+            return;
+        }
+
+        try
+        {
+            var channel = Math.Clamp(
+                _settingsCache.GetInt(
+                    "device.receipt_printer.drawer_channel",
+                    1),
+                1,
+                2);
+
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(6));
+
+            await _receiptPrinter.OpenCashDrawerAsync(
+                printerName,
+                timeout.Token,
+                channel);
+        }
+        catch (Exception ex)
+        {
+            // A drawer failure must never make a committed sale look unpaid
+            // or encourage the cashier to repeat the payment.
+            CrashLog.WriteException(
+                "R177 cash drawer after payment",
+                ex);
+            ReportOperationalError(
+                "KASSENSCHUBLADE",
+                "Zahlung ist gespeichert, aber die Kassenschublade konnte nicht geöffnet werden.",
+                ex,
+                printerRelated: true);
+        }
+    }
+
     private async Task CommitCheckoutAsync(CheckoutSnapshot snapshot, CashPaymentResult? cash=null)
     {
         await SecurePaidOrderChangeAsync(snapshot);
@@ -3281,6 +3355,14 @@ public partial class MainWindow:Window
         Sale sale;
         using (_perf.Measure("checkout.database_commit"))
             sale = await _sales.CommitAsync(snapshot);
+
+        // R177: the drawer is a payment-side effect, not a paper-receipt
+        // effect. Open it immediately after the durable sale commit so it also
+        // works with digital receipt / BON AUS and cannot be skipped by print
+        // routing. The sale is already committed if the drawer itself fails.
+        await TryOpenCashDrawerAfterPaymentAsync(
+            snapshot.Method,
+            sale.EffectiveCashPortionCents);
 
         // R78: TSE-Beleg-Signatur läuft bewusst NACH dem durablen Commit.
         // Ein TSE-Ausfall darf einen bereits abgeschlossenen Verkauf nie
@@ -3666,10 +3748,10 @@ public partial class MainWindow:Window
             sale.PickupNumber,
             _settingsCache.GetBool("receipt.tse_qr_code.enabled", false),
             _settingsCache.GetBool("printer.auto_cut.enabled", true),
-            // R101: opens for Mixed too whenever real cash actually changed
-            // hands, not only for a pure Cash sale.
-            (method == PaymentMethod.Cash || (method == PaymentMethod.Mixed && sale.CashPortionCents > 0)) && !isCopy &&
-                _settingsCache.GetBool("printer.drawer_kick.enabled", true),
+            // R177: the drawer is opened once by the committed payment path.
+            // Never couple it to paper/digital receipt output or reopen it on
+            // a delayed print/copy.
+            false,
             // R137: DSFinV-K 2.7.2 - start of the first order transaction.
             sale.OrderStartedAt,
             TseClientId: sale.TseClientId,
