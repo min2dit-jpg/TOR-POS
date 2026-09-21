@@ -51,7 +51,7 @@ Status:
 | 37 | Wiederherstellung | GEPRÜFT | neues Ziel, Pfadschutz, Manifest-/Hash-Prüfung und DB-Lesetest |
 | 38 | Audit / Unveränderbarkeit | GEPRÜFT | Audit append-only; Sales, SaleItems, Bediener, Z-Archiv und Daily Closings gegen UPDATE/DELETE geschützt |
 | 39 | Software-Update | TEILWEISE | HTTPS/SHA-256/Authenticode-Prüfung implementiert; Signer-Thumbprint noch nicht produktiv hinterlegt |
-| 40 | Test, Freigabe und Nachweise | EXTERNER NACHWEIS | 1122 Safety-Checks; physische TSE-E2E-, DSFinV-K-, §6-, Pfand- und unabhängige Fiskalprüfung bleiben geschlossen |
+| 40 | Test, Freigabe und Nachweise | EXTERNER NACHWEIS | 1128 Safety-Checks; physische TSE-E2E-, DSFinV-K-, §6-, Pfand- und unabhängige Fiskalprüfung bleiben geschlossen |
 
 ## §16 Storno- und Retourenverfahren – präzisierter R181-Stand
 
