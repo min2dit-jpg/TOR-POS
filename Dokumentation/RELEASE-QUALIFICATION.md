@@ -1,6 +1,6 @@
 # TOR POS – Release Qualification
 
-Stand: R179 · 2026-09-21
+Stand: R180 · 2026-09-21
 
 Dieses Dokument trennt **Entwicklungsstand**, **automatische Tests**, **Hardware-Abnahme** und **Produktionsfreigabe**. Ein grüner Build allein ist keine fiskalische Freigabe.
 
@@ -10,7 +10,7 @@ Die Softwareversion wird ausschließlich in `Desktop/src/TorPos.Core/ReleaseInfo
 
 Aktueller Release-Stand dieser Dokumentation:
 
-**R179 · Merd-M · 0.7.33.879**
+**R180 · Merd-M · 0.7.33.880**
 
 ## Qualifikationsstufen
 
@@ -30,7 +30,7 @@ Voraussetzungen:
 
 Ergebnis: Code ist automatisiert geprüft, aber noch nicht hardware- oder fiskalisch freigegeben.
 
-**R179-Baseline:** 1114 Safety-/Regression-Checks.
+**R180-Baseline:** 1118 Safety-/Regression-Checks.
 
 ### 3. Hardware Acceptance
 
@@ -73,7 +73,7 @@ Bis dahin bleibt der Build Development/Validation/Pre-Release für fiskalische E
 
 ## Aktueller Fiskalstatus
 
-R179 ist der aktuelle dokumentierte Entwicklungs-/Validierungsstand. Die frühere Angabe „R149 Produktions-Basisstand / 881 Checks“ ist veraltet.
+R180 ist der aktuelle dokumentierte Entwicklungs-/Validierungsstand. Die frühere Angabe „R149 Produktions-Basisstand / 881 Checks“ ist veraltet.
 
 Die zentralen `FiscalRelease`-Nachweise stehen weiterhin auf **false**:
 
@@ -88,14 +88,14 @@ Daher bleibt die produktive fiskalische Buchung gesperrt.
 
 Zusätzlich bleibt der produktive Remote-Updatepfad gesperrt, solange kein TOR/Demirkaan-Code-Signing-Zertifikat als `UpdateSignerThumbprint` fest hinterlegt ist.
 
-## R179 Prüfziel
+## R180 Prüfziel
 
-R179 korrigiert Retouren-, Cloud-, Scanner- und Kassenschubladenpfade gegenüber R178. Die fiskalischen Produktions-Gates bleiben unverändert geschlossen; Scanner und Kassenschublade gelten erst nach realer Hardware-Gegenprobe als hardwareabgenommen.
+R180 korrigiert Retouren-, Cloud-, Scanner- und Kassenschubladenpfade gegenüber R178. Die fiskalischen Produktions-Gates bleiben unverändert geschlossen; Scanner und Kassenschublade gelten erst nach realer Hardware-Gegenprobe als hardwareabgenommen.
 
 Bei grüner CI müssen mindestens nachgewiesen sein:
-- Version R179 / 0.7.33.879 in allen Versionsspiegeln
+- Version R180 / 0.7.33.880 in allen Versionsspiegeln
 - vollständiger Build und Demo-Build
-- 1114/1114 Safety-/Regression-Checks
+- 1118/1118 Safety-/Regression-Checks
 - UI-Snapshot-Prüfung
 - Cloud-Checks
 - erzeugtes Windows-Testpaket
