@@ -19,6 +19,8 @@ Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
 - TOR'un genel `Karte` bilgisi debit/credit diye tahmin edilmez; fiskaltrust kart türü açıkça bilinmiyorsa işlem fail-closed olur. STORNO/RETURN fiskaltrust eşlemesi de doğrulanmadan etkinleştirilmez.
 - AccessToken kod içine alınmaz; R176 istemcisi yalnızca yerel loopback Queue'ya izin verir.
 - FiscalComplianceService artık tüm readiness kontrolünü global SQLite IoQueue içinde tutmaz; identity/settings repository'leri kendi DB erişimini serialize eder, böylece readiness kontrolü gereksiz global kuyruk kilidi ve gelecekteki nested-lock riskini taşımaz.
+- Satış ekranı scanner girişi güçlendirildi: TextBox odaklı Artikelverwaltung dışında da çalışan HID keyboard-wedge cihazları için rakamlar artık Window-level KeyDown üzerinden de toplanır; aynı tuş için TextInput da gelirse çift EAN oluşmaması için dedupe uygulanır.
+- Kassenschublade/Auto-Cut protokolü düzeltildi: Epson için ESC/POS (ESC p / GS V), Star için StarPRNT (ESC BEL + BEL/SUB / ESC d) ayrı kullanılır. Drucker-Zentrale'de Ausgang 1/2 seçimi vardır ve RAW spooler hatalarında Win32 hata kodu gösterilir.
 - Gerçek fiskaltrust transaction runtime-provider seçimi ve Physical-TSE-E2E bayrağı kapalı kalır. Yeni Swissbit TSE ile client registration ve gerçek Start/Finish/TAR/DSFinV-K kabul testi tamamlanmadan produktif fiskal sürüm açılmaz.
 
 ### R175
