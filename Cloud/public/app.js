@@ -31,7 +31,8 @@ if ($('loginForm')) {
   $('twoFactorBack').addEventListener('click',()=>{challenge='';$('twoFactorCode').value='';$('twoFactorForm').hidden=true;$('loginForm').hidden=false;$('password').focus();});
 }
 
-function paymentName(method){ return method==='CASH'?'Bar':method==='CARD'?'Karte':'Unbekannt'; }
+function paymentName(method){ return method==='CASH'?'Bar':method==='CARD'?'Karte':method==='MIXED'?'Gemischt':'Unbekannt'; }
+function bookingName(type){ return type==='STORNO'?'Storno':type==='RETURN'?'Retoure':'Verkauf'; }
 function onlineFrom(iso){ return (Date.now()-(Date.parse(iso)||0))<10*60*1000; }
 function statusLine(label, value, goodValues=[]){
   const good=goodValues.includes(String(value||'').toUpperCase());
@@ -60,6 +61,7 @@ async function openReceiptDetail(saleId){
         <div><small>Filiale</small><b>${esc(r.branch_name)}</b></div>
         <div><small>Kasse</small><b>${esc(r.register_name)}</b></div>
         <div><small>Bediener</small><b>${esc(r.operator_name||'–')}</b></div>
+        <div><small>Vorgang</small><b>${esc(bookingName(r.transaction_type))}${r.original_receipt_number?` · Bezug #${esc(r.original_receipt_number)}`:''}</b></div>
         <div><small>Zahlart</small><b>${esc(paymentName(r.payment_method))}</b></div>
         <div><small>Abholnummer</small><b>${Number(r.pickup_number)>0?esc(String(r.pickup_number).padStart(3,'0')):'–'}</b></div>
         <div><small>Gerät</small><b>${esc(r.device_code||'–')}</b></div>
@@ -186,11 +188,11 @@ if ($('logoutBtn')) {
       }).join('') || '<div class="muted">Keine Kasse vorhanden.</div>';
 
       const recent=data.recentSales||[];
-      $('salesRows').innerHTML=recent.map(s=>`<tr><td>#${esc(s.receipt_number)}</td><td>${Number(s.pickup_number)>0?esc(String(s.pickup_number).padStart(3,'0')):'–'}</td><td>${time(s.occurred_at)}</td><td>${paymentName(s.payment_method)}</td><td>${esc(s.register_name)}</td><td>${esc(s.operator_name||'–')}</td><td><b>${eur(s.total_cents)}</b></td></tr>`).join('') || '<tr><td colspan="7">Noch keine Verkäufe.</td></tr>';
+      $('salesRows').innerHTML=recent.map(s=>`<tr><td>${s.transaction_type&&s.transaction_type!=='SALE'?esc(bookingName(s.transaction_type))+' ':''}#${esc(s.receipt_number)}</td><td>${Number(s.pickup_number)>0?esc(String(s.pickup_number).padStart(3,'0')):'–'}</td><td>${time(s.occurred_at)}</td><td>${paymentName(s.payment_method)}</td><td>${esc(s.register_name)}</td><td>${esc(s.operator_name||'–')}</td><td><b>${eur(s.total_cents)}</b></td></tr>`).join('') || '<tr><td colspan="7">Noch keine Verkäufe.</td></tr>';
       $('stockRows').innerHTML=stock.filter(s=>Number(s.min_stock_quantity)>0&&Number(s.quantity)<=Number(s.min_stock_quantity)).slice(0,10).map(s=>`<tr><td>${esc(s.name)}</td><td class="low"><b>${esc(s.quantity)}</b></td><td>${esc(s.min_stock_quantity)}</td></tr>`).join('') || '<tr><td colspan="3">Keine Warnungen.</td></tr>';
 
-      $('allSalesRows').innerHTML=sales.map(s=>`<tr><td>#${esc(s.receipt_number)}</td><td>${Number(s.pickup_number)>0?esc(String(s.pickup_number).padStart(3,'0')):'–'}</td><td>${dateTime(s.occurred_at)}</td><td>${paymentName(s.payment_method)}</td><td>${esc(s.branch_name)}</td><td>${esc(s.register_name)}</td><td>${esc(s.operator_name||'–')}</td><td>${esc(s.item_count||0)}</td><td><b>${eur(s.total_cents)}</b></td></tr>`).join('') || '<tr><td colspan="9">Noch keine Verkäufe.</td></tr>';
-      $('receiptRows').innerHTML=sales.map(s=>`<tr class="receipt-row" data-receipt-id="${esc(s.sale_id)}"><td><b>#${esc(s.receipt_number)}</b></td><td>${Number(s.pickup_number)>0?esc(String(s.pickup_number).padStart(3,'0')):'–'}</td><td>${dateTime(s.occurred_at)}</td><td>${esc(s.register_name)}</td><td>${paymentName(s.payment_method)}</td><td>${esc(s.operator_name||'–')}</td><td><b>${eur(s.total_cents)}</b></td><td><button type="button" class="btn btn-mini receipt-detail-btn" data-receipt-id="${esc(s.sale_id)}">Details</button></td></tr>`).join('') || '<tr><td colspan="8">Noch keine Bons synchronisiert.</td></tr>';
+      $('allSalesRows').innerHTML=sales.map(s=>`<tr><td>${s.transaction_type&&s.transaction_type!=='SALE'?esc(bookingName(s.transaction_type))+' ':''}#${esc(s.receipt_number)}</td><td>${Number(s.pickup_number)>0?esc(String(s.pickup_number).padStart(3,'0')):'–'}</td><td>${dateTime(s.occurred_at)}</td><td>${paymentName(s.payment_method)}</td><td>${esc(s.branch_name)}</td><td>${esc(s.register_name)}</td><td>${esc(s.operator_name||'–')}</td><td>${esc(s.item_count||0)}</td><td><b>${eur(s.total_cents)}</b></td></tr>`).join('') || '<tr><td colspan="9">Noch keine Verkäufe.</td></tr>';
+      $('receiptRows').innerHTML=sales.map(s=>`<tr class="receipt-row" data-receipt-id="${esc(s.sale_id)}"><td><b>${s.transaction_type&&s.transaction_type!=='SALE'?esc(bookingName(s.transaction_type))+' ':''}#${esc(s.receipt_number)}</b></td><td>${Number(s.pickup_number)>0?esc(String(s.pickup_number).padStart(3,'0')):'–'}</td><td>${dateTime(s.occurred_at)}</td><td>${esc(s.register_name)}</td><td>${paymentName(s.payment_method)}</td><td>${esc(s.operator_name||'–')}</td><td><b>${eur(s.total_cents)}</b></td><td><button type="button" class="btn btn-mini receipt-detail-btn" data-receipt-id="${esc(s.sale_id)}">Details</button></td></tr>`).join('') || '<tr><td colspan="8">Noch keine Bons synchronisiert.</td></tr>';
       document.querySelectorAll('.receipt-detail-btn').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();openReceiptDetail(btn.dataset.receiptId);}));
       document.querySelectorAll('.receipt-row[data-receipt-id]').forEach(row=>row.addEventListener('click',()=>openReceiptDetail(row.dataset.receiptId)));
 

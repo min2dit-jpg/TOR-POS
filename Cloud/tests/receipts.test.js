@@ -163,3 +163,30 @@ test('R149 a digital receipt of returned deposit paid out is accepted as it adds
  assert.equal(payout.total_cents,-50);
  assert.ok(renderReceiptPage(payout,{token:'A'.repeat(43),expiresAt:'2026-12-16T11:00:05.000Z'}).includes('-0,50 €'));
 });
+
+
+test('R179 weighted promotion uses list total minus line-level promotion discount instead of quantity times reduced unit price',()=>{
+ const payload={
+  receipt_number:179001,pickup_number:0,transaction_type:'SALE',payment_method:'CASH',
+  cash_portion_cents:564,card_portion_cents:0,subtotal_cents:564,discount_cents:0,total_cents:564,
+  operator_name:'tester',item_count:1,stock_consumption:[],
+  items:[{position_no:1,product_key:'179',name:'Oliven',quantity:0.333,unit:'kg',
+    list_unit_price_cents:1990,unit_price_cents:1691,line_total_cents:564,vat_rate:7,
+    promotion_id:179,promotion_name:'GEWICHT 15',promotion_percent:15,promotion_discount_cents:99}]
+ };
+ assert.equal(normalizeEvent(saleEvent(payload)).payload.items[0].line_total_cents,564);
+});
+
+test('R179 reversal contract requires original receipt and keeps positive wire amounts',()=>{
+ const payload={
+  receipt_number:179002,original_receipt_number:179001,transaction_type:'RETURN',payment_method:'MIXED',
+  cash_portion_cents:200,card_portion_cents:100,subtotal_cents:300,discount_cents:0,total_cents:300,
+  operator_name:'tester',item_count:1,stock_consumption:[{product_key:'179',quantity:1}],
+  items:[{position_no:1,product_key:'179',name:'Artikel',quantity:1,unit_price_cents:300,line_total_cents:300,vat_rate:19}]
+ };
+ const accepted=normalizeEvent(saleEvent(payload));
+ assert.equal(accepted.payload.transaction_type,'RETURN');
+ assert.equal(accepted.payload.original_receipt_number,179001);
+ const invalid=structuredClone(payload);delete invalid.original_receipt_number;
+ assert.throws(()=>normalizeEvent(saleEvent(invalid)),/original_receipt_number/);
+});

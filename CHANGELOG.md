@@ -1,12 +1,25 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R178|0.7.33.878|Merd-M -->
+<!-- TOR_RELEASE:R179|0.7.33.879|Merd-M -->
 
 ## Aktueller Release
 
-**R178 · Merd-M · 0.7.33.878**
+**R179 · Merd-M · 0.7.33.879**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R179
+
+- Teilretoure: manueller Bon-Rabatt sowie Bar-/Kartenanteile werden kumulativ über bereits erfolgte Retouren verteilt. Einzelne Teilretouren können dadurch keine zusätzlichen oder fehlenden Rundungs-Cents mehr erzeugen; die letzte Teilretoure absorbiert den Rest exakt.
+- TOR Cloud: STORNO und RETURN werden nun zusammen mit der lokalen Gegenbuchung in die persistente Cloud-Outbox geschrieben. In der Cloud erscheinen sie als Gegenbuchungen; der zugehörige Lagerverbrauch wird umgekehrt und Bestand entsprechend zurückgeführt.
+- TOR Cloud: GEMISCHT wird im Portal als „Gemischt“ angezeigt. Cash-/Card-Anteile werden für neue Ereignisse ausdrücklich übertragen und für Auswertungen getrennt geführt.
+- TOR Cloud: gewichtete Aktionsartikel werden mit Listenpreis, Aktionsrabatt und bereits vom Desktop berechnetem Positionsbetrag validiert. Gültige line-level Rundungen werden nicht mehr durch eine abweichende quantity×unit_price-Neuberechnung abgewiesen.
+- Scanner: das 1×1-px transparente Fokusziel wurde durch ein sichtbares, fokussierbares EAN-/Barcode-Feld ersetzt. Scanner-Timing orientiert sich an der konfigurierten Wartezeit und verwirft suffixlose HID-Scans nicht mehr über die alte 170-ms-Heuristik.
+- Scanner-Einstellungen: in diesem Build wird nur der tatsächlich implementierte HID-Keyboard-Wedge-Pfad angeboten; COM wird nicht mehr irrtümlich als produktiv auswählbarer Scannerpfad dargestellt.
+- Kassenschublade: Aktivierung und DK-Ausgang werden in der Drucker-Zentrale gemeinsam gespeichert. Der echte Zahlungsweg verwendet denselben kanonischen Schalter; für R169–R178-Installationen gibt es eine begrenzte Legacy-Migration, damit bestehende funktionsfähige Konfigurationen nicht durch den früher standardmäßig falschen Schalter deaktiviert bleiben.
+- Kassenschubladen-Test verwendet den gespeicherten DK-Ausgang 1/2 statt implizit immer Ausgang 1.
+- 10 neue R179-Regressionsprüfungen sichern kumulative Retourenverteilung, Cloud-Gegenbuchungen, gewichtete Aktionsdaten, Scanner-Fokus/Timing und die vereinheitlichte Kassenschubladenkonfiguration. Safety-Baseline: 1114 Checks.
+- Die sechs fiskalischen Produktionsfreigabe-Flags bleiben unverändert geschlossen. Scanner und Kassenschublade benötigen zusätzlich die reale Hardware-Gegenprobe am Zielsystem.
 
 ### R178
 

@@ -14,6 +14,24 @@ public sealed record TorCloudEvent(
     [property: JsonPropertyName("occurred_at")] string OccurredAt,
     [property: JsonPropertyName("payload")] JsonElement Payload);
 public sealed record TorCloudConfiguration(string BaseUrl, string DeviceCode, string ProtectedToken, bool Enabled);
+public sealed record TorCloudSaleLine(
+    long ProductId,
+    string ProductName,
+    string VariantName,
+    decimal Quantity,
+    string Unit,
+    long UnitPriceCents,
+    long LineTotalCents,
+    decimal VatRate,
+    long ListUnitPriceCents,
+    long ListLineTotalCents,
+    long PromotionId,
+    string PromotionName,
+    int PromotionPercent,
+    long PromotionDiscountCents,
+    string PromotionStartDate,
+    string PromotionEndDate,
+    MenuComponentSnapshot[] MenuComponents);
 public interface ICloudSecretProtector { string Protect(string value); string Unprotect(string value); }
 public sealed class WindowsCloudSecretProtector : ICloudSecretProtector
 {
@@ -51,13 +69,60 @@ public sealed class TorCloudOutbox
     // Called before sale COMMIT, with the exact immutable checkout snapshot.
     public static void EnqueueSale(SqliteConnection c,SqliteTransaction tx,CheckoutSnapshot s,long receipt,long pickupNumber,DateTimeOffset at)
     {
+        var lines=s.Lines.Select(x=>new TorCloudSaleLine(
+            x.ProductId,x.ProductName,x.VariantName,x.Quantity,x.Unit,x.UnitPriceCents,x.LineTotalCents,x.VatRate,
+            x.EffectiveListUnitPriceCents,x.ListLineTotalCents,x.PromotionId,x.PromotionName,x.PromotionPercent,
+            x.PromotionDiscountCents,x.PromotionStartDate,x.PromotionEndDate,x.MenuComponents.ToArray())).ToArray();
+        EnqueueRecordedSale(
+            c,tx,"sale-"+s.OperationId,"SALE",null,receipt,pickupNumber,at,s.Method,
+            s.Lines.Sum(x=>x.LineTotalCents),s.DiscountCents,s.TotalCents,
+            s.EffectiveCashPortionCents,s.EffectiveCardPortionCents,s.OperatorName,lines);
+    }
+
+    // R179: Storno/Retoure are completed fiscal sales too. They must reach Cloud
+    // in the SAME SQLite transaction as the local reversal, otherwise Cloud can
+    // show turnover/stock that never reflects the counter-booking. Amounts stay
+    // positive in the wire contract; transaction_type tells Cloud to project them
+    // with the opposite sign.
+    public static void EnqueueRecordedSale(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        string eventId,
+        string transactionType,
+        long? originalReceiptNumber,
+        long receipt,
+        long pickupNumber,
+        DateTimeOffset at,
+        PaymentMethod paymentMethod,
+        long subtotalCents,
+        long discountCents,
+        long totalCents,
+        long cashPortionCents,
+        long cardPortionCents,
+        string operatorName,
+        IReadOnlyList<TorCloudSaleLine> lines)
+    {
         var config=Configuration(c,tx);if(config is null)return;
+        transactionType=(transactionType??"SALE").Trim().ToUpperInvariant();
+        if(transactionType is not ("SALE" or "STORNO" or "RETURN"))
+            throw new InvalidOperationException("Ungültiger Cloud-Buchungstyp.");
+
         var consumption=new Dictionary<long,decimal>();
-        foreach(var line in s.Lines.Where(x=>x.ProductId>0))
+        foreach(var line in lines.Where(x=>x.ProductId>0))
         {
+            if(line.MenuComponents.Length>0)
+            {
+                foreach(var component in line.MenuComponents)
+                {
+                    var qty=line.Quantity*component.Quantity;
+                    consumption[component.ProductId]=consumption.GetValueOrDefault(component.ProductId)+qty;
+                }
+                continue;
+            }
+
             var found=false;
             using var combo=c.CreateCommand(); combo.Transaction=tx;
-            combo.CommandText="SELECT component_product_id,CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END FROM product_combo_items WHERE product_id=$id;";
+            combo.CommandText="SELECT component_product_id,CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END FROM product_combo_items WHERE product_id=$id AND COALESCE(choice_group,'')='' ORDER BY sort_order;";
             combo.Parameters.AddWithValue("$id",line.ProductId);
             using var r=combo.ExecuteReader();
             while(r.Read())
@@ -67,25 +132,22 @@ public sealed class TorCloudOutbox
             }
             if(!found) consumption[line.ProductId]=consumption.GetValueOrDefault(line.ProductId)+line.Quantity;
         }
+
         Insert(c,tx,config,Event("sale.completed",new {
-            receipt_number=receipt, pickup_number=pickupNumber, payment_method=s.Method.ToString().ToUpperInvariant(),
-            // R101: lets TOR Cloud recover the cash/card split of a Mixed sale.
-            cash_portion_cents=s.EffectiveCashPortionCents, card_portion_cents=s.EffectiveCardPortionCents,
-            list_subtotal_cents=s.Lines.Sum(x=>x.ListLineTotalCents),
-            promotion_discount_cents=s.Lines.Sum(x=>x.PromotionDiscountCents),
-            subtotal_cents=s.Lines.Sum(x=>x.LineTotalCents),
-            // R149: TOR Cloud reads discount_cents (the name it has always validated);
-            // manual_discount_cents stays for older Cloud versions.
-            discount_cents=s.DiscountCents,manual_discount_cents=s.DiscountCents,total_cents=s.TotalCents,
-            operator_name=s.OperatorName,item_count=s.Lines.Length,
-            items=s.Lines.Select((x,i)=>new {position_no=i+1,product_key=x.ProductId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                name=x.ProductName+(string.IsNullOrEmpty(x.VariantName)?"":" · "+x.VariantName),quantity=x.Quantity,
-                list_unit_price_cents=x.EffectiveListUnitPriceCents,
-                unit_price_cents=x.UnitPriceCents,line_total_cents=x.LineTotalCents,vat_rate=x.VatRate,
+            receipt_number=receipt,pickup_number=pickupNumber,transaction_type=transactionType,
+            original_receipt_number=originalReceiptNumber,payment_method=paymentMethod.ToString().ToUpperInvariant(),
+            cash_portion_cents=cashPortionCents,card_portion_cents=cardPortionCents,
+            list_subtotal_cents=lines.Sum(x=>x.ListLineTotalCents),
+            promotion_discount_cents=lines.Sum(x=>x.PromotionDiscountCents),
+            subtotal_cents=subtotalCents,discount_cents=discountCents,manual_discount_cents=discountCents,total_cents=totalCents,
+            operator_name=operatorName,item_count=lines.Count,
+            items=lines.Select((x,i)=>new {position_no=i+1,product_key=x.ProductId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                name=x.ProductName+(string.IsNullOrEmpty(x.VariantName)?"":" · "+x.VariantName),quantity=x.Quantity,unit=x.Unit,
+                list_unit_price_cents=x.ListUnitPriceCents,unit_price_cents=x.UnitPriceCents,line_total_cents=x.LineTotalCents,vat_rate=x.VatRate,
                 promotion_id=x.PromotionId,promotion_name=x.PromotionName,promotion_percent=x.PromotionPercent,
                 promotion_discount_cents=x.PromotionDiscountCents,promotion_start_date=x.PromotionStartDate,promotion_end_date=x.PromotionEndDate}).ToArray(),
             stock_consumption=consumption.Select(x=>new {product_key=x.Key.ToString(System.Globalization.CultureInfo.InvariantCulture),quantity=x.Value}).ToArray()
-        },"sale-"+s.OperationId,at));
+        },eventId,at));
     }
     public Task<TorCloudConfiguration?> GetConfigurationAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();return Task.FromResult(Configuration(c));

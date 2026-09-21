@@ -1,6 +1,6 @@
 # TOR POS – Architecture Overview
 
-Stand: R178 · 2026-09-21
+Stand: R179 · 2026-09-21
 
 ## Hauptkomponenten
 
@@ -89,4 +89,4 @@ Remote-Updates sind in Release-Builds an HTTPS, SHA-256 und einen fest hinterleg
 
 Automatisierte Tests, Hardware-Abnahme und fiskalische Produktionsfreigabe sind drei getrennte Nachweisarten. Sie werden nicht gegenseitig ersetzt.
 
-R178 übernimmt den R177 Safety-/Regression-Baseline von 1104 automatischen Checks. Die reale Hardware-/Fiskalabnahme bleibt separat.
+R179 führt 1114 automatisierte Safety-/Regression-Checks aus. Die reale Hardware-/Fiskalabnahme bleibt separat.

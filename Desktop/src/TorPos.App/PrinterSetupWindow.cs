@@ -42,6 +42,13 @@ public sealed class PrinterSetupWindow : Window
         SelectedIndex = 0
     };
 
+    private readonly CheckBox _drawerEnabled = new()
+    {
+        Content = "Bei Barzahlung automatisch öffnen",
+        IsChecked = true,
+        VerticalAlignment = VerticalAlignment.Center
+    };
+
     private readonly TextBlock _model = Value();
     private readonly TextBlock _driver = Value();
     private readonly TextBlock _port = Value();
@@ -138,6 +145,7 @@ public sealed class PrinterSetupWindow : Window
                             Field("Verwendung", _role),
                             Field("Gefundener Drucker", _device),
                             Field("Kassenschubladen-Ausgang", _drawerChannel),
+                            _drawerEnabled,
                             _detect,
                             DeviceCard(),
                             new StackPanel
@@ -193,6 +201,18 @@ public sealed class PrinterSetupWindow : Window
             values.GetValueOrDefault("device.receipt_printer.drawer_channel", "1") == "2"
                 ? 1
                 : 0;
+        var drawerConfigured = values.GetValueOrDefault("device.drawer.r179_configured", "false")
+            .Equals("true", StringComparison.OrdinalIgnoreCase);
+        var drawerEnabled = values.GetValueOrDefault("device.drawer.enabled", "false")
+            .Equals("true", StringComparison.OrdinalIgnoreCase);
+        var legacyDrawerExpected =
+            !drawerConfigured &&
+            !string.IsNullOrWhiteSpace(receiptName) &&
+            values.GetValueOrDefault("device.receipt_printer.profile_drawer", "false")
+                .Equals("true", StringComparison.OrdinalIgnoreCase) &&
+            !values.GetValueOrDefault("function.drawer_on_receipt", "true")
+                .Equals("false", StringComparison.OrdinalIgnoreCase);
+        _drawerEnabled.IsChecked = drawerEnabled || legacyDrawerExpected;
         _status.Text = string.IsNullOrWhiteSpace(receiptName)
             ? "Noch kein Bondrucker gespeichert. Automatische Suche startet …"
             : $"Gespeicherter Bondrucker: {receiptName}. Automatische Suche startet …";
@@ -292,6 +312,7 @@ public sealed class PrinterSetupWindow : Window
         _test.IsEnabled = usableReceiptPrinter;
         _drawer.IsVisible = SelectedRole.DrawerAllowed;
         _drawerChannel.IsVisible = SelectedRole.DrawerAllowed;
+        _drawerEnabled.IsVisible = SelectedRole.DrawerAllowed;
         _drawerChannel.IsEnabled =
             SelectedRole.DrawerAllowed &&
             usableReceiptPrinter &&
@@ -300,6 +321,7 @@ public sealed class PrinterSetupWindow : Window
             SelectedRole.DrawerAllowed &&
             usableReceiptPrinter &&
             d.CashDrawerPortSupported;
+        _drawerEnabled.IsEnabled = SelectedRole.DrawerAllowed && usableReceiptPrinter;
 
         if (!d.IsReceiptPrinter)
         {
@@ -336,6 +358,10 @@ public sealed class PrinterSetupWindow : Window
             values["device.receipt_printer.profile_drawer"] = d.CashDrawerPortSupported ? "true" : "false";
             values["device.receipt_printer.drawer_channel"] =
                 (_drawerChannel.SelectedIndex == 1 ? 2 : 1).ToString();
+            values["device.drawer.enabled"] = (_drawerEnabled.IsChecked == true ? "true" : "false");
+            values["device.drawer.r179_configured"] = "true";
+            values["printer.drawer_kick.enabled"] = values["device.drawer.enabled"];
+            values["function.drawer_on_receipt"] = values["device.drawer.enabled"];
         }
 
         await _settings.SaveManyAsync(values);
@@ -417,6 +443,7 @@ public sealed class PrinterSetupWindow : Window
         _role.IsEnabled = !busy;
         _device.IsEnabled = !busy;
         _drawerChannel.IsEnabled = !busy && SelectedRole.DrawerAllowed;
+        _drawerEnabled.IsEnabled = !busy && SelectedRole.DrawerAllowed;
         if (busy)
         {
             _use.IsEnabled = false;

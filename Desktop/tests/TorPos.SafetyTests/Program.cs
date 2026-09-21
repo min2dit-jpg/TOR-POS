@@ -443,6 +443,7 @@ await R174ReviewTests.Run(root, Assert);
 await R175ReviewTests.Run(root, Assert);
 await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
+await R179ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -501,7 +502,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // drawer protocols, cashier HID scanner fallback and fail-closed semantics.
 // R177: 6 reviewed checks lock a real cashier scanner focus target, suffix-loss
 // recovery and payment-side drawer opening independent of paper receipt output.
-const int ExpectedSafetyChecks = 1104;
+// R179: 10 reviewed checks lock cumulative partial-return tender allocation,
+// visible HID scanner capture/timing, the unified drawer switch and Cloud
+// reversal/weighted-promotion payload contracts.
+const int ExpectedSafetyChecks = 1114;
 
 if (checks != ExpectedSafetyChecks)
 {

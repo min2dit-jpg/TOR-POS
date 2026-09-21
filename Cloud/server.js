@@ -506,6 +506,10 @@ ensureColumn('stock_items','price_cents','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('stock_items','purchase_price_cents','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('stock_items','min_stock_quantity','REAL NOT NULL DEFAULT 0');
 ensureColumn('cloud_sales','pickup_number','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('cloud_sales','transaction_type',"TEXT NOT NULL DEFAULT 'SALE'");
+ensureColumn('cloud_sales','original_receipt_number','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('cloud_sales','cash_portion_cents','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('cloud_sales','card_portion_cents','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_enabled','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','totp_pending_secret',"TEXT NOT NULL DEFAULT ''");
@@ -621,10 +625,10 @@ function dashboardSummary(businessId) {
   const today = berlinParts(new Date()).day;
   const totals = db.prepare(`
     SELECT COALESCE(SUM(s.total_cents),0) total_cents,
-           COUNT(*) sale_count,
-           COALESCE(SUM(CASE WHEN s.payment_method='CASH' THEN s.total_cents ELSE 0 END),0) cash_cents,
-           COALESCE(SUM(CASE WHEN s.payment_method='CARD' THEN s.total_cents ELSE 0 END),0) card_cents,
-           COALESCE(AVG(s.total_cents),0) avg_cents
+           COALESCE(SUM(CASE WHEN s.transaction_type='SALE' THEN 1 ELSE 0 END),0) sale_count,
+           COALESCE(SUM(CASE WHEN s.cash_portion_cents<>0 OR s.card_portion_cents<>0 THEN s.cash_portion_cents WHEN s.payment_method='CASH' THEN s.total_cents ELSE 0 END),0) cash_cents,
+           COALESCE(SUM(CASE WHEN s.cash_portion_cents<>0 OR s.card_portion_cents<>0 THEN s.card_portion_cents WHEN s.payment_method='CARD' THEN s.total_cents ELSE 0 END),0) card_cents,
+           COALESCE(AVG(CASE WHEN s.transaction_type='SALE' THEN s.total_cents END),0) avg_cents
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id
     JOIN branches br ON br.id=r.branch_id
@@ -632,7 +636,7 @@ function dashboardSummary(businessId) {
   `).get(businessId, today);
 
   const recentSales = db.prepare(`
-    SELECT s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.total_cents,s.operator_name,r.name register_name,br.name branch_name
+    SELECT s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.transaction_type,s.original_receipt_number,s.total_cents,s.operator_name,r.name register_name,br.name branch_name
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id JOIN branches br ON br.id=r.branch_id
     WHERE br.business_id=? ORDER BY s.occurred_at DESC LIMIT 12
@@ -664,7 +668,7 @@ function dashboardSummary(businessId) {
 function portalData(businessId, offset=0) {
   const summary = dashboardSummary(businessId);
   const sales = db.prepare(`
-    SELECT s.id sale_id,s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.subtotal_cents,s.discount_cents,s.total_cents,s.operator_name,s.item_count,
+    SELECT s.id sale_id,s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.transaction_type,s.original_receipt_number,s.cash_portion_cents,s.card_portion_cents,s.subtotal_cents,s.discount_cents,s.total_cents,s.operator_name,s.item_count,
            r.name register_name,br.name branch_name
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id JOIN branches br ON br.id=r.branch_id
@@ -732,15 +736,21 @@ function ingestEvent(registerId, event) {
       .run(receivedAt, String(p.software_version || ''), String(p.tse_status || 'UNBEKANNT'), String(p.printer_status || 'UNBEKANNT'), registerId);
   } else if (event.type === 'sale.completed') {
     const rawItems = Array.isArray(p.items) ? p.items : [];
-    const saleRow = db.prepare(`INSERT INTO cloud_sales(register_id,event_id,receipt_number,pickup_number,occurred_at,payment_method,subtotal_cents,discount_cents,total_cents,operator_name,item_count)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?) RETURNING id`)
+    const transactionType=String(p.transaction_type||'SALE').toUpperCase();
+    const sign=transactionType==='SALE'?1:-1;
+    const total=Number(p.total_cents||0);
+    const cash=Number(p.cash_portion_cents??(p.payment_method==='CASH'?total:0));
+    const card=Number(p.card_portion_cents??(p.payment_method==='CARD'?total:0));
+    const saleRow = db.prepare(`INSERT INTO cloud_sales(register_id,event_id,receipt_number,pickup_number,occurred_at,payment_method,transaction_type,original_receipt_number,cash_portion_cents,card_portion_cents,subtotal_cents,discount_cents,total_cents,operator_name,item_count)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`)
       .get(registerId, projectionId, Number(p.receipt_number || 0), Number(p.pickup_number || 0), event.occurredAt, String(p.payment_method || 'UNKNOWN').toUpperCase(),
-        Number(p.subtotal_cents || p.total_cents || 0), Number(p.discount_cents || 0), Number(p.total_cents || 0), String(p.operator_name || ''), Number(p.item_count || rawItems.length || 0));
+        transactionType,Number(p.original_receipt_number||0),sign*cash,sign*card,
+        sign*Number(p.subtotal_cents || p.total_cents || 0),sign*Number(p.discount_cents || 0),sign*total,String(p.operator_name || ''),Number(p.item_count || rawItems.length || 0));
     if (saleRow?.id && rawItems.length) {
       const itemStmt = db.prepare('INSERT INTO cloud_sale_items(sale_id,position_no,product_key,name,quantity,unit_price_cents,line_total_cents,vat_rate) VALUES(?,?,?,?,?,?,?,?)');
       const stockState = db.prepare('SELECT occurred_at FROM stock_sync_state WHERE register_id=?').get(registerId);
-      // If a newer full snapshot was already accepted, this delayed sale is already reflected
-      // in that snapshot and must not decrement stock a second time.
+      // If a newer full snapshot was already accepted, this delayed booking is already reflected
+      // in that snapshot and must not change stock a second time.
       const applyStockDelta = !stockState || Date.parse(stockState.occurred_at) <= Date.parse(event.occurredAt);
       const stockStmt = applyStockDelta
         ? db.prepare('UPDATE stock_items SET quantity=quantity-?,updated_at=? WHERE register_id=? AND product_key=?')
@@ -750,14 +760,15 @@ function ingestEvent(registerId, event) {
         const unit = Number(item.unit_price_cents ?? item.price_cents ?? 0) || 0;
         const line = Number(item.line_total_cents ?? item.total_cents ?? Math.round(qty * unit)) || 0;
         const productKey = String(item.product_key || item.article_number || item.sku || '');
-        itemStmt.run(saleRow.id, Number(item.position_no || idx + 1), productKey, String(item.name || item.article_name || 'Artikel'), qty, unit, line, Number(item.vat_rate ?? item.tax_rate ?? 19));
+        itemStmt.run(saleRow.id, Number(item.position_no || idx + 1), productKey, String(item.name || item.article_name || 'Artikel'), sign*qty, unit, sign*line, Number(item.vat_rate ?? item.tax_rate ?? 19));
       });
-      // R49 combo-aware stock: desktop may send component consumption independently from visible receipt positions.
+      // R179: the same component snapshot is a stock consumption for SALE and a
+      // stock restoration for STORNO/RETURN. sign=-1 therefore adds quantity back.
       const consumption = Array.isArray(p.stock_consumption) ? p.stock_consumption : rawItems;
       if (stockStmt) consumption.forEach(item => {
         const productKey=String(item.product_key || item.article_number || item.sku || '');
         const qty=Number(item.quantity ?? item.qty ?? 1) || 0;
-        if(productKey && qty>0) stockStmt.run(qty,event.occurredAt,registerId,productKey);
+        if(productKey && qty>0) stockStmt.run(sign*qty,event.occurredAt,registerId,productKey);
       });
     }
     db.prepare('UPDATE registers SET last_seen_at=? WHERE id=?').run(receivedAt, registerId);

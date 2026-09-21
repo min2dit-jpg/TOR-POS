@@ -390,3 +390,34 @@ test('R128 an owner on a one-time password must choose an own password before an
  // The demo owner was never on a one-time password and is not affected.
  assert.equal((await request('/api/portal/data',undefined,{Cookie:cookie})).status,200);
 });
+
+
+test('R179 reversal sync restores stock and is stored as a signed counter-booking',async()=>{
+ const snapshot={event_id:'r179-stock-base',type:'stock.snapshot',occurred_at:'2026-09-21T12:00:00Z',payload:{items:[{
+  product_key:'179',name:'R179 Artikel',sku:'R179',barcode:'4017900000000',group_name:'Test',category_name:'Test',unit:'Stück',price_cents:300,quantity:10
+ }]}};
+ assert.equal((await sync([snapshot])).status,200);
+ const sale={event_id:'r179-sale',type:'sale.completed',occurred_at:'2026-09-21T12:01:00Z',payload:{
+  receipt_number:179001,transaction_type:'SALE',payment_method:'CASH',cash_portion_cents:900,card_portion_cents:0,
+  subtotal_cents:900,discount_cents:0,total_cents:900,operator_name:'tester',item_count:1,
+  items:[{position_no:1,product_key:'179',name:'R179 Artikel',quantity:3,unit_price_cents:300,line_total_cents:900,vat_rate:19}],
+  stock_consumption:[{product_key:'179',quantity:3}]
+ }};
+ assert.equal((await sync([sale])).body.accepted,1);
+ const ret={event_id:'r179-return',type:'sale.completed',occurred_at:'2026-09-21T12:02:00Z',payload:{
+  receipt_number:179002,original_receipt_number:179001,transaction_type:'RETURN',payment_method:'CASH',cash_portion_cents:300,card_portion_cents:0,
+  subtotal_cents:300,discount_cents:0,total_cents:300,operator_name:'tester',item_count:1,
+  items:[{position_no:1,product_key:'179',name:'R179 Artikel',quantity:1,unit_price_cents:300,line_total_cents:300,vat_rate:19}],
+  stock_consumption:[{product_key:'179',quantity:1}]
+ }};
+ assert.equal((await sync([ret])).body.accepted,1);
+ const p=await request('/api/portal/data',undefined,{Cookie:cookie});
+ assert.equal(p.body.stock.find(x=>x.product_key==='179').quantity,8);
+ const row=p.body.sales.find(x=>x.receipt_number===179002);assert.ok(row);
+ assert.equal(row.transaction_type,'RETURN');assert.equal(row.original_receipt_number,179001);assert.equal(row.total_cents,-300);
+});
+
+test('R179 portal labels mixed payment as Gemischt',()=>{
+ const app=readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
+ assert.match(app,/method==='MIXED'\?'Gemischt'/);
+});
