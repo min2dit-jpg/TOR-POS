@@ -39,6 +39,22 @@ public static class R174ReviewTests
             halfKg.ListLineTotalCents - halfKg.PromotionDiscountCents == halfKg.LineTotalCents,
             "R174 0.500 kg at 19.90 EUR/kg with 10% promotion is cent-exact at 8.95 EUR");
 
+        var reversal = new CartLine
+        {
+            ProductId = 1742,
+            ProductName = "Storno",
+            Quantity = -3m,
+            UnitPriceCents = 700,
+            ListUnitPriceCents = 700,
+            VatRate = 7m
+        };
+
+        assert(
+            reversal.LineTotalCents == -2100 &&
+            halfKg.LineTotalCentsFor(-0.500m) == -895 &&
+            halfKg.PromotionDiscountCentsFor(-0.500m) == -100,
+            "R174 negative order/reversal quantities mirror positive line and promotion amounts instead of collapsing to zero");
+
         var thirds = new SaleEngine();
         thirds.Add(
             new Product
