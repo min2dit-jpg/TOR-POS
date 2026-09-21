@@ -1,6 +1,6 @@
 public static class R181ReviewTests
 {
-    public static Task Run(Action<bool,string> assert)
+    public static async Task Run(string root, Action<bool,string> assert)
     {
         var main = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
         var infra = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
@@ -31,7 +31,88 @@ public static class R181ReviewTests
             settings.Contains("RAM-Index", StringComparison.Ordinal),
             "R181 scanner queue is bounded and keeps the existing in-memory barcode lookup contract");
 
-        return Task.CompletedTask;
+        var login = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/LoginWindow.axaml.cs"));
+        var app = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/App.axaml.cs"));
+        assert(
+            login.Contains("ImbissEditionRadio.IsVisible = false", StringComparison.Ordinal) &&
+            login.Contains("KioskEditionRadio.IsVisible = false", StringComparison.Ordinal) &&
+            login.Contains("_lockedEdition ??", StringComparison.Ordinal),
+            "R181 licensed edition hides the other sector completely on the login screen");
+        assert(
+            app.Contains("commercialLicense.Check(\"KIOSK\")", StringComparison.Ordinal) &&
+            app.Contains("commercialLicense.Check(\"IMBISS\")", StringComparison.Ordinal) &&
+            app.Contains("permanentLock: lockedEdition is not null", StringComparison.Ordinal),
+            "R181 active signed licence determines and permanently binds the installation edition");
+
+        var editionDir = Path.Combine(root, "r181-edition");
+        Directory.CreateDirectory(editionDir);
+        AppPaths.DataDirectoryOverride = editionDir;
+        try
+        {
+            var editionDb = await SafetyDatabase.CreateCurrentAsync(
+                Path.Combine(editionDir, "edition.db"));
+            var editionSettings = new SettingsRepository(editionDb);
+
+            await editionSettings.SaveManyAsync(new Dictionary<string,string>
+            {
+                ["company.name"] = "Einzelhandel Test GmbH",
+                ["company.street"] = "Retailweg 1",
+                ["installation.first_run_completed"] = "true"
+            });
+
+            await InstallationEdition.EnforceAsync(editionSettings, "KIOSK");
+            await editionSettings.SaveManyAsync(new Dictionary<string,string>
+            {
+                ["company.name"] = "Einzelhandel Separat"
+            });
+
+            await InstallationEdition.EnforceAsync(editionSettings, "IMBISS");
+            var afterGastroSwitch = await editionSettings.LoadAllAsync();
+            assert(
+                string.IsNullOrEmpty(afterGastroSwitch.GetValueOrDefault("company.name", "")) &&
+                afterGastroSwitch.GetValueOrDefault(
+                    InstallationEdition.ProfileKey("KIOSK", "company.name"), "") == "Einzelhandel Separat",
+                "R181 switching to Gastronomie never leaks Einzelhandel company identity");
+
+            await editionSettings.SaveManyAsync(new Dictionary<string,string>
+            {
+                ["company.name"] = "Gastronomie Separat",
+                ["company.city"] = "Berlin"
+            });
+
+            await InstallationEdition.EnforceAsync(editionSettings, "KIOSK");
+            var backToRetail = await editionSettings.LoadAllAsync();
+            assert(
+                backToRetail.GetValueOrDefault("company.name", "") == "Einzelhandel Separat" &&
+                backToRetail.GetValueOrDefault(
+                    InstallationEdition.ProfileKey("IMBISS", "company.name"), "") == "Gastronomie Separat",
+                "R181 test-mode company identities round-trip independently between Einzelhandel and Gastronomie");
+
+            await InstallationEdition.EnforceAsync(
+                editionSettings,
+                "KIOSK",
+                permanentLock: true);
+            assert(
+                InstallationEdition.ReadPermanent() == "KIOSK",
+                "R181 permanent edition lock is stored separately from the temporary test selection");
+
+            var refusedOtherEdition = false;
+            try
+            {
+                await InstallationEdition.EnforceAsync(editionSettings, "IMBISS");
+            }
+            catch (InvalidOperationException ex)
+            {
+                refusedOtherEdition = ex.Message.Contains("dauerhaft", StringComparison.OrdinalIgnoreCase);
+            }
+            assert(
+                refusedOtherEdition,
+                "R181 permanently licensed Einzelhandel installation refuses Gastronomie activation");
+        }
+        finally
+        {
+            AppPaths.DataDirectoryOverride = null;
+        }
     }
 
     private static string FindRepoFile(string relative)
