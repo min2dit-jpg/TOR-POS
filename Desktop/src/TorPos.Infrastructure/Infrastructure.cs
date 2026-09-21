@@ -2697,6 +2697,103 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
             ?? throw new InvalidOperationException("Stornobon konnte nicht geladen werden.");
     });
 }
+public async Task<ReturnQuote> QuoteReturnAsync(
+    long originalSaleId,
+    IReadOnlyList<ReturnLineRequest> lines,
+    CancellationToken ct = default)
+{
+    if (lines is null || lines.Count == 0)
+        throw new InvalidOperationException("Mindestens eine Position für die Retoure auswählen.");
+    if (lines.Any(x => x.Quantity <= 0))
+        throw new InvalidOperationException("Retoure-Menge muss größer als 0 sein.");
+    if (lines.Select(x => x.SaleItemId).Distinct().Count() != lines.Count)
+        throw new InvalidOperationException("Jede Position darf in einer Retoure nur einmal vorkommen.");
+
+    return await IoQueue.RunAsync(async () =>
+    {
+        await using var c = _db.OpenConnection();
+
+        var original = await LoadSaleAsync(c, originalSaleId, ct)
+            ?? throw new InvalidOperationException("Ursprungsbon wurde nicht gefunden.");
+
+        if (original.TransactionType != "SALE")
+            throw new InvalidOperationException("Nur ein regulärer Verkauf kann teilweise retourniert werden.");
+        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
+            throw new InvalidOperationException("TEILRETOURE ist nur am Verkaufstag möglich.");
+
+        await using (var existingStorno = c.CreateCommand())
+        {
+            existingStorno.CommandText =
+                "SELECT COUNT(*) FROM sales WHERE original_sale_id=$id AND transaction_type='STORNO';";
+            existingStorno.Parameters.AddWithValue("$id", originalSaleId);
+            if (Convert.ToInt64(await existingStorno.ExecuteScalarAsync(ct)) > 0)
+                throw new InvalidOperationException(
+                    "Dieser Bon wurde bereits vollständig storniert. Teilretoure ist dafür gesperrt.");
+        }
+
+        var originalLinesById = original.Lines.ToDictionary(x => x.SaleItemId);
+        long rawTotal = 0;
+
+        foreach (var request in lines)
+        {
+            if (!originalLinesById.TryGetValue(request.SaleItemId, out var originalLine))
+                throw new InvalidOperationException(
+                    $"Position {request.SaleItemId} gehört nicht zu diesem Bon.");
+
+            if (PfandProducts.IsDepositReturn(originalLine))
+                throw new InvalidOperationException(
+                    "Eine Pfand-Rückgabe kann nicht retourniert werden.");
+
+            decimal alreadyReturned;
+            await using (var q = c.CreateCommand())
+            {
+                q.CommandText = """
+                    SELECT COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0)
+                    FROM sale_items i
+                    JOIN sales s ON s.id=i.sale_id
+                    WHERE i.original_sale_item_id=$item AND s.transaction_type='RETURN';
+                    """;
+                q.Parameters.AddWithValue("$item", request.SaleItemId);
+                alreadyReturned = QuantityStorage.FromMilli(
+                    Convert.ToInt64(await q.ExecuteScalarAsync(ct)));
+            }
+
+            var remaining = originalLine.Quantity - alreadyReturned;
+            if (request.Quantity > remaining)
+                throw new InvalidOperationException(
+                    $"Position \"{originalLine.ProductName}\": nur {remaining} von {originalLine.Quantity} für eine Retoure übrig, {request.Quantity} angefordert.");
+
+            rawTotal = checked(
+                rawTotal +
+                originalLine.LineTotalCentsSlice(
+                    alreadyReturned,
+                    request.Quantity));
+        }
+
+        var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
+        var total = DiscountProration.Prorate(
+            rawTotal,
+            originalSubtotal,
+            original.TotalCents);
+        var discount = Math.Max(0L, rawTotal - total);
+        var cash = original.TotalCents > 0
+            ? (long)Math.Round(
+                (decimal)total *
+                original.EffectiveCashPortionCents /
+                original.TotalCents,
+                MidpointRounding.AwayFromZero)
+            : 0L;
+        var card = total - cash;
+
+        return new ReturnQuote(
+            rawTotal,
+            discount,
+            total,
+            cash,
+            card);
+    });
+}
+
 public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<ReturnLineRequest> lines, string actor, string reason, string cardRefundEvidence = "", CancellationToken ct = default)
 {
     if (lines is null || lines.Count == 0)
@@ -2761,7 +2858,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
         }
 
         long totalCents = 0;
-        var returnLines = new List<(CartLine Original, decimal Quantity, long LineTotalCents)>();
+        var returnLines = new List<(CartLine Original, decimal Quantity, long LineTotalCents, decimal AlreadyReturned)>();
 
         foreach (var request in lines)
         {
@@ -2786,9 +2883,12 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 throw new InvalidOperationException(
                     $"Position \"{originalLine.ProductName}\": nur {remaining} von {originalLine.Quantity} für eine Retoure übrig, {request.Quantity} angefordert.");
 
-            var lineTotal = originalLine.LineTotalCentsFor(request.Quantity);
+            var lineTotal =
+                originalLine.LineTotalCentsSlice(
+                    alreadyReturned,
+                    request.Quantity);
             totalCents += lineTotal;
-            returnLines.Add((originalLine, request.Quantity, lineTotal));
+            returnLines.Add((originalLine, request.Quantity, lineTotal, alreadyReturned));
         }
 
         // R106: prorate the ORIGINAL sale's whole-Bon manual discount onto
@@ -2846,7 +2946,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
             saleId = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
         }
 
-        foreach (var (originalLine, quantity, lineTotal) in returnLines)
+        foreach (var (originalLine, quantity, lineTotal, alreadyReturned) in returnLines)
         {
             await using (var q = c.CreateCommand())
             {
@@ -2881,12 +2981,20 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Parameters.AddWithValue("$pfand", originalLine.PfandCents);
                 q.Parameters.AddWithValue("$total", lineTotal);
                 q.Parameters.AddWithValue("$listUnit", originalLine.EffectiveListUnitPriceCents);
-                q.Parameters.AddWithValue("$listTotal", originalLine.ListLineTotalCentsFor(quantity));
+                q.Parameters.AddWithValue(
+                    "$listTotal",
+                    originalLine.ListLineTotalCentsSlice(
+                        alreadyReturned,
+                        quantity));
                 q.Parameters.AddWithValue("$promotionId", originalLine.PromotionId);
                 q.Parameters.AddWithValue("$promotionName", originalLine.PromotionName);
                 q.Parameters.AddWithValue("$promotionPercent", originalLine.PromotionPercent);
                 q.Parameters.AddWithValue("$promotionUnit", originalLine.PromotionDiscountUnitCents);
-                q.Parameters.AddWithValue("$promotionTotal", originalLine.PromotionDiscountCentsFor(quantity));
+                q.Parameters.AddWithValue(
+                    "$promotionTotal",
+                    originalLine.PromotionDiscountCentsSlice(
+                        alreadyReturned,
+                        quantity));
                 q.Parameters.AddWithValue("$promotionStart", originalLine.PromotionStartDate);
                 q.Parameters.AddWithValue("$promotionEnd", originalLine.PromotionEndDate);
                 q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(originalLine));
