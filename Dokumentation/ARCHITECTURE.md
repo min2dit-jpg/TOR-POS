@@ -89,4 +89,4 @@ Remote-Updates sind in Release-Builds an HTTPS, SHA-256 und einen fest hinterleg
 
 Automatisierte Tests, Hardware-Abnahme und fiskalische Produktionsfreigabe sind drei getrennte Nachweisarten. Sie werden nicht gegenseitig ersetzt.
 
-R180 führt 1122 automatisierte Safety-/Regression-Checks aus. Die reale Hardware-/Fiskalabnahme bleibt separat.
+R180 führt 1128 automatisierte Safety-/Regression-Checks aus. Die reale Hardware-/Fiskalabnahme bleibt separat.
