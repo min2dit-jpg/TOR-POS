@@ -31,9 +31,9 @@ public static class R177ReviewTests
 
         assert(
             main.Contains("always arm an idle fallback", StringComparison.OrdinalIgnoreCase) &&
-            main.Contains("Math.Max(220, configured)", StringComparison.Ordinal) &&
-            main.Contains("Math.Clamp(waitMs, 100, 2000)", StringComparison.Ordinal),
-            "R177/R179 barcode capture still completes without Enter/Tab and now uses the configured timing window");
+            main.Contains("Math.Max(140, configured)", StringComparison.Ordinal) &&
+            main.Contains("Math.Clamp(waitMs, 90, 2000)", StringComparison.Ordinal),
+            "R177/R179/R181 barcode capture still completes without Enter/Tab using the reviewed timing window");
 
         assert(
             receipt.Contains("Task OpenCashDrawerAsync(", StringComparison.Ordinal) &&
