@@ -46,6 +46,13 @@ internal static class Program
                     .TryMigrateDefaultAsync(fixedEdition)
                     .GetAwaiter()
                     .GetResult();
+
+                if (splitMigration.State == LegacySplitMigrationState.LegacyProcessRunning)
+                {
+                    throw new InvalidOperationException(
+                        "Die gemeinsame R181-Installation läuft noch. " +
+                        "Vor der ersten Datenübernahme TOR POS Pro vollständig schließen.");
+                }
             }
             catch (Exception ex)
             {
