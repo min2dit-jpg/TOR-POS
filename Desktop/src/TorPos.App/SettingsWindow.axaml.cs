@@ -1992,14 +1992,15 @@ private Control TsePage()
 
     var page = Page(
         "TSE-Aktivierung",
-        "TOR POS verwendet Swissbit Hardware-TSE über die offizielle WORM API. " +
-        "Die Swissbit SDK-Dateien werden von TOR nicht mitgeliefert und müssen aus einem offiziell bezogenen SDK-Paket eingebunden werden.");
+        "TOR POS unterstützt die direkte Swissbit-WORM-API und prüft ab R175 zusätzlich eine vorhandene " +
+        "fiskaltrust-Middleware mit Swissbit-SCU. Der fiskaltrust-Test ist strikt read-only und führt weder " +
+        "Client-Registrierung noch Aktivierung noch Fiskaltransaktionen aus.");
 
     var standard = Section("TOR Standard-TSE");
     standard.Children.Add(ReadOnlyRow("Hersteller", "Swissbit"));
     standard.Children.Add(ReadOnlyRow("Standardprodukt", "Swissbit Hardware TSE 2"));
     standard.Children.Add(ReadOnlyRow("Anschluss", "USB / Windows-Laufwerk"));
-    standard.Children.Add(ReadOnlyRow("TOR Provider", "SWISSBIT_HARDWARE"));
+    standard.Children.Add(ReadOnlyRow("TOR Provider", "SWISSBIT_HARDWARE (direkt)"));
     standard.Children.Add(ReadOnlyRow(
         "SDK geladen",
         runtime.SdkLoaded ? "JA" : "NEIN"));
@@ -2032,6 +2033,86 @@ private Control TsePage()
         "Kompatibilitätsprinzip",
         "Swissbit Unified SDK · Hardware-Generationen 1 / 1.1 / 2"));
     page.Children.Add(standard);
+
+    var fiskaltrust = Section("Alternative: fiskaltrust + Swissbit");
+    fiskaltrust.Children.Add(ReadOnlyRow("TOR Provider", FiskaltrustSwissbitProbe.ProviderId));
+    fiskaltrust.Children.Add(ReadOnlyRow(
+        "Sicherheitsmodus",
+        "Nur Lese-/Verbindungstest · keine Registrierung, Aktivierung oder Transaktion"));
+
+    var ftConfig = new TextBox { IsReadOnly = true, MinHeight = 38, Text = "noch nicht geprüft" };
+    var ftVersion = new TextBox { IsReadOnly = true, MinHeight = 38 };
+    var ftDevice = new TextBox { IsReadOnly = true, MinHeight = 38 };
+    var ftQueue = new TextBox { IsReadOnly = true, MinHeight = 38 };
+    var ftScu = new TextBox { IsReadOnly = true, MinHeight = 38 };
+    var ftResult = new TextBlock { TextWrapping = TextWrapping.Wrap };
+
+    Form(fiskaltrust, "Konfiguration", ftConfig,
+        "TOR liest nur Configuration-*.json unter ProgramData\\fiskaltrust\\service. AccessToken wird weder gelesen noch angezeigt.");
+    Form(fiskaltrust, "Swissbit-SCU Version", ftVersion);
+    Form(fiskaltrust, "devicePath", ftDevice,
+        "Beispiel D:. TOR prüft nur, ob TSE_INFO.DAT an diesem Pfad vorhanden ist.");
+    Form(fiskaltrust, "Queue REST", ftQueue,
+        "Geprüft wird ausschließlich /json/v1/Echo.");
+    Form(fiskaltrust, "Swissbit SCU", ftScu,
+        "Es wird nur geprüft, ob der konfigurierte TCP/gRPC-Port erreichbar ist.");
+
+    var ftProbe = new Button
+    {
+        Content = "FISKALTRUST PRÜFEN (NUR LESEN)",
+        MinHeight = 48,
+        MinWidth = 280
+    };
+
+    ftProbe.Click += async (_,_) =>
+    {
+        if (!ftProbe.IsEnabled)
+            return;
+
+        ftProbe.IsEnabled = false;
+        try
+        {
+            StatusText.Text = "fiskaltrust Queue / Swissbit-SCU werden ohne TSE-Schreiboperation geprüft ...";
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var result = await FiskaltrustSwissbitProbe.ProbeAsync(timeout.Token);
+
+            ftConfig.Text = result.ConfigurationFound
+                ? result.ConfigurationPath
+                : "nicht gefunden";
+            ftVersion.Text = string.IsNullOrWhiteSpace(result.SwissbitPackageVersion)
+                ? "nicht erkannt"
+                : result.SwissbitPackageVersion;
+            ftDevice.Text = string.IsNullOrWhiteSpace(result.DevicePath)
+                ? "nicht konfiguriert"
+                : result.DevicePath;
+            ftQueue.Text = string.IsNullOrWhiteSpace(result.QueueEndpoint)
+                ? "nicht konfiguriert"
+                : result.QueueEndpoint + (result.QueueReachable ? " · ERREICHBAR" : " · NICHT ERREICHBAR");
+            ftScu.Text = string.IsNullOrWhiteSpace(result.ScuEndpoint)
+                ? "nicht konfiguriert"
+                : result.ScuEndpoint + (result.ScuReachable ? " · ERREICHBAR" : " · NICHT ERREICHBAR");
+
+            ftResult.Text =
+                "TSE-Dateien: " + (result.DeviceFilesPresent ? "GEFUNDEN" : "NICHT GEFUNDEN") +
+                " · Middleware: " + (result.MiddlewareReachable ? "ERREICHBAR" : "NICHT VOLLSTÄNDIG ERREICHBAR") +
+                "\n" + result.Message;
+
+            StatusText.Text = result.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            ftResult.Text = "Prüfung nach 8 Sekunden beendet. Es wurde keine TSE-Schreiboperation ausgeführt.";
+            StatusText.Text = ftResult.Text;
+        }
+        finally
+        {
+            ftProbe.IsEnabled = true;
+        }
+    };
+
+    fiskaltrust.Children.Add(ftProbe);
+    fiskaltrust.Children.Add(ftResult);
+    page.Children.Add(fiskaltrust);
 
     var status = Section("TSE-Status");
     var statusBox = Text("tse.status");
