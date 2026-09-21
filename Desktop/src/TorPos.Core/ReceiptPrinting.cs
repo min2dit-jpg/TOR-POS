@@ -236,6 +236,11 @@ public interface IReceiptPrinterService : IAsyncDisposable
         string printerName,
         CancellationToken ct = default);
 
+    Task OpenCashDrawerAsync(
+        string printerName,
+        CancellationToken ct = default,
+        int channel = 1);
+
     Task TestCashDrawerAsync(
         string printerName,
         CancellationToken ct = default,

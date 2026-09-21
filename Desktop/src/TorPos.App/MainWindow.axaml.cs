@@ -52,6 +52,7 @@ public partial class MainWindow:Window
     private long _categoryId;
     private string _scan="";
     private long _lastScan;
+    private long _scanStartedAt;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
     private bool _scanProcessing;
     // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
@@ -227,19 +228,47 @@ public partial class MainWindow:Window
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
 
+        // R177: a keyboard-wedge scanner needs a real text-input focus target.
+        // Product management already has one; the cashier screen did not.
+        // Re-focus the transparent ScannerCapture after touch/click activity or
+        // whenever this window becomes active again after a dialog.
+        Activated += (_,_) => FocusScannerCaptureSoon();
+        AddHandler(
+            InputElement.PointerReleasedEvent,
+            (_,_) => FocusScannerCaptureSoon(),
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+
         _scanNoEnterTimer.IsEnabled = false;
         _scanNoEnterTimer.Tick += async (_,_) =>
         {
             _scanNoEnterTimer.Stop();
 
-            if (_settingsCache.GetBool("scanner.enter_suffix", true))
-                return;
-
             if (_scan.Length < 6 || _scanProcessing)
                 return;
 
+            // R177: Enter/Tab is still the fastest completion path, but some
+            // HID scanners type the digits correctly while their suffix never
+            // reaches Avalonia. A fast numeric burst followed by short idle
+            // time is therefore accepted as a complete barcode as well.
+            var now = Stopwatch.GetTimestamp();
+            var elapsedMs = _scanStartedAt == 0
+                ? double.MaxValue
+                : Stopwatch.GetElapsedTime(_scanStartedAt, now).TotalMilliseconds;
+            var averageGapMs = _scan.Length <= 1
+                ? double.MaxValue
+                : elapsedMs / (_scan.Length - 1);
+
+            if (averageGapMs > 170)
+            {
+                _scan = "";
+                _scanStartedAt = 0;
+                return;
+            }
+
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
@@ -297,6 +326,8 @@ public partial class MainWindow:Window
                     "",
                     "No fiscal sale, receipt number, TSE transaction or terminal payment is allowed.");
             }
+
+            FocusScannerCaptureSoon();
         };
     }
 
@@ -791,6 +822,26 @@ public partial class MainWindow:Window
             hasCart;
     }
 
+    private void FocusScannerCaptureSoon()
+    {
+        if (MenuHubOverlay.IsVisible || CartLocked)
+            return;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (MenuHubOverlay.IsVisible || CartLocked)
+                    return;
+
+                // Keep the target empty: barcode data is owned by _scan, not
+                // by a visible/editable field. Focus alone is what makes HID
+                // keyboard-wedge TextInput reliable.
+                ScannerCapture.Text = "";
+                ScannerCapture.Focus();
+            },
+            DispatcherPriority.Background);
+    }
+
     private void OnGlobalScannerKeyDown(object? sender, KeyEventArgs e)
     {
         // R145: the card menu hub replaces the cashier workspace while open.
@@ -798,6 +849,7 @@ public partial class MainWindow:Window
         if (MenuHubOverlay.IsVisible)
         {
             _scan = "";
+            _scanStartedAt = 0;
             if (e.Key == Key.Escape)
                 HideMenuHub();
             e.Handled = true;
@@ -807,6 +859,7 @@ public partial class MainWindow:Window
         if (CartLocked)
         {
             _scan = "";
+            _scanStartedAt = 0;
             return;
         }
 
@@ -823,7 +876,14 @@ public partial class MainWindow:Window
                 : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
             if (scannerGap > 180)
+            {
                 _scan = "";
+                _scanStartedAt = scannerNow;
+            }
+            else if (_scanStartedAt == 0)
+            {
+                _scanStartedAt = scannerNow;
+            }
 
             _scan += scannerDigit;
             if (_scan.Length > 32)
@@ -882,6 +942,7 @@ public partial class MainWindow:Window
         {
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             e.Handled = true;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
@@ -890,6 +951,7 @@ public partial class MainWindow:Window
         else
         {
             _scan = "";
+            _scanStartedAt = 0;
         }
     }
 
@@ -914,7 +976,14 @@ public partial class MainWindow:Window
         // Reset after a human-speed pause so unrelated keyboard input never
         // becomes part of a barcode.
         if (gap > 180)
+        {
             _scan = "";
+            _scanStartedAt = now;
+        }
+        else if (_scanStartedAt == 0)
+        {
+            _scanStartedAt = now;
+        }
 
         var added = false;
         var hasSuffix = false;
@@ -962,6 +1031,7 @@ public partial class MainWindow:Window
             _scanNoEnterTimer.Stop();
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             _ = ProcessBarcodeSafely(code);
@@ -973,15 +1043,18 @@ public partial class MainWindow:Window
 
     private void ArmScannerNoSuffixTimer()
     {
-        if (_settingsCache.GetBool("scanner.enter_suffix", true))
-            return;
-
         _scanNoEnterTimer.Stop();
+
+        // R177: always arm an idle fallback. If Enter/Tab arrives, it stops
+        // this timer and completes immediately. If the scanner suffix is lost,
+        // the fast buffered barcode still reaches ProcessBarcodeSafely.
+        var configured = _settingsCache.GetInt("scanner.wait_ms", 180);
+        var waitMs = _settingsCache.GetBool("scanner.enter_suffix", true)
+            ? Math.Max(220, configured)
+            : configured;
+
         _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-            Math.Clamp(
-                _settingsCache.GetInt("scanner.wait_ms", 180),
-                80,
-                500));
+            Math.Clamp(waitMs, 100, 600));
         _scanNoEnterTimer.Start();
     }
 
@@ -2905,6 +2978,9 @@ public partial class MainWindow:Window
         _engine.IsReadOnly=busy;
         if (Content is Control surface) surface.IsEnabled=!busy;
         RefreshSalesActionState();
+
+        if (!busy)
+            FocusScannerCaptureSoon();
     }
 
     private async Task CheckoutAsync(
@@ -3055,6 +3131,13 @@ public partial class MainWindow:Window
                     await OrderWorkflow.CompleteSimulationAsync(testParkedId,method,_currentUser.IsTraining);
                     await _audit.WriteAsync(_currentUser.Username,"PARK_CLOSED_TEST","PARKED_RECEIPT",testParkedId.ToString(),"Simulation completed; no fiscal sale");
                 }
+
+                // R177: hardware checkout tests must exercise the same drawer
+                // path even while fiscal production is intentionally locked.
+                await TryOpenCashDrawerAfterPaymentAsync(
+                    method,
+                    snapshot.EffectiveCashPortionCents);
+
                 ClearCompletedCart();
                 await RefreshParkedCountAsync();
                 ScannerStatus.Text = testPickup > 0
@@ -3202,6 +3285,73 @@ public partial class MainWindow:Window
         }
     }
 
+    private async Task TryOpenCashDrawerAfterPaymentAsync(
+        PaymentMethod method,
+        long cashPortionCents)
+    {
+        if (_currentUser.IsTraining)
+            return;
+
+        var cashMovement =
+            method == PaymentMethod.Cash ||
+            (method == PaymentMethod.Mixed && cashPortionCents > 0);
+
+        if (!cashMovement)
+            return;
+
+        var enabled = _settingsCache.GetBool(
+            "device.drawer.enabled",
+            _settingsCache.GetBool("printer.drawer_kick.enabled", true));
+
+        if (!enabled)
+            return;
+
+        var printerName = _settingsCache.GetText(
+            "device.receipt_printer.name",
+            "");
+
+        if (string.IsNullOrWhiteSpace(printerName))
+        {
+            ReportOperationalError(
+                "KASSENSCHUBLADE",
+                "Barzahlung gespeichert, aber kein Bondrucker für die Kassenschublade konfiguriert.",
+                null,
+                printerRelated: true);
+            return;
+        }
+
+        try
+        {
+            var channel = Math.Clamp(
+                _settingsCache.GetInt(
+                    "device.receipt_printer.drawer_channel",
+                    1),
+                1,
+                2);
+
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(6));
+
+            await _receiptPrinter.OpenCashDrawerAsync(
+                printerName,
+                timeout.Token,
+                channel);
+        }
+        catch (Exception ex)
+        {
+            // A drawer failure must never make a committed sale look unpaid
+            // or encourage the cashier to repeat the payment.
+            CrashLog.WriteException(
+                "R177 cash drawer after payment",
+                ex);
+            ReportOperationalError(
+                "KASSENSCHUBLADE",
+                "Zahlung ist gespeichert, aber die Kassenschublade konnte nicht geöffnet werden.",
+                ex,
+                printerRelated: true);
+        }
+    }
+
     private async Task CommitCheckoutAsync(CheckoutSnapshot snapshot, CashPaymentResult? cash=null)
     {
         await SecurePaidOrderChangeAsync(snapshot);
@@ -3209,6 +3359,14 @@ public partial class MainWindow:Window
         Sale sale;
         using (_perf.Measure("checkout.database_commit"))
             sale = await _sales.CommitAsync(snapshot);
+
+        // R177: the drawer is a payment-side effect, not a paper-receipt
+        // effect. Open it immediately after the durable sale commit so it also
+        // works with digital receipt / BON AUS and cannot be skipped by print
+        // routing. The sale is already committed if the drawer itself fails.
+        await TryOpenCashDrawerAfterPaymentAsync(
+            snapshot.Method,
+            sale.EffectiveCashPortionCents);
 
         // R78: TSE-Beleg-Signatur läuft bewusst NACH dem durablen Commit.
         // Ein TSE-Ausfall darf einen bereits abgeschlossenen Verkauf nie
@@ -3594,10 +3752,10 @@ public partial class MainWindow:Window
             sale.PickupNumber,
             _settingsCache.GetBool("receipt.tse_qr_code.enabled", false),
             _settingsCache.GetBool("printer.auto_cut.enabled", true),
-            // R101: opens for Mixed too whenever real cash actually changed
-            // hands, not only for a pure Cash sale.
-            (method == PaymentMethod.Cash || (method == PaymentMethod.Mixed && sale.CashPortionCents > 0)) && !isCopy &&
-                _settingsCache.GetBool("printer.drawer_kick.enabled", true),
+            // R177: the drawer is opened once by the committed payment path.
+            // Never couple it to paper/digital receipt output or reopen it on
+            // a delayed print/copy.
+            false,
             // R137: DSFinV-K 2.7.2 - start of the first order transaction.
             sale.OrderStartedAt,
             TseClientId: sale.TseClientId,
