@@ -13,9 +13,15 @@ public static class R180ReviewTests
             main.Contains("ScannerCapture.Text = code", StringComparison.Ordinal),
             "R180 unknown barcode remains visible on the cashier screen");
 
+        var processBarcodeStart = main.IndexOf("private async Task ProcessBarcode(string code)", StringComparison.Ordinal);
+        var processBarcodeEnd = main.IndexOf("private async void OnEanSearchClick", processBarcodeStart, StringComparison.Ordinal);
+        var processBarcode = processBarcodeStart >= 0 && processBarcodeEnd > processBarcodeStart
+            ? main[processBarcodeStart..processBarcodeEnd]
+            : "";
         assert(
-            !main.Contains("new ProductEditorWindow(", StringComparison.Ordinal) ||
-            !main.Contains("scanner.unknown_dialog", StringComparison.Ordinal),
+            processBarcode.Length > 0 &&
+            !processBarcode.Contains("ProductEditorWindow", StringComparison.Ordinal) &&
+            !processBarcode.Contains("scanner.unknown_dialog", StringComparison.Ordinal),
             "R180 scanner no longer opens Stammdaten/ProductEditor automatically for unknown EAN");
 
         assert(
