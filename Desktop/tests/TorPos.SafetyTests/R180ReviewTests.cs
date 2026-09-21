@@ -27,8 +27,8 @@ public static class R180ReviewTests
             "R180 focused scanner capture does not append the same HID digit through both KeyDown and TextInput");
 
         assert(
-            mainXaml.Contains("x:Name="ScannerCapture"", StringComparison.Ordinal) &&
-            mainXaml.Contains("CaretBrush="Transparent"", StringComparison.Ordinal),
+            mainXaml.Contains("x:Name=\"ScannerCapture\"", StringComparison.Ordinal) &&
+            mainXaml.Contains("CaretBrush=\"Transparent\"", StringComparison.Ordinal),
             "R180 cashier scanner keeps HID focus without a permanently blinking visible caret");
 
         assert(
