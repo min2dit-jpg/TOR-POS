@@ -228,10 +228,9 @@ public partial class MainWindow:Window
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
 
-        // R177: a keyboard-wedge scanner needs a real text-input focus target.
-        // Product management already has one; the cashier screen did not.
-        // Re-focus the transparent ScannerCapture after touch/click activity or
-        // whenever this window becomes active again after a dialog.
+        // R179: the cashier now has the same kind of visible/focusable input
+        // target that already works in article management. Re-focus it after
+        // touch/click activity or whenever this window becomes active again.
         Activated += (_,_) => FocusScannerCaptureSoon();
         AddHandler(
             InputElement.PointerReleasedEvent,
@@ -251,24 +250,10 @@ public partial class MainWindow:Window
             // HID scanners type the digits correctly while their suffix never
             // reaches Avalonia. A fast numeric burst followed by short idle
             // time is therefore accepted as a complete barcode as well.
-            var now = Stopwatch.GetTimestamp();
-            var elapsedMs = _scanStartedAt == 0
-                ? double.MaxValue
-                : Stopwatch.GetElapsedTime(_scanStartedAt, now).TotalMilliseconds;
-            var averageGapMs = _scan.Length <= 1
-                ? double.MaxValue
-                : elapsedMs / (_scan.Length - 1);
-
-            if (averageGapMs > 170)
-            {
-                _scan = "";
-                _scanStartedAt = 0;
-                return;
-            }
-
             var code = _scan;
             _scan = "";
             _scanStartedAt = 0;
+            ScannerCapture.Text = "";
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
@@ -833,10 +818,11 @@ public partial class MainWindow:Window
                 if (MenuHubOverlay.IsVisible || CartLocked)
                     return;
 
-                // Keep the target empty: barcode data is owned by _scan, not
-                // by a visible/editable field. Focus alone is what makes HID
-                // keyboard-wedge TextInput reliable.
-                ScannerCapture.Text = "";
+                // Barcode data is still owned by _scan so KeyDown/TextInput can
+                // be deduplicated, but mirror it into the visible field so the
+                // cashier can see that the HID scanner is actually arriving.
+                ScannerCapture.Text = _scan;
+                ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
                 ScannerCapture.Focus();
             },
             DispatcherPriority.Background);
@@ -875,7 +861,11 @@ public partial class MainWindow:Window
                 ? 999d
                 : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
-            if (scannerGap > 180)
+            var maxCharacterGap = Math.Clamp(
+                _settingsCache.GetInt("scanner.wait_ms", 1000),
+                250,
+                2000);
+            if (scannerGap > maxCharacterGap)
             {
                 _scan = "";
                 _scanStartedAt = scannerNow;
@@ -890,6 +880,8 @@ public partial class MainWindow:Window
                 _scan = _scan[^32..];
 
             _lastScan = scannerNow;
+            ScannerCapture.Text = _scan;
+            ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
             _lastScannerKeyDownDigit = scannerDigit;
             _lastScannerKeyDownDigitAt = scannerNow;
             e.Handled = true;
@@ -943,6 +935,7 @@ public partial class MainWindow:Window
             var code = _scan;
             _scan = "";
             _scanStartedAt = 0;
+            ScannerCapture.Text = "";
             e.Handled = true;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
@@ -975,7 +968,11 @@ public partial class MainWindow:Window
         // A scanner emits characters much faster than a cashier can type them.
         // Reset after a human-speed pause so unrelated keyboard input never
         // becomes part of a barcode.
-        if (gap > 180)
+        var maxCharacterGap = Math.Clamp(
+            _settingsCache.GetInt("scanner.wait_ms", 1000),
+            250,
+            2000);
+        if (gap > maxCharacterGap)
         {
             _scan = "";
             _scanStartedAt = now;
@@ -1024,6 +1021,8 @@ public partial class MainWindow:Window
             _scan = _scan[^32..];
 
         _lastScan = now;
+        ScannerCapture.Text = _scan;
+        ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
         e.Handled = true;
 
         if (hasSuffix && _scan.Length >= 6 && !_scanProcessing)
@@ -1032,6 +1031,7 @@ public partial class MainWindow:Window
             var code = _scan;
             _scan = "";
             _scanStartedAt = 0;
+            ScannerCapture.Text = "";
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             _ = ProcessBarcodeSafely(code);
@@ -1054,7 +1054,7 @@ public partial class MainWindow:Window
             : configured;
 
         _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-            Math.Clamp(waitMs, 100, 600));
+            Math.Clamp(waitMs, 100, 2000));
         _scanNoEnterTimer.Start();
     }
 
@@ -3299,16 +3299,30 @@ public partial class MainWindow:Window
         if (!cashMovement)
             return;
 
-        var enabled = _settingsCache.GetBool(
+        var printerName = _settingsCache.GetText(
+            "device.receipt_printer.name",
+            "");
+        var drawerConfigured = _settingsCache.GetBool(
+            "device.drawer.r179_configured",
+            false);
+        var canonicalEnabled = _settingsCache.GetBool(
             "device.drawer.enabled",
-            _settingsCache.GetBool("printer.drawer_kick.enabled", true));
+            false);
+        // R179 migration bridge: R169/R177 had a new canonical switch seeded
+        // false while the older visible setting still said the drawer should
+        // open. Existing tills that already have a drawer-capable receipt
+        // printer therefore keep their previous expected behavior until the
+        // operator explicitly saves the new unified switch.
+        var legacyExpected =
+            !drawerConfigured &&
+            !string.IsNullOrWhiteSpace(printerName) &&
+            _settingsCache.GetBool("device.receipt_printer.profile_drawer", false) &&
+            _settingsCache.GetBool("function.drawer_on_receipt", true);
+        var enabled = drawerConfigured ? canonicalEnabled : canonicalEnabled || legacyExpected;
 
         if (!enabled)
             return;
 
-        var printerName = _settingsCache.GetText(
-            "device.receipt_printer.name",
-            "");
 
         if (string.IsNullOrWhiteSpace(printerName))
         {
