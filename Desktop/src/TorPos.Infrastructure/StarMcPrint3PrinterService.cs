@@ -379,10 +379,31 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         return EnqueueAsync(job, null, null, printerName, isTest: true, ct);
     }
 
-    public async Task TestCashDrawerAsync(
+    public Task OpenCashDrawerAsync(
         string printerName,
         CancellationToken ct = default,
-        int channel = 1)
+        int channel = 1) =>
+        SendCashDrawerAsync(
+            printerName,
+            ct,
+            channel,
+            isTest: false);
+
+    public Task TestCashDrawerAsync(
+        string printerName,
+        CancellationToken ct = default,
+        int channel = 1) =>
+        SendCashDrawerAsync(
+            printerName,
+            ct,
+            channel,
+            isTest: true);
+
+    private async Task SendCashDrawerAsync(
+        string printerName,
+        CancellationToken ct,
+        int channel,
+        bool isTest)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Windows printer driver required.");
@@ -411,7 +432,9 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                 () => RawPrinterIo.SendRaw(
                     printerName.Trim(),
                     command,
-                    $"TOR POS - Kassenschublade Test - {protocol}"),
+                    isTest
+                        ? $"TOR POS - Kassenschublade Test - {protocol}"
+                        : $"TOR POS - Kassenschublade Zahlung - {protocol}"),
                 ct).ConfigureAwait(false);
         }
         catch (Exception ex)
