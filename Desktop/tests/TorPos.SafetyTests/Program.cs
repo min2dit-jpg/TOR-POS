@@ -446,6 +446,7 @@ await R177ReviewTests.Run(root, Assert);
 await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
+await EditionSplitFoundationTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -511,7 +512,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
-const int ExpectedSafetyChecks = 1128;
+// Split-product foundation: 10 checks keep KIOSK/DÖNER process, storage and
+// compile-time identity separated while the legacy shared build remains intact.
+const int ExpectedSafetyChecks = 1138;
 
 if (checks != ExpectedSafetyChecks)
 {
