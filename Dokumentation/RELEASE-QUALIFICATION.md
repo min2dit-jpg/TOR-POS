@@ -30,7 +30,7 @@ Voraussetzungen:
 
 Ergebnis: Code ist automatisiert geprüft, aber noch nicht hardware- oder fiskalisch freigegeben.
 
-**R181-Baseline:** 1122 Safety-/Regression-Checks.
+**R181-Baseline:** 1128 Safety-/Regression-Checks.
 
 ### 3. Hardware Acceptance
 
@@ -95,7 +95,7 @@ R181 korrigiert Retouren-, Cloud-, Scanner- und Kassenschubladenpfade gegenüber
 Bei grüner CI müssen mindestens nachgewiesen sein:
 - Version R181 / 0.7.33.881 in allen Versionsspiegeln
 - vollständiger Build und Demo-Build
-- 1122/1122 Safety-/Regression-Checks
+- 1128/1128 Safety-/Regression-Checks
 - UI-Snapshot-Prüfung
 - Cloud-Checks
 - erzeugtes Windows-Testpaket
