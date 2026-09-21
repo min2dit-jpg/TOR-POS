@@ -18,6 +18,7 @@ Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
 - Normal SALE için ChargeItems/PayItems eşlemesi hazırlandı: 19/7/0 MwSt., Außer-Haus flag'i, Pfand, manuel Rabatt, gemischte Menü-MwSt., kg/gramaj ve Bar/Karte split'i cent bazında reconcile edilir.
 - TOR'un genel `Karte` bilgisi debit/credit diye tahmin edilmez; fiskaltrust kart türü açıkça bilinmiyorsa işlem fail-closed olur. STORNO/RETURN fiskaltrust eşlemesi de doğrulanmadan etkinleştirilmez.
 - AccessToken kod içine alınmaz; R176 istemcisi yalnızca yerel loopback Queue'ya izin verir.
+- FiscalComplianceService artık tüm readiness kontrolünü global SQLite IoQueue içinde tutmaz; identity/settings repository'leri kendi DB erişimini serialize eder, böylece readiness kontrolü gereksiz global kuyruk kilidi ve gelecekteki nested-lock riskini taşımaz.
 - Gerçek fiskaltrust transaction runtime-provider seçimi ve Physical-TSE-E2E bayrağı kapalı kalır. Yeni Swissbit TSE ile client registration ve gerçek Start/Finish/TAR/DSFinV-K kabul testi tamamlanmadan produktif fiskal sürüm açılmaz.
 
 ### R175
