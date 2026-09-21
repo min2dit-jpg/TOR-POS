@@ -444,6 +444,7 @@ await R175ReviewTests.Run(root, Assert);
 await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
 await R179ReviewTests.Run(root, Assert);
+await R180ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -505,7 +506,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // R179: 10 reviewed checks lock cumulative partial-return tender allocation,
 // visible HID scanner capture/timing, the unified drawer switch and Cloud
 // reversal/weighted-promotion payload contracts.
-const int ExpectedSafetyChecks = 1114;
+const int ExpectedSafetyChecks = 1118;
 
 if (checks != ExpectedSafetyChecks)
 {
