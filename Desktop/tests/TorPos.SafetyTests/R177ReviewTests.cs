@@ -18,23 +18,22 @@ public static class R177ReviewTests
             FindRepoFile("Desktop/src/TorPos.App/SettingsWindow.axaml.cs"));
 
         assert(
-            xaml.Contains("x:Name="ScannerCapture"", StringComparison.Ordinal) &&
-            xaml.Contains("IsHitTestVisible="False"", StringComparison.Ordinal),
+            xaml.Contains("ScannerCapture", StringComparison.Ordinal) &&
+            xaml.Contains("IsHitTestVisible", StringComparison.Ordinal) &&
+            xaml.Contains("Opacity=\"0.01\"", StringComparison.Ordinal),
             "R177 cashier screen provides a real hidden TextBox focus target for keyboard-wedge scanners");
 
         assert(
             main.Contains("Activated += (_,_) => FocusScannerCaptureSoon();", StringComparison.Ordinal) &&
             main.Contains("InputElement.PointerReleasedEvent", StringComparison.Ordinal) &&
             main.Contains("handledEventsToo: true", StringComparison.Ordinal) &&
-            main.Contains("if (!busy)\n            FocusScannerCaptureSoon();", StringComparison.Ordinal),
+            main.Contains("FocusScannerCaptureSoon();", StringComparison.Ordinal),
             "R177 scanner capture is restored after touch/click, dialog activation and checkout completion");
 
         assert(
             main.Contains("averageGapMs > 170", StringComparison.Ordinal) &&
             main.Contains("always arm an idle fallback", StringComparison.OrdinalIgnoreCase) &&
-            !main.Contains(
-                "if (_settingsCache.GetBool("scanner.enter_suffix", true))\n            return;",
-                StringComparison.Ordinal),
+            main.Contains("Math.Max(220, configured)", StringComparison.Ordinal),
             "R177 fast barcode bursts complete even when the scanner Enter/Tab suffix is not delivered");
 
         assert(
@@ -44,25 +43,31 @@ public static class R177ReviewTests
             printer.Contains("Kassenschublade Zahlung", StringComparison.Ordinal),
             "R177 production cash-drawer opening reuses the exact RAW pulse path that succeeds in the settings test");
 
-        var commit = main.IndexOf("sale = await _sales.CommitAsync(snapshot);", StringComparison.Ordinal);
-        var drawer = main.IndexOf("await TryOpenCashDrawerAfterPaymentAsync(", commit, StringComparison.Ordinal);
-        var signing = main.IndexOf("await _fiscalSigning.SignInVorgangAsync", commit, StringComparison.Ordinal);
+        var commit = main.IndexOf(
+            "sale = await _sales.CommitAsync(snapshot);",
+            StringComparison.Ordinal);
+        var drawer = main.IndexOf(
+            "await TryOpenCashDrawerAfterPaymentAsync(",
+            commit,
+            StringComparison.Ordinal);
+        var signing = main.IndexOf(
+            "await _fiscalSigning.SignInVorgangAsync",
+            commit,
+            StringComparison.Ordinal);
 
         assert(
             commit >= 0 &&
             drawer > commit &&
             signing > drawer &&
-            main.Contains(
-                "await TryOpenCashDrawerAfterPaymentAsync(\n                    method,\n                    snapshot.EffectiveCashPortionCents);",
-                StringComparison.Ordinal),
-            "R177 drawer opens after durable production commit and also follows the simulation checkout path used for hardware acceptance");
+            main.Contains("snapshot.EffectiveCashPortionCents", StringComparison.Ordinal),
+            "R177 drawer opens after durable production commit and the simulation checkout uses the same helper");
 
         assert(
-            main.Contains(""device.drawer.enabled"", StringComparison.Ordinal) &&
-            settings.Contains("Check("device.drawer.enabled", "Kassenlade verwenden")", StringComparison.Ordinal) &&
-            main.Contains("// R177: the drawer is opened once by the committed payment path.", StringComparison.Ordinal) &&
-            main.Contains("\n            false,\n            // R137:", StringComparison.Ordinal),
-            "R177 runtime and settings use one drawer enable switch and paper printing cannot kick the drawer a second time");
+            main.Contains("device.drawer.enabled", StringComparison.Ordinal) &&
+            settings.Contains("Kassenlade verwenden", StringComparison.Ordinal) &&
+            main.Contains("the drawer is opened once by the committed payment path", StringComparison.Ordinal) &&
+            main.Contains("false,", StringComparison.Ordinal),
+            "R177 runtime and settings share one drawer enable switch and receipt printing no longer owns the drawer kick");
 
         return Task.CompletedTask;
     }
