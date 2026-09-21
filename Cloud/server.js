@@ -42,6 +42,7 @@ const TOTP_KEY = crypto.createHash('sha256').update(TOTP_KEY_MATERIAL || 'disabl
 // an encrypted refresh token and returns short-lived access tokens to the authenticated POS.
 const CLOUD_PUBLIC_URL = String(process.env.TOR_CLOUD_PUBLIC_URL || '').trim().replace(/\/$/, '');
 const UPDATE_PUBLIC_URL = String(process.env.TOR_UPDATE_PUBLIC_URL || '').trim().replace(/\/$/, '');
+const UPDATE_HOST = UPDATE_PUBLIC_URL ? new URL(UPDATE_PUBLIC_URL).hostname.toLowerCase() : '';
 
 const GOOGLE_OAUTH_CLIENT_ID = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_ID || '').trim();
 const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
@@ -942,8 +943,14 @@ async function handler(req, res) {
     // HTTPS before anything else (Caddy redirects already; this is the second
     // line). The target is always the configured origin, never the Host header.
     if(forwardedProto(req)==='http'){
-      const onReceipt=!!RECEIPT_HOST&&requestHostname(req)===RECEIPT_HOST;
-      const origin=onReceipt?(RECEIPT_HTTPS?RECEIPT_ORIGIN:''):(CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
+      const requestHost=requestHostname(req);
+      const onReceipt=!!RECEIPT_HOST&&requestHost===RECEIPT_HOST;
+      const onUpdate=!!UPDATE_HOST&&requestHost===UPDATE_HOST;
+      const origin=onReceipt
+        ? (RECEIPT_HTTPS?RECEIPT_ORIGIN:'')
+        : onUpdate
+          ? (UPDATE_PUBLIC_URL.startsWith('https://')?new URL(UPDATE_PUBLIC_URL).origin:'')
+          : (CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
       if(origin){res.writeHead(308,{Location:origin+pathname,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
     }
     // R145: the receipt domain serves receipts and nothing else; no receipt is
