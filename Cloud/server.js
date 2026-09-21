@@ -17,7 +17,7 @@ const {normalizeManagedMailPayload,smtpConfigFromEnv,isManagedMailConfigured,sen
 const {validateReceipt,renderReceiptPage,renderNotFoundPage,renderHomePage,renderReceiptPdf,ASSETS:RECEIPT_ASSETS}=require('./receipts');
 // R127: the version string was typed twice (startup log and /api/health) and
 // both still said R62 many revisions later. One constant now.
-const CLOUD_VERSION='0.13.0-R145';
+const CLOUD_VERSION='0.13.0-R178';
 const DEMO=process.env.TOR_CLOUD_DEMO==='true';
 const REQUIRE_OWNER_2FA = String(process.env.TOR_CLOUD_REQUIRE_OWNER_2FA ?? (!DEMO ? 'true' : 'false')).toLowerCase()==='true';
 
