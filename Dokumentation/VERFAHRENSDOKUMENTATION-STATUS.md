@@ -1,11 +1,11 @@
 # TOR POS – Verfahrens-/Systemdokumentation Statusmatrix
 
-Stand: R180 · 2026-09-21
+Stand: R181 · 2026-09-21
 
 Zweck dieser Datei ist **nicht**, die endgültige Verfahrensdokumentation zu ersetzen. Sie bildet den aktuellen technischen Nachweisstand ab und trennt bereits im Code bestätigte Funktionen von noch offenen Hardware-, Fiskal- und Organisationsnachweisen.
 
 Status:
-- **GEPRÜFT** – im aktuellen R180-Code bzw. in den zugehörigen Tests nachgewiesen
+- **GEPRÜFT** – im aktuellen R181-Code bzw. in den zugehörigen Tests nachgewiesen
 - **TEILWEISE** – wesentliche Implementierung vorhanden, aber Restprüfung/Dokumentation offen
 - **EXTERNER NACHWEIS** – Softwarepfad vorhanden, reale Hardware-/Fiskalabnahme fehlt
 - **OFFEN** – für die finale Verfahrensdokumentation noch systematisch zu erfassen
@@ -25,7 +25,7 @@ Status:
 | 11 | Menü-/Bundle-Preislogik | TEILWEISE | Komponenten-/VAT-Snapshots und gewichtete Preis-/Rabattlogik vorhanden; finale Fachabnahme offen |
 | 12 | Angebote / Promotionen | GEPRÜFT | Zeitraum, Prozent, cent-exakte Verteilung und Z-/Betriebstagbezug getestet |
 | 13 | Lager / Inventur | TEILWEISE | Bestand, Mindestbestand, Einkaufspreis und Inventurpfade vorhanden; Prozessbeschreibung offen |
-| 14 | Scanner / Gewichtsartikel | EXTERNER NACHWEIS | R180 hält unbekannte EAN auf dem Verkaufsbildschirm und verhindert doppelte KeyDown/TextInput-Erfassung; erneute reale Scanner-Hardware-Gegenprobe bleibt offen, echte Waagenanbindung separat abzunehmen |
+| 14 | Scanner / Gewichtsartikel | EXTERNER NACHWEIS | R181 hält unbekannte EAN auf dem Verkaufsbildschirm und verhindert doppelte KeyDown/TextInput-Erfassung; erneute reale Scanner-Hardware-Gegenprobe bleibt offen, echte Waagenanbindung separat abzunehmen |
 | 15 | Verkauf und Checkout | GEPRÜFT | unveränderlicher Checkout-Snapshot, zentrale Zahlungsvorbereitung und Commit-Grenzen |
 | 16 | Storno- und Retourenverfahren | GEPRÜFT | Tagesregel, SALE-only, Refund-vor-DB, Doppelrefund-Schutz, Mengenverfolgung, TSE/DSFinV-K-Abbildung |
 | 17 | Zahlungsarten Bar/Karte/Gemischt | GEPRÜFT | Cash/Card/Mixed-Anteile, Journal und Reconciliation vorhanden |
@@ -46,14 +46,14 @@ Status:
 | 32 | DSFinV-K 2.4 Export | TEILWEISE | Von/Bis, Preflight, vollständige Z-Zeiträume, USB/E-Mail-ZIP vorhanden; externer Validatornachweis offen |
 | 33 | DATEV / Steuerberater-Übergabe | TEILWEISE | DATEV-/Exportpfade vorhanden; direkte produktive API-/Vertragsintegration separat zu qualifizieren |
 | 34 | Drucker | EXTERNER NACHWEIS | Epson/Star-Erkennung, RAW-Protokolle, Queue-Sicherheit vorhanden; konkrete Hardwareabnahme offen |
-| 35 | Kassenschublade | EXTERNER NACHWEIS | R180 vereinheitlicht Aktivierung, gespeicherten DK-Ausgang und Zahlungsweg; Epson/Star-Protokolle vorhanden, reale Hardwareabnahme bleibt offen |
+| 35 | Kassenschublade | EXTERNER NACHWEIS | R181 vereinheitlicht Aktivierung, gespeicherten DK-Ausgang und Zahlungsweg; Epson/Star-Protokolle vorhanden, reale Hardwareabnahme bleibt offen |
 | 36 | Datensicherung | GEPRÜFT | DB-Snapshot + Assets + PrintJobs + Manifest/Hashes; täglicher Scheduler konfigurierbar |
 | 37 | Wiederherstellung | GEPRÜFT | neues Ziel, Pfadschutz, Manifest-/Hash-Prüfung und DB-Lesetest |
 | 38 | Audit / Unveränderbarkeit | GEPRÜFT | Audit append-only; Sales, SaleItems, Bediener, Z-Archiv und Daily Closings gegen UPDATE/DELETE geschützt |
 | 39 | Software-Update | TEILWEISE | HTTPS/SHA-256/Authenticode-Prüfung implementiert; Signer-Thumbprint noch nicht produktiv hinterlegt |
-| 40 | Test, Freigabe und Nachweise | EXTERNER NACHWEIS | 1118 Safety-Checks; physische TSE-E2E-, DSFinV-K-, §6-, Pfand- und unabhängige Fiskalprüfung bleiben geschlossen |
+| 40 | Test, Freigabe und Nachweise | EXTERNER NACHWEIS | 1122 Safety-Checks; physische TSE-E2E-, DSFinV-K-, §6-, Pfand- und unabhängige Fiskalprüfung bleiben geschlossen |
 
-## §16 Storno- und Retourenverfahren – präzisierter R180-Stand
+## §16 Storno- und Retourenverfahren – präzisierter R181-Stand
 
 ### 16.1 Grundsätze
 
@@ -97,4 +97,4 @@ Ein Crash oder Datenbankfehler zwischen Terminal-Refund und Gegenbuchung führt 
 
 Die Statusmatrix darf erst in eine finale Betreiber-Verfahrensdokumentation überführt werden, wenn die noch offenen realen Nachweise abgeschlossen und die konkrete Kunden-/Kassenumgebung (Betreiber, Standort, eingesetzte TSE, Drucker, Terminal, Backup-Ziel, Verantwortlichkeiten) eingetragen ist.
 
-Die technischen Produktions-Gates bleiben in R180 unverändert geschlossen.
+Die technischen Produktions-Gates bleiben in R181 unverändert geschlossen.
