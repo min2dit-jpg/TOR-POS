@@ -11,7 +11,8 @@
   #define MyDefaultGroupName "TOR POS Pro"
 #endif
 #ifndef MyAppExeName
-  #endif
+  #define MyAppExeName "TorPos.App.exe"
+#endif
 #ifndef MyAppMutex
   #define MyAppMutex "TOR-POS-Pro-Running"
 #endif
@@ -37,7 +38,6 @@
 ; R145: releases carry a name; shown in the wizard and in Programme und Features.
 #define MyAppReleaseName "Merd-M"
 #define MyAppPublisher "TOR Kassensysteme"
-#define MyAppExeName "TorPos.App.exe"
 
 [Setup]
 AppId={#MyAppId}
