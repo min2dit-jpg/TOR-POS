@@ -817,21 +817,21 @@ public partial class MainWindow:Window
         // the platform emits both events.
         if (Digit(e.Key) is char scannerDigit)
         {
-            var now = Stopwatch.GetTimestamp();
-            var gap = _lastScan == 0
+            var scannerNow = Stopwatch.GetTimestamp();
+            var scannerGap = _lastScan == 0
                 ? 999d
-                : Stopwatch.GetElapsedTime(_lastScan, now).TotalMilliseconds;
+                : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
-            if (gap > 180)
+            if (scannerGap > 180)
                 _scan = "";
 
             _scan += scannerDigit;
             if (_scan.Length > 32)
                 _scan = _scan[^32..];
 
-            _lastScan = now;
+            _lastScan = scannerNow;
             _lastScannerKeyDownDigit = scannerDigit;
-            _lastScannerKeyDownDigitAt = now;
+            _lastScannerKeyDownDigitAt = scannerNow;
             e.Handled = true;
             ArmScannerNoSuffixTimer();
             return;
