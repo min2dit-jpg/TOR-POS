@@ -93,7 +93,8 @@ public sealed record ReceiptPrintJob(
     string TseSignatureAlgorithm = "",
     string TseLogTimeFormat = "",
     string TsePublicKey = "",
-    int CashDrawerChannel = 1);
+    int CashDrawerChannel = 1,
+    string CashDrawerProtocol = "AUTO");
 
 /// <summary>
 /// R140: TSE times on the receipt. AEAO zu § 146a Nr. 2.4.4: the data the TSE
@@ -239,7 +240,8 @@ public interface IReceiptPrinterService : IAsyncDisposable
     Task TestCashDrawerAsync(
         string printerName,
         CancellationToken ct = default,
-        int channel = 1);
+        int channel = 1,
+        string protocol = "AUTO");
 
     Task PrintReceiptAsync(
         ReceiptPrintJob job,
