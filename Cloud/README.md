@@ -1,4 +1,4 @@
-# TOR POS Cloud v0.8.0 R48 · Stand R125
+# TOR POS Cloud · Stand R178
 
 Gemeinsamer Entwicklungsstand mit TOR POS Desktop R48. Lokale Demo, keine Fiskal-Produktivfreigabe.
 
