@@ -3,7 +3,7 @@ using TorPos.Infrastructure;
 
 public static class EditionSplitFoundationTests
 {
-    public static Task Run(Action<bool,string> assert)
+    public static async Task Run(Action<bool,string> assert)
     {
         var original = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         try
@@ -65,7 +65,84 @@ public static class EditionSplitFoundationTests
             Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", original);
         }
 
-        return Task.CompletedTask;
+        var migrationRoot = Path.Combine(
+            Path.GetTempPath(),
+            "tor-split-migration-" + Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(migrationRoot, "legacy");
+        var target = Path.Combine(migrationRoot, "target");
+        var backups = Path.Combine(migrationRoot, "backups");
+        Directory.CreateDirectory(legacy);
+
+        try
+        {
+            var legacyDb = Path.Combine(legacy, "torpos.db");
+            await using (var c = new Microsoft.Data.Sqlite.SqliteConnection(
+                new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                {
+                    DataSource = legacyDb,
+                    Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+                    Pooling = false
+                }.ToString()))
+            {
+                await c.OpenAsync();
+                await using var q = c.CreateCommand();
+                q.CommandText = "CREATE TABLE probe(id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO probe(value) VALUES ('R181');";
+                await q.ExecuteNonQueryAsync();
+            }
+
+            File.WriteAllText(Path.Combine(legacy, "edition.permanent.lock"), "KIOSK");
+            Directory.CreateDirectory(Path.Combine(legacy, "ReceiptAssets"));
+            File.WriteAllText(Path.Combine(legacy, "ReceiptAssets", "logo.txt"), "legacy-logo");
+
+            var migrated = await LegacyEditionSplitMigration.TryMigrateAsync(
+                legacy, target, backups, "KIOSK");
+
+            assert(
+                migrated.State == LegacySplitMigrationState.Migrated &&
+                migrated.BackupPath is not null &&
+                File.Exists(migrated.BackupPath),
+                "split migration creates a verified backup before copying a permanently-bound R181 installation");
+
+            assert(
+                File.Exists(Path.Combine(target, "torpos.db")) &&
+                File.ReadAllText(Path.Combine(target, "ReceiptAssets", "logo.txt")) == "legacy-logo" &&
+                File.Exists(Path.Combine(target, LegacyEditionSplitMigration.MarkerFileName)),
+                "split migration copies database/assets and records migration provenance in the dedicated product root");
+
+            assert(
+                File.Exists(Path.Combine(legacy, "torpos.db")) &&
+                File.ReadAllText(Path.Combine(legacy, "ReceiptAssets", "logo.txt")) == "legacy-logo",
+                "split migration leaves the complete shared R181 source untouched for rollback");
+
+            var repeated = await LegacyEditionSplitMigration.TryMigrateAsync(
+                legacy, target, backups, "KIOSK");
+            assert(
+                repeated.State == LegacySplitMigrationState.TargetAlreadyInitialized,
+                "split migration is idempotent and never overwrites an initialized dedicated product root");
+
+            var wrongTarget = Path.Combine(migrationRoot, "wrong-target");
+            var mismatch = await LegacyEditionSplitMigration.TryMigrateAsync(
+                legacy, wrongTarget, backups, "IMBISS");
+            assert(
+                mismatch.State == LegacySplitMigrationState.LegacyEditionMismatch &&
+                !Directory.Exists(wrongTarget),
+                "a permanently KIOSK-bound shared database is never copied into TOR DÖNER");
+
+            File.Delete(Path.Combine(legacy, "edition.permanent.lock"));
+            var unprovenTarget = Path.Combine(migrationRoot, "unproven-target");
+            var unproven = await LegacyEditionSplitMigration.TryMigrateAsync(
+                legacy, unprovenTarget, backups, "KIOSK");
+            assert(
+                unproven.State == LegacySplitMigrationState.LegacyEditionUnproven &&
+                !Directory.Exists(unprovenTarget),
+                "temporary/test R181 edition state is not enough to auto-migrate fiscal history");
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(migrationRoot))
+                Directory.Delete(migrationRoot, recursive: true);
+        }
     }
 
     private static string FindRepoFile(string relative)
