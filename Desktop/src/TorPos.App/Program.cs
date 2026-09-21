@@ -8,6 +8,10 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // R182 foundation: fixed-product builds declare their identity before
+        // any infrastructure path, crash-log, licence or worker code runs.
+        ProductBuild.ConfigureEnvironment();
+
         // R172: the same executable doubles as the isolated Swissbit worker.
         // Run this before single-instance mutexes/Avalonia so a blocked vendor
         // call can be killed without touching the cashier process.
@@ -20,12 +24,14 @@ internal static class Program
 
         // R66: fixed process mutex lets the installer detect an open TOR POS
         // immediately instead of waiting on Restart Manager/file locks.
-        using var installerGuard = new Mutex(true, "TOR-POS-Pro-Running", out var installerGuardOwner);
+        using var installerGuard = new Mutex(true, ProductBuild.RunningMutexName, out var installerGuardOwner);
         if (!installerGuardOwner) return;
 
-        using var instance = new Mutex(true, "TOR-POS-Pro-" +
+        using var instance = new Mutex(true, ProductBuild.RunningMutexName + "-" +
             Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData))))[..20], out var firstInstance);
+                System.Text.Encoding.UTF8.GetBytes(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "|" +
+                    ProductBuild.DataDirectoryName)))[..20], out var firstInstance);
         if (!firstInstance) return;
         CrashLog.ResetForNewProcess();
         CrashLog.InitializeGlobalHandlers();
