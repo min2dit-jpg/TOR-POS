@@ -35,6 +35,12 @@ function normalizeEvent(raw){
   if(type==='sale.completed'){
     cents(p.receipt_number,'receipt_number',1);
     if(p.pickup_number!=null)number(p.pickup_number,'pickup_number',0,999999,true);
+    // R179: SALE/STORNO/RETURN share one idempotent event contract. The till
+    // keeps reversal amounts positive on the wire; Cloud applies the sign when
+    // projecting them so validation remains identical to the local receipt.
+    p.transaction_type=String(p.transaction_type||'SALE').toUpperCase();
+    if(!['SALE','STORNO','RETURN'].includes(p.transaction_type))fail('Buchungstyp muss SALE, STORNO oder RETURN sein');
+    if(p.transaction_type!=='SALE')cents(p.original_receipt_number,'original_receipt_number',1);
     // R149: MIXED is the R101 cash/card split the till has always sent, and the
     // discount arrives as discount_cents (older tills: manual_discount_cents only).
     if(!['CASH','CARD','MIXED'].includes(p.payment_method))fail('Zahlart muss CASH, CARD oder MIXED sein');
@@ -42,6 +48,11 @@ function normalizeEvent(raw){
     // R149: returned deposit (Leergut) can make a receipt negative - money paid out.
     cents(p.subtotal_cents,'subtotal_cents');cents(p.discount_cents,'discount_cents',0);cents(p.total_cents,'total_cents');
     if(receiptTotal(p.subtotal_cents,p.discount_cents)!==p.total_cents)fail('Zwischensumme, Rabatt und Gesamt stimmen nicht überein');
+    if(p.cash_portion_cents!=null)cents(p.cash_portion_cents,'cash_portion_cents');
+    if(p.card_portion_cents!=null)cents(p.card_portion_cents,'card_portion_cents');
+    if(p.transaction_type!=='SALE' &&
+       ((p.cash_portion_cents??0)+(p.card_portion_cents??0)!==p.total_cents))
+      fail('Bar-/Kartenanteil stimmt nicht mit Gesamt überein');
     if(p.total_cents<0&&p.payment_method!=='CASH')fail('Eine Pfand-Auszahlung ist nur bar möglich');
     text(p.operator_name,'operator_name',200,true);
     if(!Array.isArray(p.items)||p.items.length<1||p.items.length>5000)fail('1 bis 5000 Bonpositionen erforderlich');
@@ -53,9 +64,19 @@ function normalizeEvent(raw){
       text(i.product_key,'product_key',120,true);text(i.name,'name',500);
       number(i.quantity,'quantity',-1e6,1e6);cents(i.unit_price_cents,'unit_price_cents');cents(i.line_total_cents,'line_total_cents');
       number(i.vat_rate,'vat_rate',0,100);
-      const product=i.quantity*i.unit_price_cents;
-      const rounded=Math.sign(product)*Math.floor(Math.abs(product)+0.5+1e-7);
-      if(rounded!==i.line_total_cents)fail('Menge und Positionsbetrag stimmen nicht überein');
+      const promoted=Number(i.promotion_percent||0)>0 && i.list_unit_price_cents!=null;
+      if(promoted){
+        cents(i.list_unit_price_cents,'list_unit_price_cents');
+        cents(i.promotion_discount_cents,'promotion_discount_cents',0);
+        number(i.promotion_percent,'promotion_percent',1,100,true);
+        const listProduct=i.quantity*i.list_unit_price_cents;
+        const listRounded=Math.sign(listProduct)*Math.floor(Math.abs(listProduct)+0.5+1e-7);
+        if(listRounded-i.promotion_discount_cents!==i.line_total_cents)fail('Aktionspreis und Positionsbetrag stimmen nicht überein');
+      }else{
+        const product=i.quantity*i.unit_price_cents;
+        const rounded=Math.sign(product)*Math.floor(Math.abs(product)+0.5+1e-7);
+        if(rounded!==i.line_total_cents)fail('Menge und Positionsbetrag stimmen nicht überein');
+      }
       sum+=i.line_total_cents;
     }
     if(sum!==p.subtotal_cents)fail('Summe der Bonpositionen stimmt nicht überein');
