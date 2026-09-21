@@ -1,4 +1,29 @@
-#define MyAppName "TOR POS Pro"
+#ifndef MyAppName
+  #define MyAppName "TOR POS Pro"
+#endif
+#ifndef MyAppId
+  #define MyAppId "{{7F8D13C7-86D8-4A3B-A44A-0C20E8E5931B}"
+#endif
+#ifndef MyDefaultDirName
+  #define MyDefaultDirName "TOR POS Pro"
+#endif
+#ifndef MyDefaultGroupName
+  #define MyDefaultGroupName "TOR POS Pro"
+#endif
+#ifndef MyAppExeName
+  #endif
+#ifndef MyAppMutex
+  #define MyAppMutex "TOR-POS-Pro-Running"
+#endif
+#ifndef MyDataDirName
+  #define MyDataDirName "TOR-POS-Pro"
+#endif
+#ifndef MyProcessName
+  #define MyProcessName "TorPos.App"
+#endif
+#ifndef MyProductEdition
+  #define MyProductEdition ""
+#endif
 #ifndef MyOutputBaseFilename
   #define MyOutputBaseFilename "TOR-POS-Pro-Setup"
 #endif
@@ -15,14 +40,14 @@
 #define MyAppExeName "TorPos.App.exe"
 
 [Setup]
-AppId={{7F8D13C7-86D8-4A3B-A44A-0C20E8E5931B}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppReleaseName}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\TOR POS Pro
+DefaultDirName={autopf}\{#MyDefaultDirName}
 UsePreviousAppDir=yes
-DefaultGroupName=TOR POS Pro
+DefaultGroupName={#MyDefaultGroupName}
 DisableProgramGroupPage=yes
 LicenseFile=NUTZUNGSBEDINGUNGEN-DE.txt
 UninstallDisplayName={#MyAppName} {#MyAppReleaseName}
@@ -44,7 +69,7 @@ CloseApplications=no
 RestartApplications=no
 ; R66: future TOR POS versions own this mutex while running. Setup stops early
 ; instead of waiting until file-copy time and showing a generic locked-file dialog.
-AppMutex=TOR-POS-Pro-Running
+AppMutex={#MyAppMutex}
 
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
@@ -52,7 +77,7 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 [Dirs]
 ; Demo identity is machine-wide and intentionally survives a normal uninstall.
 ; The application writes only a random Trial-ID here; no hardware identifiers.
-Name: "{commonappdata}\TOR-POS-Pro"; Permissions: users-modify; Flags: uninsneveruninstall
+Name: "{commonappdata}\{#MyDataDirName}"; Permissions: users-modify; Flags: uninsneveruninstall
 
 [Files]
 Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -61,21 +86,21 @@ Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 ; Eine einzige, eindeutige Verknuepfung. Alte benutzerspezifische Links werden
 ; vor der Installation entfernt, damit Windows nicht versehentlich eine alte
 ; LocalAppData-Version startet.
-Name: "{commondesktop}\TOR POS Pro"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "TOR POS Pro starten"
-Name: "{commonprograms}\TOR POS Pro\TOR POS Pro"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "TOR POS Pro starten"
+Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "TOR POS Pro starten"
+Name: "{commonprograms}\{#MyDefaultGroupName}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "TOR POS Pro starten"
 
 [InstallDelete]
 ; Verknuepfungen aus allen bisherigen Installationsvarianten entfernen.
 ; Danach legt [Icons] genau die neuen Links auf {app} an.
-Type: files; Name: "{userdesktop}\TOR POS Pro.lnk"
-Type: files; Name: "{commondesktop}\TOR POS Pro.lnk"
-Type: files; Name: "{autodesktop}\TOR POS Pro.lnk"
-Type: files; Name: "{userprograms}\TOR POS Pro\TOR POS Pro.lnk"
-Type: files; Name: "{commonprograms}\TOR POS Pro\TOR POS Pro.lnk"
-Type: files; Name: "{autoprograms}\TOR POS Pro\TOR POS Pro.lnk"
-Type: dirifempty; Name: "{userprograms}\TOR POS Pro"
-Type: dirifempty; Name: "{commonprograms}\TOR POS Pro"
-Type: dirifempty; Name: "{autoprograms}\TOR POS Pro"
+Type: files; Name: "{userdesktop}\{#MyAppName}.lnk"
+Type: files; Name: "{commondesktop}\{#MyAppName}.lnk"
+Type: files; Name: "{autodesktop}\{#MyAppName}.lnk"
+Type: files; Name: "{userprograms}\{#MyDefaultGroupName}\{#MyAppName}.lnk"
+Type: files; Name: "{commonprograms}\{#MyDefaultGroupName}\{#MyAppName}.lnk"
+Type: files; Name: "{autoprograms}\{#MyDefaultGroupName}\{#MyAppName}.lnk"
+Type: dirifempty; Name: "{userprograms}\{#MyDefaultGroupName}"
+Type: dirifempty; Name: "{commonprograms}\{#MyDefaultGroupName}"
+Type: dirifempty; Name: "{autoprograms}\{#MyDefaultGroupName}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "TOR POS Pro starten"; Flags: nowait postinstall skipifsilent shellexec
@@ -90,17 +115,17 @@ var
 
 function EditionLockPath(): String;
 begin
-  Result := ExpandConstant('{userappdata}\TOR-POS-Pro\edition.lock');
+  Result := ExpandConstant('{userappdata}\{#MyDataDirName}\edition.lock');
 end;
 
 function SecurityMarkerPath(): String;
 begin
-  Result := ExpandConstant('{userappdata}\TOR-POS-Pro\security.initialized');
+  Result := ExpandConstant('{userappdata}\{#MyDataDirName}\security.initialized');
 end;
 
 function BootstrapAdminPath(): String;
 begin
-  Result := ExpandConstant('{userappdata}\TOR-POS-Pro\first-run-admin.cfg');
+  Result := ExpandConstant('{userappdata}\{#MyDataDirName}\first-run-admin.cfg');
 end;
 
 function ReadExistingEdition(): String;
@@ -186,8 +211,8 @@ begin
   { Edition is locked only for an actual installed TOR POS instance.
     A stale edition.lock after uninstall must not force KIOSK/IMBISS on a fresh install. }
   ExistingInstallation :=
-    FileExists(ExpandConstant('{autopf}\TOR POS Pro\{#MyAppExeName}')) or
-    FileExists(ExpandConstant('{localappdata}\Programs\TOR POS Pro\{#MyAppExeName}'));
+    FileExists(ExpandConstant('{autopf}\{#MyDefaultDirName}\{#MyAppExeName}')) or
+    FileExists(ExpandConstant('{localappdata}\Programs\{#MyDefaultDirName}\{#MyAppExeName}'));
 
   SecurityAlreadyInitialized :=
     ExistingInstallation and FileExists(SecurityMarkerPath());
@@ -272,7 +297,7 @@ begin
 
   if Exec(
        PowerShellPath,
-       '-NoProfile -NonInteractive -Command "if (Get-Process -Name TorPos.App -ErrorAction SilentlyContinue) { exit 66 } else { exit 0 }"',
+       '-NoProfile -NonInteractive -Command "if (Get-Process -Name {#MyProcessName} -ErrorAction SilentlyContinue) { exit 66 } else { exit 0 }"',
        '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     Result := ResultCode = 66;
 end;
@@ -363,7 +388,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    DataDir := ExpandConstant('{userappdata}\TOR-POS-Pro');
+    DataDir := ExpandConstant('{userappdata}\{#MyDataDirName}');
     if not DirExists(DataDir) then
       ForceDirectories(DataDir);
 
