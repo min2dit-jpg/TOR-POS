@@ -59,7 +59,7 @@ function validatePublication(o) {
     throw Error('Geprüfte SHA256 und Signer erforderlich.');
 }
 
-function publishFile(dir, o, { prefix, manifestName, demo = false }) {
+function publishFile(dir, o, { prefix, manifestName, demo = false, channel = 'STABLE' }) {
   validatePublication(o);
 
   return locked(dir, () => {
@@ -93,7 +93,8 @@ function publishFile(dir, o, { prefix, manifestName, demo = false }) {
         filename,
         sha256: o.sha256,
         signer_thumbprint: o.signer_thumbprint,
-        release_notes: String(o.release_notes || '')
+        release_notes: String(o.release_notes || ''),
+        channel
       };
 
       if (demo) {
@@ -114,7 +115,16 @@ function publishFile(dir, o, { prefix, manifestName, demo = false }) {
 function publishVerified(dir, o) {
   return publishFile(dir, o, {
     prefix: 'TOR-POS-Pro-Setup',
-    manifestName: 'manifest.json'
+    manifestName: 'manifest.json',
+    channel: 'STABLE'
+  });
+}
+
+function publishPilotVerified(dir, o) {
+  return publishFile(dir, o, {
+    prefix: 'TOR-POS-Pro-Setup',
+    manifestName: 'pilot-manifest.json',
+    channel: 'PILOT'
   });
 }
 
@@ -140,14 +150,20 @@ function disable(dir) {
   return disableManifest(dir, 'manifest.json');
 }
 
+function disablePilot(dir) {
+  return disableManifest(dir, 'pilot-manifest.json');
+}
+
 function disableTrial(dir) {
   return disableManifest(dir, 'trial-manifest.json');
 }
 
 module.exports = {
   publishVerified,
+  publishPilotVerified,
   publishTrialVerified,
   disable,
+  disablePilot,
   disableTrial,
   hashFile
 };
@@ -161,6 +177,8 @@ if (require.main === module) {
       publishTrialVerified(dir, JSON.parse(fs.readFileSync(input, 'utf8').replace(/^\uFEFF/, '')));
     } else if (action === 'disable') {
       disable(dir);
+    } else if (action === 'disable-pilot') {
+      disablePilot(dir);
     } else if (action === 'disable-trial') {
       disableTrial(dir);
     } else {
