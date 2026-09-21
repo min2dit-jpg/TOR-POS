@@ -1,8 +1,8 @@
 {
   "name": "TOR POS Pro Commercial Core",
   "release_name": "Merd-M",
-  "version": "0.7.33.880",
-  "revision": "R180",
+  "version": "0.7.33.881",
+  "revision": "R181",
   "authoritative_version_source": "src/TorPos.Core/ReleaseInfo.cs",
   "platform": {
     "supported_runtime": "Windows",
