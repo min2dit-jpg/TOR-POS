@@ -1,6 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <!-- Split-product foundation: the same audited application code can be
+         published as a fixed TOR KIOSK or TOR DÖNER executable. The default
+         remains the R181-compatible shared build until migration qualification
+         is complete. -->
+    <TorProductEdition Condition="'$(TorProductEdition)' == ''">SHARED</TorProductEdition>
+    <AssemblyName Condition="'$(TorProductEdition)' == 'KIOSK'">TOR-KIOSK</AssemblyName>
+    <AssemblyName Condition="'$(TorProductEdition)' == 'IMBISS'">TOR-DOENER</AssemblyName>
+    <DefineConstants Condition="'$(TorProductEdition)' == 'KIOSK'">$(DefineConstants);TOR_KIOSK_PRODUCT</DefineConstants>
+    <DefineConstants Condition="'$(TorProductEdition)' == 'IMBISS'">$(DefineConstants);TOR_DOENER_PRODUCT</DefineConstants>
     <!-- R126: had drifted to 0.7.33.751 / "R75.1-Application-Namespace-Hotfix"
          - the version Windows shows in the exe's file properties. Keep in step
          with TorPos.Core.TorRelease, TOR-POS-Pro-Setup.iss and manifest.json. -->
