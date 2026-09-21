@@ -57,34 +57,27 @@ public sealed class PromotionCampaignService
                 }
             }
 
-            await using var activity = c.CreateCommand();
-            activity.CommandText = lastClose is null
-                ? """
-                  SELECT at
-                  FROM (
-                      SELECT created_at AS at FROM sales
-                      UNION ALL
-                      SELECT created_at AS at FROM parked_receipts
-                  )
-                  WHERE at <> ''
-                  ORDER BY julianday(at)
-                  LIMIT 1;
-                  """
-                : """
-                  SELECT at
-                  FROM (
-                      SELECT created_at AS at FROM sales
-                      UNION ALL
-                      SELECT created_at AS at FROM parked_receipts
-                  )
-                  WHERE at <> ''
-                    AND julianday(at) > julianday($close)
-                  ORDER BY julianday(at)
-                  LIMIT 1;
-                  """;
+            // R176: without any Z closing there is no reliable persisted
+            // boundary for an "open operating day". Historical/imported sales
+            // must therefore never pin promotions to the first sale ever.
+            // Use today until the first real closing exists.
+            if (lastClose is null)
+                return DateOnly.FromDateTime(DateTime.Now);
 
-            if (lastClose is not null)
-                activity.Parameters.AddWithValue("$close", lastClose.Value.ToString("O"));
+            await using var activity = c.CreateCommand();
+            activity.CommandText = """
+                SELECT at
+                FROM (
+                    SELECT created_at AS at FROM sales
+                    UNION ALL
+                    SELECT created_at AS at FROM parked_receipts
+                )
+                WHERE at <> ''
+                  AND julianday(at) > julianday($close)
+                ORDER BY julianday(at)
+                LIMIT 1;
+                """;
+            activity.Parameters.AddWithValue("$close", lastClose.Value.ToString("O"));
 
             var first = await activity.ExecuteScalarAsync(ct);
             if (first is string firstText &&
