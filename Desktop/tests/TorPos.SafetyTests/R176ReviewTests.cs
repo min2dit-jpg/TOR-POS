@@ -296,6 +296,69 @@ public static class R176ReviewTests
                 StringComparison.Ordinal),
             "R176 FiscalComplianceService does not hold the global SQLite FIFO across nested repository and readiness checks");
 
+        assert(
+            StarPrntRawCommands.StarPrntOpenCashDrawer(1)
+                .SequenceEqual(new byte[] { 0x1B, 0x07, 20, 20, 0x07 }) &&
+            StarPrntRawCommands.StarPrntOpenCashDrawer(2)
+                .SequenceEqual(new byte[] { 0x1A }) &&
+            StarPrntRawCommands.EpsonEscPosOpenCashDrawer(0)
+                .SequenceEqual(new byte[] { 0x1B, 0x70, 0x00, 25, 250 }),
+            "R176 StarPRNT and Epson ESC/POS cash-drawer commands are no longer conflated");
+
+        var printerServiceSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/StarMcPrint3PrinterService.cs"));
+        assert(
+            printerServiceSource.Contains(
+                "profile.Manufacturer.Equals(\"Star\"",
+                StringComparison.Ordinal) &&
+            printerServiceSource.Contains(
+                "StarPrntRawCommands.StarPrntOpenCashDrawer(channel)",
+                StringComparison.Ordinal) &&
+            printerServiceSource.Contains(
+                "StarPrntRawCommands.EpsonEscPosOpenCashDrawer",
+                StringComparison.Ordinal) &&
+            printerServiceSource.Contains(
+                "PartialCutCommandFor(profile)",
+                StringComparison.Ordinal),
+            "R176 printer service selects StarPRNT vs Epson ESC/POS for both drawer and cutter operations");
+
+        assert(
+            mainSource.Contains(
+                "if (Digit(e.Key) is char scannerDigit)",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "_lastScannerKeyDownDigit",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "duplicateKeyDown",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "ArmScannerNoSuffixTimer();",
+                StringComparison.Ordinal),
+            "R176 cashier barcode capture has a KeyDown HID fallback and deduplicates matching TextInput events");
+
+        var drawerUiSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.App/PrinterSetupWindow.cs"));
+        var rawPrinterSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/RawPrinterIo.cs"));
+        assert(
+            drawerUiSource.Contains(
+                "Kassenschubladen-Ausgang",
+                StringComparison.Ordinal) &&
+            drawerUiSource.Contains(
+                "StarPRNT · Ausgang",
+                StringComparison.Ordinal) &&
+            drawerUiSource.Contains(
+                "ESC/POS ·",
+                StringComparison.Ordinal) &&
+            rawPrinterSource.Contains(
+                "Win32Failure",
+                StringComparison.Ordinal) &&
+            rawPrinterSource.Contains(
+                "Marshal.GetLastWin32Error()",
+                StringComparison.Ordinal),
+            "R176 drawer setup exposes output 1/2 and failed RAW spooler tests surface the Windows error code");
+
         var fiscalGate = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.Core/CheckoutSafety.cs"));
 
