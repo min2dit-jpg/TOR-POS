@@ -1,12 +1,21 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R180|0.7.33.880|Merd-M -->
+<!-- TOR_RELEASE:R181|0.7.33.881|Merd-M -->
 
 ## Aktueller Release
 
-**R180 · Merd-M · 0.7.33.880**
+**R181 · Merd-M · 0.7.33.881**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R181
+
+- Scanner-Performance nach realem Kassentest: der frühere Standard `scanner.wait_ms=1000` führte bei HID-Scannern ohne empfangenen ENTER/TAB-Suffix zu rund einer Sekunde sichtbarer Verzögerung. Neuer Standard: **140 ms**.
+- Bestehende Installationen mit dem unveränderten alten 1000-ms-Standard werden einmalig auf 140 ms migriert; anschließend bleibt eine bewusst gesetzte Benutzerkonfiguration erhalten.
+- Schnelle Folgescans werden in einer begrenzten **FIFO-Warteschlange (max. 64 EAN)** gepuffert. Ein zweiter Barcode wird nicht mehr verworfen, nur weil der erste Artikel noch Preis-/Angebotslogik verarbeitet.
+- Scannerabschluss über ENTER/TAB bleibt weiterhin der schnellste Pfad; der 140-ms-Fallback greift nur, wenn der Suffix nicht ankommt.
+- Vier neue Regressionstests sichern Legacy-Migration, 140-ms-Fallback, FIFO-Verarbeitung und die Entfernung der früheren `_scanProcessing`-Capture-Sperre. Safety-Baseline: **1122 Checks**.
+- R180 unknown-EAN/Caret-Fix sowie R179 Kassenschublade, Cloud- und Retourenänderungen bleiben erhalten.
 
 ### R180
 
