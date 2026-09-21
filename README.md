@@ -48,6 +48,7 @@ Sicherheitsprobleme bitte nicht öffentlich melden. Der vertrauliche Meldeweg un
 - `Dokumentation/REPOSITORY-MAINTENANCE.md` – repo boyutu ve artifact politikası
 - `Dokumentation/GITHUB-MAIN-PROTECTION.md` – main branch koruma hedefi
 - `Dokumentation/KASSENSICHV-2026-COMPLIANCE.md` – KassenSichV 2026 §1–§11 uyumluluk matrisi
+- `Dokumentation/VERFAHRENSDOKUMENTATION-STATUS.md` – R178 teknik durum matrisi ve açık kabul/nachweis noktaları
 - `verification/HARDWARE-E2E-TEMPLATE.md` – gerçek TSE/hardware kabul şablonu
 - `SECURITY.md` – güvenlik bildirim ve hassas veri politikası
 
