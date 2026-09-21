@@ -1,12 +1,20 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R174|0.7.33.874|Merd-M -->
+<!-- TOR_RELEASE:R175|0.7.33.875|Merd-M -->
 
 ## Aktueller Release
 
-**R174 · Merd-M · 0.7.33.874**
+**R175 · Merd-M · 0.7.33.875**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R175
+
+- fiskaltrust + Swissbit yolu için read-only tanılama eklendi: ProgramData altındaki fiskaltrust servis konfigürasyonu okunur, Swissbit SCU/devicePath tespit edilir, TSE_INFO.DAT varlığı kontrol edilir, SCU portu ve Queue /json/v1/Echo bağlantısı sınanır.
+- Tanılama hiçbir AccessToken okumaz/göstermez; client registration, TSE activation, PIN/PUK değişikliği veya fiskal transaction çağrısı yapmaz.
+- 21.09.2026 manuel testinde fiskaltrust Queue REST ve Swissbit SCU gerçek Swissbit USB TSE'ye ulaştı; mevcut başka kasaya ait TSE client kayıtlı olmadığı için `Client not registered` aşamasında bilinçli olarak duruldu.
+- FISKALTRUST_SWISSBIT manifestte alternatif sağlayıcı olarak belgelendi; gerçek transaction path ve physical TSE E2E bayrakları kapalı kalır.
+- R175 regresyon kontrolleri bu read-only sınırı ve fiskal release gate'inin kapalı kalmasını CI'da kilitler.
 
 ### R174
 
