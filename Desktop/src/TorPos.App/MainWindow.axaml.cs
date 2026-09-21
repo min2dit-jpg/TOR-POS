@@ -818,6 +818,26 @@ public partial class MainWindow:Window
             hasCart;
     }
 
+    private void FocusScannerCaptureSoon()
+    {
+        if (MenuHubOverlay.IsVisible || CartLocked)
+            return;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (MenuHubOverlay.IsVisible || CartLocked)
+                    return;
+
+                // Keep the target empty: barcode data is owned by _scan, not
+                // by a visible/editable field. Focus alone is what makes HID
+                // keyboard-wedge TextInput reliable.
+                ScannerCapture.Text = "";
+                ScannerCapture.Focus();
+            },
+            DispatcherPriority.Background);
+    }
+
     private void OnGlobalScannerKeyDown(object? sender, KeyEventArgs e)
     {
         // R145: the card menu hub replaces the cashier workspace while open.
@@ -825,6 +845,7 @@ public partial class MainWindow:Window
         if (MenuHubOverlay.IsVisible)
         {
             _scan = "";
+            _scanStartedAt = 0;
             if (e.Key == Key.Escape)
                 HideMenuHub();
             e.Handled = true;
@@ -834,6 +855,7 @@ public partial class MainWindow:Window
         if (CartLocked)
         {
             _scan = "";
+            _scanStartedAt = 0;
             return;
         }
 
@@ -850,7 +872,14 @@ public partial class MainWindow:Window
                 : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
             if (scannerGap > 180)
+            {
                 _scan = "";
+                _scanStartedAt = scannerNow;
+            }
+            else if (_scanStartedAt == 0)
+            {
+                _scanStartedAt = scannerNow;
+            }
 
             _scan += scannerDigit;
             if (_scan.Length > 32)
@@ -909,6 +938,7 @@ public partial class MainWindow:Window
         {
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             e.Handled = true;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
@@ -917,6 +947,7 @@ public partial class MainWindow:Window
         else
         {
             _scan = "";
+            _scanStartedAt = 0;
         }
     }
 
@@ -941,7 +972,14 @@ public partial class MainWindow:Window
         // Reset after a human-speed pause so unrelated keyboard input never
         // becomes part of a barcode.
         if (gap > 180)
+        {
             _scan = "";
+            _scanStartedAt = now;
+        }
+        else if (_scanStartedAt == 0)
+        {
+            _scanStartedAt = now;
+        }
 
         var added = false;
         var hasSuffix = false;
@@ -989,6 +1027,7 @@ public partial class MainWindow:Window
             _scanNoEnterTimer.Stop();
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             _ = ProcessBarcodeSafely(code);
@@ -1000,15 +1039,18 @@ public partial class MainWindow:Window
 
     private void ArmScannerNoSuffixTimer()
     {
-        if (_settingsCache.GetBool("scanner.enter_suffix", true))
-            return;
-
         _scanNoEnterTimer.Stop();
+
+        // R177: always arm an idle fallback. If Enter/Tab arrives, it stops
+        // this timer and completes immediately. If the scanner suffix is lost,
+        // the fast buffered barcode still reaches ProcessBarcodeSafely.
+        var configured = _settingsCache.GetInt("scanner.wait_ms", 180);
+        var waitMs = _settingsCache.GetBool("scanner.enter_suffix", true)
+            ? Math.Max(220, configured)
+            : configured;
+
         _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-            Math.Clamp(
-                _settingsCache.GetInt("scanner.wait_ms", 180),
-                80,
-                500));
+            Math.Clamp(waitMs, 100, 600));
         _scanNoEnterTimer.Start();
     }
 
@@ -2932,6 +2974,9 @@ public partial class MainWindow:Window
         _engine.IsReadOnly=busy;
         if (Content is Control surface) surface.IsEnabled=!busy;
         RefreshSalesActionState();
+
+        if (!busy)
+            FocusScannerCaptureSoon();
     }
 
     private async Task CheckoutAsync(
