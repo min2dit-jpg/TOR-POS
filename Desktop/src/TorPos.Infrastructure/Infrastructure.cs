@@ -631,6 +631,7 @@ public async Task InitializeAsync(CancellationToken ct = default)
               ('device.kitchen_printer.station.getraenke.enabled','false'),
               ('device.kitchen_printer.station.getraenke.name',''),
               ('device.drawer.enabled','false'),
+              ('device.drawer.r179_configured','false'),
               ('device.drawer.via_printer','true'),
               ('device.customer_display.enabled','false'),
               ('device.customer_display.port',''),
@@ -2692,11 +2693,44 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
             await log.ExecuteNonQueryAsync(ct);
         }
 
+        var cloudStornoLines = original.Lines.Select(line => new TorCloudSaleLine(
+            line.ProductId,line.ProductName,line.VariantName,line.Quantity,line.Unit,
+            line.UnitPriceCents,line.LineTotalCents,line.VatRate,
+            line.EffectiveListUnitPriceCents,line.ListLineTotalCents,
+            line.PromotionId,line.PromotionName,line.PromotionPercent,line.PromotionDiscountCents,
+            line.PromotionStartDate,line.PromotionEndDate,line.MenuComponents.ToArray())).ToArray();
+        TorCloudOutbox.EnqueueRecordedSale(
+            c,(SqliteTransaction)tx,"storno-"+saleId,"STORNO",original.ReceiptNumber,
+            receipt,0,now,original.PaymentMethod,stornoSubtotal,original.DiscountCents,original.TotalCents,
+            originalCashPortion,originalCardPortion,actor,cloudStornoLines);
+
         await tx.CommitAsync(ct);
         return await LoadSaleAsync(c, saleId, ct)
             ?? throw new InvalidOperationException("Stornobon konnte nicht geladen werden.");
     });
+} 
+private static async Task<(long RawCents, long TotalCents, long CashCents)> PriorReturnAllocationAsync(
+    SqliteConnection c,
+    SqliteTransaction? tx,
+    long originalSaleId,
+    CancellationToken ct)
+{
+    await using var q = c.CreateCommand();
+    q.Transaction = tx;
+    q.CommandText = """
+        SELECT
+          COALESCE(SUM(subtotal_cents),0),
+          COALESCE(SUM(total_cents),0),
+          COALESCE(SUM(cash_portion_cents),0)
+        FROM sales
+        WHERE original_sale_id=$id AND transaction_type='RETURN';
+        """;
+    q.Parameters.AddWithValue("$id", originalSaleId);
+    await using var r = await q.ExecuteReaderAsync(ct);
+    await r.ReadAsync(ct);
+    return (r.GetInt64(0), r.GetInt64(1), r.GetInt64(2));
 }
+
 public async Task<ReturnQuote> QuoteReturnAsync(
     long originalSaleId,
     IReadOnlyList<ReturnLineRequest> lines,
@@ -2771,26 +2805,22 @@ public async Task<ReturnQuote> QuoteReturnAsync(
         }
 
         var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
-        var total = DiscountProration.Prorate(
+        var prior = await PriorReturnAllocationAsync(c, null, originalSaleId, ct);
+        var allocation = CumulativeReturnProration.Allocate(
+            prior.RawCents,
             rawTotal,
+            prior.TotalCents,
+            prior.CashCents,
             originalSubtotal,
-            original.TotalCents);
-        var discount = Math.Max(0L, rawTotal - total);
-        var cash = original.TotalCents > 0
-            ? (long)Math.Round(
-                (decimal)total *
-                original.EffectiveCashPortionCents /
-                original.TotalCents,
-                MidpointRounding.AwayFromZero)
-            : 0L;
-        var card = total - cash;
+            original.TotalCents,
+            original.EffectiveCashPortionCents);
 
         return new ReturnQuote(
-            rawTotal,
-            discount,
-            total,
-            cash,
-            card);
+            allocation.RawCents,
+            allocation.DiscountCents,
+            allocation.TotalCents,
+            allocation.CashCents,
+            allocation.CardCents);
     });
 }
 
@@ -2899,18 +2929,28 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
         // amount to know how much to refund at the terminal) via
         // DiscountProration, not two independent copies of this formula.
         var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
-        var discountedTotalCents = DiscountProration.Prorate(totalCents, originalSubtotal, original.TotalCents);
-        var returnDiscountCents = Math.Max(0L, totalCents - discountedTotalCents);
+        var prior = await PriorReturnAllocationAsync(
+            c,
+            (SqliteTransaction)tx,
+            originalSaleId,
+            ct);
+        var allocation = CumulativeReturnProration.Allocate(
+            prior.RawCents,
+            totalCents,
+            prior.TotalCents,
+            prior.CashCents,
+            originalSubtotal,
+            original.TotalCents,
+            originalCashPortion);
+        var discountedTotalCents = allocation.TotalCents;
+        var returnDiscountCents = allocation.DiscountCents;
 
-        // R102: a partial return of a Mixed original refunds cash/card
-        // proportionally to the ORIGINAL sale's own cash/card ratio - there
-        // is no unambiguous way to attribute a specific returned LINE to
-        // one tender type over the other. Based on the DISCOUNT-ADJUSTED
-        // amount actually being refunded, not the raw pre-discount total.
-        var returnCashPortion = original.TotalCents > 0
-            ? (long)Math.Round((decimal)discountedTotalCents * originalCashPortion / original.TotalCents, MidpointRounding.AwayFromZero)
-            : 0;
-        var returnCardPortion = discountedTotalCents - returnCashPortion;
+        // R179: the payment split is allocated from the cumulative refund,
+        // not rounded independently for every fragment. Therefore the final
+        // fragment absorbs the remaining cent and all partial returns together
+        // exactly reproduce the original cash/card payment.
+        var returnCashPortion = allocation.CashCents;
+        var returnCardPortion = allocation.CardCents;
 
         // R102: same structural refusal as RecordStornoAsync - a nonzero
         // card portion of THIS return must already be confirmed refunded
@@ -3033,6 +3073,19 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 (returnCardPortion > 0 ? $"; card_refund_evidence={cardRefundEvidence}" : ""));
             await log.ExecuteNonQueryAsync(ct);
         }
+
+        var cloudReturnLines = returnLines.Select(x => new TorCloudSaleLine(
+            x.Original.ProductId,x.Original.ProductName,x.Original.VariantName,x.Quantity,x.Original.Unit,
+            x.Original.UnitPriceCents,x.LineTotalCents,x.Original.VatRate,
+            x.Original.EffectiveListUnitPriceCents,
+            x.Original.ListLineTotalCentsSlice(x.AlreadyReturned,x.Quantity),
+            x.Original.PromotionId,x.Original.PromotionName,x.Original.PromotionPercent,
+            x.Original.PromotionDiscountCentsSlice(x.AlreadyReturned,x.Quantity),
+            x.Original.PromotionStartDate,x.Original.PromotionEndDate,x.Original.MenuComponents.ToArray())).ToArray();
+        TorCloudOutbox.EnqueueRecordedSale(
+            c,(SqliteTransaction)tx,"return-"+saleId,"RETURN",original.ReceiptNumber,
+            receipt,0,now,original.PaymentMethod,totalCents,returnDiscountCents,discountedTotalCents,
+            returnCashPortion,returnCardPortion,actor,cloudReturnLines);
 
         await tx.CommitAsync(ct);
         return await LoadSaleAsync(c, saleId, ct)
