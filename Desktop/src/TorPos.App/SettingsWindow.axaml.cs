@@ -416,7 +416,6 @@ public partial class SettingsWindow : Window
         Form(misc, "Anfangsbestand in Cent (bis zum ersten Kassensturz)", Text("cash.start.cents"));
         misc.Children.Add(ToggleRow(Check("function.operator_on_receipt", "Bediener auf Bon anzeigen")));
         misc.Children.Add(ToggleRow(Check("function.options_on_receipt", "Varianten / Optionen auf Bon anzeigen")));
-        misc.Children.Add(ToggleRow(Check("function.drawer_on_receipt", "Kassenlade beim Bondruck öffnen")));
         misc.Children.Add(ToggleRow(Check("function.payment_query", "Zahlart vor Abschluss zusätzlich bestätigen")));
         var reasons = Text("function.storno_reasons", true); reasons.MinHeight = 100;
         Form(misc, "Stornogründe", reasons, "Pflichtgrund bei SOFORT STORNO (vor der Zahlung) · mit Zeilenumbruch eingeben.");
@@ -447,11 +446,11 @@ public partial class SettingsWindow : Window
         page.Children.Add(printer);
 
         var other = Section("Anschlüsse");
-        other.Children.Add(ToggleRow(Check("device.drawer.via_printer", "Kassenlade über Drucker/DK-Anschluss steuern")));
+        other.Children.Add(InfoCard("Kassenschublade", "Die Kassenschublade wird zentral unter Geräte aktiviert und über den in der Drucker-Zentrale gewählten DK-Ausgang gesteuert.", AppTheme.InfoCardBg));
         page.Children.Add(other);
 
         var scanner = Section("Barcode-Scanner · Protokoll");
-        Form(scanner, "Scanner-Modus", Combo("scanner.mode", "HID", "COM"), "HID = Scanner verhält sich wie eine Tastatur.");
+        Form(scanner, "Scanner-Modus", Combo("scanner.mode", "HID"), "HID = USB-/Bluetooth-Scanner verhält sich wie eine Tastatur. COM ist in diesem Build nicht als produktiver Scannerpfad implementiert.");
         scanner.Children.Add(ToggleRow(Check("scanner.enter_suffix", "ENTER-Suffix verwenden (empfohlen)")));
         Form(scanner, "Wartezeit ohne ENTER (ms)", Text("scanner.wait_ms"));
         page.Children.Add(scanner);
@@ -812,10 +811,9 @@ public partial class SettingsWindow : Window
             "Falls die QR-Erzeugung fehlschlägt, druckt TOR POS automatisch die Textzeilen als Rückfalllösung; die Angaben fehlen nie ersatzlos.",
             AppTheme.InfoCardBg));
         behavior.Children.Add(ToggleRow(Check("printer.auto_cut.enabled", "Bon nach dem Druck automatisch abschneiden")));
-        behavior.Children.Add(ToggleRow(Check("printer.drawer_kick.enabled", "Kassenschublade bei Barzahlung automatisch öffnen")));
         behavior.Children.Add(InfoCard("Schnitt & Kassenschublade",
             "TOR POS sendet den Schnitt- und Schubladenbefehl direkt als StarPRNT/ESC-POS-Rohbefehl an den Drucker, unabhängig vom Windows-Treiber. " +
-            "Die Kassenschublade öffnet nur beim Original-Bon einer Barzahlung, nie bei Kartenzahlung, Testdruck oder Bon-Kopien aus der Bon-Historie. " +
+            "Die Kassenschublade wird unter Geräte einmal zentral aktiviert und öffnet nach dem dauerhaften Commit einer Barzahlung, unabhängig davon, ob ein Papierbon gedruckt wird. " +
             "Schlägt der Rohbefehl fehl, bleibt der eigentliche Bondruck davon unberührt - nur Schnitt/Schublade unterbleiben dann.",
             AppTheme.InfoCardBg));
         page.Children.Add(behavior);
@@ -1047,7 +1045,12 @@ public partial class SettingsWindow : Window
             try
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await _receiptPrinter.TestCashDrawerAsync(printerName, timeout.Token);
+                var drawerChannel = int.TryParse(
+                    await _settings.GetAsync("device.receipt_printer.drawer_channel", "1"),
+                    out var configuredChannel)
+                        ? Math.Clamp(configuredChannel, 1, 2)
+                        : 1;
+                await _receiptPrinter.TestCashDrawerAsync(printerName, timeout.Token, drawerChannel);
                 drawerStatus.Text =
                     "✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
                     "TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.";
@@ -3406,6 +3409,14 @@ private Control TsePage()
 
             foreach (var pair in _check)
                 values[pair.Key] = (pair.Value.IsChecked == true).ToString().ToLowerInvariant();
+
+            if (values.TryGetValue("device.drawer.enabled", out var drawerEnabledValue))
+            {
+                values["device.drawer.r179_configured"] = "true";
+                values["printer.drawer_kick.enabled"] = drawerEnabledValue;
+                values["function.drawer_on_receipt"] = drawerEnabledValue;
+                values["device.drawer.via_printer"] = "true";
+            }
 
             foreach (var pair in _combo)
                 values[pair.Key] = pair.Value.SelectedItem?.ToString() ?? "";
