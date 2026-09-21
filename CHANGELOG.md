@@ -14,7 +14,10 @@ Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
 - Bestehende Installationen mit dem unveränderten alten 1000-ms-Standard werden einmalig auf 140 ms migriert; anschließend bleibt eine bewusst gesetzte Benutzerkonfiguration erhalten.
 - Schnelle Folgescans werden in einer begrenzten **FIFO-Warteschlange (max. 64 EAN)** gepuffert. Ein zweiter Barcode wird nicht mehr verworfen, nur weil der erste Artikel noch Preis-/Angebotslogik verarbeitet.
 - Scannerabschluss über ENTER/TAB bleibt weiterhin der schnellste Pfad; der 140-ms-Fallback greift nur, wenn der Suffix nicht ankommt.
-- Vier neue Regressionstests sichern Legacy-Migration, 140-ms-Fallback, FIFO-Verarbeitung und die Entfernung der früheren `_scanProcessing`-Capture-Sperre. Safety-Baseline: **1122 Checks**.
+- Einzelhandel/Gastronomie sind als Betriebsprofile getrennt: Firmenname, Betreiber, Adresse, E-Mail/Telefon, Steuer-/USt-ID und Kassenbezeichnung werden pro Edition separat gespeichert. Im lizenzfreien Testbetrieb kann zwischen beiden Profilen gewechselt werden, ohne dass Stammdaten in die andere Edition durchschlagen.
+- Die Ersteinrichtung wird pro Edition separat abgeschlossen; ein Testlauf in Einzelhandel markiert Gastronomie nicht mehr automatisch als eingerichtet.
+- Sobald eine gültige kommerzielle Lizenz eine Edition bindet, wird eine dauerhafte Installationssperre geschrieben. Auf dem Login ist die andere Edition vollständig ausgeblendet und kann auch programmatisch nicht aktiviert werden. Die Bindung bleibt auch bei später abgelaufener/deaktivierter Lizenz bestehen.
+- Zehn neue R181-Regressionsprüfungen sichern Scanner-Latenz/FIFO sowie Profiltrennung und Lizenz-Edition-Lock. Safety-Baseline: **1128 Checks**.
 - R180 unknown-EAN/Caret-Fix sowie R179 Kassenschublade, Cloud- und Retourenänderungen bleiben erhalten.
 
 ### R180
