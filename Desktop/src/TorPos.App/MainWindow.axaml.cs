@@ -874,7 +874,7 @@ public partial class MainWindow:Window
                 : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
             var maxCharacterGap = Math.Clamp(
-                _settingsCache.GetInt("scanner.wait_ms", 1000),
+                _settingsCache.GetInt("scanner.wait_ms", 140),
                 250,
                 2000);
             if (scannerGap > maxCharacterGap)
@@ -940,7 +940,7 @@ public partial class MainWindow:Window
             : Stopwatch.GetElapsedTime(_lastScan, now).TotalMilliseconds;
         var maxSuffixGap = Math.Max(
             400,
-            _settingsCache.GetInt("scanner.wait_ms", 1000));
+            _settingsCache.GetInt("scanner.wait_ms", 140));
 
         if (_scan.Length >= 6 && gap < maxSuffixGap)
         {
@@ -981,7 +981,7 @@ public partial class MainWindow:Window
         // Reset after a human-speed pause so unrelated keyboard input never
         // becomes part of a barcode.
         var maxCharacterGap = Math.Clamp(
-            _settingsCache.GetInt("scanner.wait_ms", 1000),
+            _settingsCache.GetInt("scanner.wait_ms", 140),
             250,
             2000);
         if (gap > maxCharacterGap)
@@ -5399,6 +5399,21 @@ public partial class MainWindow:Window
     private async Task ReloadSettingsAsync()
     {
         _settingsCache=await _settings.LoadAllAsync();
+
+        // R181: R180 and older seeded scanner.wait_ms=1000. That was safe but
+        // visibly slow for suffix-less HID scanners. Migrate the untouched
+        // legacy default once; an operator can still choose any value later.
+        if (!_settingsCache.GetBool("scanner.r181_latency_migrated", false) &&
+            _settingsCache.GetInt("scanner.wait_ms", 1000) == 1000)
+        {
+            await _settings.SaveManyAsync(new Dictionary<string,string>
+            {
+                ["scanner.wait_ms"] = "140",
+                ["scanner.r181_latency_migrated"] = "true"
+            });
+            _settingsCache = await _settings.LoadAllAsync();
+        }
+
         UiLanguage.Set(_settingsCache.GetText("ui.language","DE"));
 
         var registerName=_settingsCache.GetText("cash.register.name","Kasse 1");
