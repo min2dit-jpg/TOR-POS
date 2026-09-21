@@ -2,8 +2,6 @@ using System.Text.Json;
 using TorPos.Core;
 using TorPos.Infrastructure;
 
-namespace TorPos.SafetyTests;
-
 public static class R179ReviewTests
 {
     public static async Task Run(string root, Action<bool, string> assert)
