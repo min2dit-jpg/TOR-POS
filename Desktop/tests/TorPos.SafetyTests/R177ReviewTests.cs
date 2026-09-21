@@ -19,9 +19,8 @@ public static class R177ReviewTests
 
         assert(
             xaml.Contains("ScannerCapture", StringComparison.Ordinal) &&
-            xaml.Contains("IsHitTestVisible", StringComparison.Ordinal) &&
-            xaml.Contains("Opacity=\"0.01\"", StringComparison.Ordinal),
-            "R177 cashier screen provides a real hidden TextBox focus target for keyboard-wedge scanners");
+            xaml.Contains("PlaceholderText=\"Scannen oder EAN eingeben\"", StringComparison.Ordinal),
+            "R177/R179 cashier screen provides a real TextBox focus target for keyboard-wedge scanners");
 
         assert(
             main.Contains("Activated += (_,_) => FocusScannerCaptureSoon();", StringComparison.Ordinal) &&
@@ -31,10 +30,10 @@ public static class R177ReviewTests
             "R177 scanner capture is restored after touch/click, dialog activation and checkout completion");
 
         assert(
-            main.Contains("averageGapMs > 170", StringComparison.Ordinal) &&
             main.Contains("always arm an idle fallback", StringComparison.OrdinalIgnoreCase) &&
-            main.Contains("Math.Max(220, configured)", StringComparison.Ordinal),
-            "R177 fast barcode bursts complete even when the scanner Enter/Tab suffix is not delivered");
+            main.Contains("Math.Max(220, configured)", StringComparison.Ordinal) &&
+            main.Contains("Math.Clamp(waitMs, 100, 2000)", StringComparison.Ordinal),
+            "R177/R179 barcode capture still completes without Enter/Tab and now uses the configured timing window");
 
         assert(
             receipt.Contains("Task OpenCashDrawerAsync(", StringComparison.Ordinal) &&
