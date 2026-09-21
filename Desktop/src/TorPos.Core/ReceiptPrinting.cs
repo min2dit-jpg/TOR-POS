@@ -168,10 +168,61 @@ public static class TseQrCodePayload
 /// </summary>
 public static class StarPrntRawCommands
 {
-    public static readonly byte[] PartialCut = { 0x1D, 0x56, 0x42, 0x00 };
+    // R176: Epson ESC/POS and Star StarPRNT are NOT the same command language.
+    // Epson: GS V for cut, ESC p for drawer pin 2/5.
+    // StarPRNT: ESC d n for cut; ESC BEL n1 n2 + BEL (device 1) or SUB
+    // (device 2) for the DK/external device. mC-Print3 uses StarPRNT mode.
+    public static readonly byte[] EpsonEscPosPartialCut =
+        { 0x1D, 0x56, 0x42, 0x00 };
 
-    public static byte[] OpenCashDrawer(byte pin = 0, byte onMs = 25, byte offMs = 250) =>
-        new byte[] { 0x1B, 0x70, pin, onMs, offMs };
+    public static readonly byte[] StarPrntPartialCut =
+        { 0x1B, 0x64, 0x01 };
+
+    public static byte[] EpsonEscPosOpenCashDrawer(
+        byte pin = 0,
+        byte onUnits2Ms = 25,
+        byte offUnits2Ms = 250)
+    {
+        if (pin is not (0 or 1 or 48 or 49))
+            throw new ArgumentOutOfRangeException(
+                nameof(pin),
+                "ESC/POS drawer pin must be 0/48 (pin 2) or 1/49 (pin 5).");
+
+        return new byte[]
+        {
+            0x1B, 0x70, pin, onUnits2Ms, offUnits2Ms
+        };
+    }
+
+    public static byte[] StarPrntOpenCashDrawer(
+        int externalDevice = 1,
+        byte energizing10Ms = 20,
+        byte delay10Ms = 20)
+    {
+        if (externalDevice == 1)
+        {
+            if (energizing10Ms is < 1 or > 127)
+                throw new ArgumentOutOfRangeException(nameof(energizing10Ms));
+            if (delay10Ms is < 1 or > 127)
+                throw new ArgumentOutOfRangeException(nameof(delay10Ms));
+
+            // ESC BEL n1 n2 sets the device-1 pulse, BEL executes it.
+            return new byte[]
+            {
+                0x1B, 0x07, energizing10Ms, delay10Ms, 0x07
+            };
+        }
+
+        if (externalDevice == 2)
+        {
+            // SUB drives external device 2 with StarPRNT's fixed pulse.
+            return new byte[] { 0x1A };
+        }
+
+        throw new ArgumentOutOfRangeException(
+            nameof(externalDevice),
+            "StarPRNT external device must be 1 or 2.");
+    }
 }
 
 public interface IReceiptPrinterService : IAsyncDisposable
