@@ -1,3 +1,6 @@
+using TorPos.App;
+using TorPos.Infrastructure;
+
 public static class R181ReviewTests
 {
     public static async Task Run(string root, Action<bool,string> assert)
