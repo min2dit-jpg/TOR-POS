@@ -359,6 +359,58 @@ public static class R176ReviewTests
                 StringComparison.Ordinal),
             "R176 drawer setup exposes output 1/2 and failed RAW spooler tests surface the Windows error code");
 
+        var settingsSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.App/SettingsWindow.axaml.cs"));
+        var printerSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/StarMcPrint3PrinterService.cs"));
+        var receiptPrintingSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Core/ReceiptPrinting.cs"));
+
+        assert(
+            mainSource.Contains(
+                "Always keep an idle fallback",
+                StringComparison.Ordinal) &&
+            !mainSource.Contains(
+                "if (_settingsCache.GetBool(\"scanner.enter_suffix\", true))\n            return;",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "averageGapMs > 170",
+                StringComparison.Ordinal),
+            "R176 cashier scanner completes a fast barcode burst even when the HID Enter/Tab suffix never reaches Avalonia");
+
+        assert(
+            mainSource.Contains(
+                "\"device.drawer.enabled\"",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "\"device.receipt_printer.drawer_protocol\"",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "CashDrawerProtocol:",
+                StringComparison.Ordinal) &&
+            settingsSource.Contains(
+                "\"ESC_POS\"",
+                StringComparison.Ordinal) &&
+            settingsSource.Contains(
+                "\"STAR_PRNT\"",
+                StringComparison.Ordinal) &&
+            settingsSource.Contains(
+                "\"device.receipt_printer.drawer_channel\"",
+                StringComparison.Ordinal),
+            "R176 one drawer enable setting plus explicit protocol/output selection is used by settings and real receipt flow");
+
+        assert(
+            printerSource.Contains(
+                "EffectiveCashDrawerProtocol",
+                StringComparison.Ordinal) &&
+            printerSource.Contains(
+                "Druckerprofil ist nicht eindeutig",
+                StringComparison.Ordinal) &&
+            receiptPrintingSource.Contains(
+                "string CashDrawerProtocol = \"AUTO\"",
+                StringComparison.Ordinal),
+            "R176 drawer test and receipt path fail clearly on ambiguous AUTO profiles and support explicit ESC-POS/StarPRNT override");
+
         var fiscalGate = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.Core/CheckoutSafety.cs"));
 
