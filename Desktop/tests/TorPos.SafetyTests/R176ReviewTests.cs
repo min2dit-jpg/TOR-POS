@@ -262,6 +262,23 @@ public static class R176ReviewTests
                 StringComparison.Ordinal),
             "R176 approved card-refund locks remain durable until the matching storno/return DB reversal commits");
 
+        var complianceSource = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/FiscalComplianceServices.cs"));
+        var complianceClass = complianceSource[
+            complianceSource.IndexOf("public sealed class FiscalComplianceService", StringComparison.Ordinal)..];
+
+        assert(
+            !complianceClass.Contains(
+                "return await IoQueue.RunAsync",
+                StringComparison.Ordinal) &&
+            complianceClass.Contains(
+                "var identity = await _identity.GetAsync(ct);",
+                StringComparison.Ordinal) &&
+            complianceClass.Contains(
+                "var settings = await _settings.LoadAllAsync(ct);",
+                StringComparison.Ordinal),
+            "R176 FiscalComplianceService does not hold the global SQLite FIFO across nested repository and readiness checks");
+
         var fiscalGate = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.Core/CheckoutSafety.cs"));
 
