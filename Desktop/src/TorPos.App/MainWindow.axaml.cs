@@ -52,6 +52,7 @@ public partial class MainWindow:Window
     private long _categoryId;
     private string _scan="";
     private long _lastScan;
+    private long _scanStartedAt;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
     private bool _scanProcessing;
     // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
@@ -227,19 +228,43 @@ public partial class MainWindow:Window
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
 
+        // R177: a keyboard-wedge scanner needs a real text-input focus target.
+        // Product management already has one; the cashier screen did not.
+        // Re-focus the transparent ScannerCapture after touch/click activity or
+        // whenever this window becomes active again after a dialog.
+        Activated += (_,_) => FocusScannerCaptureSoon();
+        PointerReleased += (_,_) => FocusScannerCaptureSoon();
+
         _scanNoEnterTimer.IsEnabled = false;
         _scanNoEnterTimer.Tick += async (_,_) =>
         {
             _scanNoEnterTimer.Stop();
 
-            if (_settingsCache.GetBool("scanner.enter_suffix", true))
-                return;
-
             if (_scan.Length < 6 || _scanProcessing)
                 return;
 
+            // R177: Enter/Tab is still the fastest completion path, but some
+            // HID scanners type the digits correctly while their suffix never
+            // reaches Avalonia. A fast numeric burst followed by short idle
+            // time is therefore accepted as a complete barcode as well.
+            var now = Stopwatch.GetTimestamp();
+            var elapsedMs = _scanStartedAt == 0
+                ? double.MaxValue
+                : Stopwatch.GetElapsedTime(_scanStartedAt, now).TotalMilliseconds;
+            var averageGapMs = _scan.Length <= 1
+                ? double.MaxValue
+                : elapsedMs / (_scan.Length - 1);
+
+            if (averageGapMs > 170)
+            {
+                _scan = "";
+                _scanStartedAt = 0;
+                return;
+            }
+
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
@@ -297,6 +322,8 @@ public partial class MainWindow:Window
                     "",
                     "No fiscal sale, receipt number, TSE transaction or terminal payment is allowed.");
             }
+
+            FocusScannerCaptureSoon();
         };
     }
 
