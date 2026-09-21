@@ -253,6 +253,15 @@ public static class R176ReviewTests
             repositorySource.Contains("PromotionDiscountCentsSlice(", StringComparison.Ordinal),
             "R176 terminal refund preview and persisted return share the same cumulative-cent allocation");
 
+        assert(
+            mainSource.Contains(
+                "var storno = await _sales.RecordStornoAsync(saleId, _currentUser.Username, reason, cardRefundEvidence);\n            if (cardRefundAttemptId.Length > 0)\n                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);",
+                StringComparison.Ordinal) &&
+            mainSource.Contains(
+                "var returned = await _sales.RecordReturnAsync(saleId, requestedLines, _currentUser.Username, reason, cardRefundEvidence);\n            if (cardRefundAttemptId.Length > 0)\n                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);",
+                StringComparison.Ordinal),
+            "R176 approved card-refund locks remain durable until the matching storno/return DB reversal commits");
+
         var fiscalGate = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.Core/CheckoutSafety.cs"));
 
