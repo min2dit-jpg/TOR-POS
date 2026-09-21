@@ -1,12 +1,21 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R179|0.7.33.879|Merd-M -->
+<!-- TOR_RELEASE:R180|0.7.33.880|Merd-M -->
 
 ## Aktueller Release
 
-**R179 · Merd-M · 0.7.33.879**
+**R180 · Merd-M · 0.7.33.880**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R180
+
+- Scanner-Hotfix nach realem Kassentest: unbekannte EAN öffnen Stammdaten nicht mehr automatisch. Der Verkaufsbildschirm bleibt aktiv und zeigt die exakt empfangene EAN mit „EAN NICHT GEFUNDEN“ an.
+- Bekannte EAN zeigen nach erfolgreichem Lookup „SCAN OK · … · EAN …“ und werden direkt dem Warenkorb hinzugefügt.
+- Bei fokussiertem Scannerfeld ist TextInput die einzige Zeichenquelle; KeyDown sammelt die Ziffern nicht zusätzlich. Dadurch werden HID-Scans auf Geräten vermieden, die KeyDown und gebündeltes TextInput gleichzeitig liefern und sonst eine doppelte/falsche EAN erzeugen können.
+- Der Scanner behält sein Fokusziel, der sichtbare blinkende Caret wird jedoch ausgeblendet.
+- Die veraltete Einstellung für das automatische Unbekannt-EAN-Dialogfenster wurde entfernt; Stammdaten werden nur bewusst über WAREN geöffnet.
+- 4 neue Regressionstests sichern dieses Verhalten. Safety-Baseline: 1118 Checks.
 
 ### R179
 

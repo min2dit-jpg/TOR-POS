@@ -856,6 +856,17 @@ public partial class MainWindow:Window
         // the platform emits both events.
         if (Digit(e.Key) is char scannerDigit)
         {
+            // R180: if the dedicated scanner TextBox owns focus, TextInput is
+            // the single authoritative barcode stream. Some HID scanners emit
+            // both KeyDown and grouped TextInput; collecting both duplicates
+            // the EAN and makes a known product look unknown.
+            if (ScannerCapture.IsFocused)
+            {
+                _lastScannerKeyDownDigit = null;
+                _lastScannerKeyDownDigitAt = 0;
+                return;
+            }
+
             var scannerNow = Stopwatch.GetTimestamp();
             var scannerGap = _lastScan == 0
                 ? 999d
@@ -1106,54 +1117,28 @@ public partial class MainWindow:Window
 
         if (p is not null)
         {
-            ScannerStatus.Text = $"SCAN OK · {p.Name}";
+            ScannerCapture.Text = "";
+            ScannerStatus.Text = $"SCAN OK · {p.Name} · EAN {code}";
             ScannerStatus.Foreground = AppTheme.AccentTeal;
             await AddProduct(p);
         }
         else
         {
-            ScannerStatus.Text = $"EAN NICHT GEFUNDEN · {code}";
+            // R180: cashier scanning must never navigate away from the sale
+            // screen. Keep the exact received EAN visible so a master-data
+            // mismatch can be diagnosed without opening Stammdaten implicitly.
+            ScannerCapture.Text = code;
+            ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
+            ScannerStatus.Text =
+                $"EAN NICHT GEFUNDEN · {code} · Artikel unter WAREN → Stammdaten prüfen.";
             ScannerStatus.Foreground = AppTheme.WarningAmber;
-
-            if (_settingsCache.GetBool("scanner.unknown_dialog", true))
-            {
-                if (!_currentUser.Can(UserPermissions.ManageProducts))
-                {
-                    ScannerStatus.Text =
-                        $"EAN NICHT GEFUNDEN · {code} · keine Stammdaten-Berechtigung.";
-                    return;
-                }
-
-                var saved = await new ProductEditorWindow(
-                        _repo,
-                        _catalog,
-                        _images,
-                        _management,
-                        _promotions,
-                        _currentUser,
-                        code)
-                    .ShowDialog<bool>(this);
-
-                if (saved)
-                {
-                    await _catalog.ReloadAsync();
-                    BuildCategories();
-                    SelectCategory(_categoryId);
-
-                    if (_catalog.TryGetByBarcode(code, out p) && p is not null)
-                    {
-                        ScannerStatus.Text = $"SCAN OK · {p.Name}";
-                        ScannerStatus.Foreground = AppTheme.AccentTeal;
-                        await AddProduct(p);
-                    }
-                }
-            }
         }
 
         var ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         PerformanceStatus.Text = $"Barcode {ms:0} ms";
         PerformanceStatus.Foreground =
             ms < 100 ? AppTheme.AccentTeal : AppTheme.WarningAmber;
+        FocusScannerCaptureSoon();
     }
 
     private async void OnEanSearchClick(object? sender, RoutedEventArgs e)
