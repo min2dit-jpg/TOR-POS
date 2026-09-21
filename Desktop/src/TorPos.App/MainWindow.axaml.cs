@@ -233,7 +233,11 @@ public partial class MainWindow:Window
         // Re-focus the transparent ScannerCapture after touch/click activity or
         // whenever this window becomes active again after a dialog.
         Activated += (_,_) => FocusScannerCaptureSoon();
-        PointerReleased += (_,_) => FocusScannerCaptureSoon();
+        AddHandler(
+            InputElement.PointerReleasedEvent,
+            (_,_) => FocusScannerCaptureSoon(),
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
 
         _scanNoEnterTimer.IsEnabled = false;
         _scanNoEnterTimer.Tick += async (_,_) =>
