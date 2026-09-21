@@ -1,8 +1,10 @@
 {
-  "_comment": "R149: the sale.completed payload exactly as TOR POS queues it (Desktop R149ReviewTests builds it with TorCloudOutbox.EnqueueSale and compares it with this file; Cloud tests/receipts.test.js checks normalizeEvent accepts it). A purchase of 2,50 with 12 bottles returned (Leergut) - 0,50 paid out. Change both sides together.",
+  "_comment": "R149 fixture carried forward by R179: the sale.completed payload exactly as TOR POS queues it. R179 adds explicit transaction type/original reference, tender portions, unit and promotion decomposition while keeping the R149 payout semantics. Desktop R149ReviewTests and Cloud validation both use this file. Change both sides together.",
   "payload": {
     "receipt_number": 149001,
     "pickup_number": 0,
+    "transaction_type": "SALE",
+    "original_receipt_number": null,
     "payment_method": "CASH",
     "cash_portion_cents": -50,
     "card_portion_cents": 0,
@@ -20,6 +22,7 @@
         "product_key": "1",
         "name": "Cola 0,5l",
         "quantity": 1,
+        "unit": "Stück",
         "list_unit_price_cents": 250,
         "unit_price_cents": 250,
         "line_total_cents": 250,
@@ -36,6 +39,7 @@
         "product_key": "-8025",
         "name": "PFAND-RÜCKGABE · 25 CENT",
         "quantity": 12,
+        "unit": "Stück",
         "list_unit_price_cents": -25,
         "unit_price_cents": -25,
         "line_total_cents": -300,
