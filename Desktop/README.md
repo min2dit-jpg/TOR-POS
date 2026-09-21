@@ -1,6 +1,6 @@
 # TOR POS Desktop
 
-**Aktueller Stand:** R175 · Merd-M · 0.7.33.875
+**Aktueller Stand:** R176 · Merd-M · 0.7.33.876
 
 Die verbindliche Versionsquelle ist `src/TorPos.Core/ReleaseInfo.cs`. Der
 zentrale Release-Index liegt im Repository-Root unter `../CHANGELOG.md`.
@@ -14,7 +14,7 @@ zentrale Release-Index liegt im Repository-Root unter `../CHANGELOG.md`.
 - Microsoft.Extensions.DependencyInjection
 - ZVT über Portalum.Zvt
 - Swissbit Hardware-TSE über die externe WORM API
-- fiskaltrust Middleware + Swissbit SCU als read-only geprüfte Alternative (R175; Transaktionspfad noch nicht produktiv freigegeben)
+- fiskaltrust Middleware + Swissbit SCU als geprüfte Alternative; R176 enthält einen typisierten lokalen Queue-/Sign-Client und die SALE-Abbildung, der produktive Laufzeitpfad bleibt bis zur Realhardware-Abnahme gesperrt
 
 Die Anwendung ist für Windows-Kassenhardware ausgelegt. Drucker-, TSE- und
 Kartenterminalintegration sind Windows-spezifisch; Cross-Compilation allein
@@ -47,7 +47,8 @@ Versionskonsistenz, Release-Build, UI-Snapshots und Cloud-Tests.
 Im aktuellen Code vorhanden sind unter anderem:
 
 - Swissbit-Hardware-TSE-Provider über WORM API,
-- read-only fiskaltrust/Swissbit-SCU Diagnose über lokale Middleware-Konfiguration, Queue-Echo, SCU-Port und TSE_INFO.DAT,
+- fiskaltrust/Swissbit-SCU Diagnose über lokale Middleware-Konfiguration, Queue-Echo, SCU-Port und TSE_INFO.DAT,
+- R176 fiskaltrust Queue-v1 Sign-Client und fail-closed SALE-Abbildung mit ChargeItems/PayItems; STORNO/RETURN und produktive Provider-Umschaltung bleiben bis zur Hardware-Abnahme gesperrt,
 - TSE Start/Update/Finish,
 - TSE-Aktivierung und TAR-Export,
 - `Kassenbeleg-V1` / `Bestellung-V1` processData nach DSFinV-K 2.4 Anhang I,
