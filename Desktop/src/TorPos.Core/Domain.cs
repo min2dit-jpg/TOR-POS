@@ -243,7 +243,7 @@ public sealed class CartLine
 
     public long PromotionDiscountCentsFor(decimal quantity)
     {
-        if (!HasPromotion || quantity <= 0m)
+        if (!HasPromotion || quantity == 0m)
             return 0L;
 
         if (!IsWeighted)
@@ -257,32 +257,42 @@ public sealed class CartLine
         // stored as whole cents can create half-cent intermediate values
         // (e.g. 0.500 kg × 19.90 EUR/kg × 10%). Calculate the promotion from
         // the immutable list price + percentage and round only once at line
-        // level. Pfand remains excluded exactly as for piece articles.
+        // level. Negative quantities are fiscal reversal/delta lines and must
+        // mirror the positive amount exactly instead of collapsing to zero.
+        var sign = quantity < 0m ? -1L : 1L;
+        var absoluteQuantity = Math.Abs(quantity);
         var merchandiseUnitCents =
             Math.Max(0L, EffectiveListUnitPriceCents - PfandCents);
         var discount =
             (long)Math.Round(
-                quantity * merchandiseUnitCents *
+                absoluteQuantity * merchandiseUnitCents *
                 (Math.Clamp(PromotionPercent, 0, 100) / 100m),
                 MidpointRounding.AwayFromZero);
+        var listTotal =
+            (long)Math.Round(
+                absoluteQuantity * EffectiveListUnitPriceCents,
+                MidpointRounding.AwayFromZero);
 
-        return Math.Clamp(
+        return sign * Math.Clamp(
             discount,
             0L,
-            Math.Max(0L, ListLineTotalCentsFor(quantity)));
+            Math.Max(0L, listTotal));
     }
 
     public long LineTotalCentsFor(decimal quantity)
     {
-        if (quantity <= 0m)
+        if (quantity == 0m)
             return 0L;
 
         if (IsWeighted && HasPromotion)
         {
-            return Math.Max(
-                0L,
+            var total =
                 ListLineTotalCentsFor(quantity) -
-                PromotionDiscountCentsFor(quantity));
+                PromotionDiscountCentsFor(quantity);
+
+            return quantity < 0m
+                ? Math.Min(0L, total)
+                : Math.Max(0L, total);
         }
 
         return (long)Math.Round(
