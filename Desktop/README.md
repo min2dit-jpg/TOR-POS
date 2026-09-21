@@ -1,6 +1,6 @@
 # TOR POS Desktop
 
-**Aktueller Stand:** R174 · Merd-M · 0.7.33.874
+**Aktueller Stand:** R175 · Merd-M · 0.7.33.875
 
 Die verbindliche Versionsquelle ist `src/TorPos.Core/ReleaseInfo.cs`. Der
 zentrale Release-Index liegt im Repository-Root unter `../CHANGELOG.md`.
@@ -14,6 +14,7 @@ zentrale Release-Index liegt im Repository-Root unter `../CHANGELOG.md`.
 - Microsoft.Extensions.DependencyInjection
 - ZVT über Portalum.Zvt
 - Swissbit Hardware-TSE über die externe WORM API
+- fiskaltrust Middleware + Swissbit SCU als read-only geprüfte Alternative (R175; Transaktionspfad noch nicht produktiv freigegeben)
 
 Die Anwendung ist für Windows-Kassenhardware ausgelegt. Drucker-, TSE- und
 Kartenterminalintegration sind Windows-spezifisch; Cross-Compilation allein
@@ -46,6 +47,7 @@ Versionskonsistenz, Release-Build, UI-Snapshots und Cloud-Tests.
 Im aktuellen Code vorhanden sind unter anderem:
 
 - Swissbit-Hardware-TSE-Provider über WORM API,
+- read-only fiskaltrust/Swissbit-SCU Diagnose über lokale Middleware-Konfiguration, Queue-Echo, SCU-Port und TSE_INFO.DAT,
 - TSE Start/Update/Finish,
 - TSE-Aktivierung und TAR-Export,
 - `Kassenbeleg-V1` / `Bestellung-V1` processData nach DSFinV-K 2.4 Anhang I,
