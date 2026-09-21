@@ -1294,7 +1294,10 @@ public partial class SettingsWindow : Window
         var page = Page("Barcode-Scanner",
             "Für den Betreiber bleiben nur die Reaktionen bei unbekannten Barcodes sichtbar.");
         var section = Section("Verhalten");
-        section.Children.Add(ToggleRow(Check("scanner.unknown_dialog", "Meldung bei unbekanntem Barcode anzeigen")));
+        section.Children.Add(InfoCard(
+            "Unbekannter Barcode",
+            "Ein unbekannter Barcode bleibt immer auf dem Verkaufsbildschirm. TOR zeigt die gelesene EAN an und öffnet niemals automatisch die Stammdaten.",
+            AppTheme.InfoCardBg));
         section.Children.Add(ToggleRow(Check("scanner.unknown_beep", "Akustische Meldung bei unbekanntem Barcode vorbereiten")));
         page.Children.Add(section);
         page.Children.Add(InfoCard("Performance", "Bekannte Barcodes werden aus einem RAM-Index gelesen; während des Scannens ist keine Datenbanksuche nötig.", AppTheme.InfoCardBg));
