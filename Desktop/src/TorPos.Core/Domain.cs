@@ -300,6 +300,23 @@ public sealed class CartLine
             MidpointRounding.AwayFromZero);
     }
 
+    // R176: partial returns must allocate from the cumulative original line,
+    // not round every fragment independently. Otherwise 0.333 kg + 0.333 kg +
+    // 0.334 kg of one promoted line can differ by a cent from returning 1.000 kg.
+    // The slice is F(already + quantity) - F(already), so all slices telescope
+    // exactly to the original line totals and the last return absorbs remainder cents.
+    public long LineTotalCentsSlice(decimal alreadyReturned, decimal quantity) =>
+        LineTotalCentsFor(alreadyReturned + quantity) -
+        LineTotalCentsFor(alreadyReturned);
+
+    public long ListLineTotalCentsSlice(decimal alreadyReturned, decimal quantity) =>
+        ListLineTotalCentsFor(alreadyReturned + quantity) -
+        ListLineTotalCentsFor(alreadyReturned);
+
+    public long PromotionDiscountCentsSlice(decimal alreadyReturned, decimal quantity) =>
+        PromotionDiscountCentsFor(alreadyReturned + quantity) -
+        PromotionDiscountCentsFor(alreadyReturned);
+
     public long LineTotalCents =>
         LineTotalCentsFor(Quantity);
 
