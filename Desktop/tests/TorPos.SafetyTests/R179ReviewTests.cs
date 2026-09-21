@@ -49,10 +49,11 @@ public static class R179ReviewTests
             !mainXaml.Contains("Width=\"1\" Height=\"1\"", StringComparison.Ordinal),
             "R179 cashier scanner uses a visible focusable EAN field instead of the 1px transparent capture");
         assert(
-            mainSource.Contains("Math.Clamp(waitMs, 100, 2000)", StringComparison.Ordinal) &&
+            mainSource.Contains("Math.Clamp(waitMs, 90, 2000)", StringComparison.Ordinal) &&
+            mainSource.Contains("Math.Max(140, configured)", StringComparison.Ordinal) &&
             mainSource.Contains("maxCharacterGap", StringComparison.Ordinal) &&
             !mainSource.Contains("averageGapMs > 170", StringComparison.Ordinal),
-            "R179 scanner respects realistic configured timing and no longer drops suffix-less scans on the old 170 ms heuristic");
+            "R179/R181 scanner keeps the suffix-less fallback while using the reviewed faster timing window");
         assert(
             settingsSource.Contains("Combo(\"scanner.mode\", \"HID\")", StringComparison.Ordinal) &&
             settingsSource.Contains("COM ist in diesem Build nicht als produktiver Scannerpfad implementiert", StringComparison.Ordinal),

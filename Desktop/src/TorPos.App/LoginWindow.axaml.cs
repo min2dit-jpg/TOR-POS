@@ -9,26 +9,53 @@ public partial class LoginWindow : Window
 {
     private readonly IAuthenticationService _auth;
     private readonly ISettingsRepository _settings;
+    private readonly string? _lockedEdition;
 
     public event Func<AuthenticatedUser, Task>? LoginSucceeded;
     private bool _busy;
     public event Action? ExitRequested;
 
-    public LoginWindow(IAuthenticationService auth, ISettingsRepository settings)
+    public LoginWindow(
+        IAuthenticationService auth,
+        ISettingsRepository settings,
+        string? lockedEdition = null)
     {
         InitializeComponent();
         _auth = auth;
+        _lockedEdition =
+            string.Equals(lockedEdition, "KIOSK", StringComparison.OrdinalIgnoreCase) ? "KIOSK" :
+            string.Equals(lockedEdition, "IMBISS", StringComparison.OrdinalIgnoreCase) ? "IMBISS" :
+            null;
         // Programmsprache wird unter Einstellungen verwaltet, nicht bei der
         // Anmeldung - gelesen wird hier nur der Trainingszugang (R122).
         _settings = settings;
 
-        // KIOSK / IMBISS is selected explicitly at every login.
-        // Do not preselect a previous edition and do not disable either option.
-        KioskEditionRadio.IsChecked = false;
-        ImbissEditionRadio.IsChecked = false;
-        KioskEditionRadio.IsEnabled = true;
-        ImbissEditionRadio.IsEnabled = true;
-        EditionStatusText.Text = "Bitte Einzelhandel oder Gastronomie auswählen.";
+        // R181: licence-free test installations may still switch editions so both
+        // profiles can be tested independently. Once a commercial licence has
+        // bound this installation, the other edition is not merely disabled -
+        // it is hidden from the login UI and cannot be selected programmatically.
+        if (_lockedEdition == "KIOSK")
+        {
+            KioskEditionRadio.IsChecked = true;
+            KioskEditionRadio.IsVisible = true;
+            ImbissEditionRadio.IsVisible = false;
+            EditionStatusText.Text = "Kassenart: EINZELHANDEL · Lizenz/Installation fest gebunden.";
+        }
+        else if (_lockedEdition == "IMBISS")
+        {
+            ImbissEditionRadio.IsChecked = true;
+            ImbissEditionRadio.IsVisible = true;
+            KioskEditionRadio.IsVisible = false;
+            EditionStatusText.Text = "Kassenart: GASTRONOMIE · Lizenz/Installation fest gebunden.";
+        }
+        else
+        {
+            KioskEditionRadio.IsChecked = false;
+            ImbissEditionRadio.IsChecked = false;
+            KioskEditionRadio.IsVisible = true;
+            ImbissEditionRadio.IsVisible = true;
+            EditionStatusText.Text = "TEST · Einzelhandel oder Gastronomie auswählen. Betriebsdaten bleiben getrennt.";
+        }
 
         Opened += async (_,_) =>
         {
@@ -39,11 +66,12 @@ public partial class LoginWindow : Window
     }
 
     public string? SelectedEdition =>
-        KioskEditionRadio.IsChecked == true
+        _lockedEdition ??
+        (KioskEditionRadio.IsChecked == true
             ? "KIOSK"
             : ImbissEditionRadio.IsChecked == true
                 ? "IMBISS"
-                : null;
+                : null);
 
 
     private void OnExitProgramClick(object? sender, RoutedEventArgs e)
@@ -204,8 +232,8 @@ public partial class LoginWindow : Window
         TrainingModeBox.IsEnabled = !busy;
         LoginButton.IsEnabled = !busy;
 
-        KioskEditionRadio.IsEnabled = !busy;
-        ImbissEditionRadio.IsEnabled = !busy;
+        KioskEditionRadio.IsEnabled = !busy && _lockedEdition is null;
+        ImbissEditionRadio.IsEnabled = !busy && _lockedEdition is null;
         StatusText.Text = busy ? UiLanguage.T("Anmeldung wird geprüft ...") : StatusText.Text;
     }
 

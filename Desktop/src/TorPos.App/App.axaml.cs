@@ -314,9 +314,32 @@ public partial class App : Avalonia.Application
                 if(!exitCleanupDone) CrashLog.Write("Exit without completed cleanup; running marker retained.");
             };
 
+            string? ResolveLockedEdition()
+            {
+                var permanent = InstallationEdition.ReadPermanent();
+                var kiosk = commercialLicense.Check("KIOSK");
+                var imbiss = commercialLicense.Check("IMBISS");
+                var licensed = kiosk.IsActive
+                    ? "KIOSK"
+                    : imbiss.IsActive
+                        ? "IMBISS"
+                        : null;
+
+                if (licensed is not null &&
+                    permanent is not null &&
+                    !string.Equals(licensed, permanent, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Installations-Edition und signierte Lizenz-Edition widersprechen sich.");
+                }
+
+                return licensed ?? permanent;
+            }
+
             void OpenLogin(Window? closeAfter = null)
             {
-                var login = new LoginWindow(auth, settings);
+                var lockedEdition = ResolveLockedEdition();
+                var login = new LoginWindow(auth, settings, lockedEdition);
 
                 login.ExitRequested += () =>
                 {
@@ -343,7 +366,8 @@ public partial class App : Avalonia.Application
 
                         await InstallationEdition.EnforceAsync(
                             settings,
-                            selectedEdition);
+                            selectedEdition,
+                            permanentLock: lockedEdition is not null);
 
                         // R51: apply the edition-specific starter assortment only
                         // after the operator explicitly selected IMBISS. KIOSK never
@@ -355,7 +379,8 @@ public partial class App : Avalonia.Application
                         // the minimum setup before the first cashier screen opens.
                         // Closing the wizard does not mark it complete; it will be
                         // offered again at the next successful login.
-                        var firstRunDone = await settings.GetAsync("installation.first_run_completed", "false");
+                        var firstRunKey = $"installation.first_run_completed.{selectedEdition}";
+                        var firstRunDone = await settings.GetAsync(firstRunKey, "false");
                         if (!string.Equals(firstRunDone, "true", StringComparison.OrdinalIgnoreCase))
                         {
                             var wizard = new FirstRunSetupWindow(

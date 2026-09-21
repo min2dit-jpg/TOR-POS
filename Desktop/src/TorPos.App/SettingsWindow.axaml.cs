@@ -1297,7 +1297,7 @@ public partial class SettingsWindow : Window
         section.Children.Add(ToggleRow(Check("scanner.unknown_beep", "Akustische Meldung bei unbekanntem Barcode vorbereiten")));
         page.Children.Add(section);
         page.Children.Add(InfoCard("Unbekannte EAN", "Die empfangene EAN bleibt im Scannerfeld sichtbar und wird als „EAN NICHT GEFUNDEN“ gemeldet. Stammdaten werden nur bewusst über WAREN geöffnet.", AppTheme.InfoCardBg));
-        page.Children.Add(InfoCard("Performance", "Bekannte Barcodes werden aus einem RAM-Index gelesen; während des Scannens ist keine Datenbanksuche nötig.", AppTheme.InfoCardBg));
+        page.Children.Add(InfoCard("Performance", "Bekannte Barcodes werden aus einem RAM-Index gelesen. Scanner ohne ENTER/TAB-Suffix werden standardmäßig nach 140 ms Idle übernommen; schnelle Folgescans werden gepuffert und der Reihe nach verarbeitet.", AppTheme.InfoCardBg));
         return page;
     }
 

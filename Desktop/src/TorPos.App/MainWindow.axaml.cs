@@ -54,6 +54,7 @@ public partial class MainWindow:Window
     private long _lastScan;
     private long _scanStartedAt;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
+    private readonly Queue<string> _barcodeQueue = new();
     private bool _scanProcessing;
     // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
     // cashier window but no TextInput when no TextBox owns focus. Keep one
@@ -243,7 +244,7 @@ public partial class MainWindow:Window
         {
             _scanNoEnterTimer.Stop();
 
-            if (_scan.Length < 6 || _scanProcessing)
+            if (_scan.Length < 6)
                 return;
 
             // R177: Enter/Tab is still the fastest completion path, but some
@@ -873,7 +874,7 @@ public partial class MainWindow:Window
                 : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
             var maxCharacterGap = Math.Clamp(
-                _settingsCache.GetInt("scanner.wait_ms", 1000),
+                _settingsCache.GetInt("scanner.wait_ms", 140),
                 250,
                 2000);
             if (scannerGap > maxCharacterGap)
@@ -939,9 +940,9 @@ public partial class MainWindow:Window
             : Stopwatch.GetElapsedTime(_lastScan, now).TotalMilliseconds;
         var maxSuffixGap = Math.Max(
             400,
-            _settingsCache.GetInt("scanner.wait_ms", 1000));
+            _settingsCache.GetInt("scanner.wait_ms", 140));
 
-        if (_scan.Length >= 6 && gap < maxSuffixGap && !_scanProcessing)
+        if (_scan.Length >= 6 && gap < maxSuffixGap)
         {
             var code = _scan;
             _scan = "";
@@ -980,7 +981,7 @@ public partial class MainWindow:Window
         // Reset after a human-speed pause so unrelated keyboard input never
         // becomes part of a barcode.
         var maxCharacterGap = Math.Clamp(
-            _settingsCache.GetInt("scanner.wait_ms", 1000),
+            _settingsCache.GetInt("scanner.wait_ms", 140),
             250,
             2000);
         if (gap > maxCharacterGap)
@@ -1036,7 +1037,7 @@ public partial class MainWindow:Window
         ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
         e.Handled = true;
 
-        if (hasSuffix && _scan.Length >= 6 && !_scanProcessing)
+        if (hasSuffix && _scan.Length >= 6)
         {
             _scanNoEnterTimer.Stop();
             var code = _scan;
@@ -1059,34 +1060,78 @@ public partial class MainWindow:Window
         // R177: always arm an idle fallback. If Enter/Tab arrives, it stops
         // this timer and completes immediately. If the scanner suffix is lost,
         // the fast buffered barcode still reaches ProcessBarcodeSafely.
-        var configured = _settingsCache.GetInt("scanner.wait_ms", 180);
+        var configured = _settingsCache.GetInt("scanner.wait_ms", 140);
         var waitMs = _settingsCache.GetBool("scanner.enter_suffix", true)
-            ? Math.Max(220, configured)
+            ? Math.Max(140, configured)
             : configured;
 
         _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-            Math.Clamp(waitMs, 100, 2000));
+            Math.Clamp(waitMs, 90, 2000));
         _scanNoEnterTimer.Start();
     }
 
-    private async Task ProcessBarcodeSafely(string code)
+    private Task ProcessBarcodeSafely(string code)
     {
-        if (CartLocked || _scanProcessing)
+        if (CartLocked || string.IsNullOrWhiteSpace(code))
+            return Task.CompletedTask;
+
+        // R181: capture and processing are decoupled. Real retail scanners can
+        // submit the next EAN while promotion lookup/cart work for the previous
+        // one is still running. A FIFO queue prevents lost/concatenated scans.
+        if (_barcodeQueue.Count >= 64)
+        {
+            ScannerStatus.Text = "SCANNER-WARTESCHLANGE VOLL · kurz warten";
+            ScannerStatus.Foreground = AppTheme.WarningAmber;
+            return Task.CompletedTask;
+        }
+
+        _barcodeQueue.Enqueue(code.Trim());
+        if (!_scanProcessing)
+            _ = DrainBarcodeQueueAsync();
+
+        return Task.CompletedTask;
+    }
+
+    private async Task DrainBarcodeQueueAsync()
+    {
+        if (_scanProcessing)
             return;
 
         _scanProcessing = true;
         try
         {
-            await ProcessBarcode(code);
-        }
-        catch (Exception ex)
-        {
-            var errorId = ReportOperationalError("SCANNER", "Barcode konnte nicht verarbeitet werden.", ex);
-            ScannerStatus.Text = $"FEHLER {errorId} · Scan fehlgeschlagen.";
+            while (_barcodeQueue.Count > 0)
+            {
+                if (CartLocked)
+                    break;
+
+                var code = _barcodeQueue.Dequeue();
+                try
+                {
+                    await ProcessBarcode(code);
+                }
+                catch (Exception ex)
+                {
+                    var errorId = ReportOperationalError(
+                        "SCANNER",
+                        "Barcode konnte nicht verarbeitet werden.",
+                        ex);
+                    ScannerStatus.Text = $"FEHLER {errorId} · Scan fehlgeschlagen.";
+                    ScannerStatus.Foreground = AppTheme.WarningAmber;
+                }
+            }
         }
         finally
         {
             _scanProcessing = false;
+
+            // If checkout temporarily locked the cart, do not merge pending
+            // digits into a later customer. Otherwise continue automatically
+            // if another scan arrived between the last dequeue and finally.
+            if (CartLocked)
+                _barcodeQueue.Clear();
+            else if (_barcodeQueue.Count > 0)
+                _ = DrainBarcodeQueueAsync();
         }
     }
 
@@ -5354,6 +5399,21 @@ public partial class MainWindow:Window
     private async Task ReloadSettingsAsync()
     {
         _settingsCache=await _settings.LoadAllAsync();
+
+        // R181: R180 and older seeded scanner.wait_ms=1000. That was safe but
+        // visibly slow for suffix-less HID scanners. Migrate the untouched
+        // legacy default once; an operator can still choose any value later.
+        if (!_settingsCache.GetBool("scanner.r181_latency_migrated", false) &&
+            _settingsCache.GetInt("scanner.wait_ms", 1000) == 1000)
+        {
+            await _settings.SaveManyAsync(new Dictionary<string,string>
+            {
+                ["scanner.wait_ms"] = "140",
+                ["scanner.r181_latency_migrated"] = "true"
+            });
+            _settingsCache = await _settings.LoadAllAsync();
+        }
+
         UiLanguage.Set(_settingsCache.GetText("ui.language","DE"));
 
         var registerName=_settingsCache.GetText("cash.register.name","Kasse 1");
