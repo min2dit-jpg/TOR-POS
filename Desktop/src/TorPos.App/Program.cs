@@ -33,9 +33,50 @@ internal static class Program
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "|" +
                     ProductBuild.DataDirectoryName)))[..20], out var firstInstance);
         if (!firstInstance) return;
+
+        LegacySplitMigrationResult? splitMigration = null;
+        if (ProductBuild.FixedEdition is { } fixedEdition)
+        {
+            try
+            {
+                // Run before CrashLog/AppPaths creates the new product folder.
+                // The migration only COPIES a permanently edition-bound R181
+                // installation and keeps the shared source untouched.
+                splitMigration = LegacyEditionSplitMigration
+                    .TryMigrateDefaultAsync(fixedEdition)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception ex)
+            {
+                // Never continue with an accidentally empty till after a failed
+                // migration. Keep a minimal diagnostic outside the product data
+                // directory so the original R181 installation remains untouched.
+                try
+                {
+                    File.WriteAllText(
+                        Path.Combine(Path.GetTempPath(), "TOR-POS-split-migration-error.txt"),
+                        DateTimeOffset.Now.ToString("O") + Environment.NewLine + ex);
+                }
+                catch
+                {
+                    // Preserve the migration failure as the authoritative reason.
+                }
+
+                Environment.ExitCode = 182;
+                return;
+            }
+        }
+
         CrashLog.ResetForNewProcess();
         CrashLog.InitializeGlobalHandlers();
         CrashLog.Write("Avalonia bootstrap starting.");
+        if (splitMigration is not null)
+        {
+            CrashLog.Write(
+                $"R182 split migration: state={splitMigration.State}; " +
+                $"edition={splitMigration.TargetEdition}; backup={splitMigration.BackupPath ?? "none"}");
+        }
 
         try
         {
