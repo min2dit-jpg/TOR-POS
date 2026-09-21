@@ -381,7 +381,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
 
     public async Task TestCashDrawerAsync(
         string printerName,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int channel = 1)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Windows printer driver required.");
@@ -397,12 +398,28 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             throw new InvalidOperationException(problem);
 
         ct.ThrowIfCancellationRequested();
-        await Task.Run(
-            () => RawPrinterIo.SendRaw(
-                printerName.Trim(),
-                StarPrntRawCommands.OpenCashDrawer(),
-                "TOR POS - Kassenschublade Test"),
-            ct).ConfigureAwait(false);
+
+        var profile = DetectPrinterProfile(printerName);
+        var command = CashDrawerCommandFor(profile, channel);
+        var protocol = profile.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase)
+            ? $"StarPRNT · Ausgang {channel}"
+            : $"ESC/POS · Pin {(channel == 2 ? 5 : 2)}";
+
+        try
+        {
+            await Task.Run(
+                () => RawPrinterIo.SendRaw(
+                    printerName.Trim(),
+                    command,
+                    $"TOR POS - Kassenschublade Test - {protocol}"),
+                ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Kassenschubladenbefehl ({protocol}) konnte nicht gesendet werden: {ex.Message}",
+                ex);
+        }
     }
 
     public Task PrintReceiptAsync(
@@ -655,7 +672,11 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         };
 
         document.Print();
-        SendRawCommandsAfterPrint(printerName, job.AutoCut, job.OpenCashDrawer);
+        SendRawCommandsAfterPrint(
+            printerName,
+            job.AutoCut,
+            job.OpenCashDrawer,
+            job.CashDrawerChannel);
     }
 
     /// <summary>
@@ -667,21 +688,68 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
     /// convenience issue, not a reason to make the cashier believe printing
     /// failed and retry.
     /// </summary>
-    private static void SendRawCommandsAfterPrint(string printerName, bool autoCut, bool openCashDrawer)
+    private static void SendRawCommandsAfterPrint(
+        string printerName,
+        bool autoCut,
+        bool openCashDrawer,
+        int cashDrawerChannel = 1)
     {
         if (!OperatingSystem.IsWindows()) return;
 
+        var profile = DetectPrinterProfile(printerName);
+
         if (autoCut)
         {
-            try { RawPrinterIo.SendRaw(printerName, StarPrntRawCommands.PartialCut, "TOR POS - Schnitt"); }
-            catch { /* see summary above */ }
+            try
+            {
+                RawPrinterIo.SendRaw(
+                    printerName,
+                    PartialCutCommandFor(profile),
+                    "TOR POS - Schnitt");
+            }
+            catch { /* receipt itself has already printed */ }
         }
 
         if (openCashDrawer)
         {
-            try { RawPrinterIo.SendRaw(printerName, StarPrntRawCommands.OpenCashDrawer(), "TOR POS - Kassenschublade"); }
-            catch { /* see summary above */ }
+            try
+            {
+                RawPrinterIo.SendRaw(
+                    printerName,
+                    CashDrawerCommandFor(profile, cashDrawerChannel),
+                    "TOR POS - Kassenschublade");
+            }
+            catch { /* receipt itself has already printed */ }
         }
+    }
+
+    internal static byte[] PartialCutCommandFor(PrinterDeviceInfo profile)
+    {
+        if (profile.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase))
+            return StarPrntRawCommands.StarPrntPartialCut.ToArray();
+        if (profile.Manufacturer.Equals("Epson", StringComparison.OrdinalIgnoreCase))
+            return StarPrntRawCommands.EpsonEscPosPartialCut.ToArray();
+
+        throw new InvalidOperationException(
+            "Kein freigegebenes RAW-Cutter-Protokoll für diesen Drucker.");
+    }
+
+    internal static byte[] CashDrawerCommandFor(
+        PrinterDeviceInfo profile,
+        int channel = 1)
+    {
+        if (channel is not (1 or 2))
+            throw new ArgumentOutOfRangeException(nameof(channel));
+
+        if (profile.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase))
+            return StarPrntRawCommands.StarPrntOpenCashDrawer(channel);
+
+        if (profile.Manufacturer.Equals("Epson", StringComparison.OrdinalIgnoreCase))
+            return StarPrntRawCommands.EpsonEscPosOpenCashDrawer(
+                pin: channel == 2 ? (byte)1 : (byte)0);
+
+        throw new InvalidOperationException(
+            "Kein freigegebenes RAW-Schubladenprotokoll für diesen Drucker.");
     }
 
     private static void PrintErrorSlipNow(

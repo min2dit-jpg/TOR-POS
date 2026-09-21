@@ -522,10 +522,13 @@ public sealed class FiscalComplianceService : IFiscalComplianceService
     }
 public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = default)
 {
-    return await IoQueue.RunAsync(async () =>
-    {
-        var identity = await _identity.GetAsync(ct);
-        var settings = await _settings.LoadAllAsync(ct);
+    // R176: do not hold the global SQLite FIFO around the whole readiness
+    // check. The repositories below already serialize their own DB reads.
+    // Keeping an outer IoQueue scope is unnecessary, prolongs the single
+    // queue slot across non-DB/license/TSE readiness work, and makes this
+    // service fragile if a future nested call stops being re-entrant.
+    var identity = await _identity.GetAsync(ct);
+    var settings = await _settings.LoadAllAsync(ct);
         // R144: the TSE has to log the till under its serial number.
         var kassenSeriennummer = KassenSeriennummer.From(identity.EasSerial);
         var clientIdReady = KassenSeriennummer.ClientIdMatches(settings.GetValueOrDefault("tse.client_id"), identity.EasSerial);
@@ -569,7 +572,11 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
             new("FISCAL_RELEASE", "TOR Produktivfreigabe", FiscalRelease.Enabled, FiscalRelease.Enabled ? "Alle source-controlled Release-Qualifikationen sind erfüllt." : "Fehlende Freigaben: " + string.Join(", ", FiscalRelease.MissingQualifications())),
             new("COMMERCIAL_LICENSE", "Kommerzielle Softwarelizenz", commercialLicense.IsActive, commercialLicense.Message)
         };
-        var allowed = items.Where(x => x.Mandatory).All(x => x.Ready);
-        return new FiscalReadinessReport(allowed, allowed ? "PRODUKTIV" : "TEST_ONLY", kassenSeriennummer, settings.GetValueOrDefault("legal.dsfinvk.version") ?? "2.4", items);
-    });
+    var allowed = items.Where(x => x.Mandatory).All(x => x.Ready);
+    return new FiscalReadinessReport(
+        allowed,
+        allowed ? "PRODUKTIV" : "TEST_ONLY",
+        kassenSeriennummer,
+        settings.GetValueOrDefault("legal.dsfinvk.version") ?? "2.4",
+        items);
 }}

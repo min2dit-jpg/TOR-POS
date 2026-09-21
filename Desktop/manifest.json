@@ -1,8 +1,8 @@
 {
   "name": "TOR POS Pro Commercial Core",
   "release_name": "Merd-M",
-  "version": "0.7.33.875",
-  "revision": "R175",
+  "version": "0.7.33.876",
+  "revision": "R176",
   "authoritative_version_source": "src/TorPos.Core/ReleaseInfo.cs",
   "platform": {
     "supported_runtime": "Windows",
@@ -31,6 +31,8 @@
       "alternative_provider": "FISKALTRUST_SWISSBIT",
       "alternative_integration": "fiskaltrust Middleware + Swissbit SCU",
       "alternative_probe_implemented": true,
+      "alternative_transaction_client_implemented": true,
+      "alternative_sale_mapping_implemented": true,
       "alternative_transaction_path_implemented": false,
       "manual_probe_validated_2026_09_21": true,
       "vendor_sdk_bundled": false,

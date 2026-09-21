@@ -119,6 +119,15 @@ public interface ISaleRepository
         string cardRefundEvidence = "",
         CancellationToken ct = default);
 
+    // R176: quote and commit use the same cumulative line-allocation rule.
+    // This is critical before a card refund is sent: repeatedly returning
+    // fractions of one weighted/promotion line must refund exactly the cents
+    // that RecordReturnAsync will persist, including the final remainder cent.
+    Task<ReturnQuote> QuoteReturnAsync(
+        long originalSaleId,
+        IReadOnlyList<ReturnLineRequest> lines,
+        CancellationToken ct = default);
+
     // R107: MUST be checked BEFORE ever calling the card terminal for a
     // refund - not just relied upon as RecordStornoAsync/RecordReturnAsync's
     // own internal (authoritative, transactional) gate. Without this
@@ -141,6 +150,13 @@ public interface ISaleRepository
 
 /// <summary>One requested return line: a specific original sale_items row and how much of it to return (must be > 0 and not exceed what that line has left after any earlier partial returns).</summary>
 public sealed record ReturnLineRequest(long SaleItemId, decimal Quantity);
+
+public sealed record ReturnQuote(
+    long RawTotalCents,
+    long DiscountCents,
+    long TotalCents,
+    long CashPortionCents,
+    long CardPortionCents);
 
 /// <summary>A card refund attempt (BON STORNO/Teilretoure) whose terminal outcome came back Unknown/ambiguous and has not yet been manually resolved.</summary>
 public sealed record CardRefundAttempt(

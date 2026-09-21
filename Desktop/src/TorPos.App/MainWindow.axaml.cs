@@ -54,6 +54,11 @@ public partial class MainWindow:Window
     private long _lastScan;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
     private bool _scanProcessing;
+    // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
+    // cashier window but no TextInput when no TextBox owns focus. Keep one
+    // digit fallback and suppress the matching TextInput if Avalonia emits both.
+    private char? _lastScannerKeyDownDigit;
+    private long _lastScannerKeyDownDigitAt;
     private long? _activeParkedReceiptId;
     private long? _activeParkNumber;
     // Direct action selected from today's Bon-Historie. The target is consumed
@@ -805,6 +810,33 @@ public partial class MainWindow:Window
             return;
         }
 
+        // R176: keyboard-wedge fallback for the real cashier screen. Product
+        // maintenance works because a TextBox has focus; the sale screen often
+        // has none, so TextInput is not guaranteed. KeyDown digits are therefore
+        // accepted directly. TextInput below deduplicates the same keystroke if
+        // the platform emits both events.
+        if (Digit(e.Key) is char scannerDigit)
+        {
+            var scannerNow = Stopwatch.GetTimestamp();
+            var scannerGap = _lastScan == 0
+                ? 999d
+                : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
+
+            if (scannerGap > 180)
+                _scan = "";
+
+            _scan += scannerDigit;
+            if (_scan.Length > 32)
+                _scan = _scan[^32..];
+
+            _lastScan = scannerNow;
+            _lastScannerKeyDownDigit = scannerDigit;
+            _lastScannerKeyDownDigitAt = scannerNow;
+            e.Handled = true;
+            ArmScannerNoSuffixTimer();
+            return;
+        }
+
         // Kassierer-Schnelltasten: scanner digits are collected by TextInput
         // (R165), so function keys remain independent from barcode capture.
         // R168: there is one payment entry point. F1/F2 remain accepted as
@@ -897,7 +929,22 @@ public partial class MainWindow:Window
             if (!char.IsDigit(ch))
                 continue;
 
-            _scan += ch;
+            // KeyDown may already have appended this exact HID digit. Suppress
+            // only the immediate matching TextInput pair; virtual scanners that
+            // produce TextInput without KeyDown still use the normal path.
+            var duplicateKeyDown =
+                text.Length == 1 &&
+                _lastScannerKeyDownDigit == ch &&
+                _lastScannerKeyDownDigitAt != 0 &&
+                Stopwatch.GetElapsedTime(
+                    _lastScannerKeyDownDigitAt,
+                    now).TotalMilliseconds < 80;
+
+            if (!duplicateKeyDown)
+                _scan += ch;
+
+            _lastScannerKeyDownDigit = null;
+            _lastScannerKeyDownDigitAt = 0;
             added = true;
         }
 
@@ -921,16 +968,21 @@ public partial class MainWindow:Window
             return;
         }
 
-        if (!_settingsCache.GetBool("scanner.enter_suffix", true))
-        {
-            _scanNoEnterTimer.Stop();
-            _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-                Math.Clamp(
-                    _settingsCache.GetInt("scanner.wait_ms", 180),
-                    80,
-                    500));
-            _scanNoEnterTimer.Start();
-        }
+        ArmScannerNoSuffixTimer();
+    }
+
+    private void ArmScannerNoSuffixTimer()
+    {
+        if (_settingsCache.GetBool("scanner.enter_suffix", true))
+            return;
+
+        _scanNoEnterTimer.Stop();
+        _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
+            Math.Clamp(
+                _settingsCache.GetInt("scanner.wait_ms", 180),
+                80,
+                500));
+        _scanNoEnterTimer.Start();
     }
 
     private async Task ProcessBarcodeSafely(string code)
@@ -1465,6 +1517,7 @@ public partial class MainWindow:Window
             // refuses to proceed without evidence of this.
             var cardPortion = original.EffectiveCardPortionCents;
             var cardRefundEvidence = "";
+            var cardRefundAttemptId = "";
             if (cardPortion > 0)
             {
                 // R106: a durable lock against a duplicate refund attempt -
@@ -1479,14 +1532,14 @@ public partial class MainWindow:Window
                 }
 
                 ScannerStatus.Text = "BON STORNO · Karten-Anteil wird am Terminal erstattet …";
-                var attemptId = await _cardRefundLocks.BeginAsync(saleId, "STORNO", cardPortion);
+                cardRefundAttemptId = await _cardRefundLocks.BeginAsync(saleId, "STORNO", cardPortion);
                 var refund = await _checkoutApplication.RefundStornoCardPortionAsync(cardPortion, actionId);
                 if (refund is null || refund.Outcome != PaymentTerminalOutcome.Approved)
                 {
                     // Definite (not ambiguous) outcome - safe to clear the
                     // lock immediately, nothing to reconcile.
                     if (refund is null || refund.Outcome != PaymentTerminalOutcome.Unknown)
-                        await _cardRefundLocks.ClearAsync(attemptId);
+                        await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
                     await WriteControlledActionAsync(
                         actionId, "REJECTED", "SALE_STORNO", reason,
@@ -1499,11 +1552,16 @@ public partial class MainWindow:Window
                         : $"BON STORNO ABGEBROCHEN · Karten-Erstattung nicht bestätigt · {refund?.Message ?? "Terminal nicht erreichbar"}";
                     return;
                 }
-                await _cardRefundLocks.ClearAsync(attemptId);
+                // R176: keep the APPROVED refund lock until the matching
+                // immutable DB reversal has committed. A crash/failure in
+                // between must leave a reconciliation lock, never make the
+                // same real-world refund silently retryable.
                 cardRefundEvidence = $"outcome=APPROVED; terminal_code={refund.OutcomeCode}; terminal_id={refund.TerminalId}; trace={refund.TraceNumber}";
             }
 
             var storno = await _sales.RecordStornoAsync(saleId, _currentUser.Username, reason, cardRefundEvidence);
+            if (cardRefundAttemptId.Length > 0)
+                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
             await WriteControlledActionAsync(
                 actionId, "APPLIED", "SALE_STORNO", reason,
@@ -1640,16 +1698,19 @@ public partial class MainWindow:Window
             // be asked to refund the raw, undiscounted amount while the DB
             // records the correctly discounted total, refunding the
             // customer MORE than they actually paid.
-            var originalLinesById = original.Lines.ToDictionary(x => x.SaleItemId);
-            var rawReturnTotalCents = requestedLines.Sum(x =>
-                originalLinesById[x.SaleItemId].LineTotalCentsFor(x.Quantity));
-            var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
-            var returnTotalCents = DiscountProration.Prorate(rawReturnTotalCents, originalSubtotal, original.TotalCents);
-            var returnCardPortion = original.TotalCents > 0
-                ? returnTotalCents - (long)Math.Round((decimal)returnTotalCents * original.EffectiveCashPortionCents / original.TotalCents, MidpointRounding.AwayFromZero)
-                : 0;
+            // R176: ask the repository for the authoritative quote BEFORE
+            // touching the terminal. It includes earlier partial returns and
+            // cumulative-cent allocation, so the card refund and the later DB
+            // write cannot disagree by one cent on weighted promotion lines.
+            var returnQuote =
+                await _sales.QuoteReturnAsync(
+                    saleId,
+                    requestedLines);
+            var returnTotalCents = returnQuote.TotalCents;
+            var returnCardPortion = returnQuote.CardPortionCents;
 
             var cardRefundEvidence = "";
+            var cardRefundAttemptId = "";
             if (returnCardPortion > 0)
             {
                 // R106: same durable duplicate-refund lock as BON STORNO -
@@ -1663,12 +1724,12 @@ public partial class MainWindow:Window
                 }
 
                 ScannerStatus.Text = "TEILRETOURE · Karten-Anteil wird am Terminal erstattet …";
-                var attemptId = await _cardRefundLocks.BeginAsync(saleId, "RETURN", returnCardPortion);
+                cardRefundAttemptId = await _cardRefundLocks.BeginAsync(saleId, "RETURN", returnCardPortion);
                 var refund = await _checkoutApplication.RefundStornoCardPortionAsync(returnCardPortion, actionId);
                 if (refund is null || refund.Outcome != PaymentTerminalOutcome.Approved)
                 {
                     if (refund is null || refund.Outcome != PaymentTerminalOutcome.Unknown)
-                        await _cardRefundLocks.ClearAsync(attemptId);
+                        await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
                     await WriteControlledActionAsync(
                         actionId, "REJECTED", "SALE_RETURN", reason,
@@ -1681,11 +1742,16 @@ public partial class MainWindow:Window
                         : $"TEILRETOURE ABGEBROCHEN · Karten-Erstattung nicht bestätigt · {refund?.Message ?? "Terminal nicht erreichbar"}";
                     return;
                 }
-                await _cardRefundLocks.ClearAsync(attemptId);
+                // R176: keep the APPROVED refund lock until the matching
+                // immutable DB reversal has committed. A crash/failure in
+                // between must leave a reconciliation lock, never make the
+                // same real-world refund silently retryable.
                 cardRefundEvidence = $"outcome=APPROVED; terminal_code={refund.OutcomeCode}; terminal_id={refund.TerminalId}; trace={refund.TraceNumber}";
             }
 
             var returned = await _sales.RecordReturnAsync(saleId, requestedLines, _currentUser.Username, reason, cardRefundEvidence);
+            if (cardRefundAttemptId.Length > 0)
+                await _cardRefundLocks.ClearAsync(cardRefundAttemptId);
 
             await WriteControlledActionAsync(
                 actionId, "APPLIED", "SALE_RETURN", reason,
@@ -3440,6 +3506,8 @@ public partial class MainWindow:Window
         _scan = "";
         _scanProcessing = false;
         _lastScan = 0;
+        _lastScannerKeyDownDigit = null;
+        _lastScannerKeyDownDigitAt = 0;
         _imHaus = false;
         ClearNumericInput();
         CartList.SelectedIndex = -1;
@@ -3538,7 +3606,11 @@ public partial class MainWindow:Window
             TseStartLogTime: sale.TseStartLogTime,
             TseSignatureAlgorithm: tseMaster?.SignatureAlgorithm ?? "",
             TseLogTimeFormat: tseMaster?.LogTimeFormat ?? "",
-            TsePublicKey: tseMaster?.PublicKeyBase64 ?? "");
+            TsePublicKey: tseMaster?.PublicKeyBase64 ?? "",
+            CashDrawerChannel: Math.Clamp(
+                _settingsCache.GetInt("device.receipt_printer.drawer_channel", 1),
+                1,
+                2));
     }
 
     private async Task PrintReceiptAndReportAsync(

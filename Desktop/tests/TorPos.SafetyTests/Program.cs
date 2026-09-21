@@ -441,6 +441,7 @@ await R172ReviewTests.Run(Assert);
 await R173ReviewTests.Run(Assert);
 await R174ReviewTests.Run(root, Assert);
 await R175ReviewTests.Run(root, Assert);
+await R176ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -493,7 +494,11 @@ await BarTestBonPreparationTests.Run(Assert);
 // R175: 8 reviewed checks lock read-only fiskaltrust/Swissbit discovery,
 // Queue Echo + SCU/device probes, secret isolation and the still-closed
 // physical-TSE production release gate.
-const int ExpectedSafetyChecks = 1079;
+// R176: 19 reviewed checks lock cumulative-cent partial returns, authoritative
+// terminal refund quotes, no-Z business-day fallback, typed local fiskaltrust
+// Sign requests, explicit DE cases, secret isolation, vendor-correct Epson/Star
+// drawer protocols, cashier HID scanner fallback and fail-closed semantics.
+const int ExpectedSafetyChecks = 1098;
 
 if (checks != ExpectedSafetyChecks)
 {

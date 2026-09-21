@@ -96,10 +96,10 @@ public static class R169ReviewTests
             "public Task PrintReceiptAsync");
         assert(
             drawerMethod.Contains("RawPrinterIo.SendRaw", StringComparison.Ordinal) &&
-            drawerMethod.Contains("StarPrntRawCommands.OpenCashDrawer()", StringComparison.Ordinal) &&
+            drawerMethod.Contains("CashDrawerCommandFor(profile, channel)", StringComparison.Ordinal) &&
             !drawerMethod.Contains("EnqueueAsync(", StringComparison.Ordinal) &&
             !drawerMethod.Contains("PrintNow(", StringComparison.Ordinal),
-            "R169 cash-drawer test sends one raw drawer pulse without creating a receipt print job");
+            "R169 invariant preserved: cash-drawer test sends one profile-specific raw drawer command without creating a receipt print job");
 
         var settings = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/SettingsWindow.axaml.cs"));
         var assistant = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/PrinterSetupWindow.cs"));
