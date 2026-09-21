@@ -440,6 +440,7 @@ await R171ReviewTests.Run(Assert);
 await R172ReviewTests.Run(Assert);
 await R173ReviewTests.Run(Assert);
 await R174ReviewTests.Run(root, Assert);
+await R175ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -489,7 +490,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // R174: 9 reviewed checks lock PowerShell 5.1 simulator verification,
 // operating/Z-day promotion dates, cent-exact weighted promotions, checkout
 // unit preservation and identical partial-return allocation.
-const int ExpectedSafetyChecks = 1071;
+// R175: 8 reviewed checks lock read-only fiskaltrust/Swissbit discovery,
+// Queue Echo + SCU/device probes, secret isolation and the still-closed
+// physical-TSE production release gate.
+const int ExpectedSafetyChecks = 1079;
 
 if (checks != ExpectedSafetyChecks)
 {
