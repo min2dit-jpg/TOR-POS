@@ -54,6 +54,11 @@ public partial class MainWindow:Window
     private long _lastScan;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
     private bool _scanProcessing;
+    // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
+    // cashier window but no TextInput when no TextBox owns focus. Keep one
+    // digit fallback and suppress the matching TextInput if Avalonia emits both.
+    private char? _lastScannerKeyDownDigit;
+    private long _lastScannerKeyDownDigitAt;
     private long? _activeParkedReceiptId;
     private long? _activeParkNumber;
     // Direct action selected from today's Bon-Historie. The target is consumed
@@ -805,6 +810,33 @@ public partial class MainWindow:Window
             return;
         }
 
+        // R176: keyboard-wedge fallback for the real cashier screen. Product
+        // maintenance works because a TextBox has focus; the sale screen often
+        // has none, so TextInput is not guaranteed. KeyDown digits are therefore
+        // accepted directly. TextInput below deduplicates the same keystroke if
+        // the platform emits both events.
+        if (Digit(e.Key) is char scannerDigit)
+        {
+            var now = Stopwatch.GetTimestamp();
+            var gap = _lastScan == 0
+                ? 999d
+                : Stopwatch.GetElapsedTime(_lastScan, now).TotalMilliseconds;
+
+            if (gap > 180)
+                _scan = "";
+
+            _scan += scannerDigit;
+            if (_scan.Length > 32)
+                _scan = _scan[^32..];
+
+            _lastScan = now;
+            _lastScannerKeyDownDigit = scannerDigit;
+            _lastScannerKeyDownDigitAt = now;
+            e.Handled = true;
+            ArmScannerNoSuffixTimer();
+            return;
+        }
+
         // Kassierer-Schnelltasten: scanner digits are collected by TextInput
         // (R165), so function keys remain independent from barcode capture.
         // R168: there is one payment entry point. F1/F2 remain accepted as
@@ -897,7 +929,22 @@ public partial class MainWindow:Window
             if (!char.IsDigit(ch))
                 continue;
 
-            _scan += ch;
+            // KeyDown may already have appended this exact HID digit. Suppress
+            // only the immediate matching TextInput pair; virtual scanners that
+            // produce TextInput without KeyDown still use the normal path.
+            var duplicateKeyDown =
+                text.Length == 1 &&
+                _lastScannerKeyDownDigit == ch &&
+                _lastScannerKeyDownDigitAt != 0 &&
+                Stopwatch.GetElapsedTime(
+                    _lastScannerKeyDownDigitAt,
+                    now).TotalMilliseconds < 80;
+
+            if (!duplicateKeyDown)
+                _scan += ch;
+
+            _lastScannerKeyDownDigit = null;
+            _lastScannerKeyDownDigitAt = 0;
             added = true;
         }
 
@@ -921,16 +968,21 @@ public partial class MainWindow:Window
             return;
         }
 
-        if (!_settingsCache.GetBool("scanner.enter_suffix", true))
-        {
-            _scanNoEnterTimer.Stop();
-            _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-                Math.Clamp(
-                    _settingsCache.GetInt("scanner.wait_ms", 180),
-                    80,
-                    500));
-            _scanNoEnterTimer.Start();
-        }
+        ArmScannerNoSuffixTimer();
+    }
+
+    private void ArmScannerNoSuffixTimer()
+    {
+        if (_settingsCache.GetBool("scanner.enter_suffix", true))
+            return;
+
+        _scanNoEnterTimer.Stop();
+        _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
+            Math.Clamp(
+                _settingsCache.GetInt("scanner.wait_ms", 180),
+                80,
+                500));
+        _scanNoEnterTimer.Start();
     }
 
     private async Task ProcessBarcodeSafely(string code)
@@ -3454,6 +3506,8 @@ public partial class MainWindow:Window
         _scan = "";
         _scanProcessing = false;
         _lastScan = 0;
+        _lastScannerKeyDownDigit = null;
+        _lastScannerKeyDownDigitAt = 0;
         _imHaus = false;
         ClearNumericInput();
         CartList.SelectedIndex = -1;
@@ -3552,7 +3606,11 @@ public partial class MainWindow:Window
             TseStartLogTime: sale.TseStartLogTime,
             TseSignatureAlgorithm: tseMaster?.SignatureAlgorithm ?? "",
             TseLogTimeFormat: tseMaster?.LogTimeFormat ?? "",
-            TsePublicKey: tseMaster?.PublicKeyBase64 ?? "");
+            TsePublicKey: tseMaster?.PublicKeyBase64 ?? "",
+            CashDrawerChannel: Math.Clamp(
+                _settingsCache.GetInt("device.receipt_printer.drawer_channel", 1),
+                1,
+                2));
     }
 
     private async Task PrintReceiptAndReportAsync(
