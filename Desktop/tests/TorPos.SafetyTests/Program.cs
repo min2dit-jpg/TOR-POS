@@ -445,7 +445,7 @@ await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
 await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
-await R181ReviewTests.Run(Assert);
+await R181ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -509,9 +509,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // reversal/weighted-promotion payload contracts.
 // R180: 4 reviewed checks lock cashier-only unknown-EAN behavior,
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
-// R181: 4 reviewed checks lock the 140 ms suffix-less path and bounded FIFO
-// buffering so rapid consecutive retail scans are not dropped or concatenated.
-const int ExpectedSafetyChecks = 1122;
+// R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
+// edition-isolated business profiles and permanent licence-bound edition UI.
+const int ExpectedSafetyChecks = 1128;
 
 if (checks != ExpectedSafetyChecks)
 {
