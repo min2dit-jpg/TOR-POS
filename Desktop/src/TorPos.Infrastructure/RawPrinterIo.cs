@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace TorPos.Infrastructure;
@@ -53,7 +54,8 @@ internal static class RawPrinterIo
             throw new InvalidOperationException("Drucker wurde noch nicht ausgewählt.");
 
         if (!OpenPrinter(printerName, out var hPrinter, IntPtr.Zero) || hPrinter == IntPtr.Zero)
-            throw new InvalidOperationException($"Drucker nicht verfügbar: {printerName}");
+            throw Win32Failure(
+                $"Drucker kann für RAW-Befehle nicht geöffnet werden: {printerName}");
 
         try
         {
@@ -65,17 +67,21 @@ internal static class RawPrinterIo
             };
 
             if (StartDocPrinter(hPrinter, 1, ref docInfo) == 0)
-                throw new InvalidOperationException($"RAW-Druckauftrag konnte nicht gestartet werden: {printerName}");
+                throw Win32Failure(
+                    $"RAW-Druckauftrag konnte nicht gestartet werden: {printerName}");
 
             try
             {
                 if (!StartPagePrinter(hPrinter))
-                    throw new InvalidOperationException("RAW-Seite konnte nicht gestartet werden.");
+                    throw Win32Failure("RAW-Seite konnte nicht gestartet werden.");
 
                 try
                 {
-                    if (!WritePrinter(hPrinter, data, data.Length, out var written) || written != data.Length)
-                        throw new InvalidOperationException("RAW-Kommando wurde nicht vollständig an den Drucker übergeben.");
+                    if (!WritePrinter(hPrinter, data, data.Length, out var written))
+                        throw Win32Failure("RAW-Kommando konnte nicht an den Drucker übergeben werden.");
+                    if (written != data.Length)
+                        throw new InvalidOperationException(
+                            $"RAW-Kommando unvollständig: {written}/{data.Length} Byte geschrieben.");
                 }
                 finally
                 {
@@ -91,5 +97,14 @@ internal static class RawPrinterIo
         {
             ClosePrinter(hPrinter);
         }
+    }
+
+    private static InvalidOperationException Win32Failure(string message)
+    {
+        var code = Marshal.GetLastWin32Error();
+        var detail = code == 0
+            ? "kein Windows-Fehlercode"
+            : $"Win32 {code}: {new Win32Exception(code).Message}";
+        return new InvalidOperationException($"{message} · {detail}");
     }
 }
