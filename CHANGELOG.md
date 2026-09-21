@@ -1,12 +1,23 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R175|0.7.33.875|Merd-M -->
+<!-- TOR_RELEASE:R176|0.7.33.876|Merd-M -->
 
 ## Aktueller Release
 
-**R175 · Merd-M · 0.7.33.875**
+**R176 · Merd-M · 0.7.33.876**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R176
+
+- Teilretoure: gramajlı/kampanyalı bir satırın birden fazla iadeye bölünmesinde her parçayı bağımsız yuvarlamak yerine kümülatif cent dağıtımı kullanılır; son parça kalan cent'i emer ve tüm iadelerin toplamı orijinal satıra tam eşit olur.
+- Kart iadesinden önce tutar artık doğrudan repository'nin `QuoteReturnAsync` sonucundan alınır; terminale gönderilen kart iadesi ile daha sonra veritabanına yazılan Retoure aynı hesap yolunu kullanır.
+- Kampanya işletme günü: hiç Z-Abschluss bulunmayan eski/aktarılmış veritabanlarında ilk tarihî satış işletme gününü sabitlemez; ilk Z sınırı oluşana kadar yerel gün kullanılır.
+- fiskaltrust için yerel Middleware v1 `/json/v1/Sign` istemcisi eklendi. Start-/POS-Receipt durumları, DE Charge-/Pay-Case sabitleri ve TSE imza alanlarının ayrıştırılması tipli modellerle hazırlanır.
+- Normal SALE için ChargeItems/PayItems eşlemesi hazırlandı: 19/7/0 MwSt., Außer-Haus flag'i, Pfand, manuel Rabatt, gemischte Menü-MwSt., kg/gramaj ve Bar/Karte split'i cent bazında reconcile edilir.
+- TOR'un genel `Karte` bilgisi debit/credit diye tahmin edilmez; fiskaltrust kart türü açıkça bilinmiyorsa işlem fail-closed olur. STORNO/RETURN fiskaltrust eşlemesi de doğrulanmadan etkinleştirilmez.
+- AccessToken kod içine alınmaz; R176 istemcisi yalnızca yerel loopback Queue'ya izin verir.
+- Gerçek fiskaltrust transaction runtime-provider seçimi ve Physical-TSE-E2E bayrağı kapalı kalır. Yeni Swissbit TSE ile client registration ve gerçek Start/Finish/TAR/DSFinV-K kabul testi tamamlanmadan produktif fiskal sürüm açılmaz.
 
 ### R175
 
