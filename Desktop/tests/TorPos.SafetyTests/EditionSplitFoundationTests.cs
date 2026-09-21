@@ -65,6 +65,45 @@ public static class EditionSplitFoundationTests
             Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", original);
         }
 
+        var installer = File.ReadAllText(
+            FindRepoFile("Desktop/TOR-POS-Pro-Setup.iss"));
+        var kioskInstaller = File.ReadAllText(
+            FindRepoFile("Desktop/TOR-KIOSK-Setup.iss"));
+        var doenerInstaller = File.ReadAllText(
+            FindRepoFile("Desktop/TOR-DOENER-Setup.iss"));
+        var splitPublish = File.ReadAllText(
+            FindRepoFile("Desktop/BUILD-SPLIT-EDITIONS.ps1"));
+        var workflow = File.ReadAllText(
+            FindRepoFile(".github/workflows/tor-pos-ci.yml"));
+
+        assert(
+            installer.Contains("AppId={#MyAppId}", StringComparison.Ordinal) &&
+            installer.Contains("DefaultDirName={autopf}\\{#MyDefaultDirName}", StringComparison.Ordinal) &&
+            installer.Contains("AppMutex={#MyAppMutex}", StringComparison.Ordinal) &&
+            installer.Contains("{userappdata}\\{#MyDataDirName}", StringComparison.Ordinal),
+            "base installer is parameterized so split products do not share install identity, mutex or user data paths");
+
+        assert(
+            kioskInstaller.Contains("TOR-KIOSK.exe", StringComparison.Ordinal) &&
+            kioskInstaller.Contains("TOR-KIOSK-Running", StringComparison.Ordinal) &&
+            kioskInstaller.Contains("TOR-KIOSK-Setup", StringComparison.Ordinal) &&
+            doenerInstaller.Contains("TOR-DOENER.exe", StringComparison.Ordinal) &&
+            doenerInstaller.Contains("TOR-DOENER-Running", StringComparison.Ordinal) &&
+            doenerInstaller.Contains("TOR-DOENER-Setup", StringComparison.Ordinal),
+            "TOR KIOSK and TOR DÖNER have distinct installer, executable and process identities");
+
+        assert(
+            kioskInstaller.Contains("A4E3F6A1-4B7A-4F51-8D7E-2C4A8B9F1D21", StringComparison.Ordinal) &&
+            doenerInstaller.Contains("B7D2C9E4-6A35-4C88-9F12-5E71A3D8C642", StringComparison.Ordinal),
+            "split installers use distinct stable Windows AppIds and can be installed side by side");
+
+        assert(
+            splitPublish.Contains("-p:TorProductEdition=$Edition", StringComparison.Ordinal) &&
+            workflow.Contains("TOR-POS-Split-Setups-", StringComparison.Ordinal) &&
+            workflow.Contains("TOR-KIOSK-Setup.exe", StringComparison.Ordinal) &&
+            workflow.Contains("TOR-DOENER-Setup.exe", StringComparison.Ordinal),
+            "CI publishes and packages both dedicated product variants rather than only compiling the shared app");
+
         var migrationRoot = Path.Combine(
             Path.GetTempPath(),
             "tor-split-migration-" + Guid.NewGuid().ToString("N"));
