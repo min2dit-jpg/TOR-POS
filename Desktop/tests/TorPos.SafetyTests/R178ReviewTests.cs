@@ -129,6 +129,54 @@ public static class R178ReviewTests
                 StringComparison.Ordinal),
             "R178 ships an operator runbook covering pilot rollout, signing, stable promotion and emergency stop");
 
+        var main = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
+
+        assert(
+            main.Contains(
+                "ScannerCapture.TextChanged += OnScannerCaptureTextChanged",
+                StringComparison.Ordinal) &&
+            main.Contains(
+                "if (ScannerCapture.IsFocused)",
+                StringComparison.Ordinal) &&
+            main.Contains(
+                "e.Key is Key.Enter or Key.Tab",
+                StringComparison.Ordinal) &&
+            main.Contains(
+                "e.Handled = true;",
+                StringComparison.Ordinal),
+            "R178 cashier scanner uses the focused TextBox as source of truth and always consumes scanner Enter/Tab before UI navigation");
+
+        assert(
+            main.Contains(
+                "Dedicated sink owns its own TextChanged stream",
+                StringComparison.Ordinal) &&
+            main.Contains(
+                "if (ScannerCapture.IsFocused)",
+                StringComparison.Ordinal) &&
+            main.Contains(
+                "return;",
+                StringComparison.Ordinal),
+            "R178 window TextInput fallback cannot duplicate characters already captured by the dedicated scanner sink");
+
+        assert(
+            main.Contains(
+                "await _settings.GetAsync(\n            \"device.drawer.enabled\"",
+                StringComparison.Ordinal) &&
+            main.Contains(
+                "await _settings.GetAsync(\n                \"device.receipt_printer.drawer_channel\"",
+                StringComparison.Ordinal) &&
+            settings.Contains(
+                "[\"device.drawer.enabled\"] = \"true\"",
+                StringComparison.Ordinal) &&
+            settings.Contains(
+                "[\"device.receipt_printer.drawer_channel\"]",
+                StringComparison.Ordinal) &&
+            settings.Contains(
+                "Test und echte Zahlung verwenden jetzt dieselbe Einstellung",
+                StringComparison.Ordinal),
+            "R178 a successful drawer hardware test persists the same enable/channel settings read fresh by real cash payment");
+
         return Task.CompletedTask;
     }
 
