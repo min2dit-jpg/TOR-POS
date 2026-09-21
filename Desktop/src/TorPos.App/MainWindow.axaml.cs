@@ -1640,14 +1640,16 @@ public partial class MainWindow:Window
             // be asked to refund the raw, undiscounted amount while the DB
             // records the correctly discounted total, refunding the
             // customer MORE than they actually paid.
-            var originalLinesById = original.Lines.ToDictionary(x => x.SaleItemId);
-            var rawReturnTotalCents = requestedLines.Sum(x =>
-                originalLinesById[x.SaleItemId].LineTotalCentsFor(x.Quantity));
-            var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
-            var returnTotalCents = DiscountProration.Prorate(rawReturnTotalCents, originalSubtotal, original.TotalCents);
-            var returnCardPortion = original.TotalCents > 0
-                ? returnTotalCents - (long)Math.Round((decimal)returnTotalCents * original.EffectiveCashPortionCents / original.TotalCents, MidpointRounding.AwayFromZero)
-                : 0;
+            // R176: ask the repository for the authoritative quote BEFORE
+            // touching the terminal. It includes earlier partial returns and
+            // cumulative-cent allocation, so the card refund and the later DB
+            // write cannot disagree by one cent on weighted promotion lines.
+            var returnQuote =
+                await _sales.QuoteReturnAsync(
+                    saleId,
+                    requestedLines);
+            var returnTotalCents = returnQuote.TotalCents;
+            var returnCardPortion = returnQuote.CardPortionCents;
 
             var cardRefundEvidence = "";
             if (returnCardPortion > 0)
