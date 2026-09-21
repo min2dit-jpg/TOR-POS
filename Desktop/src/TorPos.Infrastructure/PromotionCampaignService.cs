@@ -26,9 +26,82 @@ public sealed class PromotionCampaignService
         _db = db;
     }
 
+    /// <summary>
+    /// R174: promotions follow the still-open operating/Z period rather than
+    /// switching at 00:00 during an overnight service. The first persisted
+    /// sale/order after the latest Z close defines that operating day's date.
+    /// With no activity in the open period, the current local calendar date is
+    /// used so an idle till does not inherit a stale promotion date forever.
+    /// </summary>
+    public async Task<DateOnly> GetBusinessDateAsync(
+        CancellationToken ct = default)
+    {
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+
+            DateTimeOffset? lastClose = null;
+            await using (var close = c.CreateCommand())
+            {
+                close.CommandText = """
+                    SELECT period_to
+                    FROM z_report_archive
+                    ORDER BY z_number DESC
+                    LIMIT 1;
+                    """;
+                var value = await close.ExecuteScalarAsync(ct);
+                if (value is string text &&
+                    DateTimeOffset.TryParse(text, out var parsed))
+                {
+                    lastClose = parsed;
+                }
+            }
+
+            await using var activity = c.CreateCommand();
+            activity.CommandText = lastClose is null
+                ? """
+                  SELECT at
+                  FROM (
+                      SELECT created_at AS at FROM sales
+                      UNION ALL
+                      SELECT created_at AS at FROM parked_receipts
+                  )
+                  WHERE at <> ''
+                  ORDER BY julianday(at)
+                  LIMIT 1;
+                  """
+                : """
+                  SELECT at
+                  FROM (
+                      SELECT created_at AS at FROM sales
+                      UNION ALL
+                      SELECT created_at AS at FROM parked_receipts
+                  )
+                  WHERE at <> ''
+                    AND julianday(at) > julianday($close)
+                  ORDER BY julianday(at)
+                  LIMIT 1;
+                  """;
+
+            if (lastClose is not null)
+                activity.Parameters.AddWithValue("$close", lastClose.Value.ToString("O"));
+
+            var first = await activity.ExecuteScalarAsync(ct);
+            if (first is string firstText &&
+                DateTimeOffset.TryParse(firstText, out var firstActivity))
+            {
+                return DateOnly.FromDateTime(firstActivity.LocalDateTime);
+            }
+
+            return DateOnly.FromDateTime(DateTime.Now);
+        });
+    }
+
     public async Task<IReadOnlyList<PromotionCampaign>> GetAllAsync(
         CancellationToken ct = default)
     {
+        var businessDate = await GetBusinessDateAsync(ct);
+
         return await IoQueue.RunAsync(async () =>
         {
             var result = new List<PromotionCampaign>();
@@ -54,8 +127,7 @@ public sealed class PromotionCampaignService
                 """;
             q.Parameters.AddWithValue(
                 "$today",
-                DateOnly.FromDateTime(DateTime.Now)
-                    .ToString("yyyy-MM-dd"));
+                businessDate.ToString("yyyy-MM-dd"));
 
             await using var r = await q.ExecuteReaderAsync(ct);
 
@@ -64,6 +136,19 @@ public sealed class PromotionCampaignService
 
             return (IReadOnlyList<PromotionCampaign>)result;
         });
+    }
+
+    public async Task<PromotionSnapshot?> GetBestForProductAsync(
+        long productId,
+        long categoryId,
+        CancellationToken ct = default)
+    {
+        var businessDate = await GetBusinessDateAsync(ct);
+        return await GetBestForProductAsync(
+            productId,
+            categoryId,
+            businessDate,
+            ct);
     }
 
     public async Task<PromotionSnapshot?> GetBestForProductAsync(

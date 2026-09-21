@@ -406,19 +406,14 @@ public partial class MainWindow:Window
             PromotionSnapshot? promotion;
             using (_perf.Measure("promotion.resolve"))
             {
+                // R174: the campaign service resolves the operating date
+                // from the open Z period, so an overnight service does not
+                // lose its promotion at 00:00. Weighted articles are now
+                // line-level cent exact in CartLine and no longer suppressed.
                 promotion =
                     await _promotions.GetBestForProductAsync(
                         p.Id,
-                        p.CategoryId,
-                        DateOnly.FromDateTime(DateTime.Now));
-
-                // R170: current promotion storage is per whole unit (cents/unit).
-                // A fractional kg sale can otherwise make the independently
-                // rounded promotion amount differ by one cent from list-total
-                // minus line-total. Keep weighed sales exact until promotions
-                // have their own weight-aware line-level allocation.
-                if (p.IsWeighted)
-                    promotion = null;
+                        p.CategoryId);
             }
 
             // Re-check: a checkout may have started while the promotion lookup
@@ -1647,7 +1642,7 @@ public partial class MainWindow:Window
             // customer MORE than they actually paid.
             var originalLinesById = original.Lines.ToDictionary(x => x.SaleItemId);
             var rawReturnTotalCents = requestedLines.Sum(x =>
-                (long)Math.Round(x.Quantity * originalLinesById[x.SaleItemId].UnitPriceCents, MidpointRounding.AwayFromZero));
+                originalLinesById[x.SaleItemId].LineTotalCentsFor(x.Quantity));
             var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
             var returnTotalCents = DiscountProration.Prorate(rawReturnTotalCents, originalSubtotal, original.TotalCents);
             var returnCardPortion = original.TotalCents > 0

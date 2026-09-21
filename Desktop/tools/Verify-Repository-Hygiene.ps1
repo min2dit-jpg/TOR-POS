@@ -1,12 +1,25 @@
+param(
+    [switch]$RequireGit
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Get-Location)
 $maxBytes = 5MB
 $errors = New-Object System.Collections.Generic.List[string]
 
-$tracked = git -C $repoRoot ls-files
+# R174: this verifier is also shipped inside the validated source ZIP. A ZIP
+# has no .git metadata, so "git ls-files" cannot define a tracked-file set
+# there. Local ZIP users get an explicit SKIPPED result; CI passes -RequireGit
+# and therefore still fails closed if checkout metadata is missing.
+$tracked = git -C $repoRoot ls-files 2>$null
 if ($LASTEXITCODE -ne 0) {
-    throw "Repository hygiene: git ls-files failed."
+    if ($RequireGit) {
+        throw "Repository hygiene: git ls-files failed."
+    }
+
+    Write-Host "REPOSITORY HYGIENE SKIPPED: no Git worktree metadata (normal for source ZIP)."
+    exit 0
 }
 
 foreach ($relative in $tracked) {

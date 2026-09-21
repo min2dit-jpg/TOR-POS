@@ -229,27 +229,85 @@ public sealed class CartLine
     public bool HasPromotion =>
         PromotionId > 0 &&
         PromotionPercent > 0 &&
-        PromotionDiscountUnitCents > 0;
+        (PromotionDiscountUnitCents > 0 || IsWeighted);
 
     public long EffectiveListUnitPriceCents =>
         ListUnitPriceCents > 0
             ? ListUnitPriceCents
             : UnitPriceCents + PromotionDiscountUnitCents;
 
-    public long LineTotalCents =>
+    public long ListLineTotalCentsFor(decimal quantity) =>
         (long)Math.Round(
-            Quantity * UnitPriceCents,
+            quantity * EffectiveListUnitPriceCents,
             MidpointRounding.AwayFromZero);
+
+    public long PromotionDiscountCentsFor(decimal quantity)
+    {
+        if (!HasPromotion || quantity == 0m)
+            return 0L;
+
+        if (!IsWeighted)
+        {
+            return (long)Math.Round(
+                quantity * PromotionDiscountUnitCents,
+                MidpointRounding.AwayFromZero);
+        }
+
+        // R174: weighted sales need line-level allocation. A per-kg discount
+        // stored as whole cents can create half-cent intermediate values
+        // (e.g. 0.500 kg × 19.90 EUR/kg × 10%). Calculate the promotion from
+        // the immutable list price + percentage and round only once at line
+        // level. Negative quantities are fiscal reversal/delta lines and must
+        // mirror the positive amount exactly instead of collapsing to zero.
+        var sign = quantity < 0m ? -1L : 1L;
+        var absoluteQuantity = Math.Abs(quantity);
+        var merchandiseUnitCents =
+            Math.Max(0L, EffectiveListUnitPriceCents - PfandCents);
+        var discount =
+            (long)Math.Round(
+                absoluteQuantity * merchandiseUnitCents *
+                (Math.Clamp(PromotionPercent, 0, 100) / 100m),
+                MidpointRounding.AwayFromZero);
+        var listTotal =
+            (long)Math.Round(
+                absoluteQuantity * EffectiveListUnitPriceCents,
+                MidpointRounding.AwayFromZero);
+
+        return sign * Math.Clamp(
+            discount,
+            0L,
+            Math.Max(0L, listTotal));
+    }
+
+    public long LineTotalCentsFor(decimal quantity)
+    {
+        if (quantity == 0m)
+            return 0L;
+
+        if (IsWeighted && HasPromotion)
+        {
+            var total =
+                ListLineTotalCentsFor(quantity) -
+                PromotionDiscountCentsFor(quantity);
+
+            return quantity < 0m
+                ? Math.Min(0L, total)
+                : Math.Max(0L, total);
+        }
+
+        return (long)Math.Round(
+            quantity * UnitPriceCents,
+            MidpointRounding.AwayFromZero);
+    }
+
+    public long LineTotalCents =>
+        LineTotalCentsFor(Quantity);
 
     public long ListLineTotalCents =>
-        (long)Math.Round(
-            Quantity * EffectiveListUnitPriceCents,
-            MidpointRounding.AwayFromZero);
+        ListLineTotalCentsFor(Quantity);
 
     public long PromotionDiscountCents =>
-        (long)Math.Round(
-            Quantity * PromotionDiscountUnitCents,
-            MidpointRounding.AwayFromZero);
+        PromotionDiscountCentsFor(Quantity);
 }
 
 /// <summary>

@@ -59,9 +59,9 @@ public static class R170ReviewTests
             main.Contains("new WeightEntryWindow(p)", StringComparison.Ordinal) &&
             main.Contains("weighed.Kilograms", StringComparison.Ordinal) &&
             main.Contains("Gewichtsartikel: Gewicht über MENGE × ändern", StringComparison.Ordinal) &&
-            main.Contains("if (p.IsWeighted)", StringComparison.Ordinal) &&
-            main.Contains("promotion = null;", StringComparison.Ordinal),
-            "R170 cashier opens a gram/kg dialog, blocks dangerous +1/-1 kg shortcuts and suppresses unit-based promotions until weighted proration is cent-exact");
+            main.Contains("await _promotions.GetBestForProductAsync", StringComparison.Ordinal) &&
+            !main.Contains("if (p.IsWeighted)\n                    promotion = null;", StringComparison.Ordinal),
+            "R170 cashier opens a gram/kg dialog and blocks dangerous +1/-1 kg shortcuts; R174 removes the temporary weighted-promotion suppression");
 
         var editor = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/ProductEditorWindow.cs"));
         assert(

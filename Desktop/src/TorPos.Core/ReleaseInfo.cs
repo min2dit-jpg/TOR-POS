@@ -7,9 +7,9 @@ public static class TorRelease
     // Version stays for what needs digits: installer, file version, update
     // comparison and the DSFinV-K software version.
     public const string ReleaseName = "Merd-M";
-    public const string Version = "0.7.33.873";
-    public const string Revision = "R173";
-    public const string UserAgentVersion = "0.7.33-R173";
+    public const string Version = "0.7.33.874";
+    public const string Revision = "R174";
+    public const string UserAgentVersion = "0.7.33-R174";
 
     public static string DisplayName => $"{Product} {ReleaseName}";
 

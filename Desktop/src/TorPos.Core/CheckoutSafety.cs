@@ -135,7 +135,7 @@ public sealed record CheckoutSnapshot(
     public static CartLine[] CopyLines(IEnumerable<CartLine> lines, bool imHaus = false) => lines.Select(x => new CartLine
     {
         ProductId=x.ProductId, ProductName=x.ProductName, VariantName=x.VariantName,
-        Barcode=x.Barcode, Quantity=x.Quantity, UnitPriceCents=x.UnitPriceCents,
+        Barcode=x.Barcode, Quantity=x.Quantity, Unit=x.Unit, UnitPriceCents=x.UnitPriceCents,
         ListUnitPriceCents=x.EffectiveListUnitPriceCents,
         VatRate=ImHausVat.Effective(x.VatRate, imHaus, x.ImHausApplicable), PfandCents=x.PfandCents,
         VatAllocations=x.VatAllocations.ToArray(),
