@@ -30,6 +30,18 @@ public sealed class PrinterSetupWindow : Window
         HorizontalAlignment = HorizontalAlignment.Stretch
     };
 
+    private readonly ComboBox _drawerChannel = new()
+    {
+        MinHeight = 44,
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        ItemsSource = new[]
+        {
+            "1 · Standard (Star Gerät 1 / Epson Pin 2)",
+            "2 · Alternative (Star Gerät 2 / Epson Pin 5)"
+        },
+        SelectedIndex = 0
+    };
+
     private readonly TextBlock _model = Value();
     private readonly TextBlock _driver = Value();
     private readonly TextBlock _port = Value();
@@ -125,6 +137,7 @@ public sealed class PrinterSetupWindow : Window
                             },
                             Field("Verwendung", _role),
                             Field("Gefundener Drucker", _device),
+                            Field("Kassenschubladen-Ausgang", _drawerChannel),
                             _detect,
                             DeviceCard(),
                             new StackPanel
@@ -144,7 +157,7 @@ public sealed class PrinterSetupWindow : Window
                             },
                             new TextBlock
                             {
-                                Text = "Kassenschubladen-Test: TOR sendet genau einen ESC-p/StarPRNT-Schubladenimpuls über den ausgewählten Bondrucker. Der Test erzeugt keinen Verkauf und keinen Bon. Windows kann nur bestätigen, dass der Befehl an die Druckerwarteschlange übergeben wurde; ob die Schublade physisch geöffnet hat, muss am Gerät kontrolliert werden.",
+                                Text = "Kassenschubladen-Test: TOR verwendet je nach Drucker das passende Protokoll: Epson ESC/POS oder Star StarPRNT. Falls Ausgang 1 nicht öffnet, Ausgang 2 wählen und erneut testen. Der Test erzeugt keinen Verkauf und keinen Bon; die mechanische Öffnung muss am Gerät kontrolliert werden.",
                                 TextWrapping = TextWrapping.Wrap,
                                 Foreground = AppTheme.WarningAmber
                             }
@@ -176,6 +189,10 @@ public sealed class PrinterSetupWindow : Window
     {
         var values = await _settings.LoadAllAsync();
         var receiptName = values.GetValueOrDefault("device.receipt_printer.name", "");
+        _drawerChannel.SelectedIndex =
+            values.GetValueOrDefault("device.receipt_printer.drawer_channel", "1") == "2"
+                ? 1
+                : 0;
         _status.Text = string.IsNullOrWhiteSpace(receiptName)
             ? "Noch kein Bondrucker gespeichert. Automatische Suche startet …"
             : $"Gespeicherter Bondrucker: {receiptName}. Automatische Suche startet …";
@@ -274,6 +291,11 @@ public sealed class PrinterSetupWindow : Window
         _use.IsEnabled = usableReceiptPrinter;
         _test.IsEnabled = usableReceiptPrinter;
         _drawer.IsVisible = SelectedRole.DrawerAllowed;
+        _drawerChannel.IsVisible = SelectedRole.DrawerAllowed;
+        _drawerChannel.IsEnabled =
+            SelectedRole.DrawerAllowed &&
+            usableReceiptPrinter &&
+            d.CashDrawerPortSupported;
         _drawer.IsEnabled =
             SelectedRole.DrawerAllowed &&
             usableReceiptPrinter &&
@@ -312,6 +334,8 @@ public sealed class PrinterSetupWindow : Window
             values["receipt.font_width"] = d.PaperWidthMm <= 58 ? "32" : "42";
             values["device.receipt_printer.profile_autocut"] = d.AutoCutSupported ? "true" : "false";
             values["device.receipt_printer.profile_drawer"] = d.CashDrawerPortSupported ? "true" : "false";
+            values["device.receipt_printer.drawer_channel"] =
+                (_drawerChannel.SelectedIndex == 1 ? 2 : 1).ToString();
         }
 
         await _settings.SaveManyAsync(values);
@@ -361,10 +385,20 @@ public sealed class PrinterSetupWindow : Window
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            await _printer.TestCashDrawerAsync(d.PrinterName, timeout.Token);
+            var channel = _drawerChannel.SelectedIndex == 1 ? 2 : 1;
+            await _printer.TestCashDrawerAsync(
+                d.PrinterName,
+                timeout.Token,
+                channel);
+
+            var protocol = d.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase)
+                ? $"StarPRNT · Ausgang {channel}"
+                : $"ESC/POS · {(channel == 2 ? "Pin 5" : "Pin 2")}";
+
             _status.Text =
-                "✓ Schubladenbefehl an Windows übergeben. Bitte jetzt physisch prüfen, ob die Kassenschublade geöffnet hat. " +
-                "TOR wertet das Senden nicht automatisch als bestätigte mechanische Öffnung.";
+                $"✓ Schubladenbefehl ({protocol}) an Windows übergeben. " +
+                "Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
+                "Falls nicht: den anderen Kassenschubladen-Ausgang wählen und erneut testen.";
         }
         catch (Exception ex)
         {
@@ -382,6 +416,7 @@ public sealed class PrinterSetupWindow : Window
         _detect.IsEnabled = !busy;
         _role.IsEnabled = !busy;
         _device.IsEnabled = !busy;
+        _drawerChannel.IsEnabled = !busy && SelectedRole.DrawerAllowed;
         if (busy)
         {
             _use.IsEnabled = false;
