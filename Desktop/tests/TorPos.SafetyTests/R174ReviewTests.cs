@@ -215,11 +215,11 @@ public static class R174ReviewTests
             FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
 
         assert(
-            infrastructure.Contains("originalLine.LineTotalCentsFor(request.Quantity)", StringComparison.Ordinal) &&
-            infrastructure.Contains("originalLine.ListLineTotalCentsFor(quantity)", StringComparison.Ordinal) &&
-            infrastructure.Contains("originalLine.PromotionDiscountCentsFor(quantity)", StringComparison.Ordinal) &&
-            main.Contains("LineTotalCentsFor(x.Quantity)", StringComparison.Ordinal),
-            "R174 partial-return terminal amount and persisted return rows reuse the same weighted line-allocation math");
+            infrastructure.Contains("LineTotalCentsSlice(", StringComparison.Ordinal) &&
+            infrastructure.Contains("ListLineTotalCentsSlice(", StringComparison.Ordinal) &&
+            infrastructure.Contains("PromotionDiscountCentsSlice(", StringComparison.Ordinal) &&
+            main.Contains("QuoteReturnAsync(", StringComparison.Ordinal),
+            "R174 invariant preserved and strengthened in R176: terminal amount and persisted partial return share one cumulative weighted allocation path");
     }
 
     private static string FindRepoFile(string relativePath)
