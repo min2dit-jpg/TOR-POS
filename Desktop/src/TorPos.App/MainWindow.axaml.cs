@@ -52,6 +52,7 @@ public partial class MainWindow:Window
     private long _categoryId;
     private string _scan="";
     private long _lastScan;
+    private long _scanStartedAt;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
     private bool _scanProcessing;
     // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
@@ -232,14 +233,32 @@ public partial class MainWindow:Window
         {
             _scanNoEnterTimer.Stop();
 
-            if (_settingsCache.GetBool("scanner.enter_suffix", true))
-                return;
-
             if (_scan.Length < 6 || _scanProcessing)
                 return;
 
+            // R176: Enter/Tab remains the fastest path, but do not depend on
+            // the suffix event reaching Avalonia. Some HID scanners type into
+            // focused TextBoxes correctly yet their CR/TAB suffix never reaches
+            // the cashier window. Treat a fast numeric burst followed by idle
+            // time as a completed scan.
+            var now = Stopwatch.GetTimestamp();
+            var elapsedMs = _scanStartedAt == 0
+                ? double.MaxValue
+                : Stopwatch.GetElapsedTime(_scanStartedAt, now).TotalMilliseconds;
+            var averageGapMs = _scan.Length <= 1
+                ? double.MaxValue
+                : elapsedMs / (_scan.Length - 1);
+
+            if (averageGapMs > 170)
+            {
+                _scan = "";
+                _scanStartedAt = 0;
+                return;
+            }
+
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
@@ -823,7 +842,14 @@ public partial class MainWindow:Window
                 : Stopwatch.GetElapsedTime(_lastScan, scannerNow).TotalMilliseconds;
 
             if (scannerGap > 180)
+            {
                 _scan = "";
+                _scanStartedAt = scannerNow;
+            }
+            else if (_scanStartedAt == 0)
+            {
+                _scanStartedAt = scannerNow;
+            }
 
             _scan += scannerDigit;
             if (_scan.Length > 32)
@@ -882,6 +908,7 @@ public partial class MainWindow:Window
         {
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             e.Handled = true;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
@@ -914,7 +941,14 @@ public partial class MainWindow:Window
         // Reset after a human-speed pause so unrelated keyboard input never
         // becomes part of a barcode.
         if (gap > 180)
+        {
             _scan = "";
+            _scanStartedAt = now;
+        }
+        else if (_scanStartedAt == 0)
+        {
+            _scanStartedAt = now;
+        }
 
         var added = false;
         var hasSuffix = false;
@@ -962,6 +996,7 @@ public partial class MainWindow:Window
             _scanNoEnterTimer.Stop();
             var code = _scan;
             _scan = "";
+            _scanStartedAt = 0;
             ScannerStatus.Text = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             _ = ProcessBarcodeSafely(code);
@@ -973,15 +1008,19 @@ public partial class MainWindow:Window
 
     private void ArmScannerNoSuffixTimer()
     {
-        if (_settingsCache.GetBool("scanner.enter_suffix", true))
-            return;
-
         _scanNoEnterTimer.Stop();
+
+        // Always keep an idle fallback. If the scanner is configured with
+        // Enter/Tab, that suffix completes the scan immediately and stops this
+        // timer. If Windows/Avalonia drops the suffix, the buffered fast burst
+        // is still processed instead of disappearing.
+        var configured = _settingsCache.GetInt("scanner.wait_ms", 180);
+        var waitMs = _settingsCache.GetBool("scanner.enter_suffix", true)
+            ? Math.Max(220, configured)
+            : configured;
+
         _scanNoEnterTimer.Interval = TimeSpan.FromMilliseconds(
-            Math.Clamp(
-                _settingsCache.GetInt("scanner.wait_ms", 180),
-                80,
-                500));
+            Math.Clamp(waitMs, 100, 600));
         _scanNoEnterTimer.Start();
     }
 
