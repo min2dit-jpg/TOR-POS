@@ -382,7 +382,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
     public async Task TestCashDrawerAsync(
         string printerName,
         CancellationToken ct = default,
-        int channel = 1)
+        int channel = 1,
+        string protocol = "AUTO")
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Windows printer driver required.");
@@ -400,8 +401,9 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         ct.ThrowIfCancellationRequested();
 
         var profile = DetectPrinterProfile(printerName);
-        var command = CashDrawerCommandFor(profile, channel);
-        var protocol = profile.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase)
+        var command = CashDrawerCommandFor(profile, channel, protocol);
+        var effectiveProtocol = EffectiveCashDrawerProtocol(profile, protocol);
+        var protocolLabel = effectiveProtocol == "STAR_PRNT"
             ? $"StarPRNT · Ausgang {channel}"
             : $"ESC/POS · Pin {(channel == 2 ? 5 : 2)}";
 
@@ -411,13 +413,13 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
                 () => RawPrinterIo.SendRaw(
                     printerName.Trim(),
                     command,
-                    $"TOR POS - Kassenschublade Test - {protocol}"),
+                    $"TOR POS - Kassenschublade Test - {protocolLabel}"),
                 ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Kassenschubladenbefehl ({protocol}) konnte nicht gesendet werden: {ex.Message}",
+                $"Kassenschubladenbefehl ({protocolLabel}) konnte nicht gesendet werden: {ex.Message}",
                 ex);
         }
     }
@@ -676,7 +678,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             printerName,
             job.AutoCut,
             job.OpenCashDrawer,
-            job.CashDrawerChannel);
+            job.CashDrawerChannel,
+            job.CashDrawerProtocol);
     }
 
     /// <summary>
@@ -692,7 +695,8 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         string printerName,
         bool autoCut,
         bool openCashDrawer,
-        int cashDrawerChannel = 1)
+        int cashDrawerChannel = 1,
+        string cashDrawerProtocol = "AUTO")
     {
         if (!OperatingSystem.IsWindows()) return;
 
@@ -716,7 +720,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             {
                 RawPrinterIo.SendRaw(
                     printerName,
-                    CashDrawerCommandFor(profile, cashDrawerChannel),
+                    CashDrawerCommandFor(profile, cashDrawerChannel, cashDrawerProtocol),
                     "TOR POS - Kassenschublade");
             }
             catch { /* receipt itself has already printed */ }
@@ -734,22 +738,49 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             "Kein freigegebenes RAW-Cutter-Protokoll für diesen Drucker.");
     }
 
+    internal static string EffectiveCashDrawerProtocol(
+        PrinterDeviceInfo profile,
+        string protocol = "AUTO")
+    {
+        var requested = (protocol ?? "AUTO")
+            .Trim()
+            .ToUpperInvariant()
+            .Replace("-", "_")
+            .Replace("/", "_");
+
+        if (requested is "ESC_POS" or "ESCPOS")
+            return "ESC_POS";
+        if (requested is "STAR_PRNT" or "STARPRNT")
+            return "STAR_PRNT";
+        if (requested != "AUTO")
+            throw new InvalidOperationException(
+                $"Unbekanntes Kassenschubladen-Protokoll: {protocol}");
+
+        if (profile.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase))
+            return "STAR_PRNT";
+        if (profile.Manufacturer.Equals("Epson", StringComparison.OrdinalIgnoreCase))
+            return "ESC_POS";
+
+        throw new InvalidOperationException(
+            "Druckerprofil ist nicht eindeutig. In Geräte → Kassenschublade ESC-POS oder StarPRNT ausdrücklich wählen.");
+    }
+
     internal static byte[] CashDrawerCommandFor(
         PrinterDeviceInfo profile,
-        int channel = 1)
+        int channel = 1,
+        string protocol = "AUTO")
     {
         if (channel is not (1 or 2))
             throw new ArgumentOutOfRangeException(nameof(channel));
 
-        if (profile.Manufacturer.Equals("Star", StringComparison.OrdinalIgnoreCase))
-            return StarPrntRawCommands.StarPrntOpenCashDrawer(channel);
-
-        if (profile.Manufacturer.Equals("Epson", StringComparison.OrdinalIgnoreCase))
-            return StarPrntRawCommands.EpsonEscPosOpenCashDrawer(
-                pin: channel == 2 ? (byte)1 : (byte)0);
-
-        throw new InvalidOperationException(
-            "Kein freigegebenes RAW-Schubladenprotokoll für diesen Drucker.");
+        return EffectiveCashDrawerProtocol(profile, protocol) switch
+        {
+            "STAR_PRNT" => StarPrntRawCommands.StarPrntOpenCashDrawer(channel),
+            "ESC_POS" => StarPrntRawCommands.EpsonEscPosOpenCashDrawer(
+                pin: channel == 2 ? (byte)1 : (byte)0),
+            _ => throw new InvalidOperationException(
+                "Kein freigegebenes RAW-Schubladenprotokoll.")
+        };
     }
 
     private static void PrintErrorSlipNow(
