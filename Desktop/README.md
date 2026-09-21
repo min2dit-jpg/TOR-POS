@@ -1,6 +1,6 @@
 # TOR POS Desktop
 
-**Aktueller Stand:** R179 · Merd-M · 0.7.33.879
+**Aktueller Stand:** R180 · Merd-M · 0.7.33.880
 
 Die verbindliche Versionsquelle ist `src/TorPos.Core/ReleaseInfo.cs`. Der
 zentrale Release-Index liegt im Repository-Root unter `../CHANGELOG.md`.
