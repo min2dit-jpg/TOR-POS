@@ -179,6 +179,32 @@ internal static class RestaurantPaymentStore
             if (await update.ExecuteNonQueryAsync(ct) != 1)
                 throw new InvalidOperationException(
                     "Restaurant-Zahlungsposition wurde parallel verändert.");
+
+            if (reserved.QuantityMilli < currentQuantity)
+            {
+                await using var paidSlice = c.CreateCommand();
+                paidSlice.Transaction = tx;
+                paidSlice.CommandText = """
+                    INSERT INTO restaurant_session_items(
+                        session_id,line_token,product_id,product_name,variant_name,
+                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                        added_by,added_at,version)
+                    SELECT
+                        session_id,$token,product_id,product_name,variant_name,
+                        $paid,unit_price_cents,vat_rate,pfand_cents,'PAID',
+                        added_by,$now,1
+                    FROM restaurant_session_items
+                    WHERE id=$item AND session_id=$session;
+                    """;
+                paidSlice.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
+                paidSlice.Parameters.AddWithValue("$paid", reserved.QuantityMilli);
+                paidSlice.Parameters.AddWithValue("$now", now);
+                paidSlice.Parameters.AddWithValue("$item", reserved.ItemId);
+                paidSlice.Parameters.AddWithValue("$session", sessionId);
+                if (await paidSlice.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Bezahlte Restaurant-Teilmenge konnte nicht historisiert werden.");
+            }
         }
 
         int openCount;
