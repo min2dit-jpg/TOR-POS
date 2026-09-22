@@ -39,6 +39,20 @@ public static class EditionSplitFoundationTests
             assert(project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'KIOSK'\">TOR-KIOSK</AssemblyName>", StringComparison.Ordinal) && project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'IMBISS'\">TOR-DOENER</AssemblyName>", StringComparison.Ordinal) && project.Contains("TOR_KIOSK_PRODUCT", StringComparison.Ordinal) && project.Contains("TOR_DOENER_PRODUCT", StringComparison.Ordinal), "one audited App project emits distinct TOR KIOSK and TOR DÖNER binaries");
             var program = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/Program.cs"));
             var app = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/App.axaml.cs"));
+            // R182: avares URIs are keyed by assembly name, and a dedicated build renames
+            // the assembly to TOR-KIOSK / TOR-DOENER. A hardcoded avares://TorPos.App/ URI
+            // therefore resolves in the shared build and throws FileNotFoundException while
+            // the dedicated product loads its login window - it cannot start at all.
+            var appDirectory = Path.GetDirectoryName(FindRepoFile("Desktop/src/TorPos.App/Program.cs"))!;
+            var sharedAssemblyAssetUris = Directory
+                .EnumerateFiles(appDirectory, "*", SearchOption.AllDirectories)
+                .Where(f => (f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".axaml", StringComparison.OrdinalIgnoreCase))
+                    && !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                    && !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                .Where(f => File.ReadAllText(f).Contains("avares://TorPos.App/", StringComparison.Ordinal))
+                .ToArray();
+            assert(sharedAssemblyAssetUris.Length == 0, "no asset URI hardcodes the shared assembly name, which a renamed TOR KIOSK / TOR DÖNER build cannot resolve");
+
             var editionGuard = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/InstallationEdition.cs"));
             assert(editionGuard.Contains("var productEditionValue = ProductBuild.FixedEdition;", StringComparison.Ordinal) && editionGuard.Contains("productEditionValue is { } productEdition", StringComparison.Ordinal) && editionGuard.Contains("?? Environment.GetEnvironmentVariable(\"TOR_POS_EDITION\")", StringComparison.Ordinal), "a dedicated build refuses any edition that does not match its compiled product identity");
             assert(program.Contains("ProductBuild.ConfigureEnvironment()", StringComparison.Ordinal) && program.Contains("ProductBuild.RunningMutexName", StringComparison.Ordinal) && app.Contains("var builtEdition = ProductBuild.FixedEdition;", StringComparison.Ordinal) && app.Contains("return builtEdition;", StringComparison.Ordinal), "split builds fix both process identity and login edition before normal application flow");

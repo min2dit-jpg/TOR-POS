@@ -14,10 +14,12 @@ public static class CrashLog
     private static bool _handlersInitialized;
     private static string? _sessionLogPath;
 
+    // R182: each product logs under its own name. ProductBuild.ProductName is
+    // "TOR POS Pro" in the shared build, so existing installations keep their path.
     public static string LogDirectory =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TOR POS Pro",
+            ProductBuild.ProductName,
             "Logs");
 
     private static string RunningMarkerPath =>
@@ -289,7 +291,10 @@ public sealed class StartupLoadingWindow : Window
     {
         try
         {
-            var uri = new Uri("avares://TorPos.App/Assets/TorPos-Brand.jpg");
+            // R182: a dedicated TOR KIOSK / TOR DÖNER build renames the assembly, and
+            // avares URIs are keyed by assembly name. Derive it instead of hardcoding it.
+            var assetAssembly = typeof(StartupLoadingWindow).Assembly.GetName().Name;
+            var uri = new Uri($"avares://{assetAssembly}/Assets/TorPos-Brand.jpg");
             using var stream = AssetLoader.Open(uri);
             return new Border
             {

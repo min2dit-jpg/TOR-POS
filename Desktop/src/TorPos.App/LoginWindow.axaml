@@ -17,7 +17,7 @@
               BorderBrush="#279CFF"
               BorderThickness="1.2"
               BoxShadow="0 0 18 1 #66279CFF">
-        <Image Source="avares://TorPos.App/Assets/TorPos-Brand.jpg"
+        <Image Source="/Assets/TorPos-Brand.jpg"
                Stretch="UniformToFill"/>
       </Border>
       <TextBlock Text="TOR-POS"
