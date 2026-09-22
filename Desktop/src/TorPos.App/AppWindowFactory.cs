@@ -19,6 +19,9 @@ public interface IAppWindowFactory
         string initialPage = "Allgemein");
 
     DiagnosticsWindow CreateDiagnosticsWindow();
+
+    RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user);
 }
 
 internal sealed class AppWindowFactory : IAppWindowFactory
@@ -84,6 +87,13 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             user,
             this,
             initialPage);
+
+    public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantRepository>(),
+            _services.GetRequiredService<IProductCatalog>(),
+            user);
 
     public DiagnosticsWindow CreateDiagnosticsWindow() =>
         new(
