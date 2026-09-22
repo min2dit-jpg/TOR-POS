@@ -352,13 +352,14 @@ public sealed class RestaurantFiscalOrderService
                             client_id,transaction_number,signature_counter,serial_number,signature,
                             start_log_time,log_time,outage,outage_reason)
                         VALUES(
-                            $session,$sequence,'AENDERUNG',$started,$created,$operator,$total,
+                            $session,$sequence,$kind,$started,$created,$operator,$total,
                             $client,$transaction,$counter,$serial,$signature,
                             $startLog,$log,$outage,$reason)
                         RETURNING id;
                         """;
                     head.Parameters.AddWithValue("$session", sessionId);
                     head.Parameters.AddWithValue("$sequence", sequence);
+                    head.Parameters.AddWithValue("$kind", sequence == 1 ? "ANNAHME" : "AENDERUNG");
                     head.Parameters.AddWithValue("$started", startedAt.ToString("O"));
                     head.Parameters.AddWithValue("$created", now.ToString("O"));
                     head.Parameters.AddWithValue("$operator", actor ?? "");
