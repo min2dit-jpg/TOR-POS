@@ -42,6 +42,7 @@ function Publish-Edition(
 
 Publish-Edition -Edition "KIOSK" -Folder "TOR-Einzelhandel" -ExpectedExe "TOR-Einzelhandel.exe"
 Publish-Edition -Edition "IMBISS" -Folder "TOR-Gastro" -ExpectedExe "TOR-Gastro.exe"
+Publish-Edition -Edition "RESTAURANT" -Folder "TOR-Restaurant" -ExpectedExe "TOR-Restaurant.exe"
 
 Write-Host ""
 Write-Host "Split product publish completed."
