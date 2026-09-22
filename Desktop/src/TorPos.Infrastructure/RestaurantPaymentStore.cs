@@ -114,6 +114,8 @@ internal static class RestaurantPaymentStore
                     "Restaurant-Tisch wurde während der Zahlung verändert.");
         }
 
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
         foreach (var reserved in reservations)
         {
             long currentQuantity;
@@ -220,7 +222,6 @@ internal static class RestaurantPaymentStore
             openCount = Convert.ToInt32(await open.ExecuteScalarAsync(ct));
         }
 
-        var now = DateTimeOffset.UtcNow.ToString("O");
         await using (var completeSession = c.CreateCommand())
         {
             completeSession.Transaction = tx;
