@@ -507,7 +507,7 @@ internal static class UiTranslations
         ["Bei aktivierter Terminalintegration wird ein Kartenverkauf erst nach erfolgreicher Terminalbestätigung als Verkauf gespeichert."] = "Terminal entegrasyonu etkinse kartlı satış ancak terminal başarıyla onayladıktan sonra satış olarak kaydedilir.",
 
         // Einstellungen · Geräte, Cloud, Backup und Personal
-        ["Drucker / Yazıcılar & Geräte"] = "Yazıcılar & cihazlar",
+        ["Drucker & Geräte"] = "Yazıcılar ve cihazlar",
         ["Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden."] = "Windows yazıcısını seçin, test edin ve aşağıda KAYDET'e basın. Kart terminali marka sihirbazı üzerinden bağlanır.",
         ["WAAGEN-EINSTELLUNGEN · MANUELL / COM / LAN / BARCODE"] = "TERAZİ AYARLARI · MANUEL / COM / LAN / BARKOD",
         ["Gewichtsverkauf"] = "Tartılı satış",
@@ -726,7 +726,7 @@ internal static class UiTranslations
         ["Treiber, Ports und Protokolle werden einmalig vom Techniker eingerichtet."] =
             "Sürücüler, portlar ve protokoller teknisyen tarafından bir defa ayarlanır.",
         ["Bondrucker / Windows"] = "Fiş yazıcısı / Windows",
-        ["Auswahl unter Geräte → Drucker / Yazıcılar."] = "Seçim: Cihazlar → Drucker / Yazıcılar.",
+        ["Auswahl unter Geräte → Drucker."] = "Seçim: Cihazlar → Yazıcılar.",
         ["Letzter Test"] = "Son test",
         ["Auto-Cut im Windows-Treiber verwenden"] = "Windows sürücüsünde otomatik kesmeyi kullan",
         ["Anschlüsse"] = "Bağlantılar",
@@ -1230,7 +1230,7 @@ internal static class UiTranslations
         ["Bei aktivierter Terminalintegration wird ein Kartenverkauf erst nach erfolgreicher Terminalbestätigung als Verkauf gespeichert."] = "With terminal integration enabled, a card sale is saved only after successful terminal confirmation.",
 
         // Settings · devices, Cloud, backup and staff
-        ["Drucker / Yazıcılar & Geräte"] = "Printers & devices",
+        ["Drucker & Geräte"] = "Printers & devices",
         ["Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden."] = "Select and test the Windows printer, then press SAVE below. The card terminal is connected through the brand assistant.",
         ["WAAGEN-EINSTELLUNGEN · MANUELL / COM / LAN / BARCODE"] = "SCALE SETTINGS · MANUAL / COM / LAN / BARCODE",
         ["Gewichtsverkauf"] = "Weighted sales",
@@ -1449,7 +1449,7 @@ internal static class UiTranslations
         ["Treiber, Ports und Protokolle werden einmalig vom Techniker eingerichtet."] =
             "Drivers, ports and protocols are set up once by the technician.",
         ["Bondrucker / Windows"] = "Receipt printer / Windows",
-        ["Auswahl unter Geräte → Drucker / Yazıcılar."] = "Choose it under Devices → Drucker / Yazıcılar.",
+        ["Auswahl unter Geräte → Drucker."] = "Choose it under Devices → Printers.",
         ["Letzter Test"] = "Last test",
         ["Auto-Cut im Windows-Treiber verwenden"] = "Use auto-cut in the Windows driver",
         ["Anschlüsse"] = "Connections",

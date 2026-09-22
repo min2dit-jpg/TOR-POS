@@ -214,7 +214,7 @@ public static class MultiLanguageTests
         // printer names, paths, tokens and staff-entered values remain data.
         string[] operationalSettingsVocabulary =
         [
-            "Drucker / Yazıcılar & Geräte",
+            "Drucker & Geräte",
             "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden.",
             "WAAGEN-EINSTELLUNGEN · MANUELL / COM / LAN / BARCODE",
             "Gewichtsverkauf",
@@ -642,7 +642,7 @@ public static class MultiLanguageTests
             "Geräte · Technische Einrichtung",
             "Treiber, Ports und Protokolle werden einmalig vom Techniker eingerichtet.",
             "Bondrucker / Windows",
-            "Auswahl unter Geräte → Drucker / Yazıcılar.",
+            "Auswahl unter Geräte → Drucker.",
             "Letzter Test",
             "Auto-Cut im Windows-Treiber verwenden",
             "Anschlüsse",

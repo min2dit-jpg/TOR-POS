@@ -440,7 +440,7 @@ public partial class SettingsWindow : Window
         var page = Page("Geräte · Technische Einrichtung",
             "Treiber, Ports und Protokolle werden einmalig vom Techniker eingerichtet.");
         var printer = Section("Bondrucker / Windows");
-        printer.Children.Add(ReadOnlyRow("Windows-Drucker", "Auswahl unter Geräte → Drucker / Yazıcılar."));
+        printer.Children.Add(ReadOnlyRow("Windows-Drucker", "Auswahl unter Geräte → Drucker."));
         var lastTest = Text("device.receipt_printer.last_test"); lastTest.IsReadOnly = true; Form(printer, "Letzter Test", lastTest);
         var lastError = Text("device.receipt_printer.last_error"); lastError.IsReadOnly = true; Form(printer, "Letzter Fehler", lastError);
         printer.Children.Add(ToggleRow(Check("device.receipt_printer.autocut_driver", "Auto-Cut im Windows-Treiber verwenden")));
@@ -924,7 +924,7 @@ public partial class SettingsWindow : Window
 
     private Control DevicesPage()
     {
-        var page = Page("Drucker / Yazıcılar & Geräte",
+        var page = Page("Drucker & Geräte",
             "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden.");
 
         var scaleAssistant = new Button
