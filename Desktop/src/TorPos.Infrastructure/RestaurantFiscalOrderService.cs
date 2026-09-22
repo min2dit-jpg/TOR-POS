@@ -161,7 +161,8 @@ public sealed class RestaurantFiscalOrderService
                            SUM(quantity_milli)
                     FROM restaurant_session_items
                     WHERE session_id=$session AND state IN ('ACTIVE','PAID')
-                    GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents;
+                    GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents
+                    HAVING SUM(quantity_milli)<>0;
                     """;
                 q.Parameters.AddWithValue("$session", sessionId);
                 await using var r = await q.ExecuteReaderAsync(ct);
@@ -185,7 +186,8 @@ public sealed class RestaurantFiscalOrderService
                     FROM restaurant_bestellung_items i
                     JOIN restaurant_bestellungen b ON b.id=i.bestellung_id
                     WHERE b.session_id=$session
-                    GROUP BY i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents;
+                    GROUP BY i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents
+                    HAVING SUM(i.quantity_milli)<>0;
                     """;
                 q.Parameters.AddWithValue("$session", sessionId);
                 await using var r = await q.ExecuteReaderAsync(ct);
