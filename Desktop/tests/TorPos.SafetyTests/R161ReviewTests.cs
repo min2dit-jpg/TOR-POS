@@ -14,13 +14,13 @@ public static class R161ReviewTests
         var iconPath = FindRepoFile("Desktop/src/TorPos.App/Assets/TorPos.ico");
 
         assert(
-            login.Contains("avares://TorPos.App/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
+            login.Contains("Source=\"/Assets/TorPos-Brand.jpg\"", StringComparison.Ordinal) &&
             login.Contains("Text=\"TOR-POS\"", StringComparison.Ordinal) &&
             !login.Contains("<TextBlock Text=\"TOR\"", StringComparison.Ordinal),
             "R161 login screen uses the new TOR POS brand image and no longer renders the old green TOR placeholder");
 
         assert(
-            startup.Contains("avares://TorPos.App/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
+            startup.Contains("avares://{assetAssembly}/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
             startup.Contains("AssetLoader.Open", StringComparison.Ordinal) &&
             !startup.Contains("TorPos-Magnifier.png", StringComparison.Ordinal) &&
             startup.Contains("Text = \"TOR POS\"", StringComparison.Ordinal),

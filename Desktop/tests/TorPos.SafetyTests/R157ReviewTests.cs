@@ -17,7 +17,7 @@ public static class R157ReviewTests
             "R157 the supplied TOR POS logo is a real bundled Avalonia resource, not a placeholder");
 
         assert(
-            mainAxaml.Contains("avares://TorPos.App/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
+            mainAxaml.Contains("Source=\"/Assets/TorPos-Brand.jpg\"", StringComparison.Ordinal) &&
             !mainAxaml.Contains("Text=\"TOR\" Foreground=\"#07140F\"", StringComparison.Ordinal),
             "R157 the cashier header uses the new TOR POS image instead of the old green TOR text badge");
 
