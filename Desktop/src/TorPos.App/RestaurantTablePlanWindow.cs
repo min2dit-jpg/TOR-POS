@@ -115,6 +115,13 @@ public sealed class RestaurantTablePlanWindow : Window
         IsEnabled = false
     };
 
+    private readonly Button _cancelItem = new()
+    {
+        Content = "POSITION STORNIEREN",
+        MinHeight = 44,
+        IsEnabled = false
+    };
+
     private IReadOnlyList<RestaurantTable> _tables = Array.Empty<RestaurantTable>();
     private RestaurantTable? _selectedTable;
     private RestaurantTableSession? _selectedSession;
@@ -153,6 +160,14 @@ public sealed class RestaurantTablePlanWindow : Window
         _closeEmpty.Click += async (_, _) => await CloseEmptySelectedSessionAsync();
         _split.Click += async (_, _) => await ShowSplitPreviewAsync();
         _checkoutSelected.Click += async (_, _) => await CheckoutSelectedAsync();
+        _cancelItem.Click += async (_, _) => await CancelSelectedItemAsync();
+        _items.SelectionChanged += (_, _) =>
+        {
+            _cancelItem.IsEnabled =
+                _selectedSession is not null &&
+                _selectedSession.State == RestaurantTableSessionState.Open &&
+                _items.SelectedItems?.Count == 1;
+        };
 
         _product.ItemsSource = _catalog.Products
             .Where(x => x.IsActive)
@@ -228,7 +243,8 @@ public sealed class RestaurantTablePlanWindow : Window
                     Spacing = 8,
                     Children = { _split, _closeEmpty }
                 },
-                _checkoutSelected
+                _checkoutSelected,
+                _cancelItem
             }
         };
 
@@ -356,6 +372,7 @@ public sealed class RestaurantTablePlanWindow : Window
             _closeEmpty.IsEnabled = false;
             _split.IsEnabled = false;
             _checkoutSelected.IsEnabled = false;
+            _cancelItem.IsEnabled = false;
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
         }
     }
@@ -420,6 +437,7 @@ public sealed class RestaurantTablePlanWindow : Window
             _closeEmpty.IsEnabled = false;
             _split.IsEnabled = false;
             _checkoutSelected.IsEnabled = false;
+            _cancelItem.IsEnabled = false;
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
             return;
         }
@@ -448,6 +466,7 @@ public sealed class RestaurantTablePlanWindow : Window
         _closeEmpty.IsEnabled = !paymentLocked && currentItems.Count == 0;
         _split.IsEnabled = !paymentLocked && currentItems.Count > 0;
         _checkoutSelected.IsEnabled = !paymentLocked && currentItems.Count > 0;
+        _cancelItem.IsEnabled = false;
     }
 
     private async Task OpenSelectedTableAsync()
@@ -677,6 +696,71 @@ public sealed class RestaurantTablePlanWindow : Window
         }
         catch (Exception ex)
         {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task CancelSelectedItemAsync()
+    {
+        if (_selectedSession is null ||
+            _items.SelectedItems?.OfType<RestaurantSessionItem>().SingleOrDefault() is not { } selected)
+        {
+            return;
+        }
+
+        RestaurantFiscalVorgang? fiscal = null;
+
+        try
+        {
+            var secured =
+                await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                    _selectedSession.Id);
+
+            if (!secured)
+            {
+                await ShowErrorAsync(
+                    "Position kann nicht storniert werden: Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+                return;
+            }
+
+            fiscal = await _restaurantFiscal.BeginChangeAsync(
+                _selectedSession.Id,
+                _user.Username);
+
+            var cancelled = await _restaurant.CancelItemAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                selected.Id,
+                _user.Username,
+                Environment.MachineName);
+
+            await _restaurantFiscal.SecureCancelledItemAsync(
+                _selectedSession.Id,
+                cancelled,
+                fiscal,
+                _user.Username);
+
+            fiscal = null;
+
+            _selectedSession = await _restaurant.GetSessionAsync(
+                _selectedSession.Id);
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            if (fiscal is not null)
+            {
+                try
+                {
+                    await _restaurantFiscal.AbortChangeAsync(
+                        fiscal,
+                        _user.Username);
+                }
+                catch { }
+            }
+
             await ShowErrorAsync(ex.Message);
             await ReloadAsync();
         }
