@@ -132,6 +132,13 @@ public partial class App : Avalonia.Application
             var orderPrintDispatcher = new OrderPrintDispatcher(orderPrintOutbox,new PrintJobJournal(),receiptPrinter.SubmitOrderAsync,ex=>CrashLog.WriteException("Order print dispatch",ex));
             parkedReceipts.PrintCommitted = orderPrintDispatcher.Notify;
             orderPrintDispatcher.Start();
+            var restaurantKitchenOutbox = new RestaurantKitchenOutbox(db);
+            var restaurantKitchenDispatcher = new RestaurantKitchenDispatcher(
+                restaurantKitchenOutbox,
+                settings,
+                receiptPrinter,
+                ex => CrashLog.WriteException("Restaurant kitchen dispatch", ex));
+            restaurantKitchenDispatcher.Start();
             var commercialLicense = new CommercialLicenseService();
             var tseProvider = new SwissbitHardwareTseProvider();
             var tseOutages = new TseOutageRepository(db, audit);
@@ -242,7 +249,8 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(new ProductImageStore());
             appServices.AddSingleton(new RestaurantRepository(db));
             appServices.AddSingleton(new RestaurantFiscalOrderService(db, tseVorgaenge));
-            appServices.AddSingleton(new RestaurantKitchenOutbox(db));
+            appServices.AddSingleton(restaurantKitchenOutbox);
+            appServices.AddSingleton(restaurantKitchenDispatcher);
             appServices.AddSingleton<IAppWindowFactory, AppWindowFactory>();
 
             var serviceProvider = appServices.BuildServiceProvider(
@@ -300,6 +308,8 @@ public partial class App : Avalonia.Application
                 }
                 catch(Exception ex) { CrashLog.WriteException("Exit backup failed or timed out",ex); }
                 await orderPrintDispatcher.DisposeAsync();
+                try { await restaurantKitchenDispatcher.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch(Exception ex) { CrashLog.WriteException("Restaurant kitchen dispatcher shutdown failed",ex); }
                 try { await receiptPrinter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
                 catch(Exception ex) { CrashLog.WriteException("Printer shutdown failed",ex); }
                 exitCleanupDone=true;
