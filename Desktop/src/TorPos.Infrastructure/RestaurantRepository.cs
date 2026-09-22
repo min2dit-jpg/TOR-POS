@@ -307,6 +307,9 @@ public sealed class RestaurantRepository
         if (sessionId.Length == 0) throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
         if (expectedSessionVersion < 1) throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
         if (product.Id <= 0) throw new ArgumentException("Artikel fehlt.", nameof(product));
+        if (product.IsWeighted || product.IsCombo || product.Variants.Count > 0)
+            throw new InvalidOperationException(
+                "Dieser Artikel benötigt einen erweiterten Restaurant-Snapshot und ist in dieser Foundation noch gesperrt.");
         if (quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(quantity));
 
         var quantityMilli = (long)Math.Round(quantity * 1000m, MidpointRounding.AwayFromZero);
