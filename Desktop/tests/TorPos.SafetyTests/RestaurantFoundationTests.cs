@@ -466,6 +466,55 @@ internal static class RestaurantFoundationTests
                 !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
                 "No-charge cancellation reopens the Restaurant table and clears the payment lock");
 
+            var cancelTableId = await repo.SaveTableAsync(
+                areaId,
+                "T05",
+                "Tisch 5",
+                seats: 2,
+                sortOrder: 5);
+            var cancelSession = await repo.OpenTableAsync(
+                cancelTableId,
+                "KELLNER-1",
+                guestCount: 1);
+            var cancelItem = await repo.AddItemAsync(
+                cancelSession.Id,
+                cancelSession.Version,
+                product,
+                1m,
+                "KELLNER-1");
+
+            await InsertRestaurantBestellungAsync(
+                db,
+                cancelSession.Id,
+                sequence: 1,
+                kind: "ANNAHME",
+                product,
+                quantityMilli: 1000);
+
+            var cancelled = await repo.CancelItemAsync(
+                cancelSession.Id,
+                expectedSessionVersion: 2,
+                cancelItem.Id,
+                "KELLNER-1",
+                "KASSE-1");
+
+            await InsertRestaurantBestellungAsync(
+                db,
+                cancelSession.Id,
+                sequence: 2,
+                kind: "AENDERUNG",
+                product,
+                quantityMilli: -1000);
+
+            assert(
+                cancelled.State == RestaurantSessionItemState.Cancelled &&
+                (await repo.ListActiveItemsAsync(cancelSession.Id)).Count == 0,
+                "Restaurant position cancellation preserves the row as CANCELLED and removes it from active service");
+
+            assert(
+                await fiscalState.IsCurrentStateSecuredAsync(cancelSession.Id),
+                "Negative Bestellung delta reconciles a cancelled Restaurant position to zero");
+
             var emptyTableId = await repo.SaveTableAsync(
                 areaId,
                 "T04",
