@@ -906,6 +906,197 @@ internal static class UiTranslations
         ["Diagnose fehlgeschlagen"] = "Tanılama başarısız",
         ["Bearbeiter angeben."] = "İşlemi yapanı belirtin.",
         ["Fehler"] = "Hata",
+
+        // Einrichtungs- und Verwaltungsfenster: Drucker, Waage, Terminal, SumUp, DSFinV-K-Versand, Inventur, Angebote
+        ["1,00 € TESTANFORDERUNG wurde von der SumUp API angenommen."] =
+            "1,00 € TEST İSTEĞİ SumUp API tarafından kabul edildi.",
+        ["ABBRUCHANFORDERUNG an SumUp gesendet. SumUp liefert dafür keine synchrone Abbruchbestätigung. Solo-Anzeige kontrollieren. Der Abbruch funktioniert nur, solange das Gerät auf eine Karten-/PIN-Aktion wartet."] =
+            "SumUp'a İPTAL İSTEĞİ gönderildi. SumUp bunun için eşzamanlı bir iptal onayı vermez. Solo ekranını kontrol edin. İptal yalnızca cihaz kart/PIN işlemi beklerken çalışır.",
+        ["ANGEBOT"] = "KAMPANYA",
+        ["Abgebrochen / Zeitlimit erreicht."] = "İptal edildi / süre doldu.",
+        ["Angebot"] = "Kampanya",
+        ["Angebot(e) geladen · Betriebstag"] = "kampanya yüklendi · işletme günü",
+        ["Artikel angezeigt"] = "ürün gösteriliyor",
+        ["Automatische Suche startet …"] = "Otomatik arama başlıyor …",
+        ["Automatische Zahlung ist für dieses Profil noch nicht freigegeben."] =
+            "Bu profil için otomatik ödeme henüz onaylanmadı.",
+        ["BARCODE SCANNEN"] = "BARKOD OKUTUN",
+        ["Barcode"] = "Barkod",
+        ["Bericht an"] = "Rapor",
+        ["Bestand"] = "Stok",
+        ["Bestand wurde seit dem Öffnen an anderer Stelle verändert. TOR hat den neueren Bestand NICHT überschrieben. Bitte aktuellen Wert prüfen und erneut speichern."] =
+            "Stok, pencere açıldığından beri başka bir yerde değiştirildi. TOR daha yeni stoğun ÜZERİNE YAZMADI. Lütfen güncel değeri kontrol edip yeniden kaydedin.",
+        ["Bestätigung am Solo kontrollieren; danach Geräteliste laden und Status prüfen. Keine Zahlung gestartet."] =
+            "Onayı Solo üzerinde kontrol edin; ardından cihaz listesini yükleyip durumu kontrol edin. Ödeme başlatılmadı.",
+        ["Bitte Auswahl kontrollieren."] = "Lütfen seçimi kontrol edin.",
+        ["Bitte Papierformat auswählen."] = "Lütfen kâğıt boyutunu seçin.",
+        ["Bitte das Fenster aus einer ausgewählten Warengruppe öffnen."] =
+            "Lütfen pencereyi seçili bir ürün grubundan açın.",
+        ["Bitte einen Artikel auswählen."] = "Lütfen bir ürün seçin.",
+        ["Bitte einen Windows-Drucker auswählen."] = "Lütfen bir Windows yazıcısı seçin.",
+        ["Bitte einen archivierten Z-Bericht auswählen."] = "Lütfen arşivlenmiş bir Z-Bericht seçin.",
+        ["Bitte gültige Cent-Beträge eingeben."] = "Lütfen geçerli kuruş tutarları girin.",
+        ["Bitte mindestens den Firmennamen eintragen."] = "Lütfen en azından firma adını girin.",
+        ["Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. Falls nicht: den anderen Kassenschubladen-Ausgang wählen und erneut testen."] =
+            "Kasa çekmecesinin açılıp açılmadığını fiziksel olarak kontrol edin. Açılmadıysa: diğer kasa çekmecesi çıkışını seçip yeniden test edin.",
+        ["Bitte zuerst ein Angebot auswählen."] = "Lütfen önce bir kampanya seçin.",
+        ["Bitte zuerst einen Artikel auswählen."] = "Lütfen önce bir ürün seçin.",
+        ["Bitte zuerst einen Drucker wählen."] = "Lütfen önce bir yazıcı seçin.",
+        ["Browser konnte nicht geöffnet werden"] = "Tarayıcı açılamadı",
+        ["Büro-/PDF-/Faxdrucker bleiben sichtbar, werden aber nicht als Bondrucker freigegeben. Auswahl prüfen, TESTBON DRUCKEN und danach DIESEN DRUCKER VERWENDEN."] =
+            "Ofis/PDF/faks yazıcıları görünür kalır ama fiş yazıcısı olarak onaylanmaz. Seçimi kontrol edin, TEST FİŞİ YAZDIR ve ardından BU YAZICIYI KULLAN.",
+        ["DSFinV-K ZIP-Paket wird erstellt …"] = "DSFinV-K ZIP paketi oluşturuluyor …",
+        ["DSFinV-K vollständig kopiert"] = "DSFinV-K eksiksiz kopyalandı",
+        ["DSFinV-K wird kopiert …"] = "DSFinV-K kopyalanıyor …",
+        ["DSFinV-K wurde per E-Mail an"] = "DSFinV-K e-posta ile",
+        ["Der lokale Export bleibt unverändert erhalten; USB-Kopie ist weiterhin möglich."] =
+            "Yerel dışa aktarım değişmeden kalır; USB kopyası hâlâ mümkündür.",
+        ["Dieses Angebot ist bereits deaktiviert."] = "Bu kampanya zaten kapalı.",
+        ["Druck-/PDF-Fenster geöffnet. Archivdaten bleiben unverändert."] =
+            "Yazdırma/PDF penceresi açıldı. Arşiv verileri değişmez.",
+        ["Druckereinstellungen konnten nicht geladen werden"] = "Yazıcı ayarları yüklenemedi",
+        ["Druckersuche fehlgeschlagen"] = "Yazıcı araması başarısız",
+        ["Druckersuche hat länger als 12 Sekunden gedauert. Netzwerk-/Offline-Windows-Drucker prüfen und erneut suchen."] =
+            "Yazıcı araması 12 saniyeden uzun sürdü. Ağdaki/çevrimdışı Windows yazıcılarını kontrol edip yeniden arayın.",
+        ["Druckfehler"] = "Yazdırma hatası",
+        ["Druckfunktion ist in diesem Fenster nicht verbunden."] = "Bu pencerede yazdırma işlevi bağlı değil.",
+        ["Druckziel auswählen. TOR merkt sich Drucker und Papierformat für diesen Berichtstyp."] =
+            "Yazdırma hedefini seçin. TOR, bu rapor türü için yazıcıyı ve kâğıt boyutunu hatırlar.",
+        ["E-Mail wird an"] = "E-posta",
+        ["Einrichtung"] = "Kurulum",
+        ["Epson/Star-Bondrucker erkannt"] = "Epson/Star fiş yazıcısı algılandı",
+        ["Epson/Star-Bondrucker gefunden. Vorauswahl"] = "Epson/Star fiş yazıcısı bulundu. Ön seçim",
+        ["Export lokal gespeichert. USB kopieren oder E-Mail senden ist möglich."] =
+            "Dışa aktarım yerel olarak kaydedildi. USB'ye kopyalama veya e-posta gönderme mümkündür.",
+        ["FEHLER"] = "HATA",
+        ["Gerät(e) gefunden. Gerät auswählen und Status prüfen. 'paired' allein bestätigt keine Online-Verbindung."] =
+            "cihaz bulundu. Cihazı seçip durumu kontrol edin. Tek başına 'paired' çevrimiçi bağlantıyı doğrulamaz.",
+        ["Geräteparameter eingeben und KONFIGURATION PRÜFEN wählen."] =
+            "Cihaz parametrelerini girin ve YAPILANDIRMAYI KONTROL ET seçin.",
+        ["Gespeicherter Bondrucker"] = "Kayıtlı fiş yazıcısı",
+        ["Google-Anmeldung fehlgeschlagen"] = "Google girişi başarısız",
+        ["JETZT SOLO ANSEHEN: Wenn dort 1,00 € erscheint, ist TOR POS → SumUp → Solo erfolgreich. KEINE KARTE VORHALTEN. Danach sofort TEST ABBRECHEN drücken oder am Solo abbrechen."] =
+            "ŞİMDİ SOLO'YA BAKIN: Orada 1,00 € görünüyorsa TOR POS → SumUp → Solo başarılıdır. KART OKUTMAYIN. Ardından hemen TESTİ İPTAL ET'e basın veya Solo üzerinden iptal edin.",
+        ["Kein Artikel gefunden"] = "Ürün bulunamadı",
+        ["Kein USB-Laufwerk ausgewählt. Alternativ ANDEREN ORDNER WÄHLEN benutzen."] =
+            "USB sürücüsü seçilmedi. Alternatif olarak BAŞKA KLASÖR SEÇ kullanın.",
+        ["Kein Wechselmedium automatisch erkannt. USB einstecken und aktualisieren oder ANDEREN USB-/ORDNER WÄHLEN benutzen."] =
+            "Otomatik olarak çıkarılabilir medya algılanmadı. USB takıp yenileyin veya BAŞKA USB/KLASÖR SEÇ kullanın.",
+        ["Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren."] =
+            "Windows yazıcısı bulunamadı. Önce Epson/Star sürücüsünü Windows'a kurun.",
+        ["Keine Windows-Drucker gefunden. Unter Einstellungen → Geräte prüfen."] =
+            "Windows yazıcısı bulunamadı. Ayarlar → Cihazlar altında kontrol edin.",
+        ["Kopie fehlgeschlagen"] = "Kopyalama başarısız",
+        ["Kopiervorgang abgebrochen."] = "Kopyalama iptal edildi.",
+        ["Kopplung kann erfolgt sein: zuerst Geräteliste laden."] =
+            "Eşleştirme yapılmış olabilir: önce cihaz listesini yükleyin.",
+        ["Kopplungsantwort"] = "Eşleştirme yanıtı",
+        ["Mindestbestand-Warnung(en)"] = "asgari stok uyarısı",
+        ["Modell eindeutig."] = "model kesin.",
+        ["Netzwerkfehler. Internetverbindung prüfen."] = "Ağ hatası. İnternet bağlantısını kontrol edin.",
+        ["Noch kein Bondrucker gespeichert. Automatische Suche startet …"] =
+            "Henüz fiş yazıcısı kaydedilmedi. Otomatik arama başlıyor …",
+        ["OPTIONAL · Scanner ist der Hauptweg"] = "İSTEĞE BAĞLI · asıl yol okuyucudur",
+        ["PDF gespeichert"] = "PDF kaydedildi",
+        ["PDF-Fehler"] = "PDF hatası",
+        ["PDF-Speichern abgebrochen."] = "PDF kaydetme iptal edildi.",
+        ["Papierausdruck prüfen."] = "Kâğıt çıktıyı kontrol edin.",
+        ["Pfand-/Leergutwerte gespeichert."] = "Depozito/boş şişe değerleri kaydedildi.",
+        ["Profil auswählen, Angaben eintragen und SPEICHERN. ZVT-Profile können danach ohne Zahlung getestet werden."] =
+            "Profili seçin, bilgileri girin ve KAYDET. ZVT profilleri sonrasında ödeme yapmadan test edilebilir.",
+        ["Profil gespeichert."] = "profil kaydedildi.",
+        ["Profil ist vorbereitet, aber automatische Belastung ist noch nicht freigegeben. TOR lässt dieses Profil deshalb absichtlich deaktiviert."] =
+            "Profil hazırlanmıştır ama otomatik borçlandırma henüz onaylanmadı. TOR bu profili bu nedenle bilerek kapalı tutar.",
+        ["Profil vorgemerkt. Automatische Zahlung bleibt bis zur Adapter-/Partnerfreigabe AUS."] =
+            "profil kaydedildi. Otomatik ödeme, adaptör/iş ortağı onayına kadar KAPALI kalır.",
+        ["QR-Code abgelaufen. Fenster schließen und einen neuen QR-Code erzeugen."] =
+            "QR kodun süresi doldu. Pencereyi kapatıp yeni bir QR kod oluşturun.",
+        ["SCANNEN → F5 KASSIEREN"] = "OKUT → F5 ÖDEME AL",
+        ["Scanner-Treffer"] = "Okuyucu eşleşmesi",
+        ["Schnellwahl optional · Scanner bleibt aktiv"] = "Hızlı seçim isteğe bağlı · okuyucu etkin kalır",
+        ["Schubladenbefehl"] = "Çekmece komutu",
+        ["Start- und Enddatum sind erforderlich."] = "Başlangıç ve bitiş tarihi gereklidir.",
+        ["SumUp wird abgefragt ..."] = "SumUp sorgulanıyor ...",
+        ["SumUp-Antwort konnte nicht verarbeitet werden. Geräteliste prüfen."] =
+            "SumUp yanıtı işlenemedi. Cihaz listesini kontrol edin.",
+        ["TOUCH · Artikel → direkt im Bon"] = "DOKUNMATİK · ürün → doğrudan fişe",
+        ["TOUCH · Warengruppe → Artikel"] = "DOKUNMATİK · ürün grubu → ürün",
+        ["TOUCH → ARTIKEL → F5 KASSIEREN"] = "DOKUNMATİK → ÜRÜN → F5 ÖDEME AL",
+        ["Training-Anmeldung nur mit Code 0000 · Benutzer-Passwort ist dann nicht erforderlich."] =
+            "Eğitim girişi yalnızca 0000 koduyla · kullanıcı şifresi gerekmez.",
+        ["Training-Anmeldung nur mit dem vom Betreiber gesetzten Training-Code · Benutzer-Passwort ist dann nicht erforderlich."] =
+            "Eğitim girişi yalnızca işletmenin belirlediği eğitim koduyla · kullanıcı şifresi gerekmez.",
+        ["Training-Code ist falsch."] = "Eğitim kodu yanlış.",
+        ["Training-Code ist falsch. Standard-Code: 0000."] = "Eğitim kodu yanlış. Varsayılan kod: 0000.",
+        ["Treffer für"] = "eşleşme:",
+        ["Unerwartete SumUp-Antwort. Geräteliste erneut prüfen."] =
+            "Beklenmeyen SumUp yanıtı. Cihaz listesini yeniden kontrol edin.",
+        ["Ungültiger Bestand."] = "Geçersiz stok.",
+        ["Unter Berichte & E-Mail ist noch keine Empfänger-Adresse gespeichert."] =
+            "Raporlar ve e-posta altında henüz alıcı adresi kayıtlı değil.",
+        ["Unter DATEV ist noch keine Steuerberater-E-Mail gespeichert."] =
+            "DATEV altında henüz mali müşavir e-postası kayıtlı değil.",
+        ["Verbindung wird erneut geprüft …"] = "Bağlantı yeniden kontrol ediliyor …",
+        ["Verbindung wird geprüft …"] = "Bağlantı kontrol ediliyor …",
+        ["WARENGRUPPE ODER ARTIKEL ANTIPPEN"] = "ÜRÜN GRUBUNA VEYA ÜRÜNE DOKUNUN",
+        ["Warenwert EK"] = "Mal değeri (alış)",
+        ["Warte auf Bestätigung am Handy …"] = "Telefondaki onay bekleniyor …",
+        ["Windows-Drucker gefunden"] = "Windows yazıcısı bulundu",
+        ["Windows-Drucker werden automatisch geprüft …"] = "Windows yazıcıları otomatik kontrol ediliyor …",
+        ["Windows-Drucker werden geprüft …"] = "Windows yazıcıları kontrol ediliyor …",
+        ["ZIP-Paket ist"] = "ZIP paketi",
+        ["ZVT-Anmeldung wird geprüft …"] = "ZVT oturumu kontrol ediliyor …",
+        ["ZVT-Profil kann produktiv verwendet werden, sobald Provider/Terminal ZVT freigeschaltet hat und der Verbindungstest erfolgreich ist."] =
+            "ZVT profili, sağlayıcı/terminal ZVT'yi açtıktan ve bağlantı testi başarılı olduktan sonra üretimde kullanılabilir.",
+        ["Zugang erfolgreich. Noch kein API-Reader gekoppelt. Unten einen Solo koppeln."] =
+            "Erişim başarılı. Henüz eşleştirilmiş API okuyucu yok. Aşağıdan bir Solo eşleştirin.",
+        ["aktiv"] = "etkin",
+        ["als"] = "olarak",
+        ["an Windows übergeben."] = "Windows'a iletildi.",
+        ["angezeigt."] = "gösterildi.",
+        ["bitte Artikel auswählen."] = "lütfen ürün seçin.",
+        ["deaktiviert."] = "kapatıldı.",
+        ["erkannt"] = "algılandı",
+        ["gesendet"] = "gönderildi",
+        ["gesendet …"] = "gönderiliyor …",
+        ["gesendet."] = "gönderildi.",
+        ["gespeichert"] = "kaydedildi",
+        ["gespeichert · Cloud-Abgleich vorgemerkt · nächsten Barcode scannen."] =
+            "kaydedildi · bulut eşitlemesi sıraya alındı · sonraki barkodu okutun.",
+        ["gespeichert."] = "kaydedildi.",
+        ["gespeichert. Modell blieb absichtlich 'nicht eindeutig'; TOR hat kein Modell geraten."] =
+            "kaydedildi. Model bilerek 'kesin değil' bırakıldı; TOR model tahmin etmedi.",
+        ["groß. E-Mail-Versand ist auf 15 MB begrenzt; bitte USB/Datenträger verwenden."] =
+            "büyüklüğünde. E-posta gönderimi 15 MB ile sınırlıdır; lütfen USB/veri taşıyıcı kullanın.",
+        ["neuen Bestand eingeben und ENTER drücken."] = "yeni stoğu girip ENTER'a basın.",
+        ["⚠ Automatische Druckersuche fehlgeschlagen"] = "⚠ Otomatik yazıcı araması başarısız",
+        ["⚠ Bei MANUELL muss die manuelle Gewichtseingabe aktiviert bleiben."] =
+            "⚠ MANUEL seçildiğinde elle ağırlık girişi etkin kalmalıdır.",
+        ["⚠ Bitte eine gültige Empfänger-E-Mail eingeben."] = "⚠ Lütfen geçerli bir alıcı e-postası girin.",
+        ["⚠ COM-Port und gültige Baudrate angeben."] = "⚠ COM portunu ve geçerli bir baud hızını belirtin.",
+        ["⚠ DSFinV-K E-Mail-Versand fehlgeschlagen"] = "⚠ DSFinV-K e-posta gönderimi başarısız",
+        ["⚠ Druckersuche dauert zu lange. Offline-/Netzwerkdrucker in Windows prüfen."] =
+            "⚠ Yazıcı araması çok uzun sürüyor. Windows'ta çevrimdışı/ağ yazıcılarını kontrol edin.",
+        ["⚠ IP-Adresse und gültigen TCP-Port angeben."] = "⚠ IP adresini ve geçerli bir TCP portunu belirtin.",
+        ["⚠ Kein Epson-/Star-Bondrucker eindeutig erkannt. Vorhandene Windows-Drucker wurden geladen; bitte manuell auswählen."] =
+            "⚠ Hiçbir Epson/Star fiş yazıcısı kesin olarak algılanmadı. Mevcut Windows yazıcıları yüklendi; lütfen elle seçin.",
+        ["⚠ Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren."] =
+            "⚠ Windows yazıcısı bulunamadı. Önce Epson/Star sürücüsünü Windows'a kurun.",
+        ["⚠ TSE antwortet nicht innerhalb von 10 Sekunden. USB/SDK prüfen; TOR POS bleibt bedienbar."] =
+            "⚠ TSE 10 saniye içinde yanıt vermiyor. USB/SDK kontrol edin; TOR POS kullanılabilir kalır.",
+        ["⚠ Testdruck fehlgeschlagen"] = "⚠ Test baskısı başarısız",
+        ["⚠ Waagenbarcode-Präfix muss 1–4 Ziffern enthalten."] = "⚠ Terazi barkod ön eki 1–4 rakam içermelidir.",
+        ["✓ Gespeichert. Separate Waage ablesen → Gewicht am Kassenartikel manuell eingeben."] =
+            "✓ Kaydedildi. Ayrı teraziden okuyun → ağırlığı kasa ürününde elle girin.",
+        ["✓ Konfiguration formal gültig. Ein echter Live-Gerätetest wird erst mit dem freigegebenen Protokoll/Adapter durchgeführt."] =
+            "✓ Yapılandırma biçimsel olarak geçerli. Gerçek bir canlı cihaz testi ancak onaylı protokol/adaptörle yapılır.",
+        ["✓ Manuelle Gewichtseingabe ist betriebsbereit."] = "✓ Elle ağırlık girişi kullanıma hazır.",
+        ["✓ Manuelle Waage: keine Verbindung erforderlich. Gewichtsartikel können sofort in g oder kg erfasst werden."] =
+            "✓ Manuel terazi: bağlantı gerekmez. Ağırlık ürünleri hemen g veya kg olarak girilebilir.",
+        ["✓ Testbon an Windows übergeben. Papierausdruck am Gerät kontrollieren."] =
+            "✓ Test fişi Windows'a iletildi. Cihazdaki kâğıt çıktıyı kontrol edin.",
+        ["✓ Waagenparameter gespeichert. Manuelle Eingabe bleibt als sichere Rückfallebene verfügbar."] =
+            "✓ Terazi parametreleri kaydedildi. Elle giriş güvenli bir yedek yol olarak kullanılabilir kalır.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -1786,5 +1977,198 @@ internal static class UiTranslations
         ["Diagnose fehlgeschlagen"] = "The diagnosis failed",
         ["Bearbeiter angeben."] = "Name the person handling it.",
         ["Fehler"] = "Error",
+
+        // Einrichtungs- und Verwaltungsfenster: Drucker, Waage, Terminal, SumUp, DSFinV-K-Versand, Inventur, Angebote
+        ["1,00 € TESTANFORDERUNG wurde von der SumUp API angenommen."] =
+            "The €1.00 TEST REQUEST was accepted by the SumUp API.",
+        ["ABBRUCHANFORDERUNG an SumUp gesendet. SumUp liefert dafür keine synchrone Abbruchbestätigung. Solo-Anzeige kontrollieren. Der Abbruch funktioniert nur, solange das Gerät auf eine Karten-/PIN-Aktion wartet."] =
+            "A CANCELLATION REQUEST was sent to SumUp. SumUp gives no synchronous cancellation confirmation for it. Check the Solo display. The cancellation only works while the device is waiting for a card or PIN.",
+        ["ANGEBOT"] = "OFFER",
+        ["Abgebrochen / Zeitlimit erreicht."] = "Cancelled or timed out.",
+        ["Angebot"] = "Offer",
+        ["Angebot(e) geladen · Betriebstag"] = "offer(s) loaded · business day",
+        ["Artikel angezeigt"] = "products shown",
+        ["Automatische Suche startet …"] = "The automatic search is starting …",
+        ["Automatische Zahlung ist für dieses Profil noch nicht freigegeben."] =
+            "Automatic payment is not released for this profile yet.",
+        ["BARCODE SCANNEN"] = "SCAN A BARCODE",
+        ["Barcode"] = "Barcode",
+        ["Bericht an"] = "Report to",
+        ["Bestand"] = "Stock",
+        ["Bestand wurde seit dem Öffnen an anderer Stelle verändert. TOR hat den neueren Bestand NICHT überschrieben. Bitte aktuellen Wert prüfen und erneut speichern."] =
+            "The stock was changed elsewhere since this window was opened. TOR did NOT overwrite the newer stock. Please check the current value and save again.",
+        ["Bestätigung am Solo kontrollieren; danach Geräteliste laden und Status prüfen. Keine Zahlung gestartet."] =
+            "Check the confirmation on the Solo, then load the device list and check the status. No payment was started.",
+        ["Bitte Auswahl kontrollieren."] = "Please check the selection.",
+        ["Bitte Papierformat auswählen."] = "Please choose a paper format.",
+        ["Bitte das Fenster aus einer ausgewählten Warengruppe öffnen."] =
+            "Please open the window from a selected product group.",
+        ["Bitte einen Artikel auswählen."] = "Please choose a product.",
+        ["Bitte einen Windows-Drucker auswählen."] = "Please choose a Windows printer.",
+        ["Bitte einen archivierten Z-Bericht auswählen."] = "Please choose an archived Z-Bericht.",
+        ["Bitte gültige Cent-Beträge eingeben."] = "Please enter valid cent amounts.",
+        ["Bitte mindestens den Firmennamen eintragen."] = "Please enter at least the company name.",
+        ["Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. Falls nicht: den anderen Kassenschubladen-Ausgang wählen und erneut testen."] =
+            "Please check physically whether the cash drawer opened. If not, choose the other drawer output and test again.",
+        ["Bitte zuerst ein Angebot auswählen."] = "Please choose an offer first.",
+        ["Bitte zuerst einen Artikel auswählen."] = "Please choose a product first.",
+        ["Bitte zuerst einen Drucker wählen."] = "Please choose a printer first.",
+        ["Browser konnte nicht geöffnet werden"] = "The browser could not be opened",
+        ["Büro-/PDF-/Faxdrucker bleiben sichtbar, werden aber nicht als Bondrucker freigegeben. Auswahl prüfen, TESTBON DRUCKEN und danach DIESEN DRUCKER VERWENDEN."] =
+            "Office, PDF and fax printers stay visible but are not released as receipt printers. Check the selection, PRINT A TEST RECEIPT and then USE THIS PRINTER.",
+        ["DSFinV-K ZIP-Paket wird erstellt …"] = "Creating the DSFinV-K ZIP package …",
+        ["DSFinV-K vollständig kopiert"] = "DSFinV-K copied completely",
+        ["DSFinV-K wird kopiert …"] = "Copying DSFinV-K …",
+        ["DSFinV-K wurde per E-Mail an"] = "DSFinV-K was sent by e-mail to",
+        ["Der lokale Export bleibt unverändert erhalten; USB-Kopie ist weiterhin möglich."] =
+            "The local export stays unchanged; a USB copy is still possible.",
+        ["Dieses Angebot ist bereits deaktiviert."] = "This offer is already deactivated.",
+        ["Druck-/PDF-Fenster geöffnet. Archivdaten bleiben unverändert."] =
+            "The print or PDF window is open. The archived data stays unchanged.",
+        ["Druckereinstellungen konnten nicht geladen werden"] = "The printer settings could not be loaded",
+        ["Druckersuche fehlgeschlagen"] = "The printer search failed",
+        ["Druckersuche hat länger als 12 Sekunden gedauert. Netzwerk-/Offline-Windows-Drucker prüfen und erneut suchen."] =
+            "The printer search took longer than 12 seconds. Check network and offline Windows printers and search again.",
+        ["Druckfehler"] = "Print error",
+        ["Druckfunktion ist in diesem Fenster nicht verbunden."] =
+            "The print function is not connected in this window.",
+        ["Druckziel auswählen. TOR merkt sich Drucker und Papierformat für diesen Berichtstyp."] =
+            "Choose the print target. TOR remembers the printer and paper format for this report type.",
+        ["E-Mail wird an"] = "The e-mail is being sent to",
+        ["Einrichtung"] = "Setup",
+        ["Epson/Star-Bondrucker erkannt"] = "Epson/Star receipt printers recognised",
+        ["Epson/Star-Bondrucker gefunden. Vorauswahl"] = "Epson/Star receipt printers found. Preselection",
+        ["Export lokal gespeichert. USB kopieren oder E-Mail senden ist möglich."] =
+            "The export was saved locally. Copying to USB or sending it by e-mail is possible.",
+        ["FEHLER"] = "ERROR",
+        ["Gerät(e) gefunden. Gerät auswählen und Status prüfen. 'paired' allein bestätigt keine Online-Verbindung."] =
+            "device(s) found. Choose a device and check its status. 'paired' alone does not confirm an online connection.",
+        ["Geräteparameter eingeben und KONFIGURATION PRÜFEN wählen."] =
+            "Enter the device parameters and choose CHECK CONFIGURATION.",
+        ["Gespeicherter Bondrucker"] = "Stored receipt printer",
+        ["Google-Anmeldung fehlgeschlagen"] = "The Google sign-in failed",
+        ["JETZT SOLO ANSEHEN: Wenn dort 1,00 € erscheint, ist TOR POS → SumUp → Solo erfolgreich. KEINE KARTE VORHALTEN. Danach sofort TEST ABBRECHEN drücken oder am Solo abbrechen."] =
+            "LOOK AT THE SOLO NOW: if €1.00 appears there, TOR POS → SumUp → Solo works. DO NOT PRESENT A CARD. Then press CANCEL TEST immediately, or cancel on the Solo.",
+        ["Kein Artikel gefunden"] = "No product found",
+        ["Kein USB-Laufwerk ausgewählt. Alternativ ANDEREN ORDNER WÄHLEN benutzen."] =
+            "No USB drive was chosen. Use CHOOSE ANOTHER FOLDER instead.",
+        ["Kein Wechselmedium automatisch erkannt. USB einstecken und aktualisieren oder ANDEREN USB-/ORDNER WÄHLEN benutzen."] =
+            "No removable medium was detected automatically. Plug in a USB stick and refresh, or use CHOOSE ANOTHER USB/FOLDER.",
+        ["Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren."] =
+            "No Windows printers were found. Install the Epson or Star driver in Windows first.",
+        ["Keine Windows-Drucker gefunden. Unter Einstellungen → Geräte prüfen."] =
+            "No Windows printers were found. Check under Settings → Devices.",
+        ["Kopie fehlgeschlagen"] = "Copy failed",
+        ["Kopiervorgang abgebrochen."] = "The copy was cancelled.",
+        ["Kopplung kann erfolgt sein: zuerst Geräteliste laden."] =
+            "The pairing may have happened: load the device list first.",
+        ["Kopplungsantwort"] = "Pairing response",
+        ["Mindestbestand-Warnung(en)"] = "minimum-stock warning(s)",
+        ["Modell eindeutig."] = "model identified.",
+        ["Netzwerkfehler. Internetverbindung prüfen."] = "Network error. Check the internet connection.",
+        ["Noch kein Bondrucker gespeichert. Automatische Suche startet …"] =
+            "No receipt printer stored yet. The automatic search is starting …",
+        ["OPTIONAL · Scanner ist der Hauptweg"] = "OPTIONAL · the scanner is the main route",
+        ["PDF gespeichert"] = "PDF saved",
+        ["PDF-Fehler"] = "PDF error",
+        ["PDF-Speichern abgebrochen."] = "Saving the PDF was cancelled.",
+        ["Papierausdruck prüfen."] = "Check the paper printout.",
+        ["Pfand-/Leergutwerte gespeichert."] = "The deposit and empties values have been saved.",
+        ["Profil auswählen, Angaben eintragen und SPEICHERN. ZVT-Profile können danach ohne Zahlung getestet werden."] =
+            "Choose a profile, enter the details and SAVE. ZVT profiles can then be tested without a payment.",
+        ["Profil gespeichert."] = "profile saved.",
+        ["Profil ist vorbereitet, aber automatische Belastung ist noch nicht freigegeben. TOR lässt dieses Profil deshalb absichtlich deaktiviert."] =
+            "The profile is prepared, but automatic charging is not released yet. TOR therefore leaves this profile switched off on purpose.",
+        ["Profil vorgemerkt. Automatische Zahlung bleibt bis zur Adapter-/Partnerfreigabe AUS."] =
+            "profile noted. Automatic payment stays OFF until the adapter or partner releases it.",
+        ["QR-Code abgelaufen. Fenster schließen und einen neuen QR-Code erzeugen."] =
+            "The QR code has expired. Close the window and create a new one.",
+        ["SCANNEN → F5 KASSIEREN"] = "SCAN → F5 CHECKOUT",
+        ["Scanner-Treffer"] = "Scanner hit",
+        ["Schnellwahl optional · Scanner bleibt aktiv"] = "Quick select optional · the scanner stays active",
+        ["Schubladenbefehl"] = "The drawer command",
+        ["Start- und Enddatum sind erforderlich."] = "A start and an end date are required.",
+        ["SumUp wird abgefragt ..."] = "Querying SumUp ...",
+        ["SumUp-Antwort konnte nicht verarbeitet werden. Geräteliste prüfen."] =
+            "The SumUp answer could not be processed. Check the device list.",
+        ["TOUCH · Artikel → direkt im Bon"] = "TOUCH · product → straight onto the receipt",
+        ["TOUCH · Warengruppe → Artikel"] = "TOUCH · product group → product",
+        ["TOUCH → ARTIKEL → F5 KASSIEREN"] = "TOUCH → PRODUCT → F5 CHECKOUT",
+        ["Training-Anmeldung nur mit Code 0000 · Benutzer-Passwort ist dann nicht erforderlich."] =
+            "Training sign-in with code 0000 only · a user password is not required.",
+        ["Training-Anmeldung nur mit dem vom Betreiber gesetzten Training-Code · Benutzer-Passwort ist dann nicht erforderlich."] =
+            "Training sign-in with the training code the operator set only · a user password is not required.",
+        ["Training-Code ist falsch."] = "The training code is wrong.",
+        ["Training-Code ist falsch. Standard-Code: 0000."] = "The training code is wrong. Default code: 0000.",
+        ["Treffer für"] = "hits for",
+        ["Unerwartete SumUp-Antwort. Geräteliste erneut prüfen."] =
+            "Unexpected SumUp answer. Check the device list again.",
+        ["Ungültiger Bestand."] = "Invalid stock.",
+        ["Unter Berichte & E-Mail ist noch keine Empfänger-Adresse gespeichert."] =
+            "No recipient address is stored under Reports & e-mail yet.",
+        ["Unter DATEV ist noch keine Steuerberater-E-Mail gespeichert."] =
+            "No tax adviser e-mail is stored under DATEV yet.",
+        ["Verbindung wird erneut geprüft …"] = "Checking the connection again …",
+        ["Verbindung wird geprüft …"] = "Checking the connection …",
+        ["WARENGRUPPE ODER ARTIKEL ANTIPPEN"] = "TAP A PRODUCT GROUP OR A PRODUCT",
+        ["Warenwert EK"] = "Stock value at cost",
+        ["Warte auf Bestätigung am Handy …"] = "Waiting for the confirmation on the phone …",
+        ["Windows-Drucker gefunden"] = "Windows printers found",
+        ["Windows-Drucker werden automatisch geprüft …"] = "Checking the Windows printers automatically …",
+        ["Windows-Drucker werden geprüft …"] = "Checking the Windows printers …",
+        ["ZIP-Paket ist"] = "The ZIP package is",
+        ["ZVT-Anmeldung wird geprüft …"] = "Checking the ZVT login …",
+        ["ZVT-Profil kann produktiv verwendet werden, sobald Provider/Terminal ZVT freigeschaltet hat und der Verbindungstest erfolgreich ist."] =
+            "The ZVT profile can be used in production once the provider or terminal has enabled ZVT and the connection test succeeds.",
+        ["Zugang erfolgreich. Noch kein API-Reader gekoppelt. Unten einen Solo koppeln."] =
+            "Access works. No API reader is paired yet. Pair a Solo below.",
+        ["aktiv"] = "active",
+        ["als"] = "as",
+        ["an Windows übergeben."] = "handed to Windows.",
+        ["angezeigt."] = "shown.",
+        ["bitte Artikel auswählen."] = "please choose a product.",
+        ["deaktiviert."] = "deactivated.",
+        ["erkannt"] = "recognised",
+        ["gesendet"] = "sent",
+        ["gesendet …"] = "being sent …",
+        ["gesendet."] = "sent.",
+        ["gespeichert"] = "saved",
+        ["gespeichert · Cloud-Abgleich vorgemerkt · nächsten Barcode scannen."] =
+            "saved · a cloud sync is queued · scan the next barcode.",
+        ["gespeichert."] = "saved.",
+        ["gespeichert. Modell blieb absichtlich 'nicht eindeutig'; TOR hat kein Modell geraten."] =
+            "saved. The model was deliberately left 'not identified'; TOR did not guess a model.",
+        ["groß. E-Mail-Versand ist auf 15 MB begrenzt; bitte USB/Datenträger verwenden."] =
+            "in size. E-mail delivery is limited to 15 MB; please use USB or another medium.",
+        ["neuen Bestand eingeben und ENTER drücken."] = "enter the new stock and press ENTER.",
+        ["⚠ Automatische Druckersuche fehlgeschlagen"] = "⚠ The automatic printer search failed",
+        ["⚠ Bei MANUELL muss die manuelle Gewichtseingabe aktiviert bleiben."] =
+            "⚠ With MANUAL, manual weight entry has to stay switched on.",
+        ["⚠ Bitte eine gültige Empfänger-E-Mail eingeben."] = "⚠ Please enter a valid recipient e-mail.",
+        ["⚠ COM-Port und gültige Baudrate angeben."] = "⚠ Give a COM port and a valid baud rate.",
+        ["⚠ DSFinV-K E-Mail-Versand fehlgeschlagen"] = "⚠ Sending DSFinV-K by e-mail failed",
+        ["⚠ Druckersuche dauert zu lange. Offline-/Netzwerkdrucker in Windows prüfen."] =
+            "⚠ The printer search is taking too long. Check offline and network printers in Windows.",
+        ["⚠ IP-Adresse und gültigen TCP-Port angeben."] = "⚠ Give an IP address and a valid TCP port.",
+        ["⚠ Kein Epson-/Star-Bondrucker eindeutig erkannt. Vorhandene Windows-Drucker wurden geladen; bitte manuell auswählen."] =
+            "⚠ No Epson or Star receipt printer was identified for certain. The existing Windows printers were loaded; please choose manually.",
+        ["⚠ Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren."] =
+            "⚠ No Windows printers were found. Install the Epson or Star driver in Windows first.",
+        ["⚠ TSE antwortet nicht innerhalb von 10 Sekunden. USB/SDK prüfen; TOR POS bleibt bedienbar."] =
+            "⚠ The TSE does not answer within 10 seconds. Check USB and the SDK; TOR POS stays usable.",
+        ["⚠ Testdruck fehlgeschlagen"] = "⚠ The test print failed",
+        ["⚠ Waagenbarcode-Präfix muss 1–4 Ziffern enthalten."] =
+            "⚠ The scale barcode prefix has to contain 1–4 digits.",
+        ["✓ Gespeichert. Separate Waage ablesen → Gewicht am Kassenartikel manuell eingeben."] =
+            "✓ Saved. Read the separate scale → enter the weight manually on the till item.",
+        ["✓ Konfiguration formal gültig. Ein echter Live-Gerätetest wird erst mit dem freigegebenen Protokoll/Adapter durchgeführt."] =
+            "✓ The configuration is formally valid. A real live device test is only done with the released protocol or adapter.",
+        ["✓ Manuelle Gewichtseingabe ist betriebsbereit."] = "✓ Manual weight entry is ready for use.",
+        ["✓ Manuelle Waage: keine Verbindung erforderlich. Gewichtsartikel können sofort in g oder kg erfasst werden."] =
+            "✓ Manual scale: no connection needed. Weighed products can be entered in g or kg right away.",
+        ["✓ Testbon an Windows übergeben. Papierausdruck am Gerät kontrollieren."] =
+            "✓ The test receipt was handed to Windows. Check the paper printout at the device.",
+        ["✓ Waagenparameter gespeichert. Manuelle Eingabe bleibt als sichere Rückfallebene verfügbar."] =
+            "✓ The scale parameters have been saved. Manual entry stays available as a safe fallback.",
     };
 }

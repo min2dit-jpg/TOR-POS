@@ -82,7 +82,7 @@ public sealed class DsfinvkDeliveryWindow : Window
         {
             if (_usb.SelectedItem is not DriveItem drive)
             {
-                _status.Text = "Kein USB-Laufwerk ausgewählt. Alternativ ANDEREN ORDNER WÄHLEN benutzen.";
+                _status.Text = UiLanguage.T("Kein USB-Laufwerk ausgewählt. Alternativ ANDEREN ORDNER WÄHLEN benutzen.");
                 return;
             }
 
@@ -103,7 +103,7 @@ public sealed class DsfinvkDeliveryWindow : Window
             var folder = folders.FirstOrDefault();
             if (folder is null)
             {
-                _status.Text = "Kopiervorgang abgebrochen.";
+                _status.Text = UiLanguage.T("Kopiervorgang abgebrochen.");
                 return;
             }
 
@@ -118,7 +118,7 @@ public sealed class DsfinvkDeliveryWindow : Window
             if (!string.IsNullOrWhiteSpace(_steuerberater))
                 _recipient.Text = _steuerberater;
             else
-                _status.Text = "Unter DATEV ist noch keine Steuerberater-E-Mail gespeichert.";
+                _status.Text = UiLanguage.T("Unter DATEV ist noch keine Steuerberater-E-Mail gespeichert.");
         };
 
         var own = Button("GESPEICHERTE BERICHTS-E-MAIL");
@@ -127,7 +127,7 @@ public sealed class DsfinvkDeliveryWindow : Window
             if (!string.IsNullOrWhiteSpace(_reportRecipient))
                 _recipient.Text = _reportRecipient;
             else
-                _status.Text = "Unter Berichte & E-Mail ist noch keine Empfänger-Adresse gespeichert.";
+                _status.Text = UiLanguage.T("Unter Berichte & E-Mail ist noch keine Empfänger-Adresse gespeichert.");
         };
 
         var send = Button("DSFINV-K PER E-MAIL SENDEN");
@@ -260,8 +260,8 @@ public sealed class DsfinvkDeliveryWindow : Window
                 ? _steuerberater
                 : _reportRecipient;
 
-        _status.Text =
-            "Export lokal gespeichert. USB kopieren oder E-Mail senden seçilebilir.";
+        _status.Text = UiLanguage.T(
+            "Export lokal gespeichert. USB kopieren oder E-Mail senden ist möglich.");
     }
 
     private void RefreshUsb()
@@ -297,15 +297,15 @@ public sealed class DsfinvkDeliveryWindow : Window
         _usb.ItemsSource = items;
         _usb.SelectedIndex = items.Count > 0 ? 0 : -1;
         if (items.Count == 0)
-            _status.Text =
-                "Kein Wechselmedium automatisch erkannt. USB einstecken und aktualisieren oder ANDEREN USB-/ORDNER WÄHLEN benutzen.";
+            _status.Text = UiLanguage.T(
+                "Kein Wechselmedium automatisch erkannt. USB einstecken und aktualisieren oder ANDEREN USB-/ORDNER WÄHLEN benutzen.");
     }
 
     private async Task CopyToAsync(string root, string destinationType)
     {
         try
         {
-            _status.Text = $"{destinationType}: DSFinV-K wird kopiert …";
+            _status.Text = $"{destinationType}: " + UiLanguage.T("DSFinV-K wird kopiert …");
             var final = Path.Combine(root, Path.GetFileName(_exportFolder));
             var working = final + ".unvollstaendig";
 
@@ -342,11 +342,11 @@ public sealed class DsfinvkDeliveryWindow : Window
                 $"{_from:yyyy-MM-dd}/{_to:yyyy-MM-dd}",
                 $"{destinationType}; Ziel={final}");
 
-            _status.Text = $"✓ DSFinV-K vollständig kopiert: {final}";
+            _status.Text = "✓ " + UiLanguage.T("DSFinV-K vollständig kopiert") + $": {final}";
         }
         catch (Exception ex)
         {
-            _status.Text = $"⚠ {destinationType}-Kopie fehlgeschlagen: {ex.Message}";
+            _status.Text = $"⚠ {destinationType}-" + UiLanguage.T("Kopie fehlgeschlagen") + $": {ex.Message}";
         }
     }
 
@@ -359,7 +359,7 @@ public sealed class DsfinvkDeliveryWindow : Window
         }
         catch
         {
-            _status.Text = "⚠ Bitte eine gültige Empfänger-E-Mail eingeben.";
+            _status.Text = UiLanguage.T("⚠ Bitte eine gültige Empfänger-E-Mail eingeben.");
             return;
         }
 
@@ -375,7 +375,7 @@ public sealed class DsfinvkDeliveryWindow : Window
         GoogleGmailService? gmail = null;
         try
         {
-            _status.Text = "DSFinV-K ZIP-Paket wird erstellt …";
+            _status.Text = UiLanguage.T("DSFinV-K ZIP-Paket wird erstellt …");
             await Task.Run(() =>
                 ZipFile.CreateFromDirectory(
                     _exportFolder,
@@ -387,7 +387,8 @@ public sealed class DsfinvkDeliveryWindow : Window
             if (size > MaxMailZipBytes)
             {
                 _status.Text =
-                    $"⚠ ZIP-Paket ist {FormatBytes(size)} groß. E-Mail-Versand ist auf 15 MB begrenzt; bitte USB/Datenträger verwenden.";
+                    "⚠ " + UiLanguage.T("ZIP-Paket ist") + $" {FormatBytes(size)} " +
+                    UiLanguage.T("groß. E-Mail-Versand ist auf 15 MB begrenzt; bitte USB/Datenträger verwenden.");
                 return;
             }
 
@@ -413,7 +414,7 @@ public sealed class DsfinvkDeliveryWindow : Window
                 $"Zeitraum: {_from:dd.MM.yyyy} bis {_to:dd.MM.yyyy}\r\n\r\n" +
                 "Das ZIP enthält den vollständigen Exportordner einschließlich CSV-Dateien, index.xml, GDPdU-DTD und TOR-Exportprotokoll.";
 
-            _status.Text = $"E-Mail wird an {recipient} gesendet …";
+            _status.Text = UiLanguage.T("E-Mail wird an") + $" {recipient} " + UiLanguage.T("gesendet …");
             await email.SendFilesAsync(
                 recipient,
                 subject,
@@ -428,13 +429,13 @@ public sealed class DsfinvkDeliveryWindow : Window
                 $"Empfänger={recipient}; ZIP={Path.GetFileName(zip)}; Bytes={size}");
 
             _status.Text =
-                $"✓ DSFinV-K wurde per E-Mail an {recipient} gesendet.";
+                "✓ " + UiLanguage.T("DSFinV-K wurde per E-Mail an") + $" {recipient} " + UiLanguage.T("gesendet.");
         }
         catch (Exception ex)
         {
             _status.Text =
-                "⚠ DSFinV-K E-Mail-Versand fehlgeschlagen: " + ex.Message +
-                "\nDer lokale Export bleibt unverändert erhalten; USB-Kopie ist weiterhin möglich.";
+                UiLanguage.T("⚠ DSFinV-K E-Mail-Versand fehlgeschlagen") + ": " + ex.Message +
+                "\n" + UiLanguage.T("Der lokale Export bleibt unverändert erhalten; USB-Kopie ist weiterhin möglich.");
         }
         finally
         {

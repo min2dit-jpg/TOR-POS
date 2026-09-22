@@ -214,8 +214,8 @@ public sealed class PrinterSetupWindow : Window
                 .Equals("false", StringComparison.OrdinalIgnoreCase);
         _drawerEnabled.IsChecked = drawerEnabled || legacyDrawerExpected;
         _status.Text = string.IsNullOrWhiteSpace(receiptName)
-            ? "Noch kein Bondrucker gespeichert. Automatische Suche startet …"
-            : $"Gespeicherter Bondrucker: {receiptName}. Automatische Suche startet …";
+            ? UiLanguage.T("Noch kein Bondrucker gespeichert. Automatische Suche startet …")
+            : UiLanguage.T("Gespeicherter Bondrucker") + $": {receiptName}. " + UiLanguage.T("Automatische Suche startet …");
     }
 
     private async Task DetectAsync()
@@ -223,7 +223,7 @@ public sealed class PrinterSetupWindow : Window
         SetBusy(true);
         try
         {
-            _status.Text = "Windows-Drucker werden geprüft …";
+            _status.Text = UiLanguage.T("Windows-Drucker werden geprüft …");
             var devices = await Task.Run(() => _printer.GetInstalledPrinterDevices())
                 .WaitAsync(TimeSpan.FromSeconds(12));
 
@@ -233,7 +233,7 @@ public sealed class PrinterSetupWindow : Window
             if (_items.Count == 0)
             {
                 _device.SelectedItem = null;
-                _status.Text = "Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren.";
+                _status.Text = UiLanguage.T("Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren.");
                 ApplySelection();
                 return;
             }
@@ -254,19 +254,21 @@ public sealed class PrinterSetupWindow : Window
             var recognized = _items.Count(x => x.Device.IsReceiptPrinter);
             var exact = _items.Count(x => x.Device.IsReceiptPrinter && x.Device.ExactModel);
             _status.Text =
-                $"{_items.Count} Windows-Drucker gefunden · {recognized} Epson/Star-Bondrucker erkannt · {exact} Modell eindeutig. " +
-                "Büro-/PDF-/Faxdrucker bleiben sichtbar, werden aber nicht als Bondrucker freigegeben. " +
-                "Auswahl prüfen, TESTBON DRUCKEN und danach DIESEN DRUCKER VERWENDEN.";
+                $"{_items.Count} " + UiLanguage.T("Windows-Drucker gefunden") + $" · {recognized} " +
+                UiLanguage.T("Epson/Star-Bondrucker erkannt") + $" · {exact} " + UiLanguage.T("Modell eindeutig.") + " " +
+                UiLanguage.T(
+                    "Büro-/PDF-/Faxdrucker bleiben sichtbar, werden aber nicht als Bondrucker freigegeben. " +
+                    "Auswahl prüfen, TESTBON DRUCKEN und danach DIESEN DRUCKER VERWENDEN.");
             ApplySelection();
         }
         catch (TimeoutException)
         {
-            _status.Text = "Druckersuche hat länger als 12 Sekunden gedauert. Netzwerk-/Offline-Windows-Drucker prüfen und erneut suchen.";
+            _status.Text = UiLanguage.T("Druckersuche hat länger als 12 Sekunden gedauert. Netzwerk-/Offline-Windows-Drucker prüfen und erneut suchen.");
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("R169 printer discovery", ex);
-            _status.Text = "Druckersuche fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("Druckersuche fehlgeschlagen") + ": " + ex.Message;
         }
         finally
         {
@@ -366,8 +368,9 @@ public sealed class PrinterSetupWindow : Window
 
         await _settings.SaveManyAsync(values);
         _status.Text = d.ExactModel
-            ? $"✓ {d.Manufacturer} {d.Model} als {role.Title} gespeichert."
-            : $"✓ {d.PrinterName} als {role.Title} gespeichert. Modell blieb absichtlich 'nicht eindeutig'; TOR hat kein Modell geraten.";
+            ? $"✓ {d.Manufacturer} {d.Model} " + UiLanguage.T("als") + $" {role.Title} " + UiLanguage.T("gespeichert.")
+            : $"✓ {d.PrinterName} " + UiLanguage.T("als") + $" {role.Title} " +
+              UiLanguage.T("gespeichert. Modell blieb absichtlich 'nicht eindeutig'; TOR hat kein Modell geraten.");
     }
 
     private async Task TestPrintAsync()
@@ -383,17 +386,17 @@ public sealed class PrinterSetupWindow : Window
             var probe = await _printer.ProbeAsync(d.PrinterName, timeout.Token);
             if (!probe.Success)
             {
-                _status.Text = "⚠ " + probe.Message;
+                _status.Text = "⚠ " + UiLanguage.T(probe.Message);
                 return;
             }
 
             await _printer.PrintTestAsync(d.PrinterName, timeout.Token);
-            _status.Text = "✓ Testbon an Windows übergeben. Papierausdruck am Gerät kontrollieren.";
+            _status.Text = UiLanguage.T("✓ Testbon an Windows übergeben. Papierausdruck am Gerät kontrollieren.");
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("R169 printer test", ex);
-            _status.Text = "⚠ Testdruck fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("⚠ Testdruck fehlgeschlagen") + ": " + ex.Message;
         }
         finally
         {
@@ -422,14 +425,15 @@ public sealed class PrinterSetupWindow : Window
                 : $"ESC/POS · {(channel == 2 ? "Pin 5" : "Pin 2")}";
 
             _status.Text =
-                $"✓ Schubladenbefehl ({protocol}) an Windows übergeben. " +
-                "Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
-                "Falls nicht: den anderen Kassenschubladen-Ausgang wählen und erneut testen.";
+                $"✓ " + UiLanguage.T("Schubladenbefehl") + $" ({protocol}) " + UiLanguage.T("an Windows übergeben.") + " " +
+                UiLanguage.T(
+                    "Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
+                    "Falls nicht: den anderen Kassenschubladen-Ausgang wählen und erneut testen.");
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("R169 drawer test", ex);
-            _status.Text = "⚠ Kassenschubladen-Test fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("⚠ Kassenschubladen-Test fehlgeschlagen") + ": " + ex.Message;
         }
         finally
         {

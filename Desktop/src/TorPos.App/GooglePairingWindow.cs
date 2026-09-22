@@ -140,7 +140,7 @@ public sealed class GooglePairingWindow : Window
         }
         catch (Exception ex)
         {
-            _status.Text = "Browser konnte nicht geöffnet werden: " + ex.Message;
+            _status.Text = UiLanguage.T("Browser konnte nicht geöffnet werden") + ": " + ex.Message;
         }
     }
 
@@ -153,17 +153,17 @@ public sealed class GooglePairingWindow : Window
                 var result = await _google.CheckPairingAsync(_pairing, _stop.Token);
                 if (result.Status == "COMPLETE")
                 {
-                    _status.Text = $"Google verbunden ✓\n{result.AccountEmail}";
+                    _status.Text = UiLanguage.T("Google verbunden ✓") + $"\n{result.AccountEmail}";
                     await Task.Delay(850, _stop.Token);
                     if (!_stop.IsCancellationRequested) Close(true);
                     return;
                 }
                 if (result.Status == "ERROR")
                 {
-                    _status.Text = "Google-Anmeldung fehlgeschlagen:\n" + result.Error;
+                    _status.Text = UiLanguage.T("Google-Anmeldung fehlgeschlagen") + ":\n" + result.Error;
                     return;
                 }
-                _status.Text = "Warte auf Bestätigung am Handy …";
+                _status.Text = UiLanguage.T("Warte auf Bestätigung am Handy …");
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested)
             {
@@ -171,13 +171,13 @@ public sealed class GooglePairingWindow : Window
             }
             catch (Exception ex)
             {
-                _status.Text = "Verbindung wird erneut geprüft …\n" + ex.Message;
+                _status.Text = UiLanguage.T("Verbindung wird erneut geprüft …") + "\n" + ex.Message;
             }
 
             try { await Task.Delay(TimeSpan.FromSeconds(2), _stop.Token); }
             catch (OperationCanceledException) { return; }
         }
         if (!_stop.IsCancellationRequested)
-            _status.Text = "QR-Code abgelaufen. Fenster schließen und einen neuen QR-Code erzeugen.";
+            _status.Text = UiLanguage.T("QR-Code abgelaufen. Fenster schließen und einen neuen QR-Code erzeugen.");
     }
 }

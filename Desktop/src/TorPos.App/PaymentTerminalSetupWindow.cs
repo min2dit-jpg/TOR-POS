@@ -180,7 +180,7 @@ public sealed class PaymentTerminalSetupWindow : Window
             selected.ProductionReady &&
             string.Equals(values.GetValueOrDefault("payment.terminal.enabled"), "true", StringComparison.OrdinalIgnoreCase);
         ApplySelectedProfile();
-        _status.Text = "Profil auswählen, Angaben eintragen und SPEICHERN. ZVT-Profile können danach ohne Zahlung getestet werden.";
+        _status.Text = UiLanguage.T("Profil auswählen, Angaben eintragen und SPEICHERN. ZVT-Profile können danach ohne Zahlung getestet werden.");
     }
 
     private void ApplySelectedProfile()
@@ -191,7 +191,7 @@ public sealed class PaymentTerminalSetupWindow : Window
         _integration.Foreground = p.ProductionReady ? AppTheme.AccentTeal : AppTheme.WarningAmber;
         _hint.Text = string.IsNullOrWhiteSpace(p.SetupHint)
             ? p.Notes
-            : p.Notes + "\n\nEinrichtung: " + p.SetupHint;
+            : p.Notes + "\n\n" + UiLanguage.T("Einrichtung") + ": " + p.SetupHint;
 
         _networkBox.IsVisible = p.RequiresNetworkEndpoint;
         _probe.IsVisible = p.ProductionReady && p.Protocol == "ZVT_TCP";
@@ -211,13 +211,14 @@ public sealed class PaymentTerminalSetupWindow : Window
         if (!p.ProductionReady)
         {
             _status.Text =
-                $"{p.Manufacturer}: Profil ist vorbereitet, aber automatische Belastung ist noch nicht freigegeben. " +
-                "TOR lässt dieses Profil deshalb absichtlich deaktiviert.";
+                $"{p.Manufacturer}: " + UiLanguage.T(
+                    "Profil ist vorbereitet, aber automatische Belastung ist noch nicht freigegeben. " +
+                    "TOR lässt dieses Profil deshalb absichtlich deaktiviert.");
         }
         else
         {
             _status.Text =
-                $"{p.Manufacturer}: ZVT-Profil kann produktiv verwendet werden, sobald Provider/Terminal ZVT freigeschaltet hat und der Verbindungstest erfolgreich ist.";
+                $"{p.Manufacturer}: " + UiLanguage.T("ZVT-Profil kann produktiv verwendet werden, sobald Provider/Terminal ZVT freigeschaltet hat und der Verbindungstest erfolgreich ist.");
         }
     }
 
@@ -249,8 +250,8 @@ public sealed class PaymentTerminalSetupWindow : Window
 
         if (showConfirmation)
             _status.Text = p.ProductionReady
-                ? $"✓ {p.Manufacturer}-Profil gespeichert."
-                : $"✓ {p.Manufacturer}-Profil vorgemerkt. Automatische Zahlung bleibt bis zur Adapter-/Partnerfreigabe AUS.";
+                ? $"✓ {p.Manufacturer}-" + UiLanguage.T("Profil gespeichert.")
+                : $"✓ {p.Manufacturer}-" + UiLanguage.T("Profil vorgemerkt. Automatische Zahlung bleibt bis zur Adapter-/Partnerfreigabe AUS.");
     }
 
     private async Task ProbeAsync()
@@ -258,9 +259,9 @@ public sealed class PaymentTerminalSetupWindow : Window
         try
         {
             await SaveAsync(showConfirmation: false);
-            _status.Text = "Verbindung wird geprüft …";
+            _status.Text = UiLanguage.T("Verbindung wird geprüft …");
             var result = await _terminal.ProbeAsync();
-            _status.Text = result.Success ? "✓ " + result.Message : "⚠ " + result.Message;
+            _status.Text = (result.Success ? "✓ " : "⚠ ") + UiLanguage.T(result.Message);
         }
         catch (Exception ex)
         {
@@ -273,9 +274,9 @@ public sealed class PaymentTerminalSetupWindow : Window
         try
         {
             await SaveAsync(showConfirmation: false);
-            _status.Text = "ZVT-Anmeldung wird geprüft …";
+            _status.Text = UiLanguage.T("ZVT-Anmeldung wird geprüft …");
             var result = await _terminal.RegisterAsync();
-            _status.Text = result.Success ? "✓ " + result.Message : "⚠ " + result.Message;
+            _status.Text = (result.Success ? "✓ " : "⚠ ") + UiLanguage.T(result.Message);
         }
         catch (Exception ex)
         {

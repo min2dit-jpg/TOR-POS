@@ -178,7 +178,7 @@ public sealed class FirstRunSetupWindow : Window
         var profile = SelectedTerminalProfile;
         _terminalProfileHint.Text =
             $"{profile.Integration} · {profile.TorStatus}\n{profile.Notes}" +
-            (string.IsNullOrWhiteSpace(profile.SetupHint) ? "" : $"\nEinrichtung: {profile.SetupHint}");
+            (string.IsNullOrWhiteSpace(profile.SetupHint) ? "" : "\n" + UiLanguage.T("Einrichtung") + $": {profile.SetupHint}");
         _terminalProfileHint.Foreground =
             profile.ProductionReady ? AppTheme.AccentTeal : AppTheme.WarningAmber;
         _terminalEnabled.IsEnabled = profile.ProductionReady;
@@ -229,7 +229,7 @@ public sealed class FirstRunSetupWindow : Window
 
     private async Task NextAsync()
     {
-        if (_step == 0 && string.IsNullOrWhiteSpace(_company.Text)) { _status.Text = "Bitte mindestens den Firmennamen eintragen."; return; }
+        if (_step == 0 && string.IsNullOrWhiteSpace(_company.Text)) { _status.Text = UiLanguage.T("Bitte mindestens den Firmennamen eintragen."); return; }
         if (_step == 4) await SaveAsync();
         if (_step < 5) { _step++; Render(); return; }
         await SaveAsync(true); Completed = true; Close();
@@ -238,7 +238,7 @@ public sealed class FirstRunSetupWindow : Window
     {
         try
         {
-            _status.Text = "Windows-Drucker werden automatisch geprüft …";
+            _status.Text = UiLanguage.T("Windows-Drucker werden automatisch geprüft …");
             var devices = await Task.Run(() => _printer.GetInstalledPrinterDevices())
                 .WaitAsync(TimeSpan.FromSeconds(12));
 
@@ -253,9 +253,9 @@ public sealed class FirstRunSetupWindow : Window
             if (candidates.Length == 0)
             {
                 if (names.Count > 0) _printerName.SelectedIndex = 0;
-                _status.Text = names.Count == 0
+                _status.Text = UiLanguage.T(names.Count == 0
                     ? "⚠ Keine Windows-Drucker gefunden. Epson-/Star-Treiber zuerst in Windows installieren."
-                    : "⚠ Kein Epson-/Star-Bondrucker eindeutig erkannt. Vorhandene Windows-Drucker wurden geladen; bitte manuell auswählen.";
+                    : "⚠ Kein Epson-/Star-Bondrucker eindeutig erkannt. Vorhandene Windows-Drucker wurden geladen; bitte manuell auswählen.");
                 return;
             }
 
@@ -264,26 +264,28 @@ public sealed class FirstRunSetupWindow : Window
             {
                 var d = candidates[0];
                 _status.Text =
-                    $"✓ {d.Manufacturer} {d.Model} erkannt · {d.ConnectionType} · {d.PaperWidthMm} mm · {d.PrinterName}";
+                    $"✓ {d.Manufacturer} {d.Model} " + UiLanguage.T("erkannt") +
+                    $" · {d.ConnectionType} · {d.PaperWidthMm} mm · {d.PrinterName}";
             }
             else
             {
                 _status.Text =
-                    $"✓ {candidates.Length} Epson/Star-Bondrucker gefunden. Vorauswahl: {candidates[0].Manufacturer} {candidates[0].Model}. Bitte Auswahl kontrollieren.";
+                    $"✓ {candidates.Length} " + UiLanguage.T("Epson/Star-Bondrucker gefunden. Vorauswahl") +
+                    $": {candidates[0].Manufacturer} {candidates[0].Model}. " + UiLanguage.T("Bitte Auswahl kontrollieren.");
             }
         }
         catch (TimeoutException)
         {
-            _status.Text = "⚠ Druckersuche dauert zu lange. Offline-/Netzwerkdrucker in Windows prüfen.";
+            _status.Text = UiLanguage.T("⚠ Druckersuche dauert zu lange. Offline-/Netzwerkdrucker in Windows prüfen.");
         }
         catch (Exception ex)
         {
-            _status.Text = "⚠ Automatische Druckersuche fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("⚠ Automatische Druckersuche fehlgeschlagen") + ": " + ex.Message;
         }
     }
 
     private async Task ProbePrinterAsync() { try { var r = await _printer.ProbeAsync(_printerName.SelectedItem?.ToString() ?? ""); _status.Text = r.Success ? $"✓ {r.Message}" : $"⚠ {r.Message}"; if (r.Success) _printerName.SelectedItem = r.PrinterName; } catch(Exception ex) { _status.Text = "⚠ " + ex.Message; } }
-    private async Task TestPrinterAsync() { try { var n=_printerName.SelectedItem?.ToString() ?? ""; if(string.IsNullOrWhiteSpace(n)){_status.Text="Bitte zuerst einen Drucker wählen.";return;} await _printer.PrintTestAsync(n); _status.Text="✓ Testbon gesendet."; } catch(Exception ex){_status.Text="⚠ "+ex.Message;} }
+    private async Task TestPrinterAsync() { try { var n=_printerName.SelectedItem?.ToString() ?? ""; if(string.IsNullOrWhiteSpace(n)){_status.Text=UiLanguage.T("Bitte zuerst einen Drucker wählen.");return;} await _printer.PrintTestAsync(n); _status.Text="✓ Testbon gesendet."; } catch(Exception ex){_status.Text="⚠ "+ex.Message;} }
     private async Task ProbeTseAsync()
     {
         try
@@ -296,8 +298,8 @@ public sealed class FirstRunSetupWindow : Window
 
             if (completed != probe)
             {
-                _status.Text =
-                    "⚠ TSE antwortet nicht innerhalb von 10 Sekunden. USB/SDK prüfen; TOR POS bleibt bedienbar.";
+                _status.Text = UiLanguage.T(
+                    "⚠ TSE antwortet nicht innerhalb von 10 Sekunden. USB/SDK prüfen; TOR POS bleibt bedienbar.");
                 return;
             }
 
@@ -317,7 +319,7 @@ public sealed class FirstRunSetupWindow : Window
             var profile = SelectedTerminalProfile;
             if (!profile.ProductionReady || profile.Protocol != "ZVT_TCP")
             {
-                _status.Text = $"⚠ {profile.Manufacturer}: {profile.TorStatus}. Automatische Zahlung ist für dieses Profil noch nicht freigegeben.";
+                _status.Text = $"⚠ {profile.Manufacturer}: {profile.TorStatus}. " + UiLanguage.T("Automatische Zahlung ist für dieses Profil noch nicht freigegeben.");
                 return;
             }
 

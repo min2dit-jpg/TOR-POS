@@ -1194,7 +1194,7 @@ public partial class MainWindow:Window
         }
 
         var ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        PerformanceStatus.Text = $"Barcode {ms:0} ms";
+        PerformanceStatus.Text = UiLanguage.T("Barcode") + $" {ms:0} ms";
         PerformanceStatus.Foreground =
             ms < 100 ? AppTheme.AccentTeal : AppTheme.WarningAmber;
         FocusScannerCaptureSoon();

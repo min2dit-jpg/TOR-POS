@@ -301,12 +301,12 @@ public sealed class PromotionManagementWindow : Window
                 .ToArray();
 
             _status.Text =
-                $"{_campaigns.Count} Angebot(e) geladen · Betriebstag {businessDate:dd.MM.yyyy}.";
+                $"{_campaigns.Count} " + UiLanguage.T("Angebot(e) geladen · Betriebstag") + $" {businessDate:dd.MM.yyyy}.";
         }
         catch (Exception ex)
         {
             _status.Text =
-                "FEHLER: " + ex.Message;
+                UiLanguage.T("FEHLER") + ": " + ex.Message;
         }
     }
 
@@ -318,7 +318,7 @@ public sealed class PromotionManagementWindow : Window
                 _end.SelectedDate is null)
             {
                 _status.Text =
-                    "Start- und Enddatum sind erforderlich.";
+                    UiLanguage.T("Start- und Enddatum sind erforderlich.");
                 return;
             }
 
@@ -336,10 +336,10 @@ public sealed class PromotionManagementWindow : Window
             if (scope != PromotionScope.All &&
                 targetId <= 0)
             {
-                _status.Text =
+                _status.Text = UiLanguage.T(
                     scope == PromotionScope.Category
                         ? "Bitte das Fenster aus einer ausgewählten Warengruppe öffnen."
-                        : "Bitte zuerst einen Artikel auswählen.";
+                        : "Bitte zuerst einen Artikel auswählen.");
                 return;
             }
 
@@ -356,7 +356,7 @@ public sealed class PromotionManagementWindow : Window
                     _user.Username);
 
             _status.Text =
-                $"ANGEBOT #{id} gespeichert · {_percent}% · " +
+                UiLanguage.T("ANGEBOT") + $" #{id} " + UiLanguage.T("gespeichert") + $" · {_percent}% · " +
                 $"{start:dd.MM.yyyy}–{end:dd.MM.yyyy}";
 
             _name.Text = "";
@@ -365,7 +365,7 @@ public sealed class PromotionManagementWindow : Window
         catch (Exception ex)
         {
             _status.Text =
-                "FEHLER: " + ex.Message;
+                UiLanguage.T("FEHLER") + ": " + ex.Message;
         }
     }
 
@@ -377,7 +377,7 @@ public sealed class PromotionManagementWindow : Window
             index >= _campaigns.Count)
         {
             _status.Text =
-                "Bitte zuerst ein Angebot auswählen.";
+                UiLanguage.T("Bitte zuerst ein Angebot auswählen.");
             return;
         }
 
@@ -386,7 +386,7 @@ public sealed class PromotionManagementWindow : Window
         if (!campaign.IsEnabled)
         {
             _status.Text =
-                "Dieses Angebot ist bereits deaktiviert.";
+                UiLanguage.T("Dieses Angebot ist bereits deaktiviert.");
             return;
         }
 
@@ -417,14 +417,14 @@ public sealed class PromotionManagementWindow : Window
                 reason);
 
             _status.Text =
-                $"Angebot #{campaign.Id} deaktiviert.";
+                UiLanguage.T("Angebot") + $" #{campaign.Id} " + UiLanguage.T("deaktiviert.");
 
             await ReloadAsync();
         }
         catch (Exception ex)
         {
             _status.Text =
-                "FEHLER: " + ex.Message;
+                UiLanguage.T("FEHLER") + ": " + ex.Message;
         }
     }
 
