@@ -2997,6 +2997,19 @@ public partial class MainWindow:Window
         if (choice is null)
             return;
 
+        if (restaurantDraft is not null && !IsSimulation)
+        {
+            // Fail closed until Restaurant table capture starts/updates its own
+            // Bestellung/TSE Vorgang from the first position. The payment plumbing
+            // is already shared with the normal checkout, but productive use must
+            // not begin with a missing Vorgangsbeginn.
+            ScannerStatus.Text =
+                "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · TSE-Bestellungspfad noch nicht freigegeben";
+            _restaurantCheckoutDraft = null;
+            _operationId = Guid.NewGuid().ToString("N");
+            return;
+        }
+
         _imHaus = restaurantDraft is not null
             ? true
             : allowImHaus && choice.ImHaus;
