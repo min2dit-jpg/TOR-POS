@@ -56,6 +56,15 @@ public static class MultiLanguageTests
             turkishKeys.Count > 0 && turkishKeys.SetEquals(englishKeys),
             "every translated string exists in Turkish and English, so no language is left half-finished");
 
+        // A window changes some labels while it runs - PFAND becomes EXTRA on the
+        // Gastro till. Apply() must treat that new text as the source instead of
+        // writing the previous label back over it on the next pass.
+        var language = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/UiLanguage.cs"));
+        assert(
+            language.Contains("!string.Equals(current, entry.Text, StringComparison.Ordinal)", StringComparison.Ordinal) &&
+            language.Contains("entry.Text = T(entry.Source);", StringComparison.Ordinal),
+            "a label the window changes while running is not overwritten again with the text it had before");
+
         // The fiscal record is German. Bon, DSFinV-K, Z-Bericht, TSE process data
         // and the audit log are produced outside the UI assembly; that boundary is
         // what keeps them German, so it is asserted rather than remembered.

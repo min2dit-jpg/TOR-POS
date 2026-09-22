@@ -24,10 +24,20 @@ public static class UiLanguage
 
     private static readonly string[] Supported = [German, "TR", "EN"];
 
-    // The original German text of every control this class has touched. Without
-    // it a second Apply() would try to translate an already translated string
-    // and a switch back to German could not restore the source text.
-    private static readonly ConditionalWeakTable<object, string> Sources = new();
+    // What this class last did to a control: the German source it translated
+    // from, and the text it actually rendered. Both are needed. Without the
+    // source, a second Apply() would translate an already translated string and
+    // a switch back to German could not restore the original. Without the
+    // rendered value, a label the window changes at runtime - PFAND becoming
+    // EXTRA on the Gastro till - would be overwritten again with the stale
+    // source on the next Apply().
+    private sealed class Rendered
+    {
+        public string Source = "";
+        public string Text = "";
+    }
+
+    private static readonly ConditionalWeakTable<object, Rendered> Sources = new();
 
     private static string _current = German;
 
@@ -100,10 +110,15 @@ public static class UiLanguage
 
         // The first sighting of a control records its German source; later calls
         // always translate from that source, never from a translated value.
-        var source = Sources.TryGetValue(owner, out var remembered) ? remembered : current;
-        Sources.AddOrUpdate(owner, source);
+        var entry = Sources.GetOrCreateValue(owner);
 
-        return T(source);
+        // Anything other than the text we rendered last time means the window
+        // set it itself, so that value becomes the new source.
+        if (entry.Source.Length == 0 || !string.Equals(current, entry.Text, StringComparison.Ordinal))
+            entry.Source = current;
+
+        entry.Text = T(entry.Source);
+        return entry.Text;
     }
 
     private static string? Normalize(string? code)
