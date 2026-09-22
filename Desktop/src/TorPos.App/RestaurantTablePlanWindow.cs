@@ -11,6 +11,7 @@ public sealed class RestaurantTablePlanWindow : Window
 {
     private readonly RestaurantRepository _restaurant;
     private readonly RestaurantFiscalOrderService _restaurantFiscal;
+    private readonly RestaurantKitchenOutbox _kitchen;
     private readonly IProductCatalog _catalog;
     private readonly AuthenticatedUser _user;
 
@@ -129,11 +130,13 @@ public sealed class RestaurantTablePlanWindow : Window
     public RestaurantTablePlanWindow(
         RestaurantRepository restaurant,
         RestaurantFiscalOrderService restaurantFiscal,
+        RestaurantKitchenOutbox kitchen,
         IProductCatalog catalog,
         AuthenticatedUser user)
     {
         _restaurant = restaurant;
         _restaurantFiscal = restaurantFiscal;
+        _kitchen = kitchen;
         _catalog = catalog;
         _user = user;
 
@@ -526,6 +529,15 @@ public sealed class RestaurantTablePlanWindow : Window
             _selectedSession = await _restaurant.GetSessionAsync(
                 _selectedSession.Id);
 
+            if (_selectedSession is not null)
+            {
+                await _kitchen.EnqueueNewItemAsync(
+                    _selectedSession,
+                    item,
+                    _selectedTable?.DisplayName ?? "Tisch",
+                    _user.Username);
+            }
+
             _quantity.Value = 1;
             await ReloadAsync();
         }
@@ -745,6 +757,15 @@ public sealed class RestaurantTablePlanWindow : Window
 
             _selectedSession = await _restaurant.GetSessionAsync(
                 _selectedSession.Id);
+
+            if (_selectedSession is not null)
+            {
+                await _kitchen.EnqueueCancellationAsync(
+                    _selectedSession,
+                    cancelled,
+                    _selectedTable?.DisplayName ?? "Tisch",
+                    _user.Username);
+            }
 
             await ReloadAsync();
         }
