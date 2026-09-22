@@ -58,6 +58,7 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<IAuthenticationService>(),
             _services.GetRequiredService<BusinessManagementService>(),
             _services.GetRequiredService<RestaurantRepository>(),
+            _services.GetRequiredService<RestaurantFiscalOrderService>(),
             user,
             _services.GetRequiredService<ICheckoutJournal>(),
             _services.GetRequiredService<CheckoutApplicationService>(),
