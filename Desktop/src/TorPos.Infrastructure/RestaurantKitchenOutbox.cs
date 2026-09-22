@@ -11,6 +11,7 @@ public sealed record RestaurantKitchenJob(
     string Action,
     string Station,
     string PrinterName,
+    string PayloadJson,
     string State,
     int Attempts,
     string LastError,
@@ -100,7 +101,7 @@ public sealed class RestaurantKitchenOutbox
             await using var q = c.CreateCommand();
             q.CommandText = """
                 SELECT id,session_id,session_item_id,action,station,printer_name,
-                       state,attempts,last_error,created_at
+                       payload_json,state,attempts,last_error,created_at
                 FROM restaurant_kitchen_jobs
                 WHERE state='PENDING'
                 ORDER BY created_at,id
@@ -117,9 +118,10 @@ public sealed class RestaurantKitchenOutbox
                     r.GetString(4),
                     r.GetString(5),
                     r.GetString(6),
-                    r.GetInt32(7),
-                    r.GetString(8),
-                    DateTimeOffset.Parse(r.GetString(9))));
+                    r.GetString(7),
+                    r.GetInt32(8),
+                    r.GetString(9),
+                    DateTimeOffset.Parse(r.GetString(10))));
             }
             return result;
         });
