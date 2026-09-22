@@ -91,8 +91,17 @@ async Task RunAsync()
     var tseProvider = new SwissbitHardwareTseProvider();
     var tseOutages = new TseOutageRepository(db, audit);
     var tseFailSafe = new TseFailSafeService(tseProvider, tseOutages, audit);
-    var fiscalSigning = new SaleFiscalSigningService(tseFailSafe, settings, sales);
-    var orderFiscalSigning = new OrderFiscalSigningService(tseFailSafe, settings, parkedReceipts);
+    var tseVorgaenge = new TseVorgangService(db, tseFailSafe, settings);
+    var fiscalSigning = new SaleFiscalSigningService(tseFailSafe, settings, sales)
+    {
+        Vorgaenge = tseVorgaenge
+    };
+    var orderFiscalSigning = new OrderFiscalSigningService(tseFailSafe, settings, parkedReceipts)
+    {
+        Vorgaenge = tseVorgaenge
+    };
+    var restaurantRepository = new RestaurantRepository(db);
+    var restaurantFiscal = new RestaurantFiscalOrderService(db, tseVorgaenge);
     var cashMovements = new CashMovementRepository(db, audit);
     var digitalReceipts = new CloudDigitalReceiptService(settings, null);
     var checkoutJournal = new CheckoutJournal(db);
@@ -131,7 +140,7 @@ async Task RunAsync()
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
             compliance, dsfinvkExport, datevAscii, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
             tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
-            auth, management, admin, checkoutJournal, checkoutApplication,
+            auth, management, restaurantRepository, restaurantFiscal, admin, checkoutJournal, checkoutApplication,
             new ControlledPosActionService(db), new PromotionCampaignService(db),
             fiscalSigning, orderFiscalSigning, tseFailSafe, new NoWindows());
 
@@ -365,5 +374,7 @@ sealed class NoWindows : IAppWindowFactory
 {
     public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
     public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
+    public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
     public DiagnosticsWindow CreateDiagnosticsWindow() => throw new NotSupportedException();
 }
