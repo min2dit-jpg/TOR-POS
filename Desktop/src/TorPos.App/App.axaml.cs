@@ -240,6 +240,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(tseFailSafe);
             appServices.AddSingleton(orderPrintOutbox);
             appServices.AddSingleton(new ProductImageStore());
+            appServices.AddSingleton(new RestaurantRepository(db));
             appServices.AddSingleton<IAppWindowFactory, AppWindowFactory>();
 
             var serviceProvider = appServices.BuildServiceProvider(
