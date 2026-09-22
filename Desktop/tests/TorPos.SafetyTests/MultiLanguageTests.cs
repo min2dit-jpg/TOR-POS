@@ -45,6 +45,21 @@ public static class MultiLanguageTests
                 twoLines == "NAKİT\nF1" && unknownCompound == "Unbekannter Posten: 12,50 €",
                 "a label glued to an amount is translated without touching the amount, and an untranslated label still stays German");
 
+            // The operator's own words are not the program's to translate. A
+            // category they named, a product, a payment-button label they set -
+            // these carry the same separator as a till label and must survive a
+            // language switch unchanged, because the receipt and the product list
+            // keep the name they typed.
+            UiLanguage.Set("TR");
+            var category = UiLanguage.T("ARTIKEL · GETRÄNKE");
+            var product = UiLanguage.T("EXTRA · BAR");
+            var vatButton = UiLanguage.T("GETRÄNKE · 19 %");
+            UiLanguage.Set("DE");
+            assert(
+                category == "ARTIKEL · GETRÄNKE" && product == "EXTRA · BAR" &&
+                vatButton == "İÇECEKLER · 19 %",
+                "a language switch does not rewrite the operator's own data, while a label glued to an amount is still translated");
+
             UiLanguage.Set("KLINGONISCH");
             var unsupported = UiLanguage.Current;
             UiLanguage.Set(null);

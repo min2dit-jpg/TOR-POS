@@ -68,13 +68,11 @@ public static class UiLanguage
         return Compound(german, table);
     }
 
-    // A till label is often a label glued to a value - "GESAMT: 12,50 €",
-    // "KARTENZAHLUNG · 12,50 €" - or two lines in one control, "BAR\nF1".
-    // The whole string is never in the table, because the amount changes with
-    // every sale. So when the exact lookup misses, the string is split at these
-    // separators and each piece is translated on its own. The label becomes
-    // Turkish; the amount, which is not interface text, is left exactly as the
-    // window formatted it.
+    // A till label is often a label glued to an amount - "GESAMT: 12,50 €",
+    // "KARTENZAHLUNG · 12,50 €", "PASSEND" over "12,50 €". The whole string is
+    // never in the table, because the amount changes with every sale, so when
+    // the exact lookup misses the string is split here and each piece is
+    // translated on its own.
     private static readonly string[] Separators = ["\r\n", "\n", ": ", " · "];
 
     private static string Compound(string text, IReadOnlyDictionary<string, string> table)
@@ -91,8 +89,27 @@ public static class UiLanguage
 
         if (at < 0) return text;
 
-        return Piece(text[..at], table) + separator + Piece(text[(at + separator.Length)..], table);
+        var head = text[..at];
+        var tail = text[(at + separator.Length)..];
+
+        // Only a label glued to an amount is split. Two words joined by the same
+        // separator are usually the program's text next to the operator's own -
+        // "ARTIKEL · GETRÄNKE" is the ARTIKEL heading plus a category the
+        // operator named and can rename. Translating that would rewrite their
+        // data on screen while the receipt and the product list keep the name
+        // they typed. A label made of two words that both need translating is
+        // therefore a table entry of its own, not a split.
+        if (!IsAmount(head) && !IsAmount(tail)) return text;
+
+        return Piece(head, table) + separator + Piece(tail, table);
     }
+
+    // A formatted number: "12,50 €", "19 %", "0,00". Never a word, so never
+    // anything the operator typed.
+    private static bool IsAmount(string text) =>
+        text.Length > 0 &&
+        text.Any(char.IsDigit) &&
+        text.All(c => char.IsDigit(c) || c is ',' or '.' or ':' or ' ' or '%' or '€' or '+' or '-');
 
     // Each piece gets the same treatment as the whole: an exact entry wins, and
     // anything still compound is split again. Both pieces are shorter than what

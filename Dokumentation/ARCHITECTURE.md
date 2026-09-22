@@ -76,17 +76,25 @@ Die Bedienoberfläche kann auf Deutsch, Türkisch oder Englisch laufen
 die Vorgabe und bleibt es auch bei einem unbekannten oder leeren Wert.
 
 Der deutsche Text bleibt im Fenster und ist zugleich der Nachschlageschlüssel
-(`UiLanguage` / `UiTranslations`). Daraus folgen drei Eigenschaften:
+(`UiLanguage` / `UiTranslations`). Daraus folgen vier Eigenschaften:
 
 - Ein fehlender Eintrag ist kein Fehler, sondern zeigt das deutsche Original.
   Eine unvollständige Übersetzung ist an einer echten Kasse damit harmlos.
-- Eine Beschriftung, an der ein Betrag klebt - `GESAMT: 12,50 €`,
+- Eine Beschriftung, an der ein **Betrag** klebt - `GESAMT: 12,50 €`,
   `KARTENZAHLUNG · 12,50 €` - wird an `": "`, `" · "` und am Zeilenumbruch
   zerlegt und stückweise übersetzt. Die Beschriftung wird übersetzt, der Betrag
   bleibt exakt so, wie ihn das Fenster formatiert hat.
+- **Die Daten der Betreiberin oder des Betreibers werden nicht übersetzt.**
+  Zerlegt wird nur, wenn eine der beiden Seiten eine Zahl ist. `ARTIKEL ·
+  GETRÄNKE` ist die Überschrift plus eine Warengruppe, die der Betrieb benannt
+  hat und jederzeit umbenennen kann; sie bleibt unverändert, weil Bon,
+  Warenliste und Berichte denselben Namen zeigen. Eine zweiteilige
+  Beschriftung, die ganz aus Programmtext besteht, ist deshalb ein eigener
+  Tabelleneintrag und keine Zerlegung.
 - Deutsche Fachbegriffe der Kassenführung bleiben in jeder Sprache deutsch:
-  Z-Bericht, X-Bericht, Z-Abschluss, DSFinV-K, TSE, DATEV, GoBD, § 146a. Mit diesen Wörtern
-  spricht die Betreiberin oder der Betreiber mit Steuerberatung und Prüfung.
+  Z-Bericht, X-Bericht, Z-Abschluss, DSFinV-K, TSE, DATEV, GoBD, § 146a. Mit
+  diesen Wörtern spricht die Betreiberin oder der Betreiber mit Steuerberatung
+  und Prüfung.
 
 **Übersetzt wird ausschliesslich die Bedienoberfläche.** Bon, DSFinV-K-Export,
 Z-Bericht, TSE-Prozessdaten und das Protokoll sind deutsche Aufzeichnungen und

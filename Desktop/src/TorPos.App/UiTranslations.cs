@@ -227,6 +227,18 @@ internal static class UiTranslations
         ["SCHLIESSEN"] = "KAPAT",
         ["Offene geparkte Bons müssen vor dem Z-Abschluss kassiert werden."] =
             "Bekletilen açık fişler Z-Abschluss öncesinde tahsil edilmelidir.",
+
+        // Zweiteilige Beschriftungen - eigener Eintrag, weil nur Label + Betrag zerlegt wird
+        ["AUSSER HAUS\nSTANDARD"] = "PAKET\nVARSAYILAN",
+        ["BAR\nF1"] = "NAKİT\nF1",
+        ["KARTE\nF2"] = "KART\nF2",
+        ["GEMISCHT\nBAR + KARTE"] = "KARMA\nNAKİT + KART",
+        ["BARZAHLUNG · KASSIEREN"] = "NAKİT ÖDEME · ÖDEME AL",
+        ["KARTE · TEST BESTÄTIGEN"] = "KART · TESTİ ONAYLA",
+        ["GEMISCHT · KASSIEREN"] = "KARMA · ÖDEME AL",
+        ["PFAND-RÜCKGABE · 8 CENT"] = "DEPOZİTO İADESİ · 8 SENT",
+        ["PFAND-RÜCKGABE · 15 CENT"] = "DEPOZİTO İADESİ · 15 SENT",
+        ["PFAND-RÜCKGABE · 25 CENT"] = "DEPOZİTO İADESİ · 25 SENT",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -427,5 +439,17 @@ internal static class UiTranslations
         ["SCHLIESSEN"] = "CLOSE",
         ["Offene geparkte Bons müssen vor dem Z-Abschluss kassiert werden."] =
             "Open parked receipts must be paid before the Z-Abschluss.",
+
+        // Zweiteilige Beschriftungen - eigener Eintrag, weil nur Label + Betrag zerlegt wird
+        ["AUSSER HAUS\nSTANDARD"] = "TAKEAWAY\nDEFAULT",
+        ["BAR\nF1"] = "CASH\nF1",
+        ["KARTE\nF2"] = "CARD\nF2",
+        ["GEMISCHT\nBAR + KARTE"] = "MIXED\nCASH + CARD",
+        ["BARZAHLUNG · KASSIEREN"] = "CASH PAYMENT · CHECKOUT",
+        ["KARTE · TEST BESTÄTIGEN"] = "CARD · CONFIRM TEST",
+        ["GEMISCHT · KASSIEREN"] = "MIXED · CHECKOUT",
+        ["PFAND-RÜCKGABE · 8 CENT"] = "DEPOSIT RETURN · 8 CENT",
+        ["PFAND-RÜCKGABE · 15 CENT"] = "DEPOSIT RETURN · 15 CENT",
+        ["PFAND-RÜCKGABE · 25 CENT"] = "DEPOSIT RETURN · 25 CENT",
     };
 }
