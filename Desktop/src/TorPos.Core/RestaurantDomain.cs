@@ -11,6 +11,7 @@ public enum RestaurantTableSessionState
 public enum RestaurantSessionItemState
 {
     Active,
+    Paid,
     Cancelled
 }
 
