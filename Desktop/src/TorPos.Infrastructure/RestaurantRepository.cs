@@ -1028,6 +1028,27 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<bool> HasPreparedPaymentReservationAsync(
+        string operationId,
+        CancellationToken ct = default)
+    {
+        operationId = (operationId ?? "").Trim();
+        if (operationId.Length == 0) return false;
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT COUNT(*)
+                FROM restaurant_payment_reservations
+                WHERE operation_id=$operation AND state='PREPARED';
+                """;
+            q.Parameters.AddWithValue("$operation", operationId);
+            return Convert.ToInt32(await q.ExecuteScalarAsync(ct)) == 1;
+        });
+    }
+
     public async Task CancelPaymentReservationAsync(
         string operationId,
         CancellationToken ct = default)
