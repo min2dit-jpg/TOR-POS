@@ -517,10 +517,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-// Restaurant foundation: 28 checks lock Standard/Plus feature gating,
+// Restaurant foundation: 30 checks lock Standard/Plus feature gating,
 // Restaurant-only schema isolation, immutable Bestellung records,
-// DSFinV-K Restaurant identity, merge deltas and partial-payment reconciliation.
-const int ExpectedSafetyChecks = 1188;
+// DSFinV-K identity, merge/payment reconciliation and cancellation deltas.
+const int ExpectedSafetyChecks = 1190;
 
 if (checks != ExpectedSafetyChecks)
 {
