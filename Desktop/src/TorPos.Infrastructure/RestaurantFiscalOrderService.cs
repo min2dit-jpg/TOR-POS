@@ -105,7 +105,7 @@ public sealed class RestaurantFiscalOrderService
                     SELECT product_id,product_name,unit_price_cents,vat_rate,pfand_cents,
                            SUM(quantity_milli)
                     FROM restaurant_session_items
-                    WHERE session_id=$session AND state='ACTIVE'
+                    WHERE session_id=$session AND state IN ('ACTIVE','PAID')
                     GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents;
                     """;
                 q.Parameters.AddWithValue("$session", sessionId);
