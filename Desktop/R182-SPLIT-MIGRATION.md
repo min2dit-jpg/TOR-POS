@@ -13,7 +13,7 @@ Beide Produkte werden aus demselben geprüften Quellcode gebaut. Produktidentit�
 
 Die bestehende R181-Installation und `%APPDATA%\TOR-POS-Pro` werden bei der Split-Migration **nicht verschoben, nicht gelöscht und nicht überschrieben**. Eine Migration ist Copy-once und backup-first.
 
-Vor der Kopie wird ein verifiziertes Backup erzeugt. Die dedizierte Zielinstallation erhält einen Provenance-Marker mit Quelle und SHA-256 des migrierten `torpos.db`. Ein bereits initialisiertes Ziel wird nicht erneut überschrieben.
+Vor der Kopie wird ein verifiziertes Backup erzeugt. Die dedizierte Zielinstallation erhält einen Provenance-Marker mit Quelle und einem SHA-256-Zustandsfingerprint der migrierten SQLite-Daten. Ein bereits initialisiertes Ziel wird nicht erneut überschrieben.
 
 ## Editionssicherheit
 
@@ -21,7 +21,9 @@ Eine automatische Übernahme ist nur zulässig, wenn `edition.permanent.lock` de
 
 ## Rollback / Rejoin
 
-Solange der SHA-256-Hash der dedizierten Datenbank noch dem unmittelbar migrierten Stand entspricht, kann die unveränderte R181-Kopie als verlustfreie Rückfallbasis verwendet werden (`SafeBeforeDedicatedWrites`).
+Der R182-Format-3-Marker qualifiziert den persistenten SQLite-Zustand aus `torpos.db` **und** `torpos.db-wal`. `torpos.db-shm` wird bewusst nicht einbezogen, weil es nur transienter Shared-Memory-Zustand ist. Damit können committed Writes, die noch ausschließlich im WAL liegen und die Hauptdatenbankdatei noch nicht verändert haben, nicht fälschlich als unveränderter Stand gelten.
+
+Solange dieser Zustandsfingerprint der dedizierten Datenbank noch dem unmittelbar migrierten Stand entspricht, kann die unveränderte R181-Kopie als verlustfreie Rückfallbasis verwendet werden (`SafeBeforeDedicatedWrites`). Ältere Format-2-Marker werden konservativ behandelt: sobald eine WAL-Datei vorhanden ist, wird kein automatischer sicherer Rollback mehr behauptet.
 
 Sobald in TOR KIOSK oder TOR DÖNER neue Daten geschrieben wurden, wird ein automatischer Rejoin als unsicher bewertet (`DedicatedDataChanged`). Ab diesem Punkt dürfen zwei fiskalische Historien nicht still zusammenkopiert werden. Eine spätere Zusammenführung benötigt eine ausdrücklich geprüfte Migration mit fachlicher Datenabstimmung.
 
@@ -40,7 +42,7 @@ PR #58 bleibt Draft, bis alle folgenden Punkte nachweislich erfüllt sind:
 3. beide dedizierten Publish-Ausgaben erfolgreich;
 4. beide Setup-EXE erfolgreich kompiliert und als CI-Artefakt vorhanden;
 5. backup-first Migration und Editions-Mismatch regressionsgetestet;
-6. Rollback vor dedizierten Writes als sicher und nach dedizierten Writes als gesperrt regressionsgetestet;
+6. Rollback vor dedizierten Writes als sicher und nach dedizierten Writes als gesperrt regressionsgetestet, einschließlich WAL-only Writes;
 7. Side-by-side AppId/Installations-/Datenpfad-Trennung regressionsgetestet.
 
 Physische TSE-/Terminaltests bleiben von dieser reinen Produkttrennung getrennt und werden erst mit verfügbarer Hardware durchgeführt.
