@@ -90,6 +90,53 @@ public sealed class RestaurantFiscalOrderService
             ct);
     }
 
+    public async Task SecureCancelledItemAsync(
+        string sessionId,
+        RestaurantSessionItem cancelledItem,
+        RestaurantFiscalVorgang vorgang,
+        string actor,
+        CancellationToken ct = default)
+    {
+        if (!string.Equals(
+                cancelledItem.SessionId,
+                sessionId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Stornierte Restaurant-Position gehört nicht zum erwarteten Tischvorgang.");
+        }
+
+        var original = ToCartLine(cancelledItem);
+        var reversal = new CartLine
+        {
+            ProductId = original.ProductId,
+            ProductName = original.ProductName,
+            VariantName = original.VariantName,
+            Quantity = -original.Quantity,
+            Unit = original.Unit,
+            UnitPriceCents = original.UnitPriceCents,
+            ListUnitPriceCents = original.ListUnitPriceCents,
+            VatRate = original.VatRate,
+            PfandCents = original.PfandCents
+        };
+
+        var result = await _vorgaenge.FinishAsync(
+            vorgang.Id,
+            FiscalProcessData.BestellungProcessType,
+            FiscalProcessData.BestellungText(new[] { reversal }),
+            actor,
+            $"RESTAURANT:{sessionId}",
+            ct);
+
+        await InsertRecordAsync(
+            sessionId,
+            vorgang.StartedAt,
+            actor,
+            new[] { reversal },
+            result,
+            ct);
+    }
+
     public async Task SecureMergeAsync(
         string sourceSessionId,
         string targetSessionId,
