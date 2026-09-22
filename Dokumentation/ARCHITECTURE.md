@@ -108,6 +108,27 @@ Fenster tun das bewusst nicht, und die Prüfung nennt jedes davon mit Grund:
 die beiden Kundenanzeigen richten sich an die Kundschaft, und die beiden
 Startfenster laufen, bevor die gespeicherte Sprache gelesen ist.
 
+Auch die Fenster, die nicht als Klasse existieren - die Hinweis- und
+Rückfragefenster, die direkt im Code aufgebaut und einmal gezeigt werden -
+rendern vor dem Anzeigen. Eine Prüfung zählt sie mit.
+
+**Laufende Meldungen brauchen einen eigenen Weg.** Eine Statuszeile wird
+geschrieben, lange nachdem das Fenster gerendert wurde - bei jedem Scan, jedem
+Tastendruck, jeder Geräteantwort. Ein einmaliges Rendern erreicht sie nie. Die
+beiden zentralen Zeilen laufen deshalb über je eine Eigenschaft, die beim Setzen
+übersetzt (`MainWindow.ScannerStatusText`, `SettingsWindow.SettingsStatus`), die
+übrigen Fenster übersetzen an der Schreibstelle. Prüfungen halten das fest:
+direkt geschrieben werden darf keine der beiden Zeilen mehr, und in den
+benannten, fertigen Fenstern darf keine Status-, Meldungs- oder Hinweiszeile
+einen deutschen Text ohne Sprachschicht erhalten.
+
+Meldungen aus `TorPos.Core` und `TorPos.Infrastructure` laufen über dieselbe
+Grenze: die Projekte kennen die Sprachschicht nicht, und die Bedienoberfläche
+übersetzt ihren deutschen Text genau dort, wo er auf den Bildschirm kommt.
+Gerätenamen, Pfade, Ausnahmetexte und Beträge sind Daten und bleiben unverändert -
+deshalb wird eine Beschriftung getrennt von dem übersetzt, was an sie angehängt
+wird.
+
 ### Cloud
 
 Separater Node.js-Dienst für TOR-Cloud-Funktionen. Cloud-Verfügbarkeit darf den lokalen Kassiervorgang nicht zu einer Online-Abhängigkeit machen.
