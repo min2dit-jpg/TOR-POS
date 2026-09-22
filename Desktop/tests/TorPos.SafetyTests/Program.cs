@@ -513,7 +513,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
-// Operator-interface language DE/TR/EN: 8 checks keep German the source text,
+// Operator-interface language DE/TR/EN: 9 checks keep German the source text,
 // keep an unfinished translation harmless, keep an unknown code from blanking
 // the interface, keep both tables symmetric, keep fiscal documents out of the
 // translation path and keep the stored language choice from being purged.
@@ -521,7 +521,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1174;
+const int ExpectedSafetyChecks = 1175;
 
 if (checks != ExpectedSafetyChecks)
 {
