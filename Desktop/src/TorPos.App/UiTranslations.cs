@@ -750,6 +750,78 @@ internal static class UiTranslations
         ["7% Kennzeichen"] = "7% kodu",
         ["Status"] = "Durum",
         ["Lizenz"] = "Lisans",
+
+        // Laufende Statusmeldungen der Einstellungen
+        ["Einstellungen geladen"] = "Ayarlar yüklendi",
+        ["Bonlogo gespeichert"] = "Fiş logosu kaydedildi",
+        ["Bonlogo entfernt"] = "Fiş logosu kaldırıldı",
+        ["Kartenterminal wird gesucht ..."] = "Kart terminali aranıyor ...",
+        ["ZVT-Anmeldung wird geprüft ..."] = "ZVT oturumu kontrol ediliyor ...",
+        ["Terminal-Tagesabschluss wird angestoßen ..."] = "Terminal gün sonu başlatılıyor ...",
+        ["Swissbit SDK und TSE werden geprüft ..."] = "Swissbit SDK ve TSE kontrol ediliyor ...",
+        ["Swissbit TSE-Aktivierung läuft. TSE nicht entfernen ..."] =
+            "Swissbit TSE etkinleştirmesi sürüyor. TSE'yi çıkarmayın ...",
+        ["Windows wird nach einer kompatiblen Swissbit WormAPI.dll durchsucht ..."] =
+            "Windows uyumlu bir Swissbit WormAPI.dll için taranıyor ...",
+        ["Keine kompatible WormAPI.dll auf diesem PC gefunden. "] =
+            "Bu bilgisayarda uyumlu bir WormAPI.dll bulunamadı. ",
+        ["Swissbit Download-Center wurde im Browser geöffnet. "] = "Swissbit indirme merkezi tarayıcıda açıldı. ",
+        ["Browser konnte nicht geöffnet werden: "] = "Tarayıcı açılamadı: ",
+        ["Aktivierung gesperrt: Bestätigung für Credential-Seed / PIN / PUK fehlt."] =
+            "Etkinleştirme kilitli: Credential-Seed / PIN / PUK onayı eksik.",
+        ["Aktivierungsanfrage fehlgeschlagen: "] = "Etkinleştirme isteği başarısız: ",
+        ["fiskaltrust Queue / Swissbit-SCU werden ohne TSE-Schreiboperation geprüft ..."] =
+            "fiskaltrust Queue / Swissbit-SCU, TSE'ye yazma işlemi olmadan kontrol ediliyor ...",
+        ["TSE TAR-Export läuft ..."] = "TSE TAR dışa aktarımı sürüyor ...",
+        ["Audit-Export fehlgeschlagen: "] = "Denetim dışa aktarımı başarısız: ",
+        ["DSFinV-K Export abgebrochen · kein Zielordner ausgewählt."] =
+            "DSFinV-K dışa aktarımı iptal edildi · hedef klasör seçilmedi.",
+        ["DSFinV-K Export fehlgeschlagen: "] = "DSFinV-K dışa aktarımı başarısız: ",
+        ["DSFinV-K Export gesperrt: "] = "DSFinV-K dışa aktarımı kilitli: ",
+        ["DSFinV-K Prüfung fehlgeschlagen: "] = "DSFinV-K kontrolü başarısız: ",
+        ["Keine aktive Lizenz vorhanden, die deaktiviert werden kann."] =
+            "Devre dışı bırakılabilecek etkin bir lisans yok.",
+        ["Lizenz-Deaktivierung fehlgeschlagen: "] = "Lisans devre dışı bırakma başarısız: ",
+        ["Bonlogo aktiv · wird automatisch oben auf neue Bon-Ausdrucke gesetzt."] =
+            "Fiş logosu etkin · yeni fiş çıktılarının üstüne otomatik olarak eklenir.",
+        ["Kein Bonlogo aktiv."] = "Etkin fiş logosu yok.",
+        ["Logo konnte nicht übernommen werden"] = "Logo alınamadı",
+        ["Logo konnte nicht entfernt werden"] = "Logo kaldırılamadı",
+        ["Zuerst einen Bondrucker auswählen bzw. über die DRUCKER-ZENTRALE übernehmen."] =
+            "Önce bir fiş yazıcısı seçin veya YAZICI MERKEZİ üzerinden devralın.",
+        ["✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen."] =
+            "✓ Çekmece komutu Windows'a iletildi. Lütfen kasa çekmecesinin fiziksel olarak açıldığını kontrol edin. TOR, Windows yazdırma kuyruğu üzerinden mekanik açılmayı geri okuyamaz.",
+        ["⚠ Kassenschubladen-Test fehlgeschlagen"] = "⚠ Kasa çekmecesi testi başarısız",
+        ["Keine Windows-Drucker gefunden. Drucker zuerst in Windows installieren."] =
+            "Windows yazıcısı bulunamadı. Yazıcıyı önce Windows'ta kurun.",
+        ["Drucker gefunden. Gewünschten Drucker auswählen, testen und SPEICHERN drücken."] =
+            "yazıcı bulundu. İstediğiniz yazıcıyı seçin, test edin ve KAYDET'e basın.",
+        ["Suche fehlgeschlagen"] = "Arama başarısız",
+        ["Zuerst einen Drucker aus der Liste auswählen."] = "Önce listeden bir yazıcı seçin.",
+        ["Drucker nicht bereit"] = "Yazıcı hazır değil",
+        ["Verbindung, Strom, Papier und Windows-Druckerstatus prüfen."] =
+            "Bağlantıyı, elektriği, kâğıdı ve Windows yazıcı durumunu kontrol edin.",
+        ["An Windows übergeben. Papierausdruck am Gerät kontrollieren."] =
+            "Windows'a iletildi. Cihazdaki kâğıt çıktıyı kontrol edin.",
+        ["Druckstatus unklar. Nicht blind erneut drucken; zuerst Windows-Druckwarteschlange und Papierbeleg prüfen."] =
+            "Yazdırma durumu belirsiz. Körlemesine yeniden yazdırmayın; önce Windows yazdırma kuyruğunu ve kâğıt fişi kontrol edin.",
+        ["Drucker nicht bereit. Verbindung, Strom, Papier und Windows-Druckerstatus prüfen."] =
+            "Yazıcı hazır değil. Bağlantıyı, elektriği, kâğıdı ve Windows yazıcı durumunu kontrol edin.",
+        ["DATEV-Status konnte nicht gelesen werden"] = "DATEV durumu okunamadı",
+        ["Nicht aktiv · Sicherungen werden unverschlüsselt geschrieben. Bei Aktivierung wird ein Wiederherstellungscode einmalig angezeigt - ohne diesen Code kann eine Sicherung nach einem Totalausfall dieses Computers nicht wiederhergestellt werden."] =
+            "Etkin değil · yedekler şifresiz yazılır. Etkinleştirildiğinde bir kurtarma kodu bir kez gösterilir - bu kod olmadan, bu bilgisayarın tamamen arızalanması durumunda bir yedek geri yüklenemez.",
+        ["Aktuell gilt der Auslieferungscode 0000. Solange er gilt, steht er auch auf der Anmeldeseite."] =
+            "Şu anda 0000 teslimat kodu geçerli. Geçerli olduğu sürece giriş ekranında da yazar.",
+        ["Ein eigener Code ist gesetzt. Die Anmeldeseite nennt ihn nicht mehr."] =
+            "Kendi kodunuz ayarlandı. Giriş ekranı artık kodu göstermiyor.",
+        ["Mindestens 6 Zeichen."] = "En az 6 karakter.",
+        ["Die beiden Eingaben stimmen nicht überein."] = "İki giriş birbiriyle uyuşmuyor.",
+        ["TOR Mail: Cloud-Dienst nicht verfügbar."] = "TOR Mail: bulut hizmeti kullanılamıyor.",
+        ["TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv."] =
+            "TOR Mail: TOR POS Cloud henüz kurulmadı/etkin değil.",
+        ["TOR-Mail-Status konnte nicht gelesen werden"] = "TOR Mail durumu okunamadı",
+        ["Google: TOR POS Cloud-Dienst nicht verfügbar."] = "Google: TOR POS Cloud hizmeti kullanılamıyor.",
+        ["Google-Status konnte nicht gelesen werden"] = "Google durumu okunamadı",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -1473,5 +1545,78 @@ internal static class UiTranslations
         ["7% Kennzeichen"] = "7% code",
         ["Status"] = "Status",
         ["Lizenz"] = "Licence",
+
+        // Laufende Statusmeldungen der Einstellungen
+        ["Einstellungen geladen"] = "Settings loaded",
+        ["Bonlogo gespeichert"] = "Receipt logo saved",
+        ["Bonlogo entfernt"] = "Receipt logo removed",
+        ["Kartenterminal wird gesucht ..."] = "Looking for the card terminal ...",
+        ["ZVT-Anmeldung wird geprüft ..."] = "Checking the ZVT login ...",
+        ["Terminal-Tagesabschluss wird angestoßen ..."] = "Starting the terminal end-of-day ...",
+        ["Swissbit SDK und TSE werden geprüft ..."] = "Checking the Swissbit SDK and the TSE ...",
+        ["Swissbit TSE-Aktivierung läuft. TSE nicht entfernen ..."] =
+            "The Swissbit TSE activation is running. Do not remove the TSE ...",
+        ["Windows wird nach einer kompatiblen Swissbit WormAPI.dll durchsucht ..."] =
+            "Searching Windows for a compatible Swissbit WormAPI.dll ...",
+        ["Keine kompatible WormAPI.dll auf diesem PC gefunden. "] =
+            "No compatible WormAPI.dll was found on this PC. ",
+        ["Swissbit Download-Center wurde im Browser geöffnet. "] =
+            "The Swissbit download centre has been opened in the browser. ",
+        ["Browser konnte nicht geöffnet werden: "] = "The browser could not be opened: ",
+        ["Aktivierung gesperrt: Bestätigung für Credential-Seed / PIN / PUK fehlt."] =
+            "Activation is blocked: the confirmation for the credential seed / PIN / PUK is missing.",
+        ["Aktivierungsanfrage fehlgeschlagen: "] = "The activation request failed: ",
+        ["fiskaltrust Queue / Swissbit-SCU werden ohne TSE-Schreiboperation geprüft ..."] =
+            "The fiskaltrust queue and the Swissbit SCU are checked without writing to the TSE ...",
+        ["TSE TAR-Export läuft ..."] = "The TSE TAR export is running ...",
+        ["Audit-Export fehlgeschlagen: "] = "The audit export failed: ",
+        ["DSFinV-K Export abgebrochen · kein Zielordner ausgewählt."] =
+            "The DSFinV-K export was cancelled · no target folder was chosen.",
+        ["DSFinV-K Export fehlgeschlagen: "] = "The DSFinV-K export failed: ",
+        ["DSFinV-K Export gesperrt: "] = "The DSFinV-K export is blocked: ",
+        ["DSFinV-K Prüfung fehlgeschlagen: "] = "The DSFinV-K check failed: ",
+        ["Keine aktive Lizenz vorhanden, die deaktiviert werden kann."] =
+            "There is no active licence that could be deactivated.",
+        ["Lizenz-Deaktivierung fehlgeschlagen: "] = "Deactivating the licence failed: ",
+        ["Bonlogo aktiv · wird automatisch oben auf neue Bon-Ausdrucke gesetzt."] =
+            "The receipt logo is active · it is placed automatically at the top of new receipt printouts.",
+        ["Kein Bonlogo aktiv."] = "No receipt logo is active.",
+        ["Logo konnte nicht übernommen werden"] = "The logo could not be applied",
+        ["Logo konnte nicht entfernt werden"] = "The logo could not be removed",
+        ["Zuerst einen Bondrucker auswählen bzw. über die DRUCKER-ZENTRALE übernehmen."] =
+            "Choose a receipt printer first, or take one over through the PRINTER CENTRE.",
+        ["✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen."] =
+            "✓ The drawer command was handed to Windows. Please check physically whether the cash drawer opened. TOR cannot read a mechanical opening back through the Windows print queue.",
+        ["⚠ Kassenschubladen-Test fehlgeschlagen"] = "⚠ The cash drawer test failed",
+        ["Keine Windows-Drucker gefunden. Drucker zuerst in Windows installieren."] =
+            "No Windows printers were found. Install the printer in Windows first.",
+        ["Drucker gefunden. Gewünschten Drucker auswählen, testen und SPEICHERN drücken."] =
+            "printers found. Choose the printer you want, test it and press SAVE.",
+        ["Suche fehlgeschlagen"] = "The search failed",
+        ["Zuerst einen Drucker aus der Liste auswählen."] = "Choose a printer from the list first.",
+        ["Drucker nicht bereit"] = "The printer is not ready",
+        ["Verbindung, Strom, Papier und Windows-Druckerstatus prüfen."] =
+            "Check the connection, the power, the paper and the Windows printer status.",
+        ["An Windows übergeben. Papierausdruck am Gerät kontrollieren."] =
+            "Handed to Windows. Check the paper printout at the device.",
+        ["Druckstatus unklar. Nicht blind erneut drucken; zuerst Windows-Druckwarteschlange und Papierbeleg prüfen."] =
+            "The print status is unclear. Do not simply print again; check the Windows print queue and the paper receipt first.",
+        ["Drucker nicht bereit. Verbindung, Strom, Papier und Windows-Druckerstatus prüfen."] =
+            "The printer is not ready. Check the connection, the power, the paper and the Windows printer status.",
+        ["DATEV-Status konnte nicht gelesen werden"] = "The DATEV status could not be read",
+        ["Nicht aktiv · Sicherungen werden unverschlüsselt geschrieben. Bei Aktivierung wird ein Wiederherstellungscode einmalig angezeigt - ohne diesen Code kann eine Sicherung nach einem Totalausfall dieses Computers nicht wiederhergestellt werden."] =
+            "Not active · backups are written unencrypted. When you switch it on, a recovery code is shown once - without that code a backup cannot be restored after a total failure of this computer.",
+        ["Aktuell gilt der Auslieferungscode 0000. Solange er gilt, steht er auch auf der Anmeldeseite."] =
+            "The delivery code 0000 is in force. While it is, it is also shown on the sign-in page.",
+        ["Ein eigener Code ist gesetzt. Die Anmeldeseite nennt ihn nicht mehr."] =
+            "Your own code is set. The sign-in page no longer shows it.",
+        ["Mindestens 6 Zeichen."] = "At least 6 characters.",
+        ["Die beiden Eingaben stimmen nicht überein."] = "The two entries do not match.",
+        ["TOR Mail: Cloud-Dienst nicht verfügbar."] = "TOR Mail: the cloud service is not available.",
+        ["TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv."] =
+            "TOR Mail: TOR POS Cloud is not set up or active yet.",
+        ["TOR-Mail-Status konnte nicht gelesen werden"] = "The TOR Mail status could not be read",
+        ["Google: TOR POS Cloud-Dienst nicht verfügbar."] = "Google: the TOR POS Cloud service is not available.",
+        ["Google-Status konnte nicht gelesen werden"] = "The Google status could not be read",
     };
 }

@@ -668,6 +668,72 @@ public static class MultiLanguageTests
             technicianSettingsVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
             "the technician settings vocabulary stays complete in Turkish and English while versions, paths and accounts stay untouched");
 
+        // The settings window has its own status line, written from ~65 places
+        // while the window is open - saving, printer tests, TSE activation,
+        // DSFinV-K export, licence deactivation. Rendering at Opened cannot reach
+        // any of it, so every write goes through the SettingsStatus property, and
+        // the messages it shows are translated. Service answers, paths, printer
+        // names and exception text pass through as data.
+        var settingsSource = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/SettingsWindow.axaml.cs"));
+        var directSettingsStatusWrites = Regex.Matches(settingsSource, "StatusText\\.Text\\s*(?:=|\\+=)").Count;
+        string[] settingsStatusVocabulary =
+        [
+            "Einstellungen geladen",
+            "Bonlogo gespeichert",
+            "Bonlogo entfernt",
+            "Kartenterminal wird gesucht ...",
+            "ZVT-Anmeldung wird geprüft ...",
+            "Terminal-Tagesabschluss wird angestoßen ...",
+            "Swissbit SDK und TSE werden geprüft ...",
+            "Swissbit TSE-Aktivierung läuft. TSE nicht entfernen ...",
+            "Windows wird nach einer kompatiblen Swissbit WormAPI.dll durchsucht ...",
+            "Keine kompatible WormAPI.dll auf diesem PC gefunden. ",
+            "Swissbit Download-Center wurde im Browser geöffnet. ",
+            "Browser konnte nicht geöffnet werden: ",
+            "Aktivierung gesperrt: Bestätigung für Credential-Seed / PIN / PUK fehlt.",
+            "Aktivierungsanfrage fehlgeschlagen: ",
+            "fiskaltrust Queue / Swissbit-SCU werden ohne TSE-Schreiboperation geprüft ...",
+            "TSE TAR-Export läuft ...",
+            "Audit-Export fehlgeschlagen: ",
+            "DSFinV-K Export abgebrochen · kein Zielordner ausgewählt.",
+            "DSFinV-K Export fehlgeschlagen: ",
+            "DSFinV-K Export gesperrt: ",
+            "DSFinV-K Prüfung fehlgeschlagen: ",
+            "Keine aktive Lizenz vorhanden, die deaktiviert werden kann.",
+            "Lizenz-Deaktivierung fehlgeschlagen: ",
+            "Bonlogo aktiv · wird automatisch oben auf neue Bon-Ausdrucke gesetzt.",
+            "Kein Bonlogo aktiv.",
+            "Logo konnte nicht übernommen werden",
+            "Logo konnte nicht entfernt werden",
+            "Zuerst einen Bondrucker auswählen bzw. über die DRUCKER-ZENTRALE übernehmen.",
+            "✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.",
+            "⚠ Kassenschubladen-Test fehlgeschlagen",
+            "Keine Windows-Drucker gefunden. Drucker zuerst in Windows installieren.",
+            "Drucker gefunden. Gewünschten Drucker auswählen, testen und SPEICHERN drücken.",
+            "Suche fehlgeschlagen",
+            "Zuerst einen Drucker aus der Liste auswählen.",
+            "Drucker nicht bereit",
+            "Verbindung, Strom, Papier und Windows-Druckerstatus prüfen.",
+            "An Windows übergeben. Papierausdruck am Gerät kontrollieren.",
+            "Druckstatus unklar. Nicht blind erneut drucken; zuerst Windows-Druckwarteschlange und Papierbeleg prüfen.",
+            "Drucker nicht bereit. Verbindung, Strom, Papier und Windows-Druckerstatus prüfen.",
+            "DATEV-Status konnte nicht gelesen werden",
+            "Nicht aktiv · Sicherungen werden unverschlüsselt geschrieben. Bei Aktivierung wird ein Wiederherstellungscode einmalig angezeigt - ohne diesen Code kann eine Sicherung nach einem Totalausfall dieses Computers nicht wiederhergestellt werden.",
+            "Aktuell gilt der Auslieferungscode 0000. Solange er gilt, steht er auch auf der Anmeldeseite.",
+            "Ein eigener Code ist gesetzt. Die Anmeldeseite nennt ihn nicht mehr.",
+            "Mindestens 6 Zeichen.",
+            "Die beiden Eingaben stimmen nicht überein.",
+            "TOR Mail: Cloud-Dienst nicht verfügbar.",
+            "TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv.",
+            "TOR-Mail-Status konnte nicht gelesen werden",
+            "Google: TOR POS Cloud-Dienst nicht verfügbar.",
+            "Google-Status konnte nicht gelesen werden"
+        ];
+        assert(
+            directSettingsStatusWrites == 1 &&
+            settingsStatusVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
+            "the settings status line is written through the language layer and the messages it shows are translated");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
