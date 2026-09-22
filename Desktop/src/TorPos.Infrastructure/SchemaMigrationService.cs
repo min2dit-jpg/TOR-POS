@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 26;
+    public const int TargetSchemaVersion = 27;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1723,6 +1723,82 @@ public sealed class SchemaMigrationService
 
                         CREATE INDEX IF NOT EXISTS ix_restaurant_payment_session
                           ON restaurant_payment_reservations(session_id,state,created_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                27,
+                "R185_RESTAURANT_BESTELLUNG_TSE",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_bestellungen(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          sequence INTEGER NOT NULL,
+                          kind TEXT NOT NULL CHECK(kind IN ('ANNAHME','AENDERUNG','STORNO')),
+                          started_at TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          created_at_utc TEXT GENERATED ALWAYS AS (strftime('%Y-%m-%dT%H:%M:%fZ', created_at)) VIRTUAL,
+                          operator_name TEXT NOT NULL,
+                          total_cents INTEGER NOT NULL,
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          signature_counter TEXT NOT NULL DEFAULT '',
+                          serial_number TEXT NOT NULL DEFAULT '',
+                          signature TEXT NOT NULL DEFAULT '',
+                          start_log_time TEXT NOT NULL DEFAULT '',
+                          log_time TEXT NOT NULL DEFAULT '',
+                          outage INTEGER NOT NULL DEFAULT 0,
+                          outage_reason TEXT NOT NULL DEFAULT '',
+                          UNIQUE(session_id,sequence));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_bestellung_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          bestellung_id INTEGER NOT NULL REFERENCES restaurant_bestellungen(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          quantity_milli INTEGER NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL DEFAULT 0);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_bestellungen_session
+                          ON restaurant_bestellungen(session_id,sequence);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_bestellungen_created
+                          ON restaurant_bestellungen(created_at_utc);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellungen_no_update
+                        BEFORE UPDATE ON restaurant_bestellungen
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order records are immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellungen_no_delete
+                        BEFORE DELETE ON restaurant_bestellungen
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order records cannot be deleted');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellung_items_no_update
+                        BEFORE UPDATE ON restaurant_bestellung_items
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order items are immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellung_items_no_delete
+                        BEFORE DELETE ON restaurant_bestellung_items
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order items cannot be deleted');
+                        END;
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
