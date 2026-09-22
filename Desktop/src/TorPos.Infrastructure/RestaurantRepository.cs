@@ -148,7 +148,7 @@ public sealed class RestaurantRepository
                     SELECT COUNT(*)
                     FROM restaurant_sessions
                     WHERE table_id=$table
-                      AND state IN ('OPEN','CHECK_REQUESTED');
+                      AND state='OPEN';
                     """;
                 existing.Parameters.AddWithValue("$table", tableId);
                 if (Convert.ToInt32(await existing.ExecuteScalarAsync(ct)) > 0)
@@ -254,7 +254,7 @@ public sealed class RestaurantRepository
                         version=version+1
                     WHERE id=$id
                       AND version=$version
-                      AND state IN ('OPEN','CHECK_REQUESTED');
+                      AND state='OPEN';
                     """;
                 q.Parameters.AddWithValue("$waiter", newWaiter);
                 q.Parameters.AddWithValue("$now", now);
@@ -529,7 +529,7 @@ public sealed class RestaurantRepository
                     FROM restaurant_sessions
                     WHERE id=$id
                       AND version=$version
-                      AND state IN ('OPEN','CHECK_REQUESTED');
+                      AND state='OPEN';
                     """;
                 read.Parameters.AddWithValue("$id", sessionId);
                 read.Parameters.AddWithValue("$version", expectedVersion);
@@ -553,7 +553,7 @@ public sealed class RestaurantRepository
                         version=version+1
                     WHERE id=$id
                       AND version=$version
-                      AND state IN ('OPEN','CHECK_REQUESTED');
+                      AND state='OPEN';
                     """;
                 update.Parameters.AddWithValue("$target", targetTableId);
                 update.Parameters.AddWithValue("$now", now);
@@ -759,7 +759,7 @@ public sealed class RestaurantRepository
             FROM restaurant_sessions
             WHERE id=$id
               AND version=$version
-              AND state IN ('OPEN','CHECK_REQUESTED');
+              AND state='OPEN';
             """;
         q.Parameters.AddWithValue("$id", sessionId);
         q.Parameters.AddWithValue("$version", expectedVersion);
@@ -789,6 +789,308 @@ public sealed class RestaurantRepository
         if (!await r.ReadAsync(ct))
             throw new InvalidOperationException("Tischvorgang nicht gefunden.");
         return ReadSession(r);
+    }
+
+    public async Task<RestaurantCheckoutDraft> BuildCheckoutDraftAsync(
+        string sessionId,
+        long expectedSessionVersion,
+        IReadOnlyList<RestaurantSplitSelection> selections,
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        if (sessionId.Length == 0) throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedSessionVersion < 1) throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
+        if (selections.Count == 0) throw new InvalidOperationException("Keine Position für die Zahlung ausgewählt.");
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+
+            var session = await ReadLiveSessionForUpdateAsync(
+                c, tx, sessionId, expectedSessionVersion, ct);
+
+            if (session.State != RestaurantTableSessionState.Open)
+                throw new InvalidOperationException("Tisch ist bereits in einem Zahlungs-/Abschlussvorgang.");
+
+            var items = new List<RestaurantSessionItem>();
+            foreach (var selection in selections)
+            {
+                await using var q = c.CreateCommand();
+                q.Transaction = tx;
+                q.CommandText = """
+                    SELECT id,session_id,line_token,product_id,product_name,variant_name,
+                           quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                           added_by,added_at,version
+                    FROM restaurant_session_items
+                    WHERE id=$id AND session_id=$session AND state='ACTIVE';
+                    """;
+                q.Parameters.AddWithValue("$id", selection.SessionItemId);
+                q.Parameters.AddWithValue("$session", sessionId);
+
+                await using var r = await q.ExecuteReaderAsync(ct);
+                if (!await r.ReadAsync(ct))
+                    throw new InvalidOperationException("Ausgewählte Tischposition ist nicht mehr offen.");
+
+                var item = new RestaurantSessionItem(
+                    r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetInt64(3),
+                    r.GetString(4),
+                    r.GetString(5),
+                    r.GetInt64(6),
+                    r.GetInt64(7),
+                    Convert.ToDecimal(r.GetDouble(8)),
+                    r.GetInt64(9),
+                    RestaurantSessionItemState.Active,
+                    r.GetString(11),
+                    DateTimeOffset.Parse(r.GetString(12)),
+                    r.GetInt64(13));
+
+                if (selection.QuantityMilli <= 0 ||
+                    selection.QuantityMilli > item.QuantityMilli)
+                {
+                    throw new InvalidOperationException("Ungültige Teilmenge für Splitrechnung.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(item.VariantName))
+                    throw new InvalidOperationException("Varianten werden in der Restaurant-Zahlung erst nach vollständigem Snapshot-Support freigegeben.");
+
+                items.Add(item);
+            }
+
+            var quote = RestaurantSplitCalculator.ByItems(items, selections);
+            var byId = quote.Lines.ToDictionary(x => x.SessionItemId);
+            var cartLines = new List<CartLine>();
+
+            foreach (var item in items)
+            {
+                var selected = selections.Single(x => x.SessionItemId == item.Id);
+                var split = byId[item.Id];
+                var qty = selected.QuantityMilli / 1000m;
+
+                // The Restaurant foundation currently accepts only simple item
+                // snapshots. Menu/variant/weighted snapshots will be enabled
+                // only after their immutable component metadata is persisted.
+                cartLines.Add(new CartLine
+                {
+                    ProductId = item.ProductId,
+                    ProductName = item.ProductName,
+                    VariantName = item.VariantName,
+                    Quantity = qty,
+                    Unit = "Stück",
+                    UnitPriceCents = item.UnitPriceCents,
+                    ListUnitPriceCents = item.UnitPriceCents,
+                    VatRate = item.VatRate,
+                    PfandCents = item.PfandCents
+                });
+
+                if (cartLines[^1].LineTotalCents != split.AmountCents)
+                    throw new InvalidOperationException("Splitbetrag stimmt nicht mit der fiskalen Positionssumme überein.");
+            }
+
+            await tx.CommitAsync(ct);
+
+            return new RestaurantCheckoutDraft(
+                sessionId,
+                expectedSessionVersion,
+                Guid.NewGuid().ToString("N"),
+                cartLines.ToArray(),
+                selections.ToArray());
+        });
+    }
+
+    public async Task<long> PreparePaymentReservationAsync(
+        RestaurantCheckoutDraft draft,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            await using (var active = c.CreateCommand())
+            {
+                active.Transaction = tx;
+                active.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_payment_reservations
+                    WHERE session_id=$session AND state='PREPARED';
+                    """;
+                active.Parameters.AddWithValue("$session", draft.SessionId);
+                if (Convert.ToInt32(await active.ExecuteScalarAsync(ct)) > 0)
+                    throw new InvalidOperationException("Für diesen Tisch läuft bereits eine Zahlung.");
+            }
+
+            var session = await ReadLiveSessionForUpdateAsync(
+                c, tx, draft.SessionId, draft.SessionVersion, ct);
+            if (session.State != RestaurantTableSessionState.Open)
+                throw new InvalidOperationException("Tisch ist bereits in einem Zahlungs-/Abschlussvorgang.");
+
+            var quoteItems = new List<RestaurantSessionItem>();
+            foreach (var selection in draft.Selections)
+            {
+                await using var q = c.CreateCommand();
+                q.Transaction = tx;
+                q.CommandText = """
+                    SELECT id,session_id,line_token,product_id,product_name,variant_name,
+                           quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                           added_by,added_at,version
+                    FROM restaurant_session_items
+                    WHERE id=$id AND session_id=$session AND state='ACTIVE';
+                    """;
+                q.Parameters.AddWithValue("$id", selection.SessionItemId);
+                q.Parameters.AddWithValue("$session", draft.SessionId);
+                await using var r = await q.ExecuteReaderAsync(ct);
+                if (!await r.ReadAsync(ct))
+                    throw new InvalidOperationException("Ausgewählte Tischposition ist nicht mehr offen.");
+
+                quoteItems.Add(new RestaurantSessionItem(
+                    r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
+                    r.GetString(4), r.GetString(5), r.GetInt64(6), r.GetInt64(7),
+                    Convert.ToDecimal(r.GetDouble(8)), r.GetInt64(9),
+                    RestaurantSessionItemState.Active, r.GetString(11),
+                    DateTimeOffset.Parse(r.GetString(12)), r.GetInt64(13)));
+            }
+
+            var quote = RestaurantSplitCalculator.ByItems(quoteItems, draft.Selections);
+            if (quote.TotalCents != draft.TotalCents)
+                throw new InvalidOperationException("Restaurant-Zahlbetrag wurde zwischenzeitlich verändert.");
+
+            await using (var reserve = c.CreateCommand())
+            {
+                reserve.Transaction = tx;
+                reserve.CommandText = """
+                    INSERT INTO restaurant_payment_reservations(
+                        operation_id,session_id,expected_session_version,state,
+                        created_at,updated_at,sale_id)
+                    VALUES($operation,$session,$version,'PREPARED',$now,$now,NULL);
+                    """;
+                reserve.Parameters.AddWithValue("$operation", draft.OperationId);
+                reserve.Parameters.AddWithValue("$session", draft.SessionId);
+                reserve.Parameters.AddWithValue("$version", draft.SessionVersion + 1);
+                reserve.Parameters.AddWithValue("$now", now);
+                await reserve.ExecuteNonQueryAsync(ct);
+            }
+
+            foreach (var line in quote.Lines)
+            {
+                await using var q = c.CreateCommand();
+                q.Transaction = tx;
+                q.CommandText = """
+                    INSERT INTO restaurant_payment_reservation_items(
+                        operation_id,session_item_id,quantity_milli,amount_cents)
+                    VALUES($operation,$item,$quantity,$amount);
+                    """;
+                q.Parameters.AddWithValue("$operation", draft.OperationId);
+                q.Parameters.AddWithValue("$item", line.SessionItemId);
+                q.Parameters.AddWithValue("$quantity", line.QuantityMilli);
+                q.Parameters.AddWithValue("$amount", line.AmountCents);
+                await q.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var lockSession = c.CreateCommand())
+            {
+                lockSession.Transaction = tx;
+                lockSession.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET state='CHECK_REQUESTED',
+                        updated_at=$now,
+                        version=version+1
+                    WHERE id=$id AND version=$version AND state='OPEN';
+                    """;
+                lockSession.Parameters.AddWithValue("$now", now);
+                lockSession.Parameters.AddWithValue("$id", draft.SessionId);
+                lockSession.Parameters.AddWithValue("$version", draft.SessionVersion);
+                if (await lockSession.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException("Tisch wurde zwischenzeitlich geändert. Zahlung nicht gestartet.");
+            }
+
+            await AppendEventAsync(
+                c, tx, draft.SessionId, "ZAHLUNG_VORBEREITET",
+                "", Environment.MachineName,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    draft.OperationId,
+                    totalCents = draft.TotalCents
+                }),
+                now, ct);
+
+            await tx.CommitAsync(ct);
+            return draft.SessionVersion + 1;
+        });
+    }
+
+    public async Task CancelPaymentReservationAsync(
+        string operationId,
+        CancellationToken ct = default)
+    {
+        operationId = (operationId ?? "").Trim();
+        if (operationId.Length == 0) return;
+
+        await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            string? sessionId = null;
+            await using (var read = c.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = """
+                    SELECT session_id
+                    FROM restaurant_payment_reservations
+                    WHERE operation_id=$operation AND state='PREPARED';
+                    """;
+                read.Parameters.AddWithValue("$operation", operationId);
+                sessionId = (string?)await read.ExecuteScalarAsync(ct);
+            }
+
+            if (sessionId is null)
+            {
+                await tx.RollbackAsync(ct);
+                return;
+            }
+
+            await using (var cancel = c.CreateCommand())
+            {
+                cancel.Transaction = tx;
+                cancel.CommandText = """
+                    UPDATE restaurant_payment_reservations
+                    SET state='CANCELLED',updated_at=$now
+                    WHERE operation_id=$operation AND state='PREPARED';
+                    """;
+                cancel.Parameters.AddWithValue("$now", now);
+                cancel.Parameters.AddWithValue("$operation", operationId);
+                await cancel.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var unlock = c.CreateCommand())
+            {
+                unlock.Transaction = tx;
+                unlock.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET state='OPEN',updated_at=$now,version=version+1
+                    WHERE id=$session AND state='CHECK_REQUESTED';
+                    """;
+                unlock.Parameters.AddWithValue("$now", now);
+                unlock.Parameters.AddWithValue("$session", sessionId);
+                await unlock.ExecuteNonQueryAsync(ct);
+            }
+
+            await AppendEventAsync(
+                c, tx, sessionId, "ZAHLUNG_ABGEBROCHEN",
+                "", Environment.MachineName,
+                System.Text.Json.JsonSerializer.Serialize(new { operationId }),
+                now, ct);
+
+            await tx.CommitAsync(ct);
+        });
     }
 
     private static RestaurantTableSession ReadSession(SqliteDataReader r)
