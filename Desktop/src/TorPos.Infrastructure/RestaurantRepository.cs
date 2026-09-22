@@ -293,6 +293,126 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<RestaurantSessionItem> CancelItemAsync(
+        string sessionId,
+        long expectedSessionVersion,
+        long sessionItemId,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+        if (sessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedSessionVersion < 1)
+            throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
+        if (sessionItemId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(sessionItemId));
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            await using (var lockSession = c.CreateCommand())
+            {
+                lockSession.Transaction = tx;
+                lockSession.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET updated_at=$now,
+                        version=version+1
+                    WHERE id=$session
+                      AND version=$version
+                      AND state='OPEN';
+                    """;
+                lockSession.Parameters.AddWithValue("$now", now);
+                lockSession.Parameters.AddWithValue("$session", sessionId);
+                lockSession.Parameters.AddWithValue("$version", expectedSessionVersion);
+                if (await lockSession.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            RestaurantSessionItem item;
+            await using (var read = c.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = """
+                    SELECT id,session_id,line_token,product_id,product_name,variant_name,
+                           quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                           added_by,added_at,version
+                    FROM restaurant_session_items
+                    WHERE id=$item
+                      AND session_id=$session
+                      AND state='ACTIVE';
+                    """;
+                read.Parameters.AddWithValue("$item", sessionItemId);
+                read.Parameters.AddWithValue("$session", sessionId);
+                await using var r = await read.ExecuteReaderAsync(ct);
+                if (!await r.ReadAsync(ct))
+                    throw new InvalidOperationException(
+                        "Restaurant-Position ist nicht mehr offen.");
+
+                item = new RestaurantSessionItem(
+                    r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetInt64(3),
+                    r.GetString(4),
+                    r.GetString(5),
+                    r.GetInt64(6),
+                    r.GetInt64(7),
+                    Convert.ToDecimal(r.GetDouble(8)),
+                    r.GetInt64(9),
+                    RestaurantSessionItemState.Active,
+                    r.GetString(11),
+                    DateTimeOffset.Parse(r.GetString(12)),
+                    r.GetInt64(13));
+            }
+
+            await using (var cancel = c.CreateCommand())
+            {
+                cancel.Transaction = tx;
+                cancel.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET state='CANCELLED',
+                        version=version+1
+                    WHERE id=$item
+                      AND session_id=$session
+                      AND state='ACTIVE';
+                    """;
+                cancel.Parameters.AddWithValue("$item", sessionItemId);
+                cancel.Parameters.AddWithValue("$session", sessionId);
+                if (await cancel.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Restaurant-Position wurde zwischenzeitlich geändert.");
+            }
+
+            await AppendEventAsync(
+                c,
+                tx,
+                sessionId,
+                "POSITION_STORNIERT",
+                actor,
+                deviceId,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sessionItemId,
+                    item.ProductId,
+                    item.ProductName,
+                    item.QuantityMilli,
+                    item.LineTotalCents
+                }),
+                now,
+                ct);
+
+            await tx.CommitAsync(ct);
+            return item with { State = RestaurantSessionItemState.Cancelled };
+        });
+    }
+
     public async Task<RestaurantSessionItem> AddItemAsync(
         string sessionId,
         long expectedSessionVersion,
