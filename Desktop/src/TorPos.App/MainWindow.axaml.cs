@@ -3033,16 +3033,16 @@ public partial class MainWindow:Window
         {
             return new CheckoutSnapshot(
                 restaurant.OperationId,
-                CheckoutSnapshot.CopyLines(restaurant.Lines, imHaus: true),
+                CheckoutSnapshot.CopyLines(restaurant.Lines, true),
                 0,
                 method,
                 _currentUser.Username,
-                ParkedReceiptId: null,
-                ImHaus: true,
-                CashPortionCents: cashPortionCents,
-                TseVorgangId: "",
-                StartedAt: null,
-                CancelledLines: null);
+                null,
+                true,
+                cashPortionCents,
+                "",
+                null,
+                null);
         }
 
         return new CheckoutSnapshot(
@@ -3249,6 +3249,15 @@ public partial class MainWindow:Window
                 }
                 else
                     _ = PrintSimulationAsync(testJob);
+
+                if (restaurantDraft is not null)
+                {
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                    ScannerStatus.Text =
+                        "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen";
+                }
+
                 return;
             }
             if (restaurantDraft is not null)
