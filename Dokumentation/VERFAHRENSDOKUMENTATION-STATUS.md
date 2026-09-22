@@ -1,11 +1,11 @@
 # TOR POS – Verfahrens-/Systemdokumentation Statusmatrix
 
-Stand: R181 · 2026-09-21
+Stand: R182 · 2026-09-22
 
 Zweck dieser Datei ist **nicht**, die endgültige Verfahrensdokumentation zu ersetzen. Sie bildet den aktuellen technischen Nachweisstand ab und trennt bereits im Code bestätigte Funktionen von noch offenen Hardware-, Fiskal- und Organisationsnachweisen.
 
 Status:
-- **GEPRÜFT** – im aktuellen R181-Code bzw. in den zugehörigen Tests nachgewiesen
+- **GEPRÜFT** – im aktuellen R182-Code bzw. in den zugehörigen Tests nachgewiesen
 - **TEILWEISE** – wesentliche Implementierung vorhanden, aber Restprüfung/Dokumentation offen
 - **EXTERNER NACHWEIS** – Softwarepfad vorhanden, reale Hardware-/Fiskalabnahme fehlt
 - **OFFEN** – für die finale Verfahrensdokumentation noch systematisch zu erfassen
@@ -51,7 +51,18 @@ Status:
 | 37 | Wiederherstellung | GEPRÜFT | neues Ziel, Pfadschutz, Manifest-/Hash-Prüfung und DB-Lesetest |
 | 38 | Audit / Unveränderbarkeit | GEPRÜFT | Audit append-only; Sales, SaleItems, Bediener, Z-Archiv und Daily Closings gegen UPDATE/DELETE geschützt |
 | 39 | Software-Update | TEILWEISE | HTTPS/SHA-256/Authenticode-Prüfung implementiert; Signer-Thumbprint noch nicht produktiv hinterlegt |
-| 40 | Test, Freigabe und Nachweise | EXTERNER NACHWEIS | 1128 Safety-Checks; physische TSE-E2E-, DSFinV-K-, §6-, Pfand- und unabhängige Fiskalprüfung bleiben geschlossen |
+| 40 | Test, Freigabe und Nachweise | EXTERNER NACHWEIS | 1160 Safety-Checks; physische TSE-E2E-, DSFinV-K-, §6-, Pfand- und unabhängige Fiskalprüfung bleiben geschlossen |
+
+## Produkttrennung ab R182
+
+Ab R182 wird dieselbe geprüfte Software als **TOR Einzelhandel** oder **TOR Gastro** ausgeliefert. Für die Verfahrensdokumentation ist dabei wesentlich:
+
+- Jedes Produkt ist eine **eigene Kasseninstallation** mit eigenem Datenverzeichnis, eigener Datenbank, eigenem Z-Nummernkreis und eigener Demo-/Lizenzidentität. Zwei parallel installierte Produkte sind zwei getrennt zu dokumentierende Kassen.
+- Die **gespeicherten Editionscodes** bleiben `KIOSK` und `IMBISS`. Bestehende Datenbanken, Lizenzen, Cloud-Payloads und Editionsbindungen bleiben damit gültig; es ändern sich nur die nach aussen sichtbaren Produktnamen.
+- Eine Übernahme bestehender R181-Daten erfolgt **einmalig, backup-first und nicht zerstörend**. Der Quellstand unter `%APPDATA%\TOR-POS-Pro` wird ausschliesslich gelesen und bleibt als Rückfallbasis erhalten. Übernommen wird nur, wenn die dauerhaft gebundene Edition exakt zum Produkt passt.
+- Nach dem ersten dedizierten Schreibvorgang wird ein automatischer Rückweg als unsicher bewertet. Zwei fiskalische Historien werden nicht automatisch zusammengeführt.
+- Die Auslieferung erfolgt mit dokumentiertem Zugang (`admin` / `admin`, Personal-PIN `1234`, Trainingscode `0000`). Eine Sitzung auf diesem Auslieferungszugang wird im Audit-Log als `ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED` protokolliert. Der Betreiber ist dafür verantwortlich, den Zugang vor dem Echtbetrieb zu ändern; dies gehört in die betreiberseitige Verfahrensdokumentation.
+- Die erste physische Installationsabnahme je Produkt wird über `verification/R182-SPLIT-INSTALL-ABNAHME.md` geführt.
 
 ## §16 Storno- und Retourenverfahren – präzisierter R181-Stand
 
@@ -97,4 +108,4 @@ Ein Crash oder Datenbankfehler zwischen Terminal-Refund und Gegenbuchung führt 
 
 Die Statusmatrix darf erst in eine finale Betreiber-Verfahrensdokumentation überführt werden, wenn die noch offenen realen Nachweise abgeschlossen und die konkrete Kunden-/Kassenumgebung (Betreiber, Standort, eingesetzte TSE, Drucker, Terminal, Backup-Ziel, Verantwortlichkeiten) eingetragen ist.
 
-Die technischen Produktions-Gates bleiben in R181 unverändert geschlossen.
+Die technischen Produktions-Gates bleiben in R182 unverändert geschlossen.

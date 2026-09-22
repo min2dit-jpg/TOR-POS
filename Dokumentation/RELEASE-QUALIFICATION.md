@@ -1,6 +1,6 @@
 # TOR POS – Release Qualification
 
-Stand: R181 · 2026-09-21
+Stand: R182 · 2026-09-22
 
 Dieses Dokument trennt **Entwicklungsstand**, **automatische Tests**, **Hardware-Abnahme** und **Produktionsfreigabe**. Ein grüner Build allein ist keine fiskalische Freigabe.
 
@@ -10,7 +10,7 @@ Die Softwareversion wird ausschließlich in `Desktop/src/TorPos.Core/ReleaseInfo
 
 Aktueller Release-Stand dieser Dokumentation:
 
-**R181 · Merd-M · 0.7.33.881**
+**R182 · Merd-D · 0.7.33.882**
 
 ## Qualifikationsstufen
 
@@ -23,14 +23,17 @@ Eine Änderung wird entwickelt und gegen die bestehenden Sicherheits-, Fach- und
 Voraussetzungen:
 - Windows Release Build erfolgreich
 - Safety/Regression Suite vollständig erfolgreich
-- UI-Snapshot-Check erfolgreich
+- UI-Snapshot-Check erfolgreich – für den gemeinsamen Build **und** für jedes
+  dedizierte Produkt. Bauen und Paketieren allein beweist nicht, dass ein
+  dediziertes Produkt startet: R182 wurde in einem Zustand gebaut und
+  paketiert, in dem beide Produkte beim Laden des Anmeldefensters abbrachen.
 - Cloud Syntax/Test Suite erfolgreich
 - Versionskonsistenz erfolgreich
 - Repository-Hygiene und fiskalische Release-Gates erfolgreich geprüft
 
 Ergebnis: Code ist automatisiert geprüft, aber noch nicht hardware- oder fiskalisch freigegeben.
 
-**R181-Baseline:** 1128 Safety-/Regression-Checks.
+**R182-Baseline:** 1160 Safety-/Regression-Checks.
 
 ### 3. Hardware Acceptance
 
@@ -73,7 +76,7 @@ Bis dahin bleibt der Build Development/Validation/Pre-Release für fiskalische E
 
 ## Aktueller Fiskalstatus
 
-R181 ist der aktuelle dokumentierte Entwicklungs-/Validierungsstand. Die frühere Angabe „R149 Produktions-Basisstand / 881 Checks“ ist veraltet.
+R182 ist der aktuelle dokumentierte Entwicklungs-/Validierungsstand. Die frühere Angabe „R149 Produktions-Basisstand / 881 Checks“ ist veraltet.
 
 Die zentralen `FiscalRelease`-Nachweise stehen weiterhin auf **false**:
 
@@ -88,19 +91,26 @@ Daher bleibt die produktive fiskalische Buchung gesperrt.
 
 Zusätzlich bleibt der produktive Remote-Updatepfad gesperrt, solange kein TOR/Demirkaan-Code-Signing-Zertifikat als `UpdateSignerThumbprint` fest hinterlegt ist.
 
-## R181 Prüfziel
+## R182 Prüfziel
 
-R181 korrigiert Retouren-, Cloud-, Scanner- und Kassenschubladenpfade gegenüber R178. Die fiskalischen Produktions-Gates bleiben unverändert geschlossen; Die Kassenschublade wurde am Zielsystem real bestätigt; der Scannerpfad wurde nach dem ersten realen R179-Test in R181 korrigiert und benötigt die erneute reale Gegenprobe.
+R182 trennt **TOR Einzelhandel** und **TOR Gastro** als eigenständige Produkte aus demselben geprüften Quellcode. Die gespeicherten Editionscodes KIOSK/IMBISS und damit die Kompatibilität von Datenbank, Lizenzen und Cloud-Payloads bleiben unverändert. Die fiskalischen Produktions-Gates bleiben geschlossen.
+
+Fachlich zusätzlich abgesichert: backup-first Datenübernahme aus R181 einschliesslich einer unterbrochenen Kasse mit WAL-Inhalt, Rückfallbewertung vor und nach dedizierten Schreibvorgängen, Produktidentität gegen Umgebungs-/Konfigurationsmanipulation, Demo-Recht einmal pro PC und Produkt sowie der arbeitsbereite Auslieferungszugang ohne erzwungenen Zugangsdialog.
 
 Bei grüner CI müssen mindestens nachgewiesen sein:
-- Version R181 / 0.7.33.881 in allen Versionsspiegeln
+- Version R182 / 0.7.33.882 in allen Versionsspiegeln
 - vollständiger Build und Demo-Build
-- 1128/1128 Safety-/Regression-Checks
-- UI-Snapshot-Prüfung
+- Release-Build je dediziertem Produkt (KIOSK und IMBISS)
+- 1160/1160 Safety-/Regression-Checks
+- UI-Snapshot-Prüfung des gemeinsamen Builds
+- gerenderte UI-Prüfung **jedes dedizierten Produkts**, damit ein nicht startfähiges Produkt in der CI und nicht an der Kasse auffällt
 - Cloud-Checks
 - erzeugtes Windows-Testpaket
 - erzeugtes Kunden-Setup
+- erzeugte Setups `TOR-Einzelhandel-Setup.exe` und `TOR-Gastro-Setup.exe`
 - ZIP des exakt committed Source-Trees
+
+Die erste physische Windows-Installationsabnahme wird über `verification/R182-SPLIT-INSTALL-ABNAHME.md` geführt und ist nicht Teil der automatischen Qualifikation.
 
 ## Release-Tags und Artefakte
 

@@ -1,6 +1,6 @@
 # TOR POS – Architecture Overview
 
-Stand: R181 · 2026-09-21
+Stand: R182 · 2026-09-22
 
 ## Hauptkomponenten
 
@@ -43,6 +43,31 @@ Avalonia-Windows-Anwendung:
 - Benutzer-/Rechteverwaltung
 - Dialoge
 - DI/Window-Composition
+
+### Produktvarianten (R182)
+
+Aus diesem einen geprüften Quellcode entstehen zwei Produkte und der gemeinsame
+Build:
+
+| | Edition (gespeichert) | Executable | AppData | Demo-/Lizenzidentität |
+|---|---|---|---|---|
+| TOR Einzelhandel | `KIOSK` | `TOR-Einzelhandel.exe` | `TOR-Einzelhandel` | `%PROGRAMDATA%\TOR-Einzelhandel` |
+| TOR Gastro | `IMBISS` | `TOR-Gastro.exe` | `TOR-Gastro` | `%PROGRAMDATA%\TOR-Gastro` |
+| gemeinsam (Rückfall) | frei wählbar | `TorPos.App.exe` | `TOR-POS-Pro` | `%PROGRAMDATA%\TOR-POS-Pro` |
+
+Die Produktidentität ist eine Compile-Zeit-Konstante (`ProductBuild`) und steht
+über jeder Laufzeitquelle: ein dedizierter Build lässt sich weder über eine
+Umgebungsvariable noch über eine Konfiguration in die andere Edition versetzen.
+
+Getrennt sind zusätzlich Windows-AppId, Installationsordner, Startmenü-/Desktop-
+Identität, Prozess-Mutex und Crash-Log-Ordner, sodass beide Produkte parallel
+installiert sein können und eine Deinstallation weder Daten noch das andere
+Produkt berührt.
+
+Die **gespeicherten** Editionscodes bleiben `KIOSK` und `IMBISS`. Datenbank
+(`edition_scope`, `business.mode`), Lizenzen, Cloud-Payloads und
+`edition.permanent.lock` auf Kundenrechnern tragen diese Werte; nur die nach
+aussen sichtbaren Produktnamen sind neu.
 
 ### Cloud
 
@@ -89,4 +114,10 @@ Remote-Updates sind in Release-Builds an HTTPS, SHA-256 und einen fest hinterleg
 
 Automatisierte Tests, Hardware-Abnahme und fiskalische Produktionsfreigabe sind drei getrennte Nachweisarten. Sie werden nicht gegenseitig ersetzt.
 
-R180 führt 1128 automatisierte Safety-/Regression-Checks aus. Die reale Hardware-/Fiskalabnahme bleibt separat.
+R182 führt 1160 automatisierte Safety-/Regression-Checks aus. Die reale
+Hardware-/Fiskalabnahme bleibt separat.
+
+Seit R182 rendert die CI zusätzlich die realen Fenster jedes dedizierten
+Produkts, einschliesslich Startbildschirm und Anmeldung. Ein Build, der wegen
+einer assemblygebundenen Ressourcenadresse nicht startet, fällt dadurch in der
+CI auf und nicht erst an der Kasse.
