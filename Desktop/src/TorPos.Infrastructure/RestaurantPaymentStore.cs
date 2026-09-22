@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 internal static class RestaurantPaymentStore
 {
-    public static async Task ApplyCommittedSaleAsync(
+    public static async Task<DateTimeOffset?> ApplyCommittedSaleAsync(
         SqliteConnection c,
         SqliteTransaction tx,
         CheckoutSnapshot snapshot,
@@ -42,10 +42,23 @@ internal static class RestaurantPaymentStore
 
         // Normal Einzelhandel/Gastro checkout: no Restaurant reservation.
         if (sessionId is null)
-            return;
+            return null;
 
         if (state == "APPLIED")
-            return;
+        {
+            await using var appliedStart = c.CreateCommand();
+            appliedStart.Transaction = tx;
+            appliedStart.CommandText = """
+                SELECT MIN(started_at)
+                FROM restaurant_bestellungen
+                WHERE session_id=$session;
+                """;
+            appliedStart.Parameters.AddWithValue("$session", sessionId);
+            var appliedRaw = await appliedStart.ExecuteScalarAsync(ct);
+            return appliedRaw is null || appliedRaw == DBNull.Value
+                ? null
+                : DateTimeOffset.Parse(Convert.ToString(appliedRaw)!);
+        }
 
         if (state != "PREPARED")
             throw new InvalidOperationException(
@@ -255,5 +268,18 @@ internal static class RestaurantPaymentStore
                 }));
             await evt.ExecuteNonQueryAsync(ct);
         }
+
+        await using var start = c.CreateCommand();
+        start.Transaction = tx;
+        start.CommandText = """
+            SELECT MIN(started_at)
+            FROM restaurant_bestellungen
+            WHERE session_id=$session;
+            """;
+        start.Parameters.AddWithValue("$session", sessionId);
+        var rawStart = await start.ExecuteScalarAsync(ct);
+        return rawStart is null || rawStart == DBNull.Value
+            ? null
+            : DateTimeOffset.Parse(Convert.ToString(rawStart)!);
     }
 }
