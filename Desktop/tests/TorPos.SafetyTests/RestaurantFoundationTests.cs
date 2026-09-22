@@ -122,8 +122,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 27,
-                "Restaurant database reaches schema version 27");
+                result.ToVersion == 28,
+                "Restaurant database reaches schema version 28");
 
             await using (var c = db.OpenConnection())
             {
@@ -132,8 +132,10 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_sessions") &&
                     TableExists(c, "restaurant_session_events") &&
                     TableExists(c, "restaurant_bestellungen") &&
-                    TableExists(c, "restaurant_bestellung_items"),
-                    "Restaurant-only tables including Bestellung records are created for the Restaurant product");
+                    TableExists(c, "restaurant_bestellung_items") &&
+                    TableExists(c, "restaurant_kitchen_jobs") &&
+                    TableExists(c, "restaurant_kitchen_status"),
+                    "Restaurant-only tables including Bestellung and kitchen records are created for the Restaurant product");
 
                 var immutableBestellung = false;
                 try
@@ -466,6 +468,72 @@ internal static class RestaurantFoundationTests
                 !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
                 "No-charge cancellation reopens the Restaurant table and clears the payment lock");
 
+            var kitchen = new RestaurantKitchenOutbox(db);
+            var kitchenTableId = await repo.SaveTableAsync(
+                areaId,
+                "T06",
+                "Tisch 6",
+                seats: 4,
+                sortOrder: 6);
+            var kitchenSession = await repo.OpenTableAsync(
+                kitchenTableId,
+                "KELLNER-1",
+                guestCount: 2);
+            var kitchenItem = await repo.AddItemAsync(
+                kitchenSession.Id,
+                kitchenSession.Version,
+                product,
+                1m,
+                "KELLNER-1");
+
+            var kitchenSessionAfterItem =
+                await repo.GetSessionAsync(kitchenSession.Id)
+                ?? throw new InvalidOperationException("Kitchen test session missing.");
+
+            var kitchenJobId = await kitchen.EnqueueNewItemAsync(
+                kitchenSessionAfterItem,
+                kitchenItem,
+                "Tisch 6",
+                "KELLNER-1");
+
+            var pendingKitchen = await kitchen.PendingAsync();
+            assert(
+                pendingKitchen.Any(x =>
+                    x.Id == kitchenJobId &&
+                    x.Action == "NEW" &&
+                    x.State == "PENDING"),
+                "Restaurant kitchen NEW job is durably queued");
+
+            await kitchen.SetItemStatusAsync(
+                kitchenItem.Id,
+                "IN_ARBEIT",
+                "KÜCHE");
+            await kitchen.SetItemStatusAsync(
+                kitchenItem.Id,
+                "FERTIG",
+                "KÜCHE");
+
+            await kitchen.MarkHandedOverAsync(kitchenJobId);
+            assert(
+                !(await kitchen.PendingAsync()).Any(x => x.Id == kitchenJobId),
+                "Handed-over Restaurant kitchen job leaves the pending queue");
+
+            var failJobId = await kitchen.EnqueueNewItemAsync(
+                kitchenSessionAfterItem,
+                kitchenItem,
+                "Tisch 6",
+                "KELLNER-1");
+            var parkedAsFailed = false;
+            for (var i = 0; i < 5; i++)
+                parkedAsFailed = await kitchen.MarkFailedAttemptAsync(
+                    failJobId,
+                    "Drucker nicht erreichbar");
+
+            assert(
+                parkedAsFailed &&
+                !(await kitchen.PendingAsync()).Any(x => x.Id == failJobId),
+                "Restaurant kitchen queue parks a job after five failed attempts");
+
             var cancelTableId = await repo.SaveTableAsync(
                 areaId,
                 "T05",
@@ -601,7 +669,8 @@ internal static class RestaurantFoundationTests
                 assert(
                     !TableExists(c, "restaurant_tables") &&
                     !TableExists(c, "restaurant_sessions") &&
-                    !TableExists(c, "restaurant_bestellungen"),
+                    !TableExists(c, "restaurant_bestellungen") &&
+                    !TableExists(c, "restaurant_kitchen_jobs"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
