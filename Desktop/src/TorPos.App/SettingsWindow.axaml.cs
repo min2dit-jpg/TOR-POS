@@ -3202,11 +3202,11 @@ private Control TsePage()
             {
                 var updater = new TorUpdateService(_settings, _backup);
                 await updater.SetEnabledAsync(updateEnabled.IsChecked == true);
-                updateStatus.Text = updateEnabled.IsChecked == true
+                updateStatus.Text = UiLanguage.T(updateEnabled.IsChecked == true
                     ? "Automatische Update-Prüfung ist aktiv."
-                    : "Automatische Update-Prüfung ist deaktiviert. Manuelle Prüfung bleibt möglich.";
+                    : "Automatische Update-Prüfung ist deaktiviert. Manuelle Prüfung bleibt möglich.");
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Einstellung: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Einstellung") + ": " + ex.Message; }
         };
         updateCheck.Click += async (_,_) =>
         {
@@ -3216,13 +3216,13 @@ private Control TsePage()
                 var updater = new TorUpdateService(_settings, _backup);
                 var result = await updater.CheckAsync(edition, force: true);
                 updateStatus.Text = result.UpdateAvailable && result.Manifest is not null
-                    ? $"Neue Version verfügbar: {result.Manifest.Revision} · {result.Manifest.Version}" +
-                      (result.Manifest.Mandatory ? " · WICHTIGES UPDATE" : "") +
+                    ? UiLanguage.T("Neue Version verfügbar") + $": {result.Manifest.Revision} · {result.Manifest.Version}" +
+                      (result.Manifest.Mandatory ? " · " + UiLanguage.T("WICHTIGES UPDATE") : "") +
                       (string.IsNullOrWhiteSpace(result.Manifest.ReleaseNotes) ? "" : "\n" + result.Manifest.ReleaseNotes) +
-                      "\nZur Kasse zurückkehren: oben erscheint für Admin der UPDATE-Button. Installation startet erst nach Sicherheitsprüfung und Backup."
-                    : result.Message;
+                      "\n" + UiLanguage.T("Zur Kasse zurückkehren: oben erscheint für Admin der UPDATE-Button. Installation startet erst nach Sicherheitsprüfung und Backup.")
+                    : UiLanguage.T(result.Message);
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Prüfung: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Prüfung") + ": " + ex.Message; }
             finally { updateCheck.IsEnabled = true; }
         };
         update.Children.Add(updateEnabled);
@@ -3238,10 +3238,10 @@ private Control TsePage()
                 var last = await _settings.GetAsync("update.last_check_utc", "");
                 var state = await _settings.GetAsync("update.last_status", "noch nicht geprüft");
                 updateStatus.Text = string.IsNullOrWhiteSpace(last)
-                    ? "Noch keine Update-Prüfung."
-                    : $"Letzte Prüfung: {last} · {state}";
+                    ? UiLanguage.T("Noch keine Update-Prüfung.")
+                    : UiLanguage.T("Letzte Prüfung") + $": {last} · {state}";
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Status: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Status") + ": " + ex.Message; }
         };
         page.Children.Add(update);
 
@@ -3280,11 +3280,11 @@ private Control TsePage()
             {
                 var updater = new TorUpdateService(_settings, _backup);
                 await updater.SetServerUrlAsync(updateServer.Text ?? "");
-                updateStatus.Text = string.IsNullOrWhiteSpace(updateServer.Text)
+                updateStatus.Text = UiLanguage.T(string.IsNullOrWhiteSpace(updateServer.Text)
                     ? "Gespeichert: TOR Cloud Server wird als Update-Quelle verwendet."
-                    : "Technische Update-Quelle gespeichert.";
+                    : "Technische Update-Quelle gespeichert.");
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Server: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Server") + ": " + ex.Message; }
         };
         update.Children.Add(updateSave);
         update.Children.Add(updateStatus);
@@ -3293,11 +3293,11 @@ private Control TsePage()
             try
             {
                 updateServer.Text = await _settings.GetAsync("update.server_url", "");
-                updateStatus.Text = string.IsNullOrWhiteSpace(updateServer.Text)
+                updateStatus.Text = UiLanguage.T(string.IsNullOrWhiteSpace(updateServer.Text)
                     ? "Keine separate Update-Quelle: TOR Cloud Server wird verwendet."
-                    : "Separate technische Update-Quelle ist konfiguriert.";
+                    : "Separate technische Update-Quelle ist konfiguriert.");
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Server: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Server") + ": " + ex.Message; }
         };
         page.Children.Add(update);
 

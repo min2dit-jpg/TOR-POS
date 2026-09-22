@@ -542,6 +542,132 @@ public static class MultiLanguageTests
             directStatusWrites == 1 && staticStatusMessages.Length >= 75 && missingStatusTranslations.Length == 0,
             "every static MainWindow status message is translated and runtime writes pass through the language-aware StatusLine boundary");
 
+        // A key written twice is not a compile error: these are object
+        // initializers, so the second assignment silently wins. Someone
+        // correcting the first one would see nothing change. The tables carried
+        // six such pairs; they are gone and may not come back.
+        var turkishOrder = Pairs(turkishBlock).Select(pair => pair.Key).ToArray();
+        var englishOrder = Pairs(englishBlock).Select(pair => pair.Key).ToArray();
+        assert(
+            turkishOrder.Length == turkishKeys.Count && englishOrder.Length == englishKeys.Count,
+            "no string is translated twice in the same table, where the second entry would silently win over a correction to the first");
+
+        // The technician pages: Software & Update, System, the till's technical
+        // fine tuning, the device setup and the DATEV mapping. Version numbers,
+        // paths, printer names, account numbers and server addresses stay as they
+        // are - only the program's own words are here.
+        string[] technicianSettingsVocabulary =
+        [
+            "Version, Lizenzlaufzeit und Updates ohne technische Server-Einstellungen prüfen.",
+            "Installierte TOR-POS-Version",
+            "Version",
+            "Build",
+            "Edition",
+            "Gültig bis",
+            "Hinweis",
+            "TOR Update",
+            "Automatisch alle 6 Stunden nach Updates suchen",
+            "Update-Status wird geladen …",
+            "AUTOMATISCHE PRÜFUNG SPEICHERN",
+            "JETZT NACH UPDATE SUCHEN",
+            "Automatische Update-Prüfung ist aktiv.",
+            "Automatische Update-Prüfung ist deaktiviert. Manuelle Prüfung bleibt möglich.",
+            "Noch keine Update-Prüfung.",
+            "Letzte Prüfung",
+            "Neue Version verfügbar",
+            "WICHTIGES UPDATE",
+            "Zur Kasse zurückkehren: oben erscheint für Admin der UPDATE-Button. Installation startet erst nach Sicherheitsprüfung und Backup.",
+            "Update-Einstellung",
+            "Update-Prüfung",
+            "Update-Status",
+            "Sicher aktualisieren",
+            "TOR POS installiert niemals mitten in einem Verkauf oder einer ungeklärten Zahlung. Vor der Installation werden Setup-Prüfsumme/Signatur geprüft und eine Datenbanksicherung erstellt. Die technische Update-Server-Adresse bleibt im geschützten Technikerbereich.",
+            "System",
+            "Technische Informationen für Installation, Service und Diagnose.",
+            "Installation",
+            "Datenordner",
+            "Datenbank",
+            "Schema-Migration",
+            "Produktbilder",
+            "Backups",
+            "TOR Update · Technische Quelle",
+            "Leer = TOR Cloud Server verwenden",
+            "Update-Server wird geladen …",
+            "Update-Server",
+            "Nur für Installation/Service. Produktiv ausschließlich HTTPS; localhost darf für Entwicklung HTTP verwenden.",
+            "UPDATE-SERVER SPEICHERN",
+            "Gespeichert: TOR Cloud Server wird als Update-Quelle verwendet.",
+            "Technische Update-Quelle gespeichert.",
+            "Keine separate Update-Quelle: TOR Cloud Server wird verwendet.",
+            "Separate technische Update-Quelle ist konfiguriert.",
+            "Performance & Diagnose",
+            "Bewertung",
+            "Noch keine Messwerte vorhanden.",
+            "SYSTEMSTATUS / DIAGNOSE ÖFFNEN",
+            "Fiskalstatus",
+            "Swissbit-Bridge, TSE-Ausfallbehandlung und ZVT-Anbindung sind vorbereitet. Der vollständige DSFinV-K-Export und die Realhardware-Abnahme sind noch nicht freigegeben; TOR POS bleibt deshalb im TESTBETRIEB.",
+            "Kasse · Technische Feinabstimmung",
+            "Diese Werte werden bei Installation gesetzt und gehören nicht in den täglichen Betrieb.",
+            "Kassenidentität & Darstellung",
+            "Kassennummer",
+            "Eindeutige Nummer des Kassensystems. Standard: 1.",
+            "Theme",
+            "Touch-Raster",
+            "Artikeltasten · Spalten",
+            "Artikeltasten · Zeilen",
+            "Warengruppen · Spalten",
+            "Warengruppen · Zeilen",
+            "Schriftgröße · Tasten",
+            "2–8 · Gastronomie Standard 4 · Einzelhandel 5",
+            "2–12 · Gastronomie Standard 3 · Einzelhandel 8",
+            "2–8 · Standard 4",
+            "1–10 · Standard 6",
+            "11–28 · Standard 18",
+            "Artikelbilder anzeigen",
+            "Weitere Kassenlogik",
+            "Währung",
+            "Abkürzung",
+            "Anfangsbestand in Cent (bis zum ersten Kassensturz)",
+            "Bediener auf Bon anzeigen",
+            "Varianten / Optionen auf Bon anzeigen",
+            "Zahlart vor Abschluss zusätzlich bestätigen",
+            "Stornogründe",
+            "Pflichtgrund bei SOFORT STORNO (vor der Zahlung) · mit Zeilenumbruch eingeben.",
+            "Bon-Storno-Gründe",
+            "Pflichtgrund bei BON STORNO (Gegenbuchung eines abgeschlossenen Bons) · mit Zeilenumbruch eingeben.",
+            "Rabattgründe",
+            "Pflichtgrund bei RABATT · mit Zeilenumbruch eingeben.",
+            "Abbruchgründe",
+            "Pflichtgrund bei C / Verkauf abbrechen · mit Zeilenumbruch eingeben.",
+            "Geräte · Technische Einrichtung",
+            "Treiber, Ports und Protokolle werden einmalig vom Techniker eingerichtet.",
+            "Bondrucker / Windows",
+            "Auswahl unter Geräte → Drucker / Yazıcılar.",
+            "Letzter Test",
+            "Auto-Cut im Windows-Treiber verwenden",
+            "Anschlüsse",
+            "Die Kassenschublade wird zentral unter Geräte aktiviert und über den in der Drucker-Zentrale gewählten DK-Ausgang gesteuert.",
+            "Barcode-Scanner · Protokoll",
+            "Scanner-Modus",
+            "HID = USB-/Bluetooth-Scanner verhält sich wie eine Tastatur. COM ist in diesem Build nicht als produktiver Scannerpfad implementiert.",
+            "ENTER-Suffix verwenden (empfohlen)",
+            "Wartezeit ohne ENTER (ms)",
+            "Buchhaltung · Technische Zuordnung",
+            "DATEV-Felder sind Vorbereitung und gehören nicht in die normale Bedienoberfläche.",
+            "DATEV – Vorbereitung",
+            "19% Konto",
+            "19% Gegenkonto",
+            "19% Kennzeichen",
+            "7% Konto",
+            "7% Gegenkonto",
+            "7% Kennzeichen",
+            "Status",
+            "Lizenz"
+        ];
+        assert(
+            technicianSettingsVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
+            "the technician settings vocabulary stays complete in Turkish and English while versions, paths and accounts stay untouched");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
@@ -561,11 +687,25 @@ public static class MultiLanguageTests
 
     private static IEnumerable<KeyValuePair<string, string>> Pairs(string block) =>
         Regex.Matches(block, "\\[\"((?:[^\"\\\\]|\\\\.)*)\"\\]\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
-            .Select(m => new KeyValuePair<string, string>(m.Groups[1].Value, m.Groups[2].Value));
+            .Select(m => new KeyValuePair<string, string>(Unescape(m.Groups[1].Value), Unescape(m.Groups[2].Value)));
+
+    // The tables are read as source text, so a key written "a\\nb" arrives here as
+    // a backslash followed by an n. Every list in this file is real C# strings
+    // with a real newline, and the two would never compare equal - a vocabulary
+    // entry with a line break would silently look missing. That is exactly what
+    // happened to the three reports/email messages.
+    private static string Unescape(string literal) =>
+        literal
+            .Replace("\\\\", "\u0001", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal)
+            .Replace("\\r", "\r", StringComparison.Ordinal)
+            .Replace("\\t", "\t", StringComparison.Ordinal)
+            .Replace("\\\"", "\"", StringComparison.Ordinal)
+            .Replace("\u0001", "\\", StringComparison.Ordinal);
 
     private static HashSet<string> Keys(string block) =>
         Regex.Matches(block, "\\[\"((?:[^\"\\\\]|\\\\.)*)\"\\]")
-            .Select(m => m.Groups[1].Value)
+            .Select(m => Unescape(m.Groups[1].Value))
             .ToHashSet(StringComparer.Ordinal);
 
     private static string Between(string text, string start, string? end)
