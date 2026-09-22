@@ -471,6 +471,326 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<RestaurantTableSession> MoveSessionToTableAsync(
+        string sessionId,
+        long expectedVersion,
+        long targetTableId,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+        if (sessionId.Length == 0) throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedVersion < 1) throw new ArgumentOutOfRangeException(nameof(expectedVersion));
+        if (targetTableId <= 0) throw new ArgumentOutOfRangeException(nameof(targetTableId));
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            await using (var target = c.CreateCommand())
+            {
+                target.Transaction = tx;
+                target.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_tables
+                    WHERE id=$id AND is_active=1;
+                    """;
+                target.Parameters.AddWithValue("$id", targetTableId);
+                if (Convert.ToInt32(await target.ExecuteScalarAsync(ct)) != 1)
+                    throw new InvalidOperationException("Zieltisch ist nicht vorhanden oder deaktiviert.");
+            }
+
+            await using (var occupied = c.CreateCommand())
+            {
+                occupied.Transaction = tx;
+                occupied.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_sessions
+                    WHERE table_id=$table
+                      AND state IN ('OPEN','CHECK_REQUESTED')
+                      AND id<>$session;
+                    """;
+                occupied.Parameters.AddWithValue("$table", targetTableId);
+                occupied.Parameters.AddWithValue("$session", sessionId);
+                if (Convert.ToInt32(await occupied.ExecuteScalarAsync(ct)) > 0)
+                    throw new InvalidOperationException("Zieltisch ist bereits belegt.");
+            }
+
+            long sourceTableId;
+            await using (var read = c.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = """
+                    SELECT table_id
+                    FROM restaurant_sessions
+                    WHERE id=$id
+                      AND version=$version
+                      AND state IN ('OPEN','CHECK_REQUESTED');
+                    """;
+                read.Parameters.AddWithValue("$id", sessionId);
+                read.Parameters.AddWithValue("$version", expectedVersion);
+                var raw = await read.ExecuteScalarAsync(ct);
+                if (raw is null)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+                sourceTableId = Convert.ToInt64(raw);
+            }
+
+            if (sourceTableId == targetTableId)
+                throw new InvalidOperationException("Quell- und Zieltisch sind identisch.");
+
+            await using (var update = c.CreateCommand())
+            {
+                update.Transaction = tx;
+                update.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET table_id=$target,
+                        updated_at=$now,
+                        version=version+1
+                    WHERE id=$id
+                      AND version=$version
+                      AND state IN ('OPEN','CHECK_REQUESTED');
+                    """;
+                update.Parameters.AddWithValue("$target", targetTableId);
+                update.Parameters.AddWithValue("$now", now);
+                update.Parameters.AddWithValue("$id", sessionId);
+                update.Parameters.AddWithValue("$version", expectedVersion);
+                if (await update.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            await AppendEventAsync(
+                c, tx, sessionId, "TISCH_UMGEBUCHT",
+                actor, deviceId,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sourceTableId,
+                    targetTableId
+                }),
+                now, ct);
+
+            var result = await ReadSessionAsync(c, tx, sessionId, ct);
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
+
+    public async Task<RestaurantTableSession> MergeSessionsAsync(
+        string sourceSessionId,
+        long expectedSourceVersion,
+        string targetSessionId,
+        long expectedTargetVersion,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sourceSessionId = (sourceSessionId ?? "").Trim();
+        targetSessionId = (targetSessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+        if (sourceSessionId.Length == 0 || targetSessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.");
+        if (string.Equals(sourceSessionId, targetSessionId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Ein Tischvorgang kann nicht mit sich selbst zusammengelegt werden.");
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            var source = await ReadLiveSessionForUpdateAsync(
+                c, tx, sourceSessionId, expectedSourceVersion, ct);
+            var target = await ReadLiveSessionForUpdateAsync(
+                c, tx, targetSessionId, expectedTargetVersion, ct);
+
+            await using (var moveItems = c.CreateCommand())
+            {
+                moveItems.Transaction = tx;
+                moveItems.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET session_id=$target,
+                        version=version+1
+                    WHERE session_id=$source
+                      AND state='ACTIVE';
+                    """;
+                moveItems.Parameters.AddWithValue("$target", targetSessionId);
+                moveItems.Parameters.AddWithValue("$source", sourceSessionId);
+                await moveItems.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var closeSource = c.CreateCommand())
+            {
+                closeSource.Transaction = tx;
+                closeSource.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET state='CANCELLED',
+                        closed_at=$now,
+                        updated_at=$now,
+                        version=version+1
+                    WHERE id=$id AND version=$version;
+                    """;
+                closeSource.Parameters.AddWithValue("$now", now);
+                closeSource.Parameters.AddWithValue("$id", sourceSessionId);
+                closeSource.Parameters.AddWithValue("$version", expectedSourceVersion);
+                if (await closeSource.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Quelltisch wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            await using (var touchTarget = c.CreateCommand())
+            {
+                touchTarget.Transaction = tx;
+                touchTarget.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET guest_count=guest_count+$guests,
+                        updated_at=$now,
+                        version=version+1
+                    WHERE id=$id AND version=$version;
+                    """;
+                touchTarget.Parameters.AddWithValue("$guests", source.GuestCount);
+                touchTarget.Parameters.AddWithValue("$now", now);
+                touchTarget.Parameters.AddWithValue("$id", targetSessionId);
+                touchTarget.Parameters.AddWithValue("$version", expectedTargetVersion);
+                if (await touchTarget.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Zieltisch wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                sourceSessionId,
+                sourceTableId = source.TableId,
+                targetSessionId,
+                targetTableId = target.TableId
+            });
+
+            await AppendEventAsync(
+                c, tx, sourceSessionId, "TISCHE_ZUSAMMENGELEGT_QUELLE",
+                actor, deviceId, payload, now, ct);
+            await AppendEventAsync(
+                c, tx, targetSessionId, "TISCHE_ZUSAMMENGELEGT_ZIEL",
+                actor, deviceId, payload, now, ct);
+
+            var result = await ReadSessionAsync(c, tx, targetSessionId, ct);
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
+
+    public async Task<RestaurantTableSession> CloseEmptySessionAsync(
+        string sessionId,
+        long expectedVersion,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+
+            await ReadLiveSessionForUpdateAsync(
+                c, tx, sessionId, expectedVersion, ct);
+
+            await using (var count = c.CreateCommand())
+            {
+                count.Transaction = tx;
+                count.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_session_items
+                    WHERE session_id=$id AND state='ACTIVE';
+                    """;
+                count.Parameters.AddWithValue("$id", sessionId);
+                if (Convert.ToInt32(await count.ExecuteScalarAsync(ct)) != 0)
+                    throw new InvalidOperationException(
+                        "Tisch enthält offene Positionen. Abschluss muss über den Kassen-/Zahlungsweg erfolgen.");
+            }
+
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            await using (var update = c.CreateCommand())
+            {
+                update.Transaction = tx;
+                update.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET state='CLOSED',
+                        closed_at=$now,
+                        updated_at=$now,
+                        version=version+1
+                    WHERE id=$id AND version=$version;
+                    """;
+                update.Parameters.AddWithValue("$now", now);
+                update.Parameters.AddWithValue("$id", sessionId);
+                update.Parameters.AddWithValue("$version", expectedVersion);
+                if (await update.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            await AppendEventAsync(
+                c, tx, sessionId, "TISCH_LEER_GESCHLOSSEN",
+                actor, deviceId, "{}", now, ct);
+
+            var result = await ReadSessionAsync(c, tx, sessionId, ct);
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
+
+    private static async Task<RestaurantTableSession> ReadLiveSessionForUpdateAsync(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        string sessionId,
+        long expectedVersion,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = """
+            SELECT id,table_id,opened_at,updated_at,closed_at,state,
+                   opened_by,assigned_waiter,guest_count,note,version
+            FROM restaurant_sessions
+            WHERE id=$id
+              AND version=$version
+              AND state IN ('OPEN','CHECK_REQUESTED');
+            """;
+        q.Parameters.AddWithValue("$id", sessionId);
+        q.Parameters.AddWithValue("$version", expectedVersion);
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct))
+            throw new InvalidOperationException(
+                "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+        return ReadSession(r);
+    }
+
+    private static async Task<RestaurantTableSession> ReadSessionAsync(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        string sessionId,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = """
+            SELECT id,table_id,opened_at,updated_at,closed_at,state,
+                   opened_by,assigned_waiter,guest_count,note,version
+            FROM restaurant_sessions
+            WHERE id=$id;
+            """;
+        q.Parameters.AddWithValue("$id", sessionId);
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct))
+            throw new InvalidOperationException("Tischvorgang nicht gefunden.");
+        return ReadSession(r);
+    }
+
     private static RestaurantTableSession ReadSession(SqliteDataReader r)
     {
         var state = r.GetString(5) switch
