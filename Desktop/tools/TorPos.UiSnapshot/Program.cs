@@ -106,15 +106,20 @@ async Task RunAsync()
     var compliance = new FiscalComplianceService(identity, settings, tseProvider, commercialLicense);
     var checkoutApplication = new CheckoutApplicationService(compliance, checkoutJournal, paymentTerminal);
 
-    // A realistic worst case for header width: IMBISS, a long company name, and
-    // an open TSE outage (the badge R113 added).
+    // A realistic worst case for header width: a long company name and an open
+    // TSE outage (the badge R113 added).
+    //
+    // R182: a dedicated TOR Einzelhandel / TOR Gastro build fixes its edition and
+    // EnforceAsync refuses any other, so the snapshot follows the build it was
+    // compiled for. The shared build keeps IMBISS, the wider of the two headers.
+    var snapshotEdition = ProductBuild.FixedEdition ?? "IMBISS";
     await settings.SaveManyAsync(new Dictionary<string, string>
     {
         ["company.name"] = "Imbiss Beispiel GmbH",
         ["register.name"] = "Kasse 1"
     });
-    await InstallationEdition.EnforceAsync(settings, "IMBISS");
-    await new ImbissStarterCatalogService(db).EnsureAsync("IMBISS");
+    await InstallationEdition.EnforceAsync(settings, snapshotEdition);
+    await new ImbissStarterCatalogService(db).EnsureAsync(snapshotEdition);
     await catalog.ReloadAsync();
     await tseOutages.OpenAsync("UI-Snapshot: TSE nicht erreichbar", "snapshot");
 
@@ -190,7 +195,7 @@ async Task RunAsync()
     // Kassenart centred across the row. That is the screen a customer actually
     // sees, and the till it runs on has a small display, so it belongs in the
     // layout gate rather than only in a source-level check.
-    await SnapshotDialogAsync(new LoginWindow(auth, settings, "IMBISS"), "login-locked", check, failures, output);
+    await SnapshotDialogAsync(new LoginWindow(auth, settings, snapshotEdition), "login-locked", check, failures, output);
 
     // R164: the real employee-management window is opened and then reloaded
     // once more, exactly matching the refresh path after a successful save.

@@ -79,7 +79,7 @@ public static class EditionSplitFoundationTests
         // load its login window while every source-level check passed, so CI now
         // renders the real windows of each dedicated build.
         var snapshotTool = File.ReadAllText(FindRepoFile("Desktop/tools/TorPos.UiSnapshot/Program.cs"));
-        assert(workflow.Contains("-p:TorProductEdition=KIOSK -- ci-results/ui-einzelhandel", StringComparison.Ordinal) && workflow.Contains("-p:TorProductEdition=IMBISS -- ci-results/ui-gastro", StringComparison.Ordinal) && snapshotTool.Contains("new LoginWindow(auth, settings, \"IMBISS\")", StringComparison.Ordinal), "CI renders the real windows of each dedicated product, including a fixed Kassenart, so a build that cannot come up fails before it reaches a till");
+        assert(workflow.Contains("-p:TorProductEdition=KIOSK -- ci-results/ui-einzelhandel", StringComparison.Ordinal) && workflow.Contains("-p:TorProductEdition=IMBISS -- ci-results/ui-gastro", StringComparison.Ordinal) && snapshotTool.Contains("new LoginWindow(auth, settings, snapshotEdition)", StringComparison.Ordinal) && snapshotTool.Contains("ProductBuild.FixedEdition ?? \"IMBISS\"", StringComparison.Ordinal), "CI renders the real windows of each dedicated product, including a fixed Kassenart, so a build that cannot come up fails before it reaches a till");
 
         assert(splitPublish.Contains("-p:TorProductEdition=$Edition", StringComparison.Ordinal) && workflow.Contains("TOR-POS-Split-Setups-", StringComparison.Ordinal) && workflow.Contains("TOR-Einzelhandel-Setup.exe", StringComparison.Ordinal) && workflow.Contains("TOR-Gastro-Setup.exe", StringComparison.Ordinal), "CI publishes and packages both dedicated product variants rather than only compiling the shared app");
 
