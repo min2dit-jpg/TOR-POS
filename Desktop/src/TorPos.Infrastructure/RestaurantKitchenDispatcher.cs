@@ -1,0 +1,210 @@
+using System.Text.Json;
+using TorPos.Core;
+
+namespace TorPos.Infrastructure;
+
+public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
+{
+    private readonly RestaurantKitchenOutbox _outbox;
+    private readonly SettingsRepository _settings;
+    private readonly StarMcPrint3PrinterService _printer;
+    private readonly Action<Exception>? _onError;
+    private readonly SemaphoreSlim _wake = new(0, 1);
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly CancellationTokenSource _stop = new();
+    private Task? _worker;
+
+    public RestaurantKitchenDispatcher(
+        RestaurantKitchenOutbox outbox,
+        SettingsRepository settings,
+        StarMcPrint3PrinterService printer,
+        Action<Exception>? onError = null)
+    {
+        _outbox = outbox;
+        _settings = settings;
+        _printer = printer;
+        _onError = onError;
+    }
+
+    public void Start() =>
+        _worker ??= Task.Run(WorkerAsync);
+
+    public void Notify()
+    {
+        try { _wake.Release(); }
+        catch (SemaphoreFullException) { }
+    }
+
+    public async Task DispatchOnceAsync(
+        CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            foreach (var job in await _outbox.PendingAsync(ct))
+            {
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var printerName = string.IsNullOrWhiteSpace(job.PrinterName)
+                        ? await _settings.GetAsync(
+                            "device.kitchen_printer.name",
+                            "",
+                            ct)
+                        : job.PrinterName;
+
+                    var enabled = bool.TryParse(
+                        await _settings.GetAsync(
+                            "device.kitchen_printer.enabled",
+                            "false",
+                            ct),
+                        out var isEnabled) && isEnabled;
+
+                    if (!enabled)
+                    {
+                        // Durable outbox remains pending. Enabling the kitchen
+                        // printer later will resume delivery without losing jobs.
+                        return;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(printerName))
+                        throw new InvalidOperationException(
+                            "Küchendrucker ist aktiviert, aber kein Drucker ausgewählt.");
+
+                    var payload = JsonSerializer.Deserialize<KitchenPayload>(
+                        job.PayloadJson)
+                        ?? throw new InvalidDataException(
+                            "Restaurant-Küchenauftrag ist beschädigt.");
+
+                    var prefix = job.Action switch
+                    {
+                        "CANCEL" => "STORNO · NICHT ZUBEREITEN",
+                        "MOVE" => "TISCHWECHSEL",
+                        _ => "NEUE BESTELLUNG"
+                    };
+
+                    var print = new KitchenPrintJob(
+                        job.CreatedAt,
+                        0,
+                        0,
+                        payload.waiter ?? "",
+                        new[]
+                        {
+                            new KitchenPrintLine(
+                                BuildLineName(payload),
+                                payload.QuantityMilli / 1000m)
+                        },
+                        $"{prefix} · {payload.tableName ?? "Tisch"}");
+
+                    // The Restaurant outbox id is reused as the persistent
+                    // printer journal id. A retry therefore refers to the same
+                    // physical print operation instead of silently creating a
+                    // second logical ticket.
+                    var record = new PrintJobRecord(
+                        job.Id,
+                        "QUEUED",
+                        printerName,
+                        null,
+                        null,
+                        "",
+                        Kitchen: print,
+                        PickupSlip: null);
+
+                    await _printer.SubmitOrderAsync(record);
+
+                    await _outbox.MarkHandedOverAsync(
+                        job.Id,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    _onError?.Invoke(ex);
+                    var failed = await _outbox.MarkFailedAttemptAsync(
+                        job.Id,
+                        ex.Message,
+                        ct);
+
+                    if (!failed)
+                        break;
+                }
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task WorkerAsync()
+    {
+        while (!_stop.IsCancellationRequested)
+        {
+            try
+            {
+                await DispatchOnceAsync(_stop.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _onError?.Invoke(ex);
+            }
+
+            try
+            {
+                await _wake.WaitAsync(
+                    TimeSpan.FromSeconds(5),
+                    _stop.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private static string BuildLineName(
+        KitchenPayload payload)
+    {
+        var name = payload.ProductName ?? "Artikel";
+        return string.IsNullOrWhiteSpace(payload.VariantName)
+            ? name
+            : $"{name} · {payload.VariantName}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+
+        if (_worker is not null)
+        {
+            try
+            {
+                await _worker.WaitAsync(
+                    TimeSpan.FromSeconds(2));
+            }
+            catch (TimeoutException) { }
+        }
+
+        _wake.Dispose();
+        _gate.Dispose();
+        _stop.Dispose();
+    }
+
+    private sealed record KitchenPayload(
+        string? action,
+        string? sessionId,
+        long tableId,
+        string? tableName,
+        string? waiter,
+        int guestCount,
+        long itemId,
+        string? ProductName,
+        string? VariantName,
+        long QuantityMilli,
+        long UnitPriceCents,
+        string? actor);
+}
