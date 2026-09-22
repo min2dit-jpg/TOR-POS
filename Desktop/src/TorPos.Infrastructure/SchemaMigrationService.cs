@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 24;
+    public const int TargetSchemaVersion = 25;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1590,6 +1590,107 @@ public sealed class SchemaMigrationService
                     // companion builds may still write only the REAL column.
                     // Readers therefore prefer *_milli when present and fall
                     // back to a one-time REAL->milli conversion for such rows.
+                }),
+
+            new(
+                25,
+                "R183_RESTAURANT_FOUNDATION",
+                static async (c, tx, ct) =>
+                {
+                    // TOR Restaurant has its own application data root. Keep the
+                    // restaurant-only schema out of Einzelhandel/Gastro databases
+                    // even though all products share the ordered migration ledger.
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_areas(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                          sort_order INTEGER NOT NULL DEFAULT 0,
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_tables(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          area_id INTEGER NOT NULL REFERENCES restaurant_areas(id),
+                          code TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                          display_name TEXT NOT NULL,
+                          seats INTEGER NOT NULL DEFAULT 2 CHECK(seats BETWEEN 1 AND 99),
+                          sort_order INTEGER NOT NULL DEFAULT 0,
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_tables_area_sort
+                          ON restaurant_tables(area_id,is_active,sort_order,id);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_sessions(
+                          id TEXT PRIMARY KEY,
+                          table_id INTEGER NOT NULL REFERENCES restaurant_tables(id),
+                          opened_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          closed_at TEXT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('OPEN','CHECK_REQUESTED','CLOSED','CANCELLED')),
+                          opened_by TEXT NOT NULL,
+                          assigned_waiter TEXT NOT NULL,
+                          guest_count INTEGER NOT NULL DEFAULT 1 CHECK(guest_count BETWEEN 1 AND 999),
+                          note TEXT NOT NULL DEFAULT '',
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE UNIQUE INDEX IF NOT EXISTS ux_restaurant_one_live_session_per_table
+                          ON restaurant_sessions(table_id)
+                          WHERE state IN ('OPEN','CHECK_REQUESTED');
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_sessions_state
+                          ON restaurant_sessions(state,updated_at);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_session_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          line_token TEXT NOT NULL UNIQUE,
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL DEFAULT '',
+                          quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                          unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents>=0),
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL DEFAULT 0 CHECK(pfand_cents>=0),
+                          state TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(state IN ('ACTIVE','CANCELLED')),
+                          added_by TEXT NOT NULL,
+                          added_at TEXT NOT NULL,
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_session_items_session
+                          ON restaurant_session_items(session_id,state,id);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_session_events(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          event_type TEXT NOT NULL,
+                          actor TEXT NOT NULL,
+                          device_id TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          payload_json TEXT NOT NULL DEFAULT '');
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_session_events_session
+                          ON restaurant_session_events(session_id,id);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_events_no_update
+                        BEFORE UPDATE ON restaurant_session_events
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant session events are append-only');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_events_no_delete
+                        BEFORE DELETE ON restaurant_session_events
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant session events cannot be deleted');
+                        END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
                 })
         };
 
