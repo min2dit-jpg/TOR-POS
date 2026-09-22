@@ -58,16 +58,47 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 26,
-                "Restaurant database reaches schema version 26");
+                result.ToVersion == 27,
+                "Restaurant database reaches schema version 27");
 
             await using (var c = db.OpenConnection())
             {
                 assert(
                     TableExists(c, "restaurant_tables") &&
                     TableExists(c, "restaurant_sessions") &&
-                    TableExists(c, "restaurant_session_events"),
-                    "Restaurant-only tables are created for the Restaurant product");
+                    TableExists(c, "restaurant_session_events") &&
+                    TableExists(c, "restaurant_bestellungen") &&
+                    TableExists(c, "restaurant_bestellung_items"),
+                    "Restaurant-only tables including Bestellung records are created for the Restaurant product");
+
+                var immutableBestellung = false;
+                try
+                {
+                    using var q = c.CreateCommand();
+                    q.CommandText = """
+                        INSERT INTO restaurant_areas(name,sort_order,is_active) VALUES('TEST',0,1);
+                        INSERT INTO restaurant_tables(area_id,code,display_name,seats,sort_order,is_active,version)
+                        VALUES((SELECT id FROM restaurant_areas WHERE name='TEST'),'FT','Fiscal Test',2,0,1,1);
+                        INSERT INTO restaurant_sessions(id,table_id,opened_at,updated_at,state,opened_by,assigned_waiter,guest_count,note,version)
+                        VALUES('fiscal-test',(SELECT id FROM restaurant_tables WHERE code='FT'),$now,$now,'OPEN','T','T',1,'',1);
+                        INSERT INTO restaurant_bestellungen(
+                            session_id,sequence,kind,started_at,created_at,operator_name,total_cents,
+                            client_id,transaction_number,signature_counter,serial_number,signature,
+                            start_log_time,log_time,outage,outage_reason)
+                        VALUES('fiscal-test',1,'ANNAHME',$now,$now,'T',100,'','','','','','','',1,'TEST');
+                        UPDATE restaurant_bestellungen SET operator_name='X' WHERE session_id='fiscal-test';
+                        """;
+                    q.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                    q.ExecuteNonQuery();
+                }
+                catch (SqliteException)
+                {
+                    immutableBestellung = true;
+                }
+
+                assert(
+                    immutableBestellung,
+                    "Restaurant Bestellung records are append-only");
             }
 
             var repo = new RestaurantRepository(db);
@@ -394,7 +425,8 @@ internal static class RestaurantFoundationTests
             {
                 assert(
                     !TableExists(c, "restaurant_tables") &&
-                    !TableExists(c, "restaurant_sessions"),
+                    !TableExists(c, "restaurant_sessions") &&
+                    !TableExists(c, "restaurant_bestellungen"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
