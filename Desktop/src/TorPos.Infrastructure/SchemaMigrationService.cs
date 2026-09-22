@@ -1657,7 +1657,7 @@ public sealed class SchemaMigrationService
                           unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents>=0),
                           vat_rate REAL NOT NULL,
                           pfand_cents INTEGER NOT NULL DEFAULT 0 CHECK(pfand_cents>=0),
-                          state TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(state IN ('ACTIVE','CANCELLED')),
+                          state TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(state IN ('ACTIVE','PAID','CANCELLED')),
                           added_by TEXT NOT NULL,
                           added_at TEXT NOT NULL,
                           version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
