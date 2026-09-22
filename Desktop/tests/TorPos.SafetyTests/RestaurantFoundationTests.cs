@@ -187,6 +187,117 @@ internal static class RestaurantFoundationTests
                 staleItemRejected,
                 "Stale concurrent item add is rejected instead of duplicating a table position");
 
+            var splitItems = await repo.ListActiveItemsAsync(session.Id);
+            var splitQuote = RestaurantSplitCalculator.ByItems(
+                splitItems,
+                new[]
+                {
+                    new RestaurantSplitSelection(
+                        splitItems.Single().Id,
+                        1000)
+                });
+
+            assert(
+                splitQuote.TotalCents == 1290 &&
+                splitQuote.Lines.Single().QuantityMilli == 1000,
+                "Item split selects a partial quantity with cent-exact amount");
+
+            var equalShares = RestaurantSplitCalculator.EqualShares(1000, 3);
+            assert(
+                equalShares.SequenceEqual(new long[] { 334, 333, 333 }) &&
+                equalShares.Sum() == 1000,
+                "Equal-person split assigns remainder cents deterministically");
+
+            var secondTableId = await repo.SaveTableAsync(
+                areaId,
+                "T02",
+                "Tisch 2",
+                seats: 4,
+                sortOrder: 2);
+
+            var moved = await repo.MoveSessionToTableAsync(
+                session.Id,
+                afterItem!.Version,
+                secondTableId,
+                "KELLNER-2",
+                "KASSE-1");
+
+            assert(
+                moved.TableId == secondTableId &&
+                moved.Version == afterItem.Version + 1 &&
+                await repo.GetLiveSessionForTableAsync(tableId) is null,
+                "Tisch umbuchen frees the source table and preserves the live session");
+
+            var thirdTableId = await repo.SaveTableAsync(
+                areaId,
+                "T03",
+                "Tisch 3",
+                seats: 4,
+                sortOrder: 3);
+
+            var targetSession = await repo.OpenTableAsync(
+                thirdTableId,
+                "KELLNER-3",
+                guestCount: 2,
+                deviceId: "KASSE-1");
+
+            var merged = await repo.MergeSessionsAsync(
+                moved.Id,
+                moved.Version,
+                targetSession.Id,
+                targetSession.Version,
+                "ADMIN",
+                "KASSE-1");
+
+            var mergedItems = await repo.ListActiveItemsAsync(merged.Id);
+            assert(
+                merged.GuestCount == moved.GuestCount + targetSession.GuestCount &&
+                mergedItems.Count == 1 &&
+                mergedItems.Single().LineTotalCents == 2580 &&
+                await repo.GetLiveSessionForTableAsync(secondTableId) is null,
+                "Tische zusammenlegen moves open positions and releases the source table");
+
+            var emptyTableId = await repo.SaveTableAsync(
+                areaId,
+                "T04",
+                "Tisch 4",
+                seats: 2,
+                sortOrder: 4);
+            var emptySession = await repo.OpenTableAsync(
+                emptyTableId,
+                "KELLNER-1",
+                guestCount: 1);
+
+            var closedEmpty = await repo.CloseEmptySessionAsync(
+                emptySession.Id,
+                emptySession.Version,
+                "KELLNER-1");
+
+            assert(
+                closedEmpty.State == RestaurantTableSessionState.Closed &&
+                closedEmpty.ClosedAt is not null &&
+                await repo.GetLiveSessionForTableAsync(emptyTableId) is null,
+                "An empty Tischvorgang can be closed and releases the table");
+
+            var guardedCloseRejected = false;
+            try
+            {
+                await repo.CloseEmptySessionAsync(
+                    merged.Id,
+                    merged.Version,
+                    "KELLNER-3");
+            }
+            catch (InvalidOperationException ex)
+            {
+                guardedCloseRejected = ex.Message.Contains(
+                    "Zahlungsweg",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                guardedCloseRejected,
+                "A table with open positions cannot bypass checkout by closing directly");
+
             await using (var c = db.OpenConnection())
             {
                 using var count = c.CreateCommand();
@@ -210,7 +321,7 @@ internal static class RestaurantFoundationTests
                 }
 
                 assert(
-                    eventCount == 3 && appendOnly,
+                    eventCount >= 3 && appendOnly,
                     "Restaurant session events record changes and are append-only");
             }
 
