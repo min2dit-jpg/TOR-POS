@@ -142,6 +142,51 @@ internal static class RestaurantFoundationTests
                 staleRejected,
                 "Stale table-session writes are rejected instead of overwriting newer data");
 
+            var product = new Product
+            {
+                Id = 900001,
+                Name = "Restaurant Testartikel",
+                BasePriceCents = 1290,
+                VatRate = 19m
+            };
+
+            var item = await repo.AddItemAsync(
+                session.Id,
+                expectedSessionVersion: reassigned.Version,
+                product,
+                quantity: 2m,
+                operatorName: "KELLNER-2",
+                deviceId: "HANDHELD-TEST");
+
+            var afterItem = await repo.GetSessionAsync(session.Id);
+            assert(
+                item.QuantityMilli == 2000 &&
+                item.LineTotalCents == 2580 &&
+                afterItem is not null &&
+                afterItem.Version == reassigned.Version + 1,
+                "Adding a table item is cent-exact and advances the session version");
+
+            var staleItemRejected = false;
+            try
+            {
+                await repo.AddItemAsync(
+                    session.Id,
+                    expectedSessionVersion: reassigned.Version,
+                    product,
+                    quantity: 1m,
+                    operatorName: "KELLNER-2");
+            }
+            catch (InvalidOperationException ex)
+            {
+                staleItemRejected = ex.Message.Contains(
+                    "zwischenzeitlich geändert",
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                staleItemRejected,
+                "Stale concurrent item add is rejected instead of duplicating a table position");
+
             await using (var c = db.OpenConnection())
             {
                 using var count = c.CreateCommand();
@@ -165,7 +210,7 @@ internal static class RestaurantFoundationTests
                 }
 
                 assert(
-                    eventCount == 2 && appendOnly,
+                    eventCount == 3 && appendOnly,
                     "Restaurant session events record changes and are append-only");
             }
 
