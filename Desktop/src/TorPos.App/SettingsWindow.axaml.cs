@@ -135,7 +135,7 @@ public partial class SettingsWindow : Window
         _windowFactory = windowFactory;
         _initialPage = initialPage;
 
-        NavList.ItemsSource = _navigation;
+        NavList.ItemsSource = _navigation.Select(UiLanguage.T).ToArray();
         BuildPages();
 
         Opened += async (_,_) =>
@@ -1426,13 +1426,13 @@ public partial class SettingsWindow : Window
         {
             if (App.CloudSync is not { } cloud)
             {
-                _torMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar.";
+                _torMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar.");
                 return;
             }
             var config = await cloud.ConfigurationAsync();
             if (config is null || !config.Enabled)
             {
-                _torMailStatus.Text = "TOR POS Cloud zuerst unter Geräte einrichten und aktivieren.";
+                _torMailStatus.Text = UiLanguage.T("TOR POS Cloud zuerst unter Geräte einrichten und aktivieren.");
                 return;
             }
             await _settings.SaveManyAsync(new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
@@ -1441,14 +1441,14 @@ public partial class SettingsWindow : Window
             });
             await RefreshTorMailStatusAsync();
             await RefreshGoogleMailStatusAsync();
-            StatusText.Text = "TOR Mail ist jetzt der aktive Versandweg.";
+            StatusText.Text = UiLanguage.T("TOR Mail ist jetzt der aktive Versandweg.");
         };
 
         torTest.Click += async (_, _) =>
         {
             if (App.CloudSync is not { } cloud)
             {
-                _torMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar.";
+                _torMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar.");
                 return;
             }
             foreach (var b in torButtons) b.IsEnabled = false;
@@ -1458,15 +1458,15 @@ public partial class SettingsWindow : Window
                     _settings,
                     new BusinessManagementService(new SqliteDatabase(AppPaths.DatabasePath), _settings, _audit),
                     cloud: cloud);
-                StatusText.Text = "TOR Mail Test-E-Mail wird gesendet …";
+                StatusText.Text = UiLanguage.T("TOR Mail Test-E-Mail wird gesendet …");
                 await service.SendTorMailTestAsync(_text["reports.email.recipient"].Text ?? "");
-                _torMailStatus.Text = "TOR Mail bereit ✓\nTest-E-Mail wurde über den TOR POS Cloud-Versanddienst gesendet.";
-                StatusText.Text = "TOR Mail Test-E-Mail erfolgreich gesendet.";
+                _torMailStatus.Text = UiLanguage.T("TOR Mail bereit ✓\nTest-E-Mail wurde über den TOR POS Cloud-Versanddienst gesendet.");
+                StatusText.Text = UiLanguage.T("TOR Mail Test-E-Mail erfolgreich gesendet.");
             }
             catch (Exception ex)
             {
-                _torMailStatus.Text = "TOR Mail Test fehlgeschlagen:\n" + ex.Message;
-                StatusText.Text = "TOR Mail Test-E-Mail fehlgeschlagen.";
+                _torMailStatus.Text = UiLanguage.T("TOR Mail Test fehlgeschlagen:") + "\n" + ex.Message;
+                StatusText.Text = UiLanguage.T("TOR Mail Test-E-Mail fehlgeschlagen.");
             }
             finally { foreach (var b in torButtons) b.IsEnabled = true; }
         };
@@ -1497,48 +1497,48 @@ public partial class SettingsWindow : Window
 
         googleConnect.Click += async (_, _) =>
         {
-            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar."; return; }
+            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar."); return; }
             foreach (var b in googleButtons) b.IsEnabled = false;
             try
             {
-                _googleMailStatus.Text = "Sicherer QR-Code wird erstellt …";
+                _googleMailStatus.Text = UiLanguage.T("Sicherer QR-Code wird erstellt …");
                 using var gmail = new GoogleGmailService(_settings, cloud);
                 var pairing = await gmail.StartPairingAsync();
                 var ok = await new GooglePairingWindow(gmail, pairing).ShowDialog<bool>(this);
                 await RefreshGoogleMailStatusAsync();
-                StatusText.Text = ok ? "Google-Konto erfolgreich verbunden." : "Google-Anmeldung beendet.";
+                StatusText.Text = UiLanguage.T(ok ? "Google-Konto erfolgreich verbunden." : "Google-Anmeldung beendet.");
             }
             catch (Exception ex)
             {
-                _googleMailStatus.Text = "Google-Anmeldung konnte nicht gestartet werden:\n" + ex.Message;
-                StatusText.Text = "Google-Anmeldung fehlgeschlagen.";
+                _googleMailStatus.Text = UiLanguage.T("Google-Anmeldung konnte nicht gestartet werden:") + "\n" + ex.Message;
+                StatusText.Text = UiLanguage.T("Google-Anmeldung fehlgeschlagen.");
             }
             finally { foreach (var b in googleButtons) b.IsEnabled = true; }
         };
 
         googleTest.Click += async (_, _) =>
         {
-            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar."; return; }
+            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar."); return; }
             foreach (var b in googleButtons) b.IsEnabled = false;
             try
             {
                 using var gmail = new GoogleGmailService(_settings, cloud);
-                StatusText.Text = "Google Test-E-Mail wird gesendet …";
+                StatusText.Text = UiLanguage.T("Google Test-E-Mail wird gesendet …");
                 await gmail.SendTestAsync(_text["reports.email.recipient"].Text ?? "");
-                _googleMailStatus.Text = "Google-Verbindung aktiv ✓\nTest-E-Mail wurde über Gmail API gesendet.";
-                StatusText.Text = "Google Test-E-Mail erfolgreich gesendet.";
+                _googleMailStatus.Text = UiLanguage.T("Google-Verbindung aktiv ✓\nTest-E-Mail wurde über Gmail API gesendet.");
+                StatusText.Text = UiLanguage.T("Google Test-E-Mail erfolgreich gesendet.");
             }
             catch (Exception ex)
             {
-                _googleMailStatus.Text = "Google Test-E-Mail fehlgeschlagen:\n" + ex.Message;
-                StatusText.Text = "Google Test-E-Mail fehlgeschlagen.";
+                _googleMailStatus.Text = UiLanguage.T("Google Test-E-Mail fehlgeschlagen:") + "\n" + ex.Message;
+                StatusText.Text = UiLanguage.T("Google Test-E-Mail fehlgeschlagen.");
             }
             finally { foreach (var b in googleButtons) b.IsEnabled = true; }
         };
 
         googleDisconnect.Click += async (_, _) =>
         {
-            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar."; return; }
+            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar."); return; }
             if (!await ConfirmSimpleAsync("Google-Verbindung trennen", "Google-Zugriff für diese Kasse wirklich widerrufen? Danach wird SMTP als Fallback verwendet.")) return;
             foreach (var b in googleButtons) b.IsEnabled = false;
             try
@@ -1546,12 +1546,12 @@ public partial class SettingsWindow : Window
                 using var gmail = new GoogleGmailService(_settings, cloud);
                 await gmail.DisconnectAsync();
                 await RefreshGoogleMailStatusAsync();
-                StatusText.Text = "Google-Verbindung getrennt.";
+                StatusText.Text = UiLanguage.T("Google-Verbindung getrennt.");
             }
             catch (Exception ex)
             {
-                _googleMailStatus.Text = "Google-Verbindung konnte nicht getrennt werden:\n" + ex.Message;
-                StatusText.Text = "Google-Verbindung trennen fehlgeschlagen.";
+                _googleMailStatus.Text = UiLanguage.T("Google-Verbindung konnte nicht getrennt werden:") + "\n" + ex.Message;
+                StatusText.Text = UiLanguage.T("Google-Verbindung trennen fehlgeschlagen.");
             }
             finally { foreach (var b in googleButtons) b.IsEnabled = true; }
         };
@@ -1587,7 +1587,7 @@ public partial class SettingsWindow : Window
                 _text["reports.email.smtp.user"].Text = sender;
             else if (string.IsNullOrWhiteSpace(sender) && !string.IsNullOrWhiteSpace(user))
                 _text["reports.email.sender"].Text = user;
-            StatusText.Text = "Gmail-Standard gesetzt: smtp.gmail.com · Port 587 · STARTTLS";
+            StatusText.Text = UiLanguage.T("Gmail-Standard gesetzt: smtp.gmail.com · Port 587 · STARTTLS");
         };
         smtp.Children.Add(gmailPreset);
 
@@ -1600,7 +1600,7 @@ public partial class SettingsWindow : Window
             });
             await RefreshTorMailStatusAsync();
             await RefreshGoogleMailStatusAsync();
-            StatusText.Text = "SMTP ist jetzt der aktive Versandweg.";
+            StatusText.Text = UiLanguage.T("SMTP ist jetzt der aktive Versandweg.");
         };
         smtp.Children.Add(useSmtp);
 
@@ -1625,8 +1625,8 @@ public partial class SettingsWindow : Window
                     _settings,
                     new BusinessManagementService(new SqliteDatabase(AppPaths.DatabasePath), _settings, _audit));
                 var password = ReportEmailService.ResolveAppPassword(_reportSmtpPassword.Text, _reportSmtpPasswordProtected);
-                StatusText.Text = "Test-E-Mail wird gesendet ...";
-                smtpDetails.Text = "SMTP-Verbindung wird geprüft ...";
+                StatusText.Text = UiLanguage.T("Test-E-Mail wird gesendet ...");
+                smtpDetails.Text = UiLanguage.T("SMTP-Verbindung wird geprüft ...");
                 await service.SendTestAsync(
                     _text["reports.email.recipient"].Text ?? "",
                     _text["reports.email.sender"].Text ?? "",
@@ -1635,12 +1635,12 @@ public partial class SettingsWindow : Window
                     _check["reports.email.smtp.ssl"].IsChecked == true,
                     _text["reports.email.smtp.user"].Text ?? "",
                     password);
-                StatusText.Text = "Test-E-Mail erfolgreich gesendet.";
-                smtpDetails.Text = "ERFOLG: Test-E-Mail wurde gesendet.\nSTARTTLS, TLS-Handshake und SMTP-Anmeldung funktionieren.";
+                StatusText.Text = UiLanguage.T("Test-E-Mail erfolgreich gesendet.");
+                smtpDetails.Text = UiLanguage.T("ERFOLG: Test-E-Mail wurde gesendet.\nSTARTTLS, TLS-Handshake und SMTP-Anmeldung funktionieren.");
             }
             catch (Exception ex)
             {
-                StatusText.Text = "E-Mail-Test fehlgeschlagen. Details im SMTP-Diagnosefeld.";
+                StatusText.Text = UiLanguage.T("E-Mail-Test fehlgeschlagen. Details im SMTP-Diagnosefeld.");
                 smtpDetails.Text = ex.Message;
             }
             finally { test.IsEnabled = true; }
