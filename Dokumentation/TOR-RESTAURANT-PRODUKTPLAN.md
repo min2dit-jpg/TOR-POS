@@ -87,19 +87,21 @@ Diese Restaurant-Logik darf nicht in generische Verkaufsmodelle gedrückt werden
 
 ## 4. Daten- und Laufzeitisolation
 
-TOR Restaurant und TOR Restaurant Plus müssen später eigene:
+TOR Restaurant erhält eine eigene:
 - EXE-Identität
 - Installer
 - App-ID
 - Mutex
 - Datenverzeichnis
 - Trial-Identität
-- Lizenz-Produktcode
+- Lizenz-Produktlinie
 - Update-Kanal
 
-erhalten.
+**TOR Restaurant Plus ist kein zweites Datenprodukt.** Plus ist eine Lizenzstufe derselben TOR-Restaurant-Installation. Ein Upgrade von Restaurant auf Restaurant Plus darf keine Datenmigration und keine Neuinstallation verlangen.
 
-Ein Restaurant-Kunde darf niemals auf dasselbe lokale Datenverzeichnis wie TOR Gastro oder ein anderer TOR-Kunde zugreifen.
+Restaurant und Restaurant Plus verwenden deshalb dasselbe lokale Restaurant-Datenverzeichnis. Die Plus-Lizenz schaltet ausschließlich zusätzliche Module frei.
+
+Ein Restaurant-Kunde darf niemals auf dasselbe lokale Datenverzeichnis wie TOR Gastro, TOR Einzelhandel oder ein anderer TOR-Kunde zugreifen.
 
 ## 5. Lokaler Betriebsmodus
 
@@ -154,9 +156,9 @@ Später müssen Lizenz, Application Service und UI dieselbe zentrale Feature-Ent
 
 ## 9. Erste Implementierungsreihenfolge
 
-1. Produktidentität Restaurant / Restaurant Plus
-2. eigene Datenpfade und Installer
-3. Lizenzcodes
+1. Produktidentität TOR Restaurant
+2. eigener Datenpfad und Installer
+3. Lizenzstufen Restaurant / Restaurant Plus
 4. Restaurant-Schema
 5. Tischplan
 6. Tischvorgang
