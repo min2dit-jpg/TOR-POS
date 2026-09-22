@@ -1017,13 +1017,13 @@ public partial class SettingsWindow : Window
         refresh.Click += (_, _) =>
         {
             string Value(string key) => _text.TryGetValue(key, out var box) && !string.IsNullOrWhiteSpace(box.Text) ? box.Text! : "Nicht geprüft";
-            status.Text = "Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest\n" +
-                "Kartenterminal: " + Value("payment.terminal.last_status") + " · " + Value("payment.terminal.last_test") +
-                "\nTerminalhinweis: " + Value("payment.terminal.last_error") +
+            status.Text = UiLanguage.T("Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest") + "\n" +
+                UiLanguage.T("Kartenterminal") + ": " + Value("payment.terminal.last_status") + " · " + Value("payment.terminal.last_test") +
+                "\n" + UiLanguage.T("Terminalhinweis") + ": " + Value("payment.terminal.last_error") +
                 "\nTSE: " + Value("tse.status") + " · " + Value("tse.last_test") +
-                "\nTSE-Hinweis: " + Value("tse.last_error") +
-                "\nVerbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE.\n" +
-                "Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht.";
+                "\n" + UiLanguage.T("TSE-Hinweis") + ": " + Value("tse.last_error") +
+                "\n" + UiLanguage.T("Verbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE.") + "\n" +
+                UiLanguage.T("Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht.");
         };
         var devices = Section("Terminal & TSE");
         devices.Children.Add(refresh); devices.Children.Add(status);
@@ -1398,9 +1398,12 @@ public partial class SettingsWindow : Window
             var ready = ascii.Count(x => x.EmailState == "READY");
 
             _datevStatus.Text =
-                $"STANDARD-DATEI: {ascii.Count} Export(e) · bereit {ready} · per E-Mail gesendet {emailed} · Versandfehler {failed}\n" +
-                $"CSV-Ordner: {_datevAscii.ExportDirectory}\n\n" +
-                $"KASSENARCHIV ONLINE (optional/später): {api.Count} vorbereitete Paket(e) · Online-API noch nicht freigeschaltet.";
+                UiLanguage.T("STANDARD-DATEI") + $": {ascii.Count} " + UiLanguage.T("Export(e)") +
+                " · " + UiLanguage.T("bereit") + $" {ready} · " + UiLanguage.T("per E-Mail gesendet") +
+                $" {emailed} · " + UiLanguage.T("Versandfehler") + $" {failed}\n" +
+                UiLanguage.T("CSV-Ordner") + $": {_datevAscii.ExportDirectory}\n\n" +
+                UiLanguage.T("KASSENARCHIV ONLINE (optional/später)") + $": {api.Count} " +
+                UiLanguage.T("vorbereitete Paket(e) · Online-API noch nicht freigeschaltet.");
             _datevStatus.Foreground = failed > 0 ? AppTheme.WarningAmber : AppTheme.AccentTeal;
         }
         catch (Exception ex)
@@ -1785,18 +1788,20 @@ public partial class SettingsWindow : Window
             if (current.Enabled)
             {
                 status.Text =
-                    $"Aktiv · Wiederherstellungscode-Kennung {current.RecoveryFingerprint}. " +
-                    "Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. " +
-                    "Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der " +
-                    "Wiederherstellungscode benötigt." +
+                    UiLanguage.T("Aktiv · Wiederherstellungscode-Kennung") + $" {current.RecoveryFingerprint}. " +
+                    UiLanguage.T(
+                        "Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. " +
+                        "Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der " +
+                        "Wiederherstellungscode benötigt.") +
                     // R122: an existing installation keeps the old key derivation
                     // until a NEW code is generated - the old one cannot be
                     // converted, because the code itself was never stored.
                     (current.UsesLegacyKeyDerivation
-                        ? "\n\nHINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet " +
-                          "die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt " +
-                          "wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN " +
-                          "wählen und den neuen Code sicher notieren."
+                        ? "\n\n" + UiLanguage.T(
+                            "HINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet " +
+                            "die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt " +
+                            "wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN " +
+                            "wählen und den neuen Code sicher notieren.")
                         : "");
                 enableButton.IsVisible = false;
                 regenerateButton.IsVisible = true;
@@ -3845,15 +3850,15 @@ private Control TsePage()
             }
 
             _torMailStatus.Text =
-                "TOR POS Cloud verbunden ✓\n" +
-                "Aktiver Versandweg: " + (transport switch
+                UiLanguage.T("TOR POS Cloud verbunden ✓") + "\n" +
+                UiLanguage.T("Aktiver Versandweg") + ": " + (transport switch
                 {
                     "tor" => "TOR Mail",
                     "google" => "Google / Gmail API",
-                    "smtp" => "eigener SMTP",
+                    "smtp" => UiLanguage.T("eigener SMTP"),
                     _ => transport
                 }) +
-                "\nBeim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist.";
+                "\n" + UiLanguage.T("Beim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist.");
         }
         catch (Exception ex)
         {
@@ -3877,16 +3882,18 @@ private Control TsePage()
             {
                 "tor" => "TOR Mail",
                 "google" => "Gmail API / OAuth",
-                "smtp" => "eigener SMTP",
+                "smtp" => UiLanguage.T("eigener SMTP"),
                 _ => transport
             };
             if (state.Connected)
             {
-                _googleMailStatus.Text = $"Google verbunden ✓  {state.AccountEmail}\nAktiver Versandweg: {active}";
+                _googleMailStatus.Text = UiLanguage.T("Google verbunden ✓") + $"  {state.AccountEmail}\n" +
+                    UiLanguage.T("Aktiver Versandweg") + $": {active}";
             }
             else
             {
-                _googleMailStatus.Text = $"Noch kein Google-Konto verbunden.\nAktiver Versandweg: {active}";
+                _googleMailStatus.Text = UiLanguage.T("Noch kein Google-Konto verbunden.") + "\n" +
+                    UiLanguage.T("Aktiver Versandweg") + $": {active}";
             }
         }
         catch (Exception ex)

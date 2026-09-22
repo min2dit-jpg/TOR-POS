@@ -727,10 +727,49 @@ public static class MultiLanguageTests
             "TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv.",
             "TOR-Mail-Status konnte nicht gelesen werden",
             "Google: TOR POS Cloud-Dienst nicht verfügbar.",
-            "Google-Status konnte nicht gelesen werden"
+            "Google-Status konnte nicht gelesen werden",
+            "Bereit",
+            "Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest",
+            "Kartenterminal",
+            "Terminalhinweis",
+            "TSE-Hinweis",
+            "Verbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE.",
+            "Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht.",
+            "STANDARD-DATEI",
+            "Export(e)",
+            "bereit",
+            "per E-Mail gesendet",
+            "Versandfehler",
+            "CSV-Ordner",
+            "KASSENARCHIV ONLINE (optional/später)",
+            "vorbereitete Paket(e) · Online-API noch nicht freigeschaltet.",
+            "Aktiv · Wiederherstellungscode-Kennung",
+            "Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der Wiederherstellungscode benötigt.",
+            "HINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN wählen und den neuen Code sicher notieren.",
+            "TOR POS Cloud verbunden ✓",
+            "Aktiver Versandweg",
+            "eigener SMTP",
+            "Beim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist.",
+            "Google verbunden ✓",
+            "Noch kein Google-Konto verbunden."
         ];
+        // The window has more status fields than the one line: the receipt logo,
+        // the printer list, the drawer test, TOR Mail, Google, DATEV, the backup
+        // encryption state. Several of them build their text from labels and
+        // stored values on the same line, so the rule is per write: a status
+        // write may not hand a bare German literal to the screen.
+        var unwrappedStatusWrites = 0;
+        var settingsLines = settingsSource.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        for (var line = 0; line < settingsLines.Length; line++)
+        {
+            if (!Regex.IsMatch(settingsLines[line], "\\w*[Ss]tatus\\w*\\.Text\\s*\\+?=")) continue;
+
+            var statement = string.Join("\n", settingsLines.Skip(line).Take(3));
+            if (!statement.Contains("UiLanguage.T(", StringComparison.Ordinal))
+                unwrappedStatusWrites++;
+        }
         assert(
-            directSettingsStatusWrites == 1 &&
+            directSettingsStatusWrites == 1 && unwrappedStatusWrites == 0 &&
             settingsStatusVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
             "the settings status line is written through the language layer and the messages it shows are translated");
 

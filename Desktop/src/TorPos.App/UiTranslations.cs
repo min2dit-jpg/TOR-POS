@@ -822,6 +822,39 @@ internal static class UiTranslations
         ["TOR-Mail-Status konnte nicht gelesen werden"] = "TOR Mail durumu okunamadı",
         ["Google: TOR POS Cloud-Dienst nicht verfügbar."] = "Google: TOR POS Cloud hizmeti kullanılamıyor.",
         ["Google-Status konnte nicht gelesen werden"] = "Google durumu okunamadı",
+
+        // Zusammengesetzte Statusanzeigen: Terminal/TSE, DATEV, Sicherung, Mailweg
+        ["Bereit"] = "Hazır",
+        ["Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest"] =
+            "Kayıtlı / en son kontrol edilen bilgiler – canlı bağlantı testi değildir",
+        ["Kartenterminal"] = "Kart terminali",
+        ["Terminalhinweis"] = "Terminal bilgisi",
+        ["TSE-Hinweis"] = "TSE bilgisi",
+        ["Verbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE."] =
+            "Bağlantıyı kontrol edin / yapılandırın: Gelişmiş / Teknisyen → Ödeme veya TSE.",
+        ["Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht."] =
+            "Üretim onayı ayrıca gereklidir; erişilebilir bir cihaz yeterli değildir.",
+        ["STANDARD-DATEI"] = "STANDART DOSYA",
+        ["Export(e)"] = "dışa aktarım",
+        ["bereit"] = "hazır",
+        ["per E-Mail gesendet"] = "e-posta ile gönderildi",
+        ["Versandfehler"] = "gönderim hatası",
+        ["CSV-Ordner"] = "CSV klasörü",
+        ["KASSENARCHIV ONLINE (optional/später)"] = "KASSENARCHIV ONLINE (isteğe bağlı/sonra)",
+        ["vorbereitete Paket(e) · Online-API noch nicht freigeschaltet."] =
+            "hazırlanmış paket · çevrimiçi API henüz açılmadı.",
+        ["Aktiv · Wiederherstellungscode-Kennung"] = "Etkin · kurtarma kodu kimliği",
+        ["Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der Wiederherstellungscode benötigt."] =
+            "Yeni yedekler (elle ve her gün otomatik) şifrelenir. Bu bilgisayarda otomatik olarak çözülür; başka bir bilgisayarda kurtarma kodu gerekir.",
+        ["HINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN wählen und den neuen Code sicher notieren."] =
+            "NOT: Bu kurtarma kodu daha eski bir sürümden geliyor ve önceki anahtar türetmesini kullanıyor. Mevcut yedekler sınırsız şekilde geri yüklenebilir. Güncel yöntem için bir kez KURTARMA KODUNU YENİDEN OLUŞTUR seçin ve yeni kodu güvenli biçimde not edin.",
+        ["TOR POS Cloud verbunden ✓"] = "TOR POS Cloud bağlı ✓",
+        ["Aktiver Versandweg"] = "Etkin gönderim yolu",
+        ["eigener SMTP"] = "kendi SMTP'niz",
+        ["Beim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist."] =
+            "Test gönderiminde ayrıca merkezî TOR Mail göndericisinin sunucuda etkin olup olmadığı kontrol edilir.",
+        ["Google verbunden ✓"] = "Google bağlı ✓",
+        ["Noch kein Google-Konto verbunden."] = "Henüz bir Google hesabı bağlanmadı.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -1618,5 +1651,38 @@ internal static class UiTranslations
         ["TOR-Mail-Status konnte nicht gelesen werden"] = "The TOR Mail status could not be read",
         ["Google: TOR POS Cloud-Dienst nicht verfügbar."] = "Google: the TOR POS Cloud service is not available.",
         ["Google-Status konnte nicht gelesen werden"] = "The Google status could not be read",
+
+        // Zusammengesetzte Statusanzeigen: Terminal/TSE, DATEV, Sicherung, Mailweg
+        ["Bereit"] = "Ready",
+        ["Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest"] =
+            "Stored or last checked values – not a live connection test",
+        ["Kartenterminal"] = "Card terminal",
+        ["Terminalhinweis"] = "Terminal note",
+        ["TSE-Hinweis"] = "TSE note",
+        ["Verbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE."] =
+            "Check or configure the connection: Advanced / Technician → Payment or TSE.",
+        ["Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht."] =
+            "A production release is required separately; a reachable device is not enough.",
+        ["STANDARD-DATEI"] = "STANDARD FILE",
+        ["Export(e)"] = "export(s)",
+        ["bereit"] = "ready",
+        ["per E-Mail gesendet"] = "sent by e-mail",
+        ["Versandfehler"] = "send errors",
+        ["CSV-Ordner"] = "CSV folder",
+        ["KASSENARCHIV ONLINE (optional/später)"] = "KASSENARCHIV ONLINE (optional/later)",
+        ["vorbereitete Paket(e) · Online-API noch nicht freigeschaltet."] =
+            "prepared package(s) · the online API is not enabled yet.",
+        ["Aktiv · Wiederherstellungscode-Kennung"] = "Active · recovery code fingerprint",
+        ["Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der Wiederherstellungscode benötigt."] =
+            "New backups (manual and the daily automatic one) are encrypted. On this computer they are decrypted automatically; on another computer the recovery code is needed.",
+        ["HINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN wählen und den neuen Code sicher notieren."] =
+            "NOTE: this recovery code comes from an older version and uses the earlier key derivation. Existing backups remain fully restorable. For the current procedure, choose CREATE A NEW RECOVERY CODE once and write the new code down safely.",
+        ["TOR POS Cloud verbunden ✓"] = "TOR POS Cloud connected ✓",
+        ["Aktiver Versandweg"] = "Active delivery route",
+        ["eigener SMTP"] = "your own SMTP",
+        ["Beim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist."] =
+            "The test send also checks whether the central TOR Mail sender is active on the server.",
+        ["Google verbunden ✓"] = "Google connected ✓",
+        ["Noch kein Google-Konto verbunden."] = "No Google account is connected yet.",
     };
 }
