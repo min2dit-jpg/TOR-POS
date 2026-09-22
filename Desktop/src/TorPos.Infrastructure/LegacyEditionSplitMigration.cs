@@ -56,10 +56,11 @@ public static class LegacyEditionSplitMigration
         if(permanentLock is null) return new(LegacySplitMigrationState.LegacyEditionUnproven,edition,legacyDirectory,targetDirectory);
         if(!string.Equals(permanentLock,edition,StringComparison.Ordinal)) return new(LegacySplitMigrationState.LegacyEditionMismatch,edition,legacyDirectory,targetDirectory);
 
-        // Freeze a fingerprint before backup/copy. The main database is checked against the
-        // backup and staging copy; the post-recovery state fingerprint below additionally
-        // includes WAL bytes so rollback cannot miss committed WAL-only writes.
+        // Freeze fingerprints before backup/copy. The main database hash verifies the backup
+        // package; the full persistent-state fingerprint (db + WAL) verifies the staging copy,
+        // because a crash-interrupted R181 till keeps committed frames in torpos.db-wal.
         var sourceDbHash=Sha256File(legacyDb);
+        var sourceStateFingerprint=DatabaseStateFingerprint(legacyDirectory);
         Directory.CreateDirectory(backupDirectory);
         var stamp=DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"); var suffix=Guid.NewGuid().ToString("N")[..10];
         var backupPath=Path.Combine(backupDirectory,$"TOR-POS-Pro-before-{edition}-split-{stamp}-{suffix}.zip");
@@ -73,9 +74,16 @@ public static class LegacyEditionSplitMigration
         try
         {
             Directory.CreateDirectory(staging); CopyDirectory(legacyDirectory,staging,ct);
-            var stagedDb=Path.Combine(staging,"torpos.db"); VerifyDatabaseReadable(stagedDb);
-            var migratedDbHash=Sha256File(stagedDb);
-            if(!string.Equals(sourceDbHash,migratedDbHash,StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Legacy database changed while split migration was being copied.");
+            var stagedDb=Path.Combine(staging,"torpos.db");
+            // R182: the copy is compared BEFORE anything opens it. Opening a database whose WAL
+            // still carries committed frames recovers and checkpoints them into torpos.db, so a
+            // byte-perfect copy would otherwise look like a concurrent source mutation and the
+            // dedicated product would refuse to start. The comparison covers db + WAL.
+            var migratedStateFingerprint=DatabaseStateFingerprint(staging);
+            if(!string.Equals(sourceStateFingerprint,migratedStateFingerprint,StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Legacy database changed while split migration was being copied.");
+            VerifyDatabaseReadable(stagedDb);
+            // Taken after the readability check so the marker records the state the dedicated
+            // product really starts from, including a checkpoint performed by that check.
             var stateFingerprint=DatabaseStateFingerprint(staging);
             var marker=new LegacySplitMigrationMarker(3,DateTimeOffset.UtcNow,legacyDirectory,edition,backupPath,stateFingerprint);
             await File.WriteAllTextAsync(Path.Combine(staging,MarkerFileName),JsonSerializer.Serialize(marker,new JsonSerializerOptions{WriteIndented=true}),ct);
