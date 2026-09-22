@@ -44,6 +44,7 @@ public partial class MainWindow:Window
     private readonly IAuthenticationService _authentication;
     private readonly BusinessManagementService _management;
     private readonly RestaurantRepository _restaurant;
+    private readonly RestaurantFiscalOrderService _restaurantFiscal;
     private readonly AuthenticatedUser _currentUser;
     private IReadOnlyDictionary<string,string> _settingsCache=
         new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -172,6 +173,7 @@ public partial class MainWindow:Window
         IAuthenticationService authentication,
         BusinessManagementService management,
         RestaurantRepository restaurant,
+        RestaurantFiscalOrderService restaurantFiscal,
         AuthenticatedUser currentUser,
         ICheckoutJournal checkoutJournal,
         CheckoutApplicationService checkoutApplication,
@@ -208,7 +210,7 @@ public partial class MainWindow:Window
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
         _digitalReceipts=digitalReceipts;
         _cardRefundLocks=cardRefundLocks;
-        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_restaurant=restaurant;_currentUser=currentUser;
+        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_restaurant=restaurant;_restaurantFiscal=restaurantFiscal;_currentUser=currentUser;
 
         BuildCategories();
         ShowCategoryOverview();
@@ -2999,15 +3001,18 @@ public partial class MainWindow:Window
 
         if (restaurantDraft is not null && !IsSimulation)
         {
-            // Fail closed until Restaurant table capture starts/updates its own
-            // Bestellung/TSE Vorgang from the first position. The payment plumbing
-            // is already shared with the normal checkout, but productive use must
-            // not begin with a missing Vorgangsbeginn.
-            ScannerStatus.Text =
-                "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · TSE-Bestellungspfad noch nicht freigegeben";
-            _restaurantCheckoutDraft = null;
-            _operationId = Guid.NewGuid().ToString("N");
-            return;
+            var secured =
+                await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                    restaurantDraft.SessionId);
+
+            if (!secured)
+            {
+                ScannerStatus.Text =
+                    "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein";
+                _restaurantCheckoutDraft = null;
+                _operationId = Guid.NewGuid().ToString("N");
+                return;
+            }
         }
 
         _imHaus = restaurantDraft is not null
