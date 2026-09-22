@@ -97,6 +97,31 @@ internal static class RestaurantFoundationTests
                     StringComparison.Ordinal)),
             "Restaurant Bestellung keeps its RB BON_ID and Restaurant allocation group in DSFinV-K rows");
 
+        var standardEntitlements = new RestaurantEntitlementService(
+            new FakeCommercialLicenseService(
+                new CommercialLicenseStatus(
+                    CommercialLicenseState.Active,
+                    "TEST",
+                    Features: Array.Empty<string>())));
+
+        var plusEntitlements = new RestaurantEntitlementService(
+            new FakeCommercialLicenseService(
+                new CommercialLicenseStatus(
+                    CommercialLicenseState.Active,
+                    "TEST",
+                    Features: new[] { RestaurantEntitlementService.PlusFeatureCode })));
+
+        assert(
+            standardEntitlements.CurrentTier() == RestaurantProductTier.Restaurant &&
+            !standardEntitlements.IsEnabled(RestaurantFeature.KitchenDisplaySystem),
+            "Restaurant Standard license cannot unlock Plus KDS");
+
+        assert(
+            plusEntitlements.CurrentTier() == RestaurantProductTier.RestaurantPlus &&
+            plusEntitlements.IsEnabled(RestaurantFeature.KitchenDisplaySystem) &&
+            plusEntitlements.IsEnabled(RestaurantFeature.Tischplan),
+            "Signed RESTAURANT_PLUS entitlement unlocks Plus while keeping Standard features");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -682,6 +707,36 @@ internal static class RestaurantFoundationTests
                 EnvironmentVariableTarget.Process);
             SqliteConnection.ClearAllPools();
             try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private sealed class FakeCommercialLicenseService : ICommercialLicenseService
+    {
+        private readonly CommercialLicenseStatus _status;
+
+        public FakeCommercialLicenseService(CommercialLicenseStatus status)
+        {
+            _status = status;
+        }
+
+        public string InstallationId => "TEST";
+        public string DeviceCode => "TEST";
+        public string LicenseFilePath => "";
+
+        public CommercialLicenseStatus Check(string edition) => _status;
+        public CommercialLicenseStatus Import(string sourcePath, string edition) => _status;
+        public CommercialLicenseStatus Deactivate(
+            string edition,
+            string deactivatedBy,
+            string receiptTargetPath) => _status;
+
+        public void ExportActivationRequest(
+            string targetPath,
+            string edition,
+            string customerNumber,
+            string customerName,
+            string productVersion)
+        {
         }
     }
 
