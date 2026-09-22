@@ -34,7 +34,8 @@ public sealed class RestaurantTablePlanWindow : Window
 
     private readonly ListBox _items = new()
     {
-        MinHeight = 260
+        MinHeight = 260,
+        SelectionMode = SelectionMode.Multiple
     };
 
     private readonly ComboBox _product = new()
@@ -105,6 +106,14 @@ public sealed class RestaurantTablePlanWindow : Window
         IsEnabled = false
     };
 
+    private readonly Button _checkoutSelected = new()
+    {
+        Content = "AUSGEWÄHLTE POSITIONEN KASSIEREN",
+        MinHeight = 48,
+        FontWeight = FontWeight.Bold,
+        IsEnabled = false
+    };
+
     private IReadOnlyList<RestaurantTable> _tables = Array.Empty<RestaurantTable>();
     private RestaurantTable? _selectedTable;
     private RestaurantTableSession? _selectedSession;
@@ -140,11 +149,22 @@ public sealed class RestaurantTablePlanWindow : Window
         _merge.Click += async (_, _) => await MergeSelectedSessionAsync();
         _closeEmpty.Click += async (_, _) => await CloseEmptySelectedSessionAsync();
         _split.Click += async (_, _) => await ShowSplitPreviewAsync();
+        _checkoutSelected.Click += async (_, _) => await CheckoutSelectedAsync();
 
         _product.ItemsSource = _catalog.Products
             .Where(x => x.IsActive)
             .OrderBy(x => x.Name)
             .ToArray();
+        _items.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RestaurantSessionItem>(
+            (item, _) => new TextBlock
+            {
+                Text = item is null
+                    ? ""
+                    : $"{item.Quantity:0.###} × {item.ProductName} · {Formatting.Money(item.LineTotalCents)}",
+                FontSize = 15,
+                Margin = new Thickness(6)
+            });
+
         _product.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<Product>(
             (p, _) => new TextBlock
             {
@@ -204,7 +224,8 @@ public sealed class RestaurantTablePlanWindow : Window
                     Orientation = Orientation.Horizontal,
                     Spacing = 8,
                     Children = { _split, _closeEmpty }
-                }
+                },
+                _checkoutSelected
             }
         };
 
@@ -331,7 +352,8 @@ public sealed class RestaurantTablePlanWindow : Window
             _merge.IsEnabled = false;
             _closeEmpty.IsEnabled = false;
             _split.IsEnabled = false;
-            _items.ItemsSource = Array.Empty<string>();
+            _checkoutSelected.IsEnabled = false;
+            _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
         }
     }
 
@@ -394,7 +416,8 @@ public sealed class RestaurantTablePlanWindow : Window
             _merge.IsEnabled = false;
             _closeEmpty.IsEnabled = false;
             _split.IsEnabled = false;
-            _items.ItemsSource = Array.Empty<string>();
+            _checkoutSelected.IsEnabled = false;
+            _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
             return;
         }
 
@@ -409,11 +432,7 @@ public sealed class RestaurantTablePlanWindow : Window
             $"Geöffnet: {_selectedSession.OpenedAt.ToLocalTime():dd.MM.yyyy HH:mm} · " +
             $"Version {_selectedSession.Version} · Summe {Formatting.Money(total)}";
 
-        _items.ItemsSource = currentItems
-            .Select(x =>
-                $"{x.Quantity:0.###} × {x.ProductName} · " +
-                $"{Formatting.Money(x.LineTotalCents)}")
-            .ToArray();
+        _items.ItemsSource = currentItems;
 
         _open.IsVisible = false;
         _open.IsEnabled = false;
@@ -422,6 +441,7 @@ public sealed class RestaurantTablePlanWindow : Window
         _merge.IsEnabled = true;
         _closeEmpty.IsEnabled = currentItems.Count == 0;
         _split.IsEnabled = currentItems.Count > 0;
+        _checkoutSelected.IsEnabled = currentItems.Count > 0;
     }
 
     private async Task OpenSelectedTableAsync()
@@ -553,6 +573,41 @@ public sealed class RestaurantTablePlanWindow : Window
 
             _selectedSession = null;
             await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task CheckoutSelectedAsync()
+    {
+        if (_selectedSession is null)
+            return;
+
+        var selected = _items.SelectedItems?
+            .OfType<RestaurantSessionItem>()
+            .ToArray() ?? Array.Empty<RestaurantSessionItem>();
+
+        if (selected.Length == 0)
+        {
+            await ShowErrorAsync("Bitte mindestens eine Position auswählen.");
+            return;
+        }
+
+        try
+        {
+            var selections = selected
+                .Select(x => new RestaurantSplitSelection(x.Id, x.QuantityMilli))
+                .ToArray();
+
+            var draft = await _restaurant.BuildCheckoutDraftAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                selections);
+
+            Close(draft);
         }
         catch (Exception ex)
         {
