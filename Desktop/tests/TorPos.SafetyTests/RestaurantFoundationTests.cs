@@ -535,7 +535,7 @@ internal static class RestaurantFoundationTests
             head.Parameters.AddWithValue(
                 "$total",
                 (long)Math.Round(
-                    QuantityStorage.FromMilli(quantityMilli) * product.BasePriceCents,
+                    (quantityMilli / 1000m) * product.BasePriceCents,
                     MidpointRounding.AwayFromZero));
             id = Convert.ToInt64(await head.ExecuteScalarAsync());
         }
