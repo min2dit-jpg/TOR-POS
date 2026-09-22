@@ -97,7 +97,7 @@ public sealed class UserManagementWindow : Window
             Grid.SetColumn(close, 1);
             Grid.SetColumn(save, 2);
             _status.VerticalAlignment = VerticalAlignment.Center;
-            _status.Text = "Benutzer werden geladen ...";
+            _status.Text = UiLanguage.T("Benutzer werden geladen ...");
             _status.Opacity = 0.75;
         }
 
@@ -131,12 +131,12 @@ public sealed class UserManagementWindow : Window
 
             _tabs.SelectedIndex = 0;
             _status.Text = users.Count == 3
-                ? "3 Mitarbeiterkonten geladen."
-                : $"Achtung: {users.Count} Mitarbeiterkonten gefunden.";
+                ? UiLanguage.T("3 Mitarbeiterkonten geladen.")
+                : UiLanguage.T("Achtung") + $": {users.Count} " + UiLanguage.T("Mitarbeiterkonten gefunden.");
         }
         catch (Exception ex)
         {
-            _status.Text = "Laden fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("Laden fehlgeschlagen") + ": " + ex.Message;
         }
     }
 
@@ -172,11 +172,11 @@ public sealed class UserManagementWindow : Window
                 _adminCurrentPassword.Text = "";
                 _adminNewPassword.Text = "";
                 _adminNewPin.Text = "";
-                _status.Text = "Admin-Passwort und PIN wurden geändert.";
+                _status.Text = UiLanguage.T("Admin-Passwort und PIN wurden geändert.");
             }
             catch (Exception ex)
             {
-                _status.Text = "Admin-Zugang konnte nicht geändert werden: " + ex.Message;
+                _status.Text = UiLanguage.T("Admin-Zugang konnte nicht geändert werden") + ": " + ex.Message;
             }
         };
 
@@ -226,12 +226,12 @@ public sealed class UserManagementWindow : Window
                     _admin.Username);
             }
 
-            _status.Text = "Alle drei Mitarbeiterkonten wurden gespeichert.";
+            _status.Text = UiLanguage.T("Alle drei Mitarbeiterkonten wurden gespeichert.");
             await LoadAsync();
         }
         catch (Exception ex)
         {
-            _status.Text = "Speichern fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("Speichern fehlgeschlagen") + ": " + ex.Message;
         }
     }
 

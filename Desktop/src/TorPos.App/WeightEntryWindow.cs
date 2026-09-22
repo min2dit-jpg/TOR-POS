@@ -201,7 +201,7 @@ public sealed class WeightEntryWindow : Window
                 out var value) ||
             value <= 0m)
         {
-            _status.Text = "Bitte ein Gewicht größer als 0 eingeben.";
+            _status.Text = UiLanguage.T("Bitte ein Gewicht größer als 0 eingeben.");
             return false;
         }
 

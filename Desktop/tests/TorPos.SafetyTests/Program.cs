@@ -521,7 +521,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1180;
+const int ExpectedSafetyChecks = 1181;
 
 if (checks != ExpectedSafetyChecks)
 {

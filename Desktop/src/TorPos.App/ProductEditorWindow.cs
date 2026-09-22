@@ -1802,7 +1802,7 @@ public sealed class ProductEditorWindow : Window
         var weighted = _soldByWeight.IsChecked == true;
         _weightHint.IsVisible = weighted;
         _weightHint.Text = weighted
-            ? "Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt."
+            ? UiLanguage.T("Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt.")
             : "";
 
         if (weighted)

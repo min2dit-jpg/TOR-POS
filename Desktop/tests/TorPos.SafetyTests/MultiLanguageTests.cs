@@ -773,6 +773,93 @@ public static class MultiLanguageTests
             settingsStatusVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
             "the settings status line is written through the language layer and the messages it shows are translated");
 
+        // The till and the settings window are not the only ones that talk back.
+        // Sign-in, the order board, the weight and quick-item dialogs, the
+        // receipt history and archive, user management and the diagnostics window
+        // all write their own German long after they were rendered. These windows
+        // are finished: not one of them hands a bare German literal to a status,
+        // message or hint line. The remaining setup and management windows are
+        // the next pass, which is why this is a named list and not a sweep.
+        string[] renderedStatusWindows =
+        [
+            "LoginWindow.axaml.cs", "OrderBoardWindow.cs", "WeightEntryWindow.cs", "TouchKeyboard.cs",
+            "CheckoutReviewWindow.cs", "DigitalReceiptWindow.cs", "ProductEditorWindow.cs",
+            "UserManagementWindow.cs", "Dialogs.cs", "DiagnosticsWindow.cs"
+        ];
+        var bareStatusLiterals = new List<string>();
+        foreach (var window in renderedStatusWindows)
+        {
+            var lines = File.ReadAllText(FindRepoFile($"Desktop/src/TorPos.App/{window}"))
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Split('\n');
+            for (var line = 0; line < lines.Length; line++)
+            {
+                var write = Regex.Match(lines[line], "\\w*(?:[Ss]tatus|[Mm]essage|[Hh]int)\\w*\\.Text\\s*\\+?=");
+                if (!write.Success) continue;
+
+                var chunk = string.Join("\n", lines.Skip(line).Take(3))[write.Index..];
+                var end = chunk.IndexOf(';', StringComparison.Ordinal);
+                var statement = end >= 0 ? chunk[..(end + 1)] : chunk;
+                if (statement.Contains("UiLanguage.T(", StringComparison.Ordinal)) continue;
+
+                // An escape sequence carries a letter and an interpolation hole
+                // carries a variable name; neither is text on the screen.
+                var visible = Regex.Replace(statement, "\\\\.", "");
+                visible = Regex.Replace(visible, "\\{[^{}]*\\}", "");
+                if (Regex.IsMatch(visible, "\"[^\"]*[A-Za-zÄÖÜäöüß][^\"]*\""))
+                    bareStatusLiterals.Add($"{window}:{line + 1}");
+            }
+        }
+        string[] windowStatusVocabulary =
+        [
+            "Anmeldung fehlgeschlagen",
+            "Nur unbezahlte Bestellungen können aufgerufen werden.",
+            "Status ändern erzeugt keine Zahlung. Hinweise werden beim nächsten Küchenbon mitgedruckt. Maximal 500 Bestellungen.",
+            "Laden fehlgeschlagen",
+            "Bitte Bestellung auswählen.",
+            "Gespeichert. Zahlungsstatus bleibt unverändert.",
+            "Bitte ein Gewicht größer als 0 eingeben.",
+            "Geschützte Eingabe",
+            "Bildschirmtastatur · DE",
+            "Zuerst in ein Eingabefeld tippen.",
+            "Mit dem Handy scannen: Bon ansehen, als PDF herunterladen, teilen oder drucken.",
+            "Abrufbar bis",
+            "Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt.",
+            "Benutzer werden geladen ...",
+            "3 Mitarbeiterkonten geladen.",
+            "Achtung",
+            "Mitarbeiterkonten gefunden.",
+            "Admin-Passwort und PIN wurden geändert.",
+            "Admin-Zugang konnte nicht geändert werden",
+            "Alle drei Mitarbeiterkonten wurden gespeichert.",
+            "Speichern fehlgeschlagen",
+            "Bar-Anteil muss größer als 0 und kleiner als der Gesamtbetrag sein. Für eine reine Bar- oder Kartenzahlung BAR bzw. KARTE verwenden.",
+            "Der Bar-Anteil wird sofort kassiert, der Karten-Anteil wird anschließend am Kartenterminal belastet.",
+            "Archiv wird geladen ...",
+            "Keine gespeicherten Bons für diesen Archivfilter gefunden.",
+            "Bon(s) im Archiv gefunden. Alte Bons: nur Anzeigen / Kopie.",
+            "ARCHIV",
+            "Heutige Bons werden geladen ...",
+            "Heute",
+            "wurden noch keine echten Bons gespeichert.",
+            "HEUTE",
+            "Bon(s) · neueste zuerst",
+            "BON-HISTORIE",
+            "Bitte mindestens eine Menge größer als 0 eingeben.",
+            "Performance-Messwerte zurückgesetzt.",
+            "Log-Ordner konnte nicht geöffnet werden",
+            "Geräteprüfung läuft …",
+            "Geräteprüfung abgeschlossen",
+            "gesamt.",
+            "Diagnose fehlgeschlagen",
+            "Bearbeiter angeben.",
+            "Fehler"
+        ];
+        assert(
+            bareStatusLiterals.Count == 0 &&
+            windowStatusVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
+            "the windows beyond the till and the settings write their running messages through the language layer too");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));

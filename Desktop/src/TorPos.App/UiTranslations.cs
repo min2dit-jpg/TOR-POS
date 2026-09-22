@@ -855,6 +855,57 @@ internal static class UiTranslations
             "Test gönderiminde ayrıca merkezî TOR Mail göndericisinin sunucuda etkin olup olmadığı kontrol edilir.",
         ["Google verbunden ✓"] = "Google bağlı ✓",
         ["Noch kein Google-Konto verbunden."] = "Henüz bir Google hesabı bağlanmadı.",
+
+        // Laufende Meldungen der übrigen Bedienfenster
+        ["Anmeldung fehlgeschlagen"] = "Giriş başarısız",
+        ["Nur unbezahlte Bestellungen können aufgerufen werden."] = "Yalnızca ödenmemiş siparişler çağrılabilir.",
+        ["Status ändern erzeugt keine Zahlung. Hinweise werden beim nächsten Küchenbon mitgedruckt. Maximal 500 Bestellungen."] =
+            "Durum değiştirmek ödeme oluşturmaz. Notlar bir sonraki mutfak fişine birlikte basılır. En fazla 500 sipariş.",
+        ["Laden fehlgeschlagen"] = "Yükleme başarısız",
+        ["Bitte Bestellung auswählen."] = "Lütfen bir sipariş seçin.",
+        ["Gespeichert. Zahlungsstatus bleibt unverändert."] = "Kaydedildi. Ödeme durumu değişmedi.",
+        ["Bitte ein Gewicht größer als 0 eingeben."] = "Lütfen 0'dan büyük bir ağırlık girin.",
+        ["Geschützte Eingabe"] = "Korumalı giriş",
+        ["Bildschirmtastatur · DE"] = "Ekran klavyesi · DE",
+        ["Zuerst in ein Eingabefeld tippen."] = "Önce bir giriş alanına dokunun.",
+        ["Mit dem Handy scannen: Bon ansehen, als PDF herunterladen, teilen oder drucken."] =
+            "Telefonla okutun: fişi görüntüleyin, PDF olarak indirin, paylaşın veya yazdırın.",
+        ["Abrufbar bis"] = "Erişilebilir",
+        ["Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt."] =
+            "Ağırlık ürünü: fiyat = €/kg. Satış, bağlı bir terazi olmadan elle g veya kg olarak girilebilir. Stok ve asgari stok dahilî olarak kg cinsinden tutulur.",
+        ["Benutzer werden geladen ..."] = "Kullanıcılar yükleniyor ...",
+        ["3 Mitarbeiterkonten geladen."] = "3 personel hesabı yüklendi.",
+        ["Achtung"] = "Dikkat",
+        ["Mitarbeiterkonten gefunden."] = "personel hesabı bulundu.",
+        ["Admin-Passwort und PIN wurden geändert."] = "Yönetici şifresi ve PIN değiştirildi.",
+        ["Admin-Zugang konnte nicht geändert werden"] = "Yönetici erişimi değiştirilemedi",
+        ["Alle drei Mitarbeiterkonten wurden gespeichert."] = "Üç personel hesabının tamamı kaydedildi.",
+        ["Speichern fehlgeschlagen"] = "Kaydetme başarısız",
+        ["Bar-Anteil muss größer als 0 und kleiner als der Gesamtbetrag sein. Für eine reine Bar- oder Kartenzahlung BAR bzw. KARTE verwenden."] =
+            "Nakit tutar 0'dan büyük ve toplam tutardan küçük olmalıdır. Yalnızca nakit veya yalnızca kart ödemesi için NAKİT ya da KART kullanın.",
+        ["Der Bar-Anteil wird sofort kassiert, der Karten-Anteil wird anschließend am Kartenterminal belastet."] =
+            "Nakit tutar hemen tahsil edilir, kart tutarı ardından kart terminalinde borçlandırılır.",
+        ["Archiv wird geladen ..."] = "Arşiv yükleniyor ...",
+        ["Keine gespeicherten Bons für diesen Archivfilter gefunden."] =
+            "Bu arşiv filtresi için kayıtlı fiş bulunamadı.",
+        ["Bon(s) im Archiv gefunden. Alte Bons: nur Anzeigen / Kopie."] =
+            "fiş arşivde bulundu. Eski fişler: yalnızca görüntüleme / kopya.",
+        ["ARCHIV"] = "ARŞİV",
+        ["Heutige Bons werden geladen ..."] = "Bugünün fişleri yükleniyor ...",
+        ["Heute"] = "Bugün",
+        ["wurden noch keine echten Bons gespeichert."] = "tarihinde henüz gerçek fiş kaydedilmedi.",
+        ["HEUTE"] = "BUGÜN",
+        ["Bon(s) · neueste zuerst"] = "fiş · en yenisi önce",
+        ["BON-HISTORIE"] = "FİŞ GEÇMİŞİ",
+        ["Bitte mindestens eine Menge größer als 0 eingeben."] = "Lütfen en az bir miktarı 0'dan büyük girin.",
+        ["Performance-Messwerte zurückgesetzt."] = "Performans ölçümleri sıfırlandı.",
+        ["Log-Ordner konnte nicht geöffnet werden"] = "Günlük klasörü açılamadı",
+        ["Geräteprüfung läuft …"] = "Cihaz kontrolü sürüyor …",
+        ["Geräteprüfung abgeschlossen"] = "Cihaz kontrolü tamamlandı",
+        ["gesamt."] = "toplam.",
+        ["Diagnose fehlgeschlagen"] = "Tanılama başarısız",
+        ["Bearbeiter angeben."] = "İşlemi yapanı belirtin.",
+        ["Fehler"] = "Hata",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -1684,5 +1735,56 @@ internal static class UiTranslations
             "The test send also checks whether the central TOR Mail sender is active on the server.",
         ["Google verbunden ✓"] = "Google connected ✓",
         ["Noch kein Google-Konto verbunden."] = "No Google account is connected yet.",
+
+        // Laufende Meldungen der übrigen Bedienfenster
+        ["Anmeldung fehlgeschlagen"] = "Sign-in failed",
+        ["Nur unbezahlte Bestellungen können aufgerufen werden."] = "Only unpaid orders can be opened.",
+        ["Status ändern erzeugt keine Zahlung. Hinweise werden beim nächsten Küchenbon mitgedruckt. Maximal 500 Bestellungen."] =
+            "Changing the state does not create a payment. Notes are printed with the next kitchen ticket. At most 500 orders.",
+        ["Laden fehlgeschlagen"] = "Loading failed",
+        ["Bitte Bestellung auswählen."] = "Please choose an order.",
+        ["Gespeichert. Zahlungsstatus bleibt unverändert."] = "Saved. The payment state is unchanged.",
+        ["Bitte ein Gewicht größer als 0 eingeben."] = "Please enter a weight greater than 0.",
+        ["Geschützte Eingabe"] = "Protected entry",
+        ["Bildschirmtastatur · DE"] = "On-screen keyboard · DE",
+        ["Zuerst in ein Eingabefeld tippen."] = "Tap an input field first.",
+        ["Mit dem Handy scannen: Bon ansehen, als PDF herunterladen, teilen oder drucken."] =
+            "Scan it with the phone: view the receipt, download it as a PDF, share it or print it.",
+        ["Abrufbar bis"] = "Available until",
+        ["Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt."] =
+            "Weighed product: price = €/kg. A sale can be entered manually in g or kg without a connected scale. Stock and the minimum level are kept internally in kg.",
+        ["Benutzer werden geladen ..."] = "Loading the users ...",
+        ["3 Mitarbeiterkonten geladen."] = "3 staff accounts loaded.",
+        ["Achtung"] = "Attention",
+        ["Mitarbeiterkonten gefunden."] = "staff accounts found.",
+        ["Admin-Passwort und PIN wurden geändert."] = "The admin password and PIN have been changed.",
+        ["Admin-Zugang konnte nicht geändert werden"] = "The admin access could not be changed",
+        ["Alle drei Mitarbeiterkonten wurden gespeichert."] = "All three staff accounts have been saved.",
+        ["Speichern fehlgeschlagen"] = "Saving failed",
+        ["Bar-Anteil muss größer als 0 und kleiner als der Gesamtbetrag sein. Für eine reine Bar- oder Kartenzahlung BAR bzw. KARTE verwenden."] =
+            "The cash share must be greater than 0 and less than the total. For a pure cash or card payment use CASH or CARD.",
+        ["Der Bar-Anteil wird sofort kassiert, der Karten-Anteil wird anschließend am Kartenterminal belastet."] =
+            "The cash share is taken immediately, the card share is then charged at the card terminal.",
+        ["Archiv wird geladen ..."] = "Loading the archive ...",
+        ["Keine gespeicherten Bons für diesen Archivfilter gefunden."] =
+            "No stored receipts were found for this archive filter.",
+        ["Bon(s) im Archiv gefunden. Alte Bons: nur Anzeigen / Kopie."] =
+            "receipt(s) found in the archive. Old receipts: view or copy only.",
+        ["ARCHIV"] = "ARCHIVE",
+        ["Heutige Bons werden geladen ..."] = "Loading today's receipts ...",
+        ["Heute"] = "Today",
+        ["wurden noch keine echten Bons gespeichert."] = "no real receipts have been stored yet.",
+        ["HEUTE"] = "TODAY",
+        ["Bon(s) · neueste zuerst"] = "receipt(s) · newest first",
+        ["BON-HISTORIE"] = "RECEIPT HISTORY",
+        ["Bitte mindestens eine Menge größer als 0 eingeben."] = "Please enter at least one quantity greater than 0.",
+        ["Performance-Messwerte zurückgesetzt."] = "The performance measurements have been reset.",
+        ["Log-Ordner konnte nicht geöffnet werden"] = "The log folder could not be opened",
+        ["Geräteprüfung läuft …"] = "The device check is running …",
+        ["Geräteprüfung abgeschlossen"] = "The device check is finished",
+        ["gesamt."] = "in total.",
+        ["Diagnose fehlgeschlagen"] = "The diagnosis failed",
+        ["Bearbeiter angeben."] = "Name the person handling it.",
+        ["Fehler"] = "Error",
     };
 }

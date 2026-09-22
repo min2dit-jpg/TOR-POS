@@ -791,14 +791,14 @@ public sealed class MixedPaymentWindow : Window
         if (!Formatting.TryParseMoney(_cashPortion.Text, out var cash) || cash <= 0 || cash >= _totalCents)
         {
             _cardPortion.Text = "0,00 €";
-            _hint.Text = "Bar-Anteil muss größer als 0 und kleiner als der Gesamtbetrag sein. Für eine reine Bar- oder Kartenzahlung BAR bzw. KARTE verwenden.";
+            _hint.Text = UiLanguage.T("Bar-Anteil muss größer als 0 und kleiner als der Gesamtbetrag sein. Für eine reine Bar- oder Kartenzahlung BAR bzw. KARTE verwenden.");
             _hint.Foreground = Brushes.Orange;
             _accept.IsEnabled = false;
             return;
         }
 
         _cardPortion.Text = Formatting.Money(_totalCents - cash);
-        _hint.Text = "Der Bar-Anteil wird sofort kassiert, der Karten-Anteil wird anschließend am Kartenterminal belastet.";
+        _hint.Text = UiLanguage.T("Der Bar-Anteil wird sofort kassiert, der Karten-Anteil wird anschließend am Kartenterminal belastet.");
         _hint.Foreground = Brushes.Gray;
         _accept.IsEnabled = true;
     }
@@ -1444,7 +1444,7 @@ public sealed class CashMovementWindow : Window
             .Select(c => new CaseItem(c, CashBusinessCases.Label(c, kind)))
             .ToArray();
         _businessCase.SelectedIndex = -1;
-        _hint.Text = "Bitte die Art wählen.";
+        _hint.Text = UiLanguage.T("Bitte die Art wählen.");
     }
 
     public CashMovementWindow()
@@ -1517,7 +1517,7 @@ public sealed class CashMovementWindow : Window
     {
         if (_businessCase.SelectedItem is not CaseItem chosen)
         {
-            _hint.Text = "Bitte die Art der Kassenbewegung wählen.";
+            _hint.Text = UiLanguage.T("Bitte die Art der Kassenbewegung wählen.");
             return;
         }
 
@@ -1949,17 +1949,17 @@ public sealed class ReceiptHistoryWindow : Window
                     _ => (PaymentMethod?)null
                 };
 
-                _status.Text = "Archiv wird geladen ...";
+                _status.Text = UiLanguage.T("Archiv wird geladen ...");
                 var found = await _repository.SearchHistoryAsync(start, end, receiptNumber, payment);
                 RenderRows(found, todayOnlyActions: false);
                 _status.Text = found.Count == 0
-                    ? "Keine gespeicherten Bons für diesen Archivfilter gefunden."
-                    : $"{found.Count} Bon(s) im Archiv gefunden. Alte Bons: nur Anzeigen / Kopie.";
+                    ? UiLanguage.T("Keine gespeicherten Bons für diesen Archivfilter gefunden.")
+                    : $"{found.Count} " + UiLanguage.T("Bon(s) im Archiv gefunden. Alte Bons: nur Anzeigen / Kopie.");
             }
             catch (Exception ex)
             {
                 CrashLog.WriteException("Receipt archive search", ex);
-                _status.Text = "ARCHIV: " + ex.Message;
+                _status.Text = UiLanguage.T("ARCHIV") + ": " + ex.Message;
             }
         };
 
@@ -1989,17 +1989,17 @@ public sealed class ReceiptHistoryWindow : Window
         try
         {
             var today = DateOnly.FromDateTime(DateTime.Now);
-            _status.Text = "Heutige Bons werden geladen ...";
+            _status.Text = UiLanguage.T("Heutige Bons werden geladen ...");
             var found = await _repository.SearchHistoryAsync(today, today);
             RenderRows(found, todayOnlyActions: true);
             _status.Text = found.Count == 0
-                ? $"Heute {today:dd.MM.yyyy} wurden noch keine echten Bons gespeichert."
-                : $"HEUTE · {today:dd.MM.yyyy} · {found.Count} Bon(s) · neueste zuerst";
+                ? UiLanguage.T("Heute") + $" {today:dd.MM.yyyy} " + UiLanguage.T("wurden noch keine echten Bons gespeichert.")
+                : UiLanguage.T("HEUTE") + $" · {today:dd.MM.yyyy} · {found.Count} " + UiLanguage.T("Bon(s) · neueste zuerst");
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("Receipt history today", ex);
-            _status.Text = "BON-HISTORIE: " + ex.Message;
+            _status.Text = UiLanguage.T("BON-HISTORIE") + ": " + ex.Message;
         }
     }
 
@@ -2232,7 +2232,7 @@ public sealed class PartialReturnWindow : Window
                 }
                 if (requests.Count == 0)
                 {
-                    status.Text = "Bitte mindestens eine Menge größer als 0 eingeben.";
+                    status.Text = UiLanguage.T("Bitte mindestens eine Menge größer als 0 eingeben.");
                     return;
                 }
                 Close((IReadOnlyList<ReturnLineRequest>?)requests);
@@ -2531,7 +2531,7 @@ public sealed class QuickItemWindow : Window
         if (name.Length == 0) name = "Schnellartikel";
         if (!Formatting.TryParseMoney(_price.Text, out var cents) || cents <= 0)
         {
-            _status.Text = "Bitte einen Preis größer 0,00 € eingeben.";
+            _status.Text = UiLanguage.T("Bitte einen Preis größer 0,00 € eingeben.");
             _price.Focus();
             _price.SelectAll();
             return;

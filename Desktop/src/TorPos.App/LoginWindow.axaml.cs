@@ -37,12 +37,12 @@ public partial class LoginWindow : Window
         if (_lockedEdition == "KIOSK")
         {
             ShowFixedEdition(KioskEditionRadio, ImbissEditionRadio);
-            EditionStatusText.Text = "Kassenart: EINZELHANDEL · Lizenz/Installation fest gebunden.";
+            EditionStatusText.Text = UiLanguage.T("Kassenart: EINZELHANDEL · Lizenz/Installation fest gebunden.");
         }
         else if (_lockedEdition == "IMBISS")
         {
             ShowFixedEdition(ImbissEditionRadio, KioskEditionRadio);
-            EditionStatusText.Text = "Kassenart: GASTRONOMIE · Lizenz/Installation fest gebunden.";
+            EditionStatusText.Text = UiLanguage.T("Kassenart: GASTRONOMIE · Lizenz/Installation fest gebunden.");
         }
         else
         {
@@ -50,7 +50,7 @@ public partial class LoginWindow : Window
             ImbissEditionRadio.IsChecked = false;
             KioskEditionRadio.IsVisible = true;
             ImbissEditionRadio.IsVisible = true;
-            EditionStatusText.Text = "TEST · Einzelhandel oder Gastronomie auswählen. Betriebsdaten bleiben getrennt.";
+            EditionStatusText.Text = UiLanguage.T("TEST · Einzelhandel oder Gastronomie auswählen. Betriebsdaten bleiben getrennt.");
         }
 
         Opened += async (_,_) =>
@@ -141,7 +141,7 @@ public partial class LoginWindow : Window
 
             if (!result.Success || result.User is null)
             {
-                StatusText.Text = result.Message;
+                StatusText.Text = UiLanguage.T(result.Message);
                 PasswordBox.Text = "";
                 PasswordBox.Focus();
                 return;
@@ -149,7 +149,7 @@ public partial class LoginWindow : Window
 
             if (LoginSucceeded is not null) await LoginSucceeded(result.User with {IsTraining=false});
         }
-        catch(Exception ex) { CrashLog.WriteException("Login failed",ex); StatusText.Text="Anmeldung fehlgeschlagen: "+ex.Message; }
+        catch(Exception ex) { CrashLog.WriteException("Login failed",ex); StatusText.Text=UiLanguage.T("Anmeldung fehlgeschlagen")+": "+ex.Message; }
         finally
         {
             SetBusy(false);
@@ -227,7 +227,7 @@ public partial class LoginWindow : Window
             StatusText.Text = UiLanguage.T("TRAININGSMODUS wird geöffnet ...");
             if(LoginSucceeded is not null) await LoginSucceeded(trainingUser);
         }
-        catch(Exception ex) { CrashLog.WriteException("Login failed",ex); StatusText.Text="Anmeldung fehlgeschlagen: "+ex.Message; }
+        catch(Exception ex) { CrashLog.WriteException("Login failed",ex); StatusText.Text=UiLanguage.T("Anmeldung fehlgeschlagen")+": "+ex.Message; }
         finally
         {
             SetBusy(false);
