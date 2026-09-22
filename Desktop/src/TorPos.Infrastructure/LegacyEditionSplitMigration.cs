@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -55,8 +56,9 @@ public static class LegacyEditionSplitMigration
         if(permanentLock is null) return new(LegacySplitMigrationState.LegacyEditionUnproven,edition,legacyDirectory,targetDirectory);
         if(!string.Equals(permanentLock,edition,StringComparison.Ordinal)) return new(LegacySplitMigrationState.LegacyEditionMismatch,edition,legacyDirectory,targetDirectory);
 
-        // Freeze a fingerprint before backup/copy. Both artifacts must contain the exact same
-        // main database bytes; this detects a concurrent writer that escaped process/mutex checks.
+        // Freeze a fingerprint before backup/copy. The main database is checked against the
+        // backup and staging copy; the post-recovery state fingerprint below additionally
+        // includes WAL bytes so rollback cannot miss committed WAL-only writes.
         var sourceDbHash=Sha256File(legacyDb);
         Directory.CreateDirectory(backupDirectory);
         var stamp=DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"); var suffix=Guid.NewGuid().ToString("N")[..10];
@@ -74,7 +76,8 @@ public static class LegacyEditionSplitMigration
             var stagedDb=Path.Combine(staging,"torpos.db"); VerifyDatabaseReadable(stagedDb);
             var migratedDbHash=Sha256File(stagedDb);
             if(!string.Equals(sourceDbHash,migratedDbHash,StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Legacy database changed while split migration was being copied.");
-            var marker=new LegacySplitMigrationMarker(2,DateTimeOffset.UtcNow,legacyDirectory,edition,backupPath,migratedDbHash);
+            var stateFingerprint=DatabaseStateFingerprint(staging);
+            var marker=new LegacySplitMigrationMarker(3,DateTimeOffset.UtcNow,legacyDirectory,edition,backupPath,stateFingerprint);
             await File.WriteAllTextAsync(Path.Combine(staging,MarkerFileName),JsonSerializer.Serialize(marker,new JsonSerializerOptions{WriteIndented=true}),ct);
             if(Directory.Exists(targetDirectory)){if(Directory.EnumerateFileSystemEntries(targetDirectory).Any()) throw new InvalidOperationException("Split target became non-empty during migration."); Directory.Delete(targetDirectory);}
             Directory.Move(staging,targetDirectory);
@@ -95,7 +98,14 @@ public static class LegacyEditionSplitMigration
         if(!File.Exists(Path.Combine(marker.SourceDirectory,"torpos.db"))) return new(LegacySplitRollbackState.LegacySourceMissing,marker.SourceDirectory,marker.BackupPath);
         var targetDb=Path.Combine(targetDirectory,"torpos.db");
         if(string.IsNullOrWhiteSpace(marker.TargetDatabaseSha256)||!File.Exists(targetDb)) return new(LegacySplitRollbackState.DedicatedDataChanged,marker.SourceDirectory,marker.BackupPath);
-        var unchanged=string.Equals(Sha256File(targetDb),marker.TargetDatabaseSha256,StringComparison.OrdinalIgnoreCase);
+        // Format 3 fingerprints the complete persistent SQLite state (main DB + WAL).
+        // Older format-2 markers hashed only torpos.db; treat them conservatively if a WAL
+        // exists because committed dedicated writes can live only in that file.
+        bool unchanged;
+        if(marker.Format >= 3)
+            unchanged=string.Equals(DatabaseStateFingerprint(targetDirectory),marker.TargetDatabaseSha256,StringComparison.OrdinalIgnoreCase);
+        else
+            unchanged=!File.Exists(targetDb+"-wal") && string.Equals(Sha256File(targetDb),marker.TargetDatabaseSha256,StringComparison.OrdinalIgnoreCase);
         return new(unchanged?LegacySplitRollbackState.SafeBeforeDedicatedWrites:LegacySplitRollbackState.DedicatedDataChanged,marker.SourceDirectory,marker.BackupPath);
     }
 
@@ -122,6 +132,25 @@ public static class LegacyEditionSplitMigration
         using var connection=new SqliteConnection(cs); connection.Open(); using var command=connection.CreateCommand(); command.CommandText="PRAGMA quick_check;";
         var value=Convert.ToString(command.ExecuteScalar()); if(!string.Equals(value,"ok",StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Migrated database failed SQLite quick_check.");
     }
+
+    private static string DatabaseStateFingerprint(string directory)
+    {
+        // -shm is intentionally excluded: it is transient shared-memory state. WAL is
+        // persistent transaction state and MUST participate in rollback qualification.
+        using var hash=IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach(var name in new[]{"torpos.db","torpos.db-wal"})
+        {
+            var path=Path.Combine(directory,name);
+            var nameBytes=Encoding.UTF8.GetBytes(name);
+            hash.AppendData(BitConverter.GetBytes(nameBytes.Length)); hash.AppendData(nameBytes);
+            if(!File.Exists(path)){hash.AppendData(new byte[]{0});continue;}
+            hash.AppendData(new byte[]{1});
+            using var stream=File.OpenRead(path); var buffer=new byte[81920]; int read;
+            while((read=stream.Read(buffer,0,buffer.Length))>0) hash.AppendData(buffer,0,read);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
     private static string Sha256File(string path){using var stream=File.OpenRead(path);return Convert.ToHexString(SHA256.HashData(stream));}
     private static void CopyDirectory(string source,string destination,CancellationToken ct)
     {
