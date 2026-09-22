@@ -515,7 +515,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Split-product foundation: 20 checks keep KIOSK/DÖNER process, storage,
 // compile-time identity, side-by-side installers and backup-first legacy
 // migration separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1148;
+const int ExpectedSafetyChecks = 1149;
 
 if (checks != ExpectedSafetyChecks)
 {
