@@ -76,9 +76,31 @@ public static class EditionSplitFoundationTests
                 await q.ExecuteNonQueryAsync();
             }
             var changedRollback = LegacyEditionSplitMigration.EvaluateRollback(target);
+
+            // A committed SQLite write may live only in the WAL while the main DB file
+            // still has the exact migration hash. Rollback must still fail closed.
+            var walTarget = Path.Combine(migrationRoot, "wal-target");
+            var walMigration = await LegacyEditionSplitMigration.TryMigrateAsync(legacy, walTarget, backups, "KIOSK");
+            LegacySplitRollbackResult walOnlyRollback;
+            await using (var c = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(walTarget, "torpos.db"), Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
+            {
+                await c.OpenAsync();
+                await using (var pragma = c.CreateCommand())
+                {
+                    pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;";
+                    await pragma.ExecuteNonQueryAsync();
+                }
+                await using (var q = c.CreateCommand())
+                {
+                    q.CommandText = "INSERT INTO probe(value) VALUES ('R182-wal-only-write');";
+                    await q.ExecuteNonQueryAsync();
+                }
+                walOnlyRollback = LegacyEditionSplitMigration.EvaluateRollback(walTarget);
+            }
+
             var wrongTarget = Path.Combine(migrationRoot, "wrong-target");
             var mismatch = await LegacyEditionSplitMigration.TryMigrateAsync(legacy, wrongTarget, backups, "IMBISS");
-            assert(mismatch.State == LegacySplitMigrationState.LegacyEditionMismatch && !Directory.Exists(wrongTarget) && changedRollback.State == LegacySplitRollbackState.DedicatedDataChanged, "wrong-edition migration is refused and automatic rollback closes after dedicated fiscal data changes");
+            assert(mismatch.State == LegacySplitMigrationState.LegacyEditionMismatch && !Directory.Exists(wrongTarget) && changedRollback.State == LegacySplitRollbackState.DedicatedDataChanged && walMigration.State == LegacySplitMigrationState.Migrated && walOnlyRollback.State == LegacySplitRollbackState.DedicatedDataChanged, "wrong-edition migration is refused and automatic rollback closes after dedicated fiscal data changes, including committed WAL-only writes");
 
             File.Delete(Path.Combine(legacy, "edition.permanent.lock"));
             var unprovenTarget = Path.Combine(migrationRoot, "unproven-target");
