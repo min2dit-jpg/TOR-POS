@@ -4894,6 +4894,7 @@ public partial class MainWindow:Window
 
         var close = new Button { Content = "SCHLIESSEN", MinHeight = 48 };
         close.Click += (_, _) => window.Close(); panel.Children.Add(close);
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
     }
 

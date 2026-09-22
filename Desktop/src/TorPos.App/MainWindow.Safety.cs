@@ -17,6 +17,7 @@ public partial class MainWindow
         window.Content = new ScrollViewer { Content = new StackPanel { Margin = new Avalonia.Thickness(22), Spacing = 20,
             Children = { new TextBlock { Text = title, FontSize = 22 },
                 new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, close } } };
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
     }
 
@@ -65,6 +66,7 @@ public partial class MainWindow
             }
         };
 
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
         if (action == "settings")
             await OpenSettingsPageAsync("Geräte");
@@ -112,6 +114,7 @@ public partial class MainWindow
                     Children = { continueButton, settingsButton, cancelButton } }
             }
         };
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
         if (action == "settings")
             await OpenSettingsPageAsync("Geräte");
@@ -309,6 +312,7 @@ public partial class MainWindow
             dialog.Content=new StackPanel {Margin=new Avalonia.Thickness(22),Spacing=12,Children={
                 new TextBlock {Text="Zuerst Windows-Druckwarteschlange und Papierbelege prüfen. Noch laufende Aufträge können später drucken.",TextWrapping=Avalonia.Media.TextWrapping.Wrap},
                 new TextBox {IsReadOnly=true,AcceptsReturn=true,Height=160,Text=string.Join("\n",jobs.Select(j=>$"{j.State} · {(j.Kitchen is not null ? "Küche P"+j.Kitchen.ParkNumber : j.PickupSlip is not null ? "Abholschein P"+j.PickupSlip.ParkNumber : j.Report is not null ? "Bericht " + j.Report.Title : j.Error is not null ? "Fehler " + j.Error.ErrorId : "Bon " + j.Receipt?.ReceiptNumber)} · {j.Id}"))},password,proof,confirm,status}};
+            UiLanguage.Apply(dialog);
             await dialog.ShowDialog(this);
         }
         catch(Exception ex) { ReportOperationalError("DRUCKER","Druckjournal prüfen.",ex,printerRelated:true); }

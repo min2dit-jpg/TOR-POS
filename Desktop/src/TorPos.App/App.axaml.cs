@@ -280,6 +280,7 @@ public partial class App : Avalonia.Application
                     WindowStartupLocation=WindowStartupLocation.CenterScreen
                 };
                 closing.Closing+=(_,e)=> { if(!exitCleanupDone) e.Cancel=true; };
+                UiLanguage.Apply(closing);
                 desktop.MainWindow=closing; closing.Show();
                 await dailyBackup.DisposeAsync();
                 await monthlyReports.DisposeAsync();

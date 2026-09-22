@@ -1893,6 +1893,7 @@ public partial class SettingsWindow : Window
             }
         };
 
+        UiLanguage.Apply(dialog);
         await dialog.ShowDialog(this);
     }
 
@@ -3717,6 +3718,7 @@ private Control TsePage()
         };
         Grid.SetColumn(cancel, 1);
         dialog.Opened += (_, _) => input.Focus();
+        UiLanguage.Apply(dialog);
         return await dialog.ShowDialog<string?>(this);
     }
 
@@ -3787,6 +3789,7 @@ private Control TsePage()
         Grid.SetColumn(cancel, 1);
         dialog.Opened += (_, _) => input.Focus();
 
+        UiLanguage.Apply(dialog);
         var newPassword = await dialog.ShowDialog<string?>(this);
         if (newPassword is null)
             return false;
@@ -3906,6 +3909,7 @@ private Control TsePage()
                 buttons
             }
         };
+        UiLanguage.Apply(dialog);
         return await dialog.ShowDialog<bool>(this);
     }
 
@@ -3932,6 +3936,7 @@ private Control TsePage()
                 close
             }
         };
+        UiLanguage.Apply(dialog);
         await dialog.ShowDialog(this);
     }
 

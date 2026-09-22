@@ -161,9 +161,7 @@ public static class MultiLanguageTests
         ];
         var windows = 0;
         var unrendered = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(FindRepoDirectory("Desktop/src/TorPos.App"), "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
-                     && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        foreach (var file in AppSources())
         {
             var source = File.ReadAllText(file);
             var declarations = Regex.Matches(source, "class\\s+(\\w+)\\s*:\\s*Window\\b").ToArray();
@@ -183,6 +181,34 @@ public static class MultiLanguageTests
             windows > 40 && unrendered.Count == 0,
             "every operator window renders itself in the chosen language, and the windows that stay German are named and justified");
 
+        // Not every dialog is a class. The "something went wrong" and "are you
+        // sure" windows are built inline, shown once and dropped - and they are
+        // the text a cashier reads at the worst moment. They are invisible to the
+        // check above, so they are counted here: every inline window renders
+        // itself before it is shown, and every one of them is assigned to a
+        // variable, so none can hide from this count.
+        var inlineWindows = 0;
+        var assignedWindows = 0;
+        var unrenderedDialogs = new List<string>();
+        foreach (var file in AppSources())
+        {
+            var source = File.ReadAllText(file);
+            inlineWindows += Regex.Matches(source, "new Window\\b").Count;
+            foreach (Match declaration in Regex.Matches(source, "(\\w+)\\s*=\\s*new Window\\b"))
+            {
+                assignedWindows++;
+                var name = declaration.Groups[1].Value;
+                var rest = source[declaration.Index..];
+                var shown = Regex.Match(rest, $"\\b{Regex.Escape(name)}\\.(ShowDialog|Show)\\s*[<(]");
+                var built = shown.Success ? rest[..shown.Index] : rest;
+                if (!built.Contains("UiLanguage.Apply", StringComparison.Ordinal))
+                    unrenderedDialogs.Add($"{Path.GetFileName(file)}:{name}");
+            }
+        }
+        assert(
+            inlineWindows >= 10 && assignedWindows == inlineWindows && unrenderedDialogs.Count == 0,
+            "the message and confirmation windows that are built inline also render in the chosen language before they are shown");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
@@ -194,6 +220,11 @@ public static class MultiLanguageTests
 
         return Task.CompletedTask;
     }
+
+    private static IEnumerable<string> AppSources() =>
+        Directory.EnumerateFiles(FindRepoDirectory("Desktop/src/TorPos.App"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                     && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
 
     private static IEnumerable<KeyValuePair<string, string>> Pairs(string block) =>
         Regex.Matches(block, "\\[\"((?:[^\"\\\\]|\\\\.)*)\"\\]\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")

@@ -239,6 +239,26 @@ internal static class UiTranslations
         ["PFAND-RÜCKGABE · 8 CENT"] = "DEPOZİTO İADESİ · 8 SENT",
         ["PFAND-RÜCKGABE · 15 CENT"] = "DEPOZİTO İADESİ · 15 SENT",
         ["PFAND-RÜCKGABE · 25 CENT"] = "DEPOZİTO İADESİ · 25 SENT",
+
+        // Hinweis-, Drucker- und Berichtsfenster
+        ["DRUCKEREINSTELLUNGEN"] = "YAZICI AYARLARI",
+        ["DRUCKWARTESCHLANGE PRÜFEN"] = "YAZDIRMA KUYRUĞUNU KONTROL ET",
+        ["OHNE DRUCKER FORTFAHREN"] = "YAZICI OLMADAN DEVAM ET",
+        ["LÖSCHEN"] = "SİL",
+        ["Wichtig: Nach einem Timeout nicht blind erneut drucken. Der alte Auftrag kann noch in Windows liegen."] =
+            "Önemli: Zaman aşımından sonra körlemesine yeniden yazdırmayın. Eski iş hâlâ Windows'ta bekliyor olabilir.",
+        ["Prüfen: Drucker eingeschaltet, USB/LAN verbunden, Papier eingelegt und der richtige Windows-Drucker ausgewählt."] =
+            "Kontrol edin: yazıcı açık mı, USB/LAN bağlı mı, kâğıt takılı mı ve doğru Windows yazıcısı seçili mi.",
+        ["BAR/KARTE wird standardmäßig abgebrochen. Nur wenn bewusst ohne Bondruck fortgefahren werden soll, OHNE DRUCKER FORTFAHREN wählen."] =
+            "NAKİT/KART varsayılan olarak iptal edilir. Yalnızca fiş yazdırmadan bilerek devam edilecekse YAZICI OLMADAN DEVAM ET seçin.",
+        ["Zuerst Windows-Druckwarteschlange und Papierbelege prüfen. Noch laufende Aufträge können später drucken."] =
+            "Önce Windows yazdırma kuyruğunu ve kâğıt belgeleri kontrol edin. Hâlâ çalışan işler daha sonra yazdırabilir.",
+        ["TOR POS · Beenden"] = "TOR POS · Kapat",
+        ["Datensicherung wird erstellt …"] = "Yedekleme oluşturuluyor …",
+        ["Berichte · Tageskontrolle"] = "Raporlar · günlük kontrol",
+        ["BERICHTE · TAGESKONTROLLE"] = "RAPORLAR · GÜNLÜK KONTROL",
+        ["Auswertungen öffnen, als PDF speichern oder direkt auf Bon-/A4-Drucker ausgeben. Ein Bericht führt keinen Tagesabschluss aus."] =
+            "Değerlendirmeleri açın, PDF olarak kaydedin veya doğrudan fiş/A4 yazıcısına gönderin. Bir rapor gün sonu kapanışı yapmaz.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -451,5 +471,25 @@ internal static class UiTranslations
         ["PFAND-RÜCKGABE · 8 CENT"] = "DEPOSIT RETURN · 8 CENT",
         ["PFAND-RÜCKGABE · 15 CENT"] = "DEPOSIT RETURN · 15 CENT",
         ["PFAND-RÜCKGABE · 25 CENT"] = "DEPOSIT RETURN · 25 CENT",
+
+        // Hinweis-, Drucker- und Berichtsfenster
+        ["DRUCKEREINSTELLUNGEN"] = "PRINTER SETTINGS",
+        ["DRUCKWARTESCHLANGE PRÜFEN"] = "CHECK PRINT QUEUE",
+        ["OHNE DRUCKER FORTFAHREN"] = "CONTINUE WITHOUT PRINTER",
+        ["LÖSCHEN"] = "DELETE",
+        ["Wichtig: Nach einem Timeout nicht blind erneut drucken. Der alte Auftrag kann noch in Windows liegen."] =
+            "Important: after a timeout do not simply print again. The old job may still be sitting in Windows.",
+        ["Prüfen: Drucker eingeschaltet, USB/LAN verbunden, Papier eingelegt und der richtige Windows-Drucker ausgewählt."] =
+            "Check: printer switched on, USB/LAN connected, paper loaded and the right Windows printer selected.",
+        ["BAR/KARTE wird standardmäßig abgebrochen. Nur wenn bewusst ohne Bondruck fortgefahren werden soll, OHNE DRUCKER FORTFAHREN wählen."] =
+            "CASH/CARD is cancelled by default. Choose CONTINUE WITHOUT PRINTER only if you deliberately want to go on without a printed receipt.",
+        ["Zuerst Windows-Druckwarteschlange und Papierbelege prüfen. Noch laufende Aufträge können später drucken."] =
+            "Check the Windows print queue and the paper receipts first. Jobs that are still running may print later.",
+        ["TOR POS · Beenden"] = "TOR POS · Exit",
+        ["Datensicherung wird erstellt …"] = "Creating backup …",
+        ["Berichte · Tageskontrolle"] = "Reports · daily check",
+        ["BERICHTE · TAGESKONTROLLE"] = "REPORTS · DAILY CHECK",
+        ["Auswertungen öffnen, als PDF speichern oder direkt auf Bon-/A4-Drucker ausgeben. Ein Bericht führt keinen Tagesabschluss aus."] =
+            "Open an evaluation, save it as a PDF or send it straight to the receipt or A4 printer. A report does not close the day.",
     };
 }
