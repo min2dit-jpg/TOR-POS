@@ -2978,11 +2978,13 @@ public partial class MainWindow:Window
 
     private async Task OpenPaymentWindowAsync(bool invokedByQuickCheckout)
     {
-        if (CartLocked || _engine.Cart.Count == 0 || !CanCompleteSale())
+        var restaurantDraft = _restaurantCheckoutDraft;
+        var hasCheckoutLines = restaurantDraft is not null || _engine.Cart.Count > 0;
+        if (CartLocked || !hasCheckoutLines || !CanCompleteSale())
             return;
 
-        var allowImHaus = IsImbissBusiness();
-        var paymentTotal = _engine.TotalCents;
+        var allowImHaus = restaurantDraft is null && IsImbissBusiness();
+        var paymentTotal = restaurantDraft?.TotalCents ?? _engine.TotalCents;
         var choice = await new PaymentChoiceWindow(
                 _cashEnabledBySettings,
                 _cardEnabledBySettings,
@@ -2995,7 +2997,9 @@ public partial class MainWindow:Window
         if (choice is null)
             return;
 
-        _imHaus = allowImHaus && choice.ImHaus;
+        _imHaus = restaurantDraft is not null
+            ? true
+            : allowImHaus && choice.ImHaus;
 
         // R168: Verkaufsart, BAR/KARTE/GEMISCHT and BAR/GEMISCHT amount entry
         // all live in this one payment page. No second cash/mixed/test-card page.
@@ -3023,20 +3027,39 @@ public partial class MainWindow:Window
             cardConfirmedOnPaymentPage: true);
     }
 
-    private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
-        _operationId,
-        CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
-        _engine.DiscountCents,
-        method,
-        _currentUser.Username,
-        _activeParkedReceiptId,
-        _imHaus,
-        cashPortionCents,
-        _tseVorgang.VorgangId ?? "",
-        _tseVorgang.StartedAt,
-        _tseVorgang.CancelledLines.Count == 0
-            ? null
-            : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
+    private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0)
+    {
+        if (_restaurantCheckoutDraft is { } restaurant)
+        {
+            return new CheckoutSnapshot(
+                restaurant.OperationId,
+                CheckoutSnapshot.CopyLines(restaurant.Lines, imHaus: true),
+                0,
+                method,
+                _currentUser.Username,
+                ParkedReceiptId: null,
+                ImHaus: true,
+                CashPortionCents: cashPortionCents,
+                TseVorgangId: "",
+                StartedAt: null,
+                CancelledLines: null);
+        }
+
+        return new CheckoutSnapshot(
+            _operationId,
+            CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
+            _engine.DiscountCents,
+            method,
+            _currentUser.Username,
+            _activeParkedReceiptId,
+            _imHaus,
+            cashPortionCents,
+            _tseVorgang.VorgangId ?? "",
+            _tseVorgang.StartedAt,
+            _tseVorgang.CancelledLines.Count == 0
+                ? null
+                : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
+    }
 
     private void SetCheckoutBusy(bool busy)
     {
@@ -3056,7 +3079,9 @@ public partial class MainWindow:Window
         CashPaymentResult? paymentPageCash = null,
         bool cardConfirmedOnPaymentPage = false)
     {
-        if (CartLocked || _engine.Cart.Count==0 || !CanCompleteSale()) return;
+        var restaurantDraft = _restaurantCheckoutDraft;
+        var hasCheckoutLines = restaurantDraft is not null || _engine.Cart.Count > 0;
+        if (CartLocked || !hasCheckoutLines || !CanCompleteSale()) return;
         var snapshot=CaptureCheckout(method, cashPortionCents);
         // R149: returned deposit exceeding the purchase is paid out - in cash only.
         if (snapshot.TotalCents < 0 && method != PaymentMethod.Cash)
@@ -3226,6 +3251,15 @@ public partial class MainWindow:Window
                     _ = PrintSimulationAsync(testJob);
                 return;
             }
+            if (restaurantDraft is not null)
+            {
+                // Restaurant selection becomes durable only immediately before
+                // the production checkout can create an external payment effect.
+                // The reservation locks this Tischvorgang against concurrent
+                // handheld/till edits until payment is applied or explicitly cancelled.
+                await _restaurant.PreparePaymentReservationAsync(restaurantDraft);
+            }
+
             var prepared =
                 await _checkoutApplication.PrepareProductionAsync(
                     snapshot);
@@ -3241,6 +3275,14 @@ public partial class MainWindow:Window
 
             if(prepared.Disposition==CheckoutApplicationDisposition.FiscalBlocked)
             {
+                if (restaurantDraft is not null)
+                {
+                    await _restaurant.CancelPaymentReservationAsync(
+                        restaurantDraft.OperationId);
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                }
+
                 ScannerStatus.Text=
                     $"FISKAL-FREIGABE FEHLT · keine Zahlung gestartet · " +
                     $"{prepared.FiscalReadiness.BlockingCount} Blocker";
@@ -3256,6 +3298,13 @@ public partial class MainWindow:Window
 
             if(prepared.Disposition==CheckoutApplicationDisposition.NotCharged)
             {
+                if (restaurantDraft is not null)
+                {
+                    await _restaurant.CancelPaymentReservationAsync(
+                        restaurantDraft.OperationId);
+                    _restaurantCheckoutDraft = null;
+                }
+
                 _pendingCheckout=null;
                 _operationId=Guid.NewGuid().ToString("N");
                 PersistOpenCartRecovery();
@@ -3296,6 +3345,12 @@ public partial class MainWindow:Window
             }
 
             await CommitCheckoutAsync(operation.Snapshot,cash);
+
+            if (restaurantDraft is not null)
+            {
+                _restaurantCheckoutDraft = null;
+                _operationId = Guid.NewGuid().ToString("N");
+            }
         }
         catch(Exception ex)
         {
