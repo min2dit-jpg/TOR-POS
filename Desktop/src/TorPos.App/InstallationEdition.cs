@@ -83,7 +83,7 @@ public static class InstallationEdition
     {
         var requested = firstRunSelection;
 
-        // R182: in a dedicated TOR KIOSK / TOR DÖNER build the compiled product identity
+        // R182: in a dedicated TOR Einzelhandel / TOR Gastro build the compiled product identity
         // outranks every runtime source. The TOR_POS_EDITION fallback stays available for
         // the shared build only, and a mismatching request is refused instead of applied.
         var productEditionValue = ProductBuild.FixedEdition;

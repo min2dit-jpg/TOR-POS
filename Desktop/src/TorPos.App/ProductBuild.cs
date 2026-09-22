@@ -2,16 +2,16 @@ namespace TorPos.App;
 
 public static class ProductBuild
 {
-#if TOR_KIOSK_PRODUCT
+#if TOR_EINZELHANDEL_PRODUCT
     public const string? FixedEdition = "KIOSK";
-    public const string ProductName = "TOR KIOSK";
-    public const string DataDirectoryName = "TOR-KIOSK";
-    public const string RunningMutexName = "TOR-KIOSK-Running";
-#elif TOR_DOENER_PRODUCT
+    public const string ProductName = "TOR Einzelhandel";
+    public const string DataDirectoryName = "TOR-Einzelhandel";
+    public const string RunningMutexName = "TOR-Einzelhandel-Running";
+#elif TOR_GASTRO_PRODUCT
     public const string? FixedEdition = "IMBISS";
-    public const string ProductName = "TOR DÖNER";
-    public const string DataDirectoryName = "TOR-DOENER";
-    public const string RunningMutexName = "TOR-DOENER-Running";
+    public const string ProductName = "TOR Gastro";
+    public const string DataDirectoryName = "TOR-Gastro";
+    public const string RunningMutexName = "TOR-Gastro-Running";
 #else
     // Legacy/shared build remains available while the split is being qualified.
     public const string? FixedEdition = null;

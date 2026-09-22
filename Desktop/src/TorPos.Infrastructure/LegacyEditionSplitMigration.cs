@@ -39,7 +39,7 @@ public static class LegacyEditionSplitMigration
         if (edition is null) return Task.FromResult(new LegacySplitMigrationResult(LegacySplitMigrationState.NotSplitProduct,"", "", ""));
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var legacy = Path.Combine(appData,"TOR-POS-Pro");
-        var target = Path.Combine(appData,edition == "KIOSK" ? "TOR-KIOSK" : "TOR-DOENER");
+        var target = Path.Combine(appData,edition == "KIOSK" ? "TOR-Einzelhandel" : "TOR-Gastro");
         var backupRoot = Path.Combine(appData,"TOR-POS-Migration-Backups");
         return TryMigrateAsync(legacy,target,backupRoot,edition,checkLegacyMutex:true,ct);
     }

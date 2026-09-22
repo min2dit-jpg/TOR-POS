@@ -291,7 +291,7 @@ public sealed class StartupLoadingWindow : Window
     {
         try
         {
-            // R182: a dedicated TOR KIOSK / TOR DÖNER build renames the assembly, and
+            // R182: a dedicated TOR Einzelhandel / TOR Gastro build renames the assembly, and
             // avares URIs are keyed by assembly name. Derive it instead of hardcoding it.
             var assetAssembly = typeof(StartupLoadingWindow).Assembly.GetName().Name;
             var uri = new Uri($"avares://{assetAssembly}/Assets/TorPos-Brand.jpg");

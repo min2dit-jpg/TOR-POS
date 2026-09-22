@@ -11,12 +11,12 @@ public static class EditionSplitFoundationTests
             assert(ProductBuild.FixedEdition is null, "split foundation keeps the default safety build on the legacy shared product identity");
             Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "KIOSK");
             assert(AppPaths.ProductEdition == "KIOSK", "split foundation recognizes the fixed KIOSK product edition");
-            assert(AppPaths.ProductDataDirectoryName() == "TOR-KIOSK", "TOR KIOSK receives its own AppData root");
-            assert(AppPaths.TrialIdentityDirectory.EndsWith("TOR-KIOSK", StringComparison.Ordinal), "TOR KIOSK receives its own machine-wide licence/trial identity root");
+            assert(AppPaths.ProductDataDirectoryName() == "TOR-Einzelhandel", "TOR Einzelhandel receives its own AppData root");
+            assert(AppPaths.TrialIdentityDirectory.EndsWith("TOR-Einzelhandel", StringComparison.Ordinal), "TOR Einzelhandel receives its own machine-wide licence/trial identity root");
             Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "IMBISS");
             assert(AppPaths.ProductEdition == "IMBISS", "split foundation recognizes the fixed IMBISS product edition");
-            assert(AppPaths.ProductDataDirectoryName() == "TOR-DOENER", "TOR DÖNER receives its own AppData root");
-            assert(AppPaths.TrialIdentityDirectory.EndsWith("TOR-DOENER", StringComparison.Ordinal), "TOR DÖNER receives its own machine-wide licence/trial identity root");
+            assert(AppPaths.ProductDataDirectoryName() == "TOR-Gastro", "TOR Gastro receives its own AppData root");
+            assert(AppPaths.TrialIdentityDirectory.EndsWith("TOR-Gastro", StringComparison.Ordinal), "TOR Gastro receives its own machine-wide licence/trial identity root");
             Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "invalid");
             assert(AppPaths.ProductEdition is null && AppPaths.ProductDataDirectoryName() == "TOR-POS-Pro", "unknown product identity fails back to the legacy shared R181 data root");
 
@@ -36,11 +36,11 @@ public static class EditionSplitFoundationTests
             assert(AppPaths.ProductEdition is null && AppPaths.ProductDataDirectoryName() == "TOR-POS-Pro", "the shared build pins its own product identity instead of inheriting one from the environment");
 
             var project = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/TorPos.App.csproj"));
-            assert(project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'KIOSK'\">TOR-KIOSK</AssemblyName>", StringComparison.Ordinal) && project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'IMBISS'\">TOR-DOENER</AssemblyName>", StringComparison.Ordinal) && project.Contains("TOR_KIOSK_PRODUCT", StringComparison.Ordinal) && project.Contains("TOR_DOENER_PRODUCT", StringComparison.Ordinal), "one audited App project emits distinct TOR KIOSK and TOR DÖNER binaries");
+            assert(project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'KIOSK'\">TOR-Einzelhandel</AssemblyName>", StringComparison.Ordinal) && project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'IMBISS'\">TOR-Gastro</AssemblyName>", StringComparison.Ordinal) && project.Contains("TOR_EINZELHANDEL_PRODUCT", StringComparison.Ordinal) && project.Contains("TOR_GASTRO_PRODUCT", StringComparison.Ordinal), "one audited App project emits distinct TOR Einzelhandel and TOR Gastro binaries");
             var program = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/Program.cs"));
             var app = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/App.axaml.cs"));
             // R182: avares URIs are keyed by assembly name, and a dedicated build renames
-            // the assembly to TOR-KIOSK / TOR-DOENER. A hardcoded avares://TorPos.App/ URI
+            // the assembly to TOR-Einzelhandel / TOR-Gastro. A hardcoded avares://TorPos.App/ URI
             // therefore resolves in the shared build and throws FileNotFoundException while
             // the dedicated product loads its login window - it cannot start at all.
             var appDirectory = Path.GetDirectoryName(FindRepoFile("Desktop/src/TorPos.App/Program.cs"))!;
@@ -51,7 +51,13 @@ public static class EditionSplitFoundationTests
                     && !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 .Where(f => File.ReadAllText(f).Contains("avares://TorPos.App/", StringComparison.Ordinal))
                 .ToArray();
-            assert(sharedAssemblyAssetUris.Length == 0, "no asset URI hardcodes the shared assembly name, which a renamed TOR KIOSK / TOR DÖNER build cannot resolve");
+            assert(sharedAssemblyAssetUris.Length == 0, "no asset URI hardcodes the shared assembly name, which a renamed TOR Einzelhandel / TOR Gastro build cannot resolve");
+
+            // The customer-facing names may change (a TOR Restaurant product is planned);
+            // the stored edition codes may not, because databases, licences, Cloud payloads
+            // and edition.permanent.lock files on customer machines carry KIOSK / IMBISS.
+            var productBuild = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/ProductBuild.cs"));
+            assert(productBuild.Contains("ProductName = \"TOR Einzelhandel\"", StringComparison.Ordinal) && productBuild.Contains("ProductName = \"TOR Gastro\"", StringComparison.Ordinal) && productBuild.Contains("FixedEdition = \"KIOSK\"", StringComparison.Ordinal) && productBuild.Contains("FixedEdition = \"IMBISS\"", StringComparison.Ordinal), "the products are named TOR Einzelhandel and TOR Gastro while their stored edition codes stay KIOSK and IMBISS");
 
             var editionGuard = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/InstallationEdition.cs"));
             assert(editionGuard.Contains("var productEditionValue = ProductBuild.FixedEdition;", StringComparison.Ordinal) && editionGuard.Contains("productEditionValue is { } productEdition", StringComparison.Ordinal) && editionGuard.Contains("?? Environment.GetEnvironmentVariable(\"TOR_POS_EDITION\")", StringComparison.Ordinal), "a dedicated build refuses any edition that does not match its compiled product identity");
@@ -60,15 +66,15 @@ public static class EditionSplitFoundationTests
         finally { Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", original); }
 
         var installer = File.ReadAllText(FindRepoFile("Desktop/TOR-POS-Pro-Setup.iss"));
-        var kioskInstaller = File.ReadAllText(FindRepoFile("Desktop/TOR-KIOSK-Setup.iss"));
-        var doenerInstaller = File.ReadAllText(FindRepoFile("Desktop/TOR-DOENER-Setup.iss"));
+        var einzelhandelInstaller = File.ReadAllText(FindRepoFile("Desktop/TOR-Einzelhandel-Setup.iss"));
+        var gastroInstaller = File.ReadAllText(FindRepoFile("Desktop/TOR-Gastro-Setup.iss"));
         var splitPublish = File.ReadAllText(FindRepoFile("Desktop/BUILD-SPLIT-EDITIONS.ps1"));
         var workflow = File.ReadAllText(FindRepoFile(".github/workflows/tor-pos-ci.yml"));
         assert(installer.Contains("AppId={#MyAppId}", StringComparison.Ordinal) && installer.Contains("DefaultDirName={autopf}\\{#MyDefaultDirName}", StringComparison.Ordinal) && installer.Contains("AppMutex={#MyAppMutex}", StringComparison.Ordinal) && installer.Contains("{userappdata}\\{#MyDataDirName}", StringComparison.Ordinal), "base installer is parameterized so split products do not share install identity, mutex or user data paths");
-        assert(kioskInstaller.Contains("TOR-KIOSK.exe", StringComparison.Ordinal) && kioskInstaller.Contains("TOR-KIOSK-Running", StringComparison.Ordinal) && kioskInstaller.Contains("TOR-KIOSK-Setup", StringComparison.Ordinal) && doenerInstaller.Contains("TOR-DOENER.exe", StringComparison.Ordinal) && doenerInstaller.Contains("TOR-DOENER-Running", StringComparison.Ordinal) && doenerInstaller.Contains("TOR-DOENER-Setup", StringComparison.Ordinal), "TOR KIOSK and TOR DÖNER have distinct installer, executable and process identities");
-        assert(kioskInstaller.Contains("A4E3F6A1-4B7A-4F51-8D7E-2C4A8B9F1D21", StringComparison.Ordinal) && doenerInstaller.Contains("B7D2C9E4-6A35-4C88-9F12-5E71A3D8C642", StringComparison.Ordinal), "split installers use distinct stable Windows AppIds and can be installed side by side");
-        assert(installer.Contains("Name: \"{commonappdata}\\{#MyDataDirName}\"; Permissions: users-modify; Flags: uninsneveruninstall", StringComparison.Ordinal) && installer.Contains("{commondesktop}\\{#MyAppName}", StringComparison.Ordinal) && installer.Contains("{commonprograms}\\{#MyDefaultGroupName}\\{#MyAppName}", StringComparison.Ordinal) && !kioskInstaller.Contains("B7D2C9E4-6A35-4C88-9F12-5E71A3D8C642", StringComparison.Ordinal) && !doenerInstaller.Contains("A4E3F6A1-4B7A-4F51-8D7E-2C4A8B9F1D21", StringComparison.Ordinal), "split uninstall preserves product data and each installer owns only its own Windows identity and shortcuts");
-        assert(splitPublish.Contains("-p:TorProductEdition=$Edition", StringComparison.Ordinal) && workflow.Contains("TOR-POS-Split-Setups-", StringComparison.Ordinal) && workflow.Contains("TOR-KIOSK-Setup.exe", StringComparison.Ordinal) && workflow.Contains("TOR-DOENER-Setup.exe", StringComparison.Ordinal), "CI publishes and packages both dedicated product variants rather than only compiling the shared app");
+        assert(einzelhandelInstaller.Contains("TOR-Einzelhandel.exe", StringComparison.Ordinal) && einzelhandelInstaller.Contains("TOR-Einzelhandel-Running", StringComparison.Ordinal) && einzelhandelInstaller.Contains("TOR-Einzelhandel-Setup", StringComparison.Ordinal) && gastroInstaller.Contains("TOR-Gastro.exe", StringComparison.Ordinal) && gastroInstaller.Contains("TOR-Gastro-Running", StringComparison.Ordinal) && gastroInstaller.Contains("TOR-Gastro-Setup", StringComparison.Ordinal), "TOR Einzelhandel and TOR Gastro have distinct installer, executable and process identities");
+        assert(einzelhandelInstaller.Contains("A4E3F6A1-4B7A-4F51-8D7E-2C4A8B9F1D21", StringComparison.Ordinal) && gastroInstaller.Contains("B7D2C9E4-6A35-4C88-9F12-5E71A3D8C642", StringComparison.Ordinal), "split installers use distinct stable Windows AppIds and can be installed side by side");
+        assert(installer.Contains("Name: \"{commonappdata}\\{#MyDataDirName}\"; Permissions: users-modify; Flags: uninsneveruninstall", StringComparison.Ordinal) && installer.Contains("{commondesktop}\\{#MyAppName}", StringComparison.Ordinal) && installer.Contains("{commonprograms}\\{#MyDefaultGroupName}\\{#MyAppName}", StringComparison.Ordinal) && !einzelhandelInstaller.Contains("B7D2C9E4-6A35-4C88-9F12-5E71A3D8C642", StringComparison.Ordinal) && !gastroInstaller.Contains("A4E3F6A1-4B7A-4F51-8D7E-2C4A8B9F1D21", StringComparison.Ordinal), "split uninstall preserves product data and each installer owns only its own Windows identity and shortcuts");
+        assert(splitPublish.Contains("-p:TorProductEdition=$Edition", StringComparison.Ordinal) && workflow.Contains("TOR-POS-Split-Setups-", StringComparison.Ordinal) && workflow.Contains("TOR-Einzelhandel-Setup.exe", StringComparison.Ordinal) && workflow.Contains("TOR-Gastro-Setup.exe", StringComparison.Ordinal), "CI publishes and packages both dedicated product variants rather than only compiling the shared app");
 
         var migrationRoot = Path.Combine(Path.GetTempPath(), "tor-split-migration-" + Guid.NewGuid().ToString("N"));
         var legacy = Path.Combine(migrationRoot, "legacy");

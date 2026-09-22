@@ -40,10 +40,10 @@ function Publish-Edition(
     Write-Host "OK: $Edition -> $exe"
 }
 
-Publish-Edition -Edition "KIOSK" -Folder "TOR-KIOSK" -ExpectedExe "TOR-KIOSK.exe"
-Publish-Edition -Edition "IMBISS" -Folder "TOR-DOENER" -ExpectedExe "TOR-DOENER.exe"
+Publish-Edition -Edition "KIOSK" -Folder "TOR-Einzelhandel" -ExpectedExe "TOR-Einzelhandel.exe"
+Publish-Edition -Edition "IMBISS" -Folder "TOR-Gastro" -ExpectedExe "TOR-Gastro.exe"
 
 Write-Host ""
 Write-Host "Split product publish completed."
-Write-Host "TOR KIOSK : $OutputRoot\\TOR-KIOSK"
-Write-Host "TOR DÖNER : $OutputRoot\\TOR-DOENER"
+Write-Host "TOR Einzelhandel : $OutputRoot\\TOR-Einzelhandel"
+Write-Host "TOR Gastro : $OutputRoot\\TOR-Gastro"

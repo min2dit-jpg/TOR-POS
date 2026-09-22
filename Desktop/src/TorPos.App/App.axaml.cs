@@ -326,7 +326,7 @@ public partial class App : Avalonia.Application
                         ? "IMBISS"
                         : null;
 
-                // R182 foundation: a dedicated TOR KIOSK / TOR DÖNER build is
+                // R182 foundation: a dedicated TOR Einzelhandel / TOR Gastro build is
                 // authoritative. The opposite edition is never offered even in
                 // licence-free validation mode.
                 if (builtEdition is not null)

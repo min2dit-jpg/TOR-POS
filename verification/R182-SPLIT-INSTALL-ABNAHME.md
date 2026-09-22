@@ -1,4 +1,4 @@
-# R182 – TOR KIOSK / TOR DÖNER Erst-Installationsabnahme (Windows)
+# R182 – TOR Einzelhandel / TOR Gastro Erst-Installationsabnahme (Windows)
 
 Diese Abnahme prüft ausschließlich die **Produkttrennung** von R182. Fiskalische
 Hardware-Abnahme (TSE, Terminal, Drucker) ist nicht Teil dieses Protokolls und
@@ -22,29 +22,31 @@ Endkunden gegeben.
 | Prüfung | Ergebnis | Bemerkung |
 |---|---|---|
 | Beide Setups stammen aus einem grünen CI-Run des geprüften HEAD | ☐ PASS ☐ FAIL | |
-| `TOR-KIOSK-Setup.exe` im Artefakt vorhanden | ☐ PASS ☐ FAIL | |
-| `TOR-DOENER-Setup.exe` im Artefakt vorhanden | ☐ PASS ☐ FAIL | |
+| `TOR-Einzelhandel-Setup.exe` im Artefakt vorhanden | ☐ PASS ☐ FAIL | |
+| `TOR-Gastro-Setup.exe` im Artefakt vorhanden | ☐ PASS ☐ FAIL | |
 | Zustand von `%APPDATA%\TOR-POS-Pro` vor dem Test notiert | ☐ PASS ☐ FAIL | |
+| Frühere Testinstallationen unter den alten Namen (TOR KIOSK / TOR DÖNER) deinstalliert | ☐ PASS ☐ FAIL | |
+| Reste `%APPDATA%\TOR-KIOSK`, `%APPDATA%\TOR-DOENER`, `%PROGRAMDATA%\TOR-KIOSK`, `%PROGRAMDATA%\TOR-DOENER` entfernt | ☐ PASS ☐ FAIL | |
 
-## 1. Installation TOR KIOSK
+## 1. Installation TOR Einzelhandel
 
 | Prüfung | Ergebnis | Bemerkung |
 |---|---|---|
 | Setup läuft ohne Fehler durch | ☐ PASS ☐ FAIL | |
-| Programmordner `...\TOR KIOSK\TOR-KIOSK.exe` | ☐ PASS ☐ FAIL | |
-| Desktop-/Startmenüeintrag heißt „TOR KIOSK“ | ☐ PASS ☐ FAIL | |
+| Programmordner `...\TOR Einzelhandel\TOR-Einzelhandel.exe` | ☐ PASS ☐ FAIL | |
+| Desktop-/Startmenüeintrag heißt „TOR Einzelhandel“ | ☐ PASS ☐ FAIL | |
 | Programm startet und meldet Edition **EINZELHANDEL** | ☐ PASS ☐ FAIL | |
-| Datenordner `%APPDATA%\TOR-KIOSK` angelegt | ☐ PASS ☐ FAIL | |
+| Datenordner `%APPDATA%\TOR-Einzelhandel` angelegt | ☐ PASS ☐ FAIL | |
 
-## 2. Installation TOR DÖNER neben TOR KIOSK
+## 2. Installation TOR Gastro neben TOR Einzelhandel
 
 | Prüfung | Ergebnis | Bemerkung |
 |---|---|---|
-| Setup läuft durch, ohne TOR KIOSK zu verändern | ☐ PASS ☐ FAIL | |
-| Programmordner `...\TOR DÖNER\TOR-DOENER.exe` | ☐ PASS ☐ FAIL | |
+| Setup läuft durch, ohne TOR Einzelhandel zu verändern | ☐ PASS ☐ FAIL | |
+| Programmordner `...\TOR Gastro\TOR-Gastro.exe` | ☐ PASS ☐ FAIL | |
 | Beide Produkte stehen getrennt in „Apps & Features“ | ☐ PASS ☐ FAIL | |
 | Programm startet und meldet Edition **GASTRONOMIE** | ☐ PASS ☐ FAIL | |
-| Datenordner `%APPDATA%\TOR-DOENER` angelegt | ☐ PASS ☐ FAIL | |
+| Datenordner `%APPDATA%\TOR-Gastro` angelegt | ☐ PASS ☐ FAIL | |
 | Beide Programme laufen gleichzeitig (getrennte Mutexe) | ☐ PASS ☐ FAIL | |
 | Artikel in einem Produkt erscheinen **nicht** im anderen | ☐ PASS ☐ FAIL | |
 
@@ -54,14 +56,14 @@ Jeweils in einer Eingabeaufforderung starten:
 
 ```
 set TOR_POS_PRODUCT_EDITION=IMBISS
-"...\TOR KIOSK\TOR-KIOSK.exe"
+"...\TOR Einzelhandel\TOR-Einzelhandel.exe"
 ```
 
 | Prüfung | Ergebnis | Bemerkung |
 |---|---|---|
-| TOR KIOSK bleibt Einzelhandel und nutzt weiter `%APPDATA%\TOR-KIOSK` | ☐ PASS ☐ FAIL | |
+| TOR Einzelhandel bleibt Einzelhandel und nutzt weiter `%APPDATA%\TOR-Einzelhandel` | ☐ PASS ☐ FAIL | |
 | Gleicher Test mit `TOR_POS_EDITION=IMBISS`: keine Wirkung | ☐ PASS ☐ FAIL | |
-| Umgekehrter Test auf TOR DÖNER mit `KIOSK`: keine Wirkung | ☐ PASS ☐ FAIL | |
+| Umgekehrter Test auf TOR Gastro mit `KIOSK`: keine Wirkung | ☐ PASS ☐ FAIL | |
 | Gemeinsamer Build (`TorPos.App.exe`) nutzt trotz gesetzter Variable `%APPDATA%\TOR-POS-Pro` | ☐ PASS ☐ FAIL | |
 | Im Anmeldefenster ist die fremde Edition nicht wählbar | ☐ PASS ☐ FAIL | |
 
@@ -102,20 +104,20 @@ danach das Split-Produkt erstmals starten.
 
 | Prüfung | Ergebnis | Bemerkung |
 |---|---|---|
-| `%PROGRAMDATA%\TOR-KIOSK\trial-installation.id` existiert | ☐ PASS ☐ FAIL | |
-| `%PROGRAMDATA%\TOR-DOENER\trial-installation.id` existiert und ist verschieden | ☐ PASS ☐ FAIL | |
-| TOR KIOSK deinstallieren, neu installieren: **kein** zweites Demo-Fenster | ☐ PASS ☐ FAIL | |
+| `%PROGRAMDATA%\TOR-Einzelhandel\trial-installation.id` existiert | ☐ PASS ☐ FAIL | |
+| `%PROGRAMDATA%\TOR-Gastro\trial-installation.id` existiert und ist verschieden | ☐ PASS ☐ FAIL | |
+| TOR Einzelhandel deinstallieren, neu installieren: **kein** zweites Demo-Fenster | ☐ PASS ☐ FAIL | |
 | Demo-Ablauf in einem Produkt beendet das andere Produkt nicht | ☐ PASS ☐ FAIL | |
 
 ## 6. Deinstallation
 
 | Prüfung | Ergebnis | Bemerkung |
 |---|---|---|
-| TOR KIOSK deinstallieren lässt `%APPDATA%\TOR-KIOSK` bestehen | ☐ PASS ☐ FAIL | |
-| TOR DÖNER bleibt installiert, startbar und vollständig | ☐ PASS ☐ FAIL | |
+| TOR Einzelhandel deinstallieren lässt `%APPDATA%\TOR-Einzelhandel` bestehen | ☐ PASS ☐ FAIL | |
+| TOR Gastro bleibt installiert, startbar und vollständig | ☐ PASS ☐ FAIL | |
 | Verknüpfungen des anderen Produkts bleiben erhalten | ☐ PASS ☐ FAIL | |
 | `%APPDATA%\TOR-POS-Pro` bleibt unberührt | ☐ PASS ☐ FAIL | |
-| Gegenprobe mit TOR DÖNER | ☐ PASS ☐ FAIL | |
+| Gegenprobe mit TOR Gastro | ☐ PASS ☐ FAIL | |
 
 ## Nicht Bestandteil dieser Abnahme
 

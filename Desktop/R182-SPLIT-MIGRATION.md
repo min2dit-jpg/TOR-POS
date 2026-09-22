@@ -1,11 +1,11 @@
-# R182 – TOR KIOSK / TOR DÖNER Split-Migration
+# R182 – TOR Einzelhandel / TOR Gastro Split-Migration
 
 ## Ziel
 
 R182 trennt die bisher gemeinsame TOR-POS-Installation in zwei feste Produkte, ohne die R181-Daten beim Übergang zu zerstören:
 
-- **TOR KIOSK** – Edition `KIOSK`, EXE `TOR-KIOSK.exe`, AppData `TOR-KIOSK`
-- **TOR DÖNER** – Edition `IMBISS`, EXE `TOR-DOENER.exe`, AppData `TOR-DOENER`
+- **TOR Einzelhandel** – Edition `KIOSK`, EXE `TOR-Einzelhandel.exe`, AppData `TOR-Einzelhandel`
+- **TOR Gastro** – Edition `IMBISS`, EXE `TOR-Gastro.exe`, AppData `TOR-Gastro`
 
 Beide Produkte werden aus demselben geprüften Quellcode gebaut. Produktidentität, Windows-AppId, Installationsordner, Prozess-Mutex, Benutzer-Datenpfad und maschinenweiter Lizenz-/Trial-Pfad sind getrennt.
 
@@ -25,7 +25,7 @@ Ohne diese Reihenfolge würde eine fehlerfreie Kopie als `Legacy database change
 
 ## Demo-Recht je PC und Produkt
 
-Das 7-Tage-Demo gilt **einmal pro PC und pro Produkt**. TOR KIOSK und TOR DÖNER führen je eine eigene maschinenweite Demo-Identität unter `%PROGRAMDATA%\TOR-KIOSK` bzw. `%PROGRAMDATA%\TOR-DOENER`. Beide Ordner sind im Installer als `uninsneveruninstall` markiert und überstehen eine Deinstallation, sodass ein erneutes Setup kein zweites Demo-Fenster öffnet.
+Das 7-Tage-Demo gilt **einmal pro PC und pro Produkt**. TOR Einzelhandel und TOR Gastro führen je eine eigene maschinenweite Demo-Identität unter `%PROGRAMDATA%\TOR-Einzelhandel` bzw. `%PROGRAMDATA%\TOR-Gastro`. Beide Ordner sind im Installer als `uninsneveruninstall` markiert und überstehen eine Deinstallation, sodass ein erneutes Setup kein zweites Demo-Fenster öffnet.
 
 Die Split-Migration kopiert ausschließlich `%APPDATA%`. Eine bereits verbrauchte R181-Demo wird damit nicht in ein Produkt übernommen, und kein Produkt kann die Demo des anderen verbrauchen.
 
@@ -35,7 +35,7 @@ Die feste Produktidentität entsteht im Build und ist jeder Laufzeitquelle über
 
 ## Editionssicherheit
 
-Eine automatische Übernahme ist nur zulässig, wenn `edition.permanent.lock` der alten R181-Installation exakt zur Ziel-Edition passt. Eine temporäre Testauswahl genügt nicht. Eine KIOSK-Historie darf nicht automatisch in TOR DÖNER übernommen werden und umgekehrt.
+Eine automatische Übernahme ist nur zulässig, wenn `edition.permanent.lock` der alten R181-Installation exakt zur Ziel-Edition passt. Eine temporäre Testauswahl genügt nicht. Eine KIOSK-Historie darf nicht automatisch in TOR Gastro übernommen werden und umgekehrt.
 
 ## Rollback / Rejoin
 
@@ -43,11 +43,11 @@ Der R182-Format-3-Marker qualifiziert den persistenten SQLite-Zustand aus `torpo
 
 Solange dieser Zustandsfingerprint der dedizierten Datenbank noch dem unmittelbar migrierten Stand entspricht, kann die unveränderte R181-Kopie als verlustfreie Rückfallbasis verwendet werden (`SafeBeforeDedicatedWrites`). Ältere Format-2-Marker werden konservativ behandelt: sobald eine WAL-Datei vorhanden ist, wird kein automatischer sicherer Rollback mehr behauptet.
 
-Sobald in TOR KIOSK oder TOR DÖNER neue Daten geschrieben wurden, wird ein automatischer Rejoin als unsicher bewertet (`DedicatedDataChanged`). Ab diesem Punkt dürfen zwei fiskalische Historien nicht still zusammenkopiert werden. Eine spätere Zusammenführung benötigt eine ausdrücklich geprüfte Migration mit fachlicher Datenabstimmung.
+Sobald in TOR Einzelhandel oder TOR Gastro neue Daten geschrieben wurden, wird ein automatischer Rejoin als unsicher bewertet (`DedicatedDataChanged`). Ab diesem Punkt dürfen zwei fiskalische Historien nicht still zusammenkopiert werden. Eine spätere Zusammenführung benötigt eine ausdrücklich geprüfte Migration mit fachlicher Datenabstimmung.
 
 ## Side-by-side Windows-Installation
 
-TOR KIOSK und TOR DÖNER besitzen unterschiedliche stabile Inno-Setup-AppIds, Installationsordner, EXE-Namen, Mutex-Namen und Startmenü-/Desktop-Identitäten. Deshalb können beide Produkte parallel installiert sein. Das Deinstallieren eines Produkts darf den Datenordner nicht löschen (`uninsneveruninstall`) und darf die Installation des anderen Produkts nicht adressieren.
+TOR Einzelhandel und TOR Gastro besitzen unterschiedliche stabile Inno-Setup-AppIds, Installationsordner, EXE-Namen, Mutex-Namen und Startmenü-/Desktop-Identitäten. Deshalb können beide Produkte parallel installiert sein. Das Deinstallieren eines Produkts darf den Datenordner nicht löschen (`uninsneveruninstall`) und darf die Installation des anderen Produkts nicht adressieren.
 
 Die alte gemeinsame TOR POS Pro AppId bleibt unverändert. Dadurch wird R181 nicht versehentlich als Upgrade-Ziel eines der neuen Produkte behandelt.
 
@@ -56,7 +56,7 @@ Die alte gemeinsame TOR POS Pro AppId bleibt unverändert. Dadurch wird R181 nic
 PR #58 bleibt Draft, bis alle folgenden Punkte nachweislich erfüllt sind:
 
 1. vollständige Safety-Test-Suite grün;
-2. TOR KIOSK und TOR DÖNER jeweils als Release-Build erfolgreich;
+2. TOR Einzelhandel und TOR Gastro jeweils als Release-Build erfolgreich;
 3. beide dedizierten Publish-Ausgaben erfolgreich;
 4. beide Setup-EXE erfolgreich kompiliert und als CI-Artefakt vorhanden;
 5. backup-first Migration und Editions-Mismatch regressionsgetestet;

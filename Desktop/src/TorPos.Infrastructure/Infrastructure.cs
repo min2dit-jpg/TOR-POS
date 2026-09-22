@@ -118,8 +118,8 @@ public static class AppPaths
     public static string ProductDataDirectoryName() =>
         ProductEdition switch
         {
-            "KIOSK" => "TOR-KIOSK",
-            "IMBISS" => "TOR-DOENER",
+            "KIOSK" => "TOR-Einzelhandel",
+            "IMBISS" => "TOR-Gastro",
             _ => "TOR-POS-Pro"
         };
     public static string TrialIdentityPath =>

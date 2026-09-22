@@ -125,8 +125,8 @@ public sealed class SwissbitWatchdogBridge : ISwissbitSdkBridge, IDisposable
 
         // Framework-dependent developer/setup runs can have dotnet.exe as the
         // process executable. In that case re-enter our own entry DLL.
-        // R182: that assembly is TorPos.App in the shared build and TOR-KIOSK /
-        // TOR-DOENER in a dedicated product build, so the guard compares against the
+        // R182: that assembly is TorPos.App in the shared build and TOR-Einzelhandel /
+        // TOR-Gastro in a dedicated product build, so the guard compares against the
         // running entry assembly instead of one fixed name.
         var entryAssembly = Assembly.GetEntryAssembly();
         var entry = entryAssembly?.Location ?? "";
