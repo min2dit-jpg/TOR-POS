@@ -10,6 +10,7 @@ namespace TorPos.App;
 public sealed class RestaurantTablePlanWindow : Window
 {
     private readonly RestaurantRepository _restaurant;
+    private readonly RestaurantFiscalOrderService _restaurantFiscal;
     private readonly IProductCatalog _catalog;
     private readonly AuthenticatedUser _user;
 
@@ -120,10 +121,12 @@ public sealed class RestaurantTablePlanWindow : Window
 
     public RestaurantTablePlanWindow(
         RestaurantRepository restaurant,
+        RestaurantFiscalOrderService restaurantFiscal,
         IProductCatalog catalog,
         AuthenticatedUser user)
     {
         _restaurant = restaurant;
+        _restaurantFiscal = restaurantFiscal;
         _catalog = catalog;
         _user = user;
 
@@ -476,17 +479,30 @@ public sealed class RestaurantTablePlanWindow : Window
             return;
         }
 
+        RestaurantFiscalVorgang? fiscalVorgang = null;
         try
         {
             var quantity = Convert.ToDecimal(_quantity.Value ?? 1m);
 
-            await _restaurant.AddItemAsync(
+            fiscalVorgang = await _restaurantFiscal.BeginChangeAsync(
+                _selectedSession.Id,
+                _user.Username);
+
+            var item = await _restaurant.AddItemAsync(
                 _selectedSession.Id,
                 _selectedSession.Version,
                 product,
                 quantity,
                 _user.Username,
                 Environment.MachineName);
+
+            await _restaurantFiscal.SecureAddedItemAsync(
+                _selectedSession.Id,
+                item,
+                fiscalVorgang,
+                _user.Username);
+
+            fiscalVorgang = null;
 
             _selectedSession = await _restaurant.GetSessionAsync(
                 _selectedSession.Id);
@@ -496,6 +512,20 @@ public sealed class RestaurantTablePlanWindow : Window
         }
         catch (Exception ex)
         {
+            if (fiscalVorgang is not null)
+            {
+                try
+                {
+                    await _restaurantFiscal.AbortChangeAsync(
+                        fiscalVorgang,
+                        _user.Username);
+                }
+                catch
+                {
+                    // Original failure remains the operator-facing cause.
+                }
+            }
+
             await ShowErrorAsync(ex.Message);
             await ReloadAsync();
         }
