@@ -1131,7 +1131,7 @@ public partial class SettingsWindow : Window
             if(!_currentUser.IsAdmin || App.CloudSync is not {} cloud)return;
             foreach(var button in buttons)button.IsEnabled=false;
             try {await action(cloud);status.Text=message+await cloud.StatusAsync();}
-            catch(Exception ex){status.Text="Cloud: "+ex.Message;}
+            catch(Exception ex){status.Text=UiLanguage.T("Cloud:") + " " + ex.Message;}
             finally {token.Text="";foreach(var button in buttons)button.IsEnabled=true;}
         }
         save.Click+=async (_,_)=>await Run(async cloud=>{
@@ -1155,11 +1155,11 @@ public partial class SettingsWindow : Window
         page.Children.Add(info);
         page.AttachedToVisualTree+=async (_,_)=>{
             try {
-                if(App.CloudSync is not {} cloud){status.Text="Cloud-Dienst nicht verfügbar";return;}
+                if(App.CloudSync is not {} cloud){status.Text=UiLanguage.T("Cloud-Dienst nicht verfügbar");return;}
                 var config=await cloud.ConfigurationAsync();
                 url.Text=config?.BaseUrl??"http://127.0.0.1:8787";code.Text=config?.DeviceCode??"DEMO-KASSE-01";enabled.IsChecked=config?.Enabled??false;
                 status.Text=await cloud.StatusAsync();
-            }catch(Exception ex){status.Text="Cloud: "+ex.Message;}
+            }catch(Exception ex){status.Text=UiLanguage.T("Cloud:") + " " + ex.Message;}
         };
         Closed+=(_,_)=>token.Text="";
         return page;
@@ -1705,14 +1705,14 @@ public partial class SettingsWindow : Window
         {
             try
             {
-                StatusText.Text = "Sicherung wird erstellt ...";
+                StatusText.Text = UiLanguage.T("Sicherung wird erstellt ...");
                 var path = await _backup.CreateBackupAsync(_text["backup.directory"].Text);
                 path = await new BackupEncryptionService(_settings).EncryptIfEnabledAsync(path);
-                StatusText.Text = $"Sicherung erstellt: {path}";
+                StatusText.Text = $"{UiLanguage.T("Sicherung erstellt:")} {path}";
             }
             catch (Exception ex)
             {
-                StatusText.Text = $"Sicherung fehlgeschlagen: {ex.Message}";
+                StatusText.Text = UiLanguage.T("Sicherung fehlgeschlagen:") + " " + ex.Message;
             }
         };
 
@@ -1720,7 +1720,7 @@ public partial class SettingsWindow : Window
         full.Click+=async(_,_)=>{
             if(!full.IsEnabled)return;full.IsEnabled=false;string? restored=null;string? package=null;string? decrypted=null;
             try{
-                StatusText.Text="Sicherung und Wiederherstellungsprüfung laufen ...";
+                StatusText.Text=UiLanguage.T("Sicherung und Wiederherstellungsprüfung laufen ...");
                 var service=new FullBackupService(new SqliteDatabase(AppPaths.DatabasePath),AppPaths.DataDirectory);
                 package=await service.CreateAsync(_backup.ResolveDirectory(_text["backup.directory"].Text));
                 var encryption=new BackupEncryptionService(_settings);
@@ -1736,8 +1736,8 @@ public partial class SettingsWindow : Window
                 }
                 restored=Path.Combine(Path.GetTempPath(),"tor-restore-check-"+Guid.NewGuid().ToString("N"));
                 var result=await FullBackupService.VerifyRestoreAsync(toVerify,restored);
-                StatusText.Text=$"Geprüft: {result.Files} Dateien · {result.Products} Artikel · {result.Sales} Verkäufe · {package}";
-            }catch(Exception ex){StatusText.Text="Prüfung fehlgeschlagen: "+ex.Message+(package is null?"":" · Paket: "+package);}
+                StatusText.Text=$"{UiLanguage.T("Geprüft:")} {result.Files} {UiLanguage.T("Dateien")} · {result.Products} {UiLanguage.T("Artikel")} · {result.Sales} {UiLanguage.T("Verkäufe")} · {package}";
+            }catch(Exception ex){StatusText.Text=UiLanguage.T("Prüfung fehlgeschlagen:")+" "+ex.Message+(package is null?"":" · "+UiLanguage.T("Paket:")+" "+package);}
             finally{
                 try{if(restored is not null&&Directory.Exists(restored))Directory.Delete(restored,true);}catch(Exception ex){CrashLog.WriteException("Backup check cleanup",ex);}
                 try{if(decrypted is not null&&File.Exists(decrypted))File.Delete(decrypted);}catch(Exception ex){CrashLog.WriteException("Backup check cleanup",ex);}
@@ -1968,7 +1968,7 @@ public partial class SettingsWindow : Window
             var typed = (codeBox.Text ?? "").Trim();
             if (!TrainingAccessPolicy.IsValidCode(typed))
             {
-                status.Text = "Der Training-Code muss aus genau 4 Ziffern bestehen. Nicht gespeichert.";
+                status.Text = UiLanguage.T("Der Training-Code muss aus genau 4 Ziffern bestehen. Nicht gespeichert.");
                 return;
             }
 
@@ -1980,7 +1980,7 @@ public partial class SettingsWindow : Window
             await _audit.WriteAsync(_currentUser.Username, "TRAINING_CODE_CHANGED", "SETTINGS", "",
                 "Training-Zugangscode geändert; der Code selbst wird nicht protokolliert.");
             await LoadAsync();
-            status.Text = "Gespeichert. " + status.Text;
+            status.Text = UiLanguage.T("Gespeichert.") + " " + status.Text;
         };
 
         Form(section, "Training-Code", codeBox,
