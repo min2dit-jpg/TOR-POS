@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 25;
+    public const int TargetSchemaVersion = 26;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1690,6 +1690,40 @@ public sealed class SchemaMigrationService
                         END;
                         """;
 
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                26,
+                "R184_RESTAURANT_PAYMENT_RESERVATIONS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_payment_reservations(
+                          operation_id TEXT PRIMARY KEY,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          expected_session_version INTEGER NOT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('PREPARED','CANCELLED','APPLIED')),
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          sale_id INTEGER NULL UNIQUE REFERENCES sales(id));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_payment_reservation_items(
+                          operation_id TEXT NOT NULL REFERENCES restaurant_payment_reservations(operation_id),
+                          session_item_id INTEGER NOT NULL REFERENCES restaurant_session_items(id),
+                          quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                          amount_cents INTEGER NOT NULL CHECK(amount_cents>=0),
+                          PRIMARY KEY(operation_id,session_item_id));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_payment_session
+                          ON restaurant_payment_reservations(session_id,state,created_at);
+                        """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
         };
