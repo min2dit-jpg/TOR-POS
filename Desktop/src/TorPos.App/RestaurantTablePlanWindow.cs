@@ -12,6 +12,7 @@ public sealed class RestaurantTablePlanWindow : Window
     private readonly RestaurantRepository _restaurant;
     private readonly RestaurantFiscalOrderService _restaurantFiscal;
     private readonly RestaurantKitchenOutbox _kitchen;
+    private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
     private readonly IProductCatalog _catalog;
     private readonly AuthenticatedUser _user;
 
@@ -131,12 +132,14 @@ public sealed class RestaurantTablePlanWindow : Window
         RestaurantRepository restaurant,
         RestaurantFiscalOrderService restaurantFiscal,
         RestaurantKitchenOutbox kitchen,
+        RestaurantKitchenDispatcher kitchenDispatcher,
         IProductCatalog catalog,
         AuthenticatedUser user)
     {
         _restaurant = restaurant;
         _restaurantFiscal = restaurantFiscal;
         _kitchen = kitchen;
+        _kitchenDispatcher = kitchenDispatcher;
         _catalog = catalog;
         _user = user;
 
@@ -536,6 +539,7 @@ public sealed class RestaurantTablePlanWindow : Window
                     item,
                     _selectedTable?.DisplayName ?? "Tisch",
                     _user.Username);
+                _kitchenDispatcher.Notify();
             }
 
             _quantity.Value = 1;
@@ -765,6 +769,7 @@ public sealed class RestaurantTablePlanWindow : Window
                     cancelled,
                     _selectedTable?.DisplayName ?? "Tisch",
                     _user.Username);
+                _kitchenDispatcher.Notify();
             }
 
             await ReloadAsync();
