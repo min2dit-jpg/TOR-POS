@@ -12,6 +12,9 @@ internal static class RestaurantBestellungExportLoader
         string toUtc,
         CancellationToken ct)
     {
+        if (!await ExistsAsync(c, ct))
+            return new List<DsfinvkOrderRecord>();
+
         var heads = new List<(long Id,string SessionId,int Sequence,string Kind,DateTimeOffset Started,DateTimeOffset Created,string Operator,long Total,DsfinvkTseResult Tse)>();
 
         await using (var q = c.CreateCommand())
@@ -117,6 +120,8 @@ internal static class RestaurantBestellungExportLoader
         CancellationToken ct)
     {
         var result = new Dictionary<long,string>();
+        if (!await ExistsAsync(c, ct))
+            return result;
 
         await using var q = c.CreateCommand();
         q.CommandText = """
@@ -130,5 +135,33 @@ internal static class RestaurantBestellungExportLoader
             result[r.GetInt64(0)] = $"Restaurant {r.GetString(1)}";
 
         return result;
+    }
+
+    public static async Task<long> CountAfterAsync(
+        SqliteConnection c,
+        string fromUtc,
+        CancellationToken ct)
+    {
+        if (!await ExistsAsync(c, ct))
+            return 0;
+
+        await using var q = c.CreateCommand();
+        q.CommandText =
+            "SELECT COUNT(*) FROM restaurant_bestellungen WHERE created_at_utc > $from;";
+        q.Parameters.AddWithValue("$from", fromUtc);
+        return Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task<bool> ExistsAsync(
+        SqliteConnection c,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type='table' AND name='restaurant_bestellungen';
+            """;
+        return Convert.ToInt32(await q.ExecuteScalarAsync(ct)) == 1;
     }
 }
