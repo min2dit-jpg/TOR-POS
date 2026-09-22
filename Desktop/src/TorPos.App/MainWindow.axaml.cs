@@ -43,6 +43,7 @@ public partial class MainWindow:Window
     private readonly ICommercialLicenseService _commercialLicense;
     private readonly IAuthenticationService _authentication;
     private readonly BusinessManagementService _management;
+    private readonly RestaurantRepository _restaurant;
     private readonly AuthenticatedUser _currentUser;
     private IReadOnlyDictionary<string,string> _settingsCache=
         new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -95,6 +96,7 @@ public partial class MainWindow:Window
     private Task _recoveryWrite = Task.CompletedTask;
     private TorUpdateManifest? _availableUpdate;
     private long _quickItemSequence = -9_100_000;
+    private RestaurantCheckoutDraft? _restaurantCheckoutDraft;
     private OrderCustomerDisplayWindow? _orderDisplayWindow;
     private string _orderDisplaySignature = "";
     // R104: genuine customer-facing display (e.g. HP L7010t) - distinct
@@ -169,6 +171,7 @@ public partial class MainWindow:Window
         ICommercialLicenseService commercialLicense,
         IAuthenticationService authentication,
         BusinessManagementService management,
+        RestaurantRepository restaurant,
         AuthenticatedUser currentUser,
         ICheckoutJournal checkoutJournal,
         CheckoutApplicationService checkoutApplication,
@@ -205,7 +208,7 @@ public partial class MainWindow:Window
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
         _digitalReceipts=digitalReceipts;
         _cardRefundLocks=cardRefundLocks;
-        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_currentUser=currentUser;
+        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_restaurant=restaurant;_currentUser=currentUser;
 
         BuildCategories();
         ShowCategoryOverview();
@@ -333,8 +336,21 @@ public partial class MainWindow:Window
             return;
         }
 
+        if (_engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
+        {
+            ScannerStatus.Text = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
+            return;
+        }
+
         var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
-        await window.ShowDialog(this);
+        var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
+        if (draft is null)
+            return;
+
+        _restaurantCheckoutDraft = draft;
+        _operationId = draft.OperationId;
+        _imHaus = true;
+        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
     }
 
     private string CurrentBusinessMode()
