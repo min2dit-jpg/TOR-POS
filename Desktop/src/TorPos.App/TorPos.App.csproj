@@ -13,10 +13,10 @@
     <!-- R126: had drifted to 0.7.33.751 / "R75.1-Application-Namespace-Hotfix"
          - the version Windows shows in the exe's file properties. Keep in step
          with TorPos.Core.TorRelease, TOR-POS-Pro-Setup.iss and manifest.json. -->
-    <Version>0.7.33.881</Version>
-    <FileVersion>0.7.33.881</FileVersion>
-    <InformationalVersion>0.7.33.881-R181-Merd-M</InformationalVersion>
-    <InformationalVersion Condition="'$(TorDemoBuild)' == 'true'">0.7.33.881-R181-Merd-M-DEMO</InformationalVersion>
+    <Version>0.7.33.882</Version>
+    <FileVersion>0.7.33.882</FileVersion>
+    <InformationalVersion>0.7.33.882-R182-Merd-D</InformationalVersion>
+    <InformationalVersion Condition="'$(TorDemoBuild)' == 'true'">0.7.33.882-R182-Merd-D-DEMO</InformationalVersion>
     <TargetFramework>net10.0-windows</TargetFramework>
     <ApplicationIcon>Assets\TorPos.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>

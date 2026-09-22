@@ -31,8 +31,8 @@
 #ifndef MyPublishDir
   #define MyPublishDir "publish\win-x64"
 #endif
-#define MyAppVersion "0.7.33.881"
-#define MyAppReleaseName "Merd-M"
+#define MyAppVersion "0.7.33.882"
+#define MyAppReleaseName "Merd-D"
 #define MyAppPublisher "TOR Kassensysteme"
 
 [Setup]
