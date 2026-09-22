@@ -95,24 +95,12 @@ Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "{#MyAppNam
 [Code]
 var
   EditionPage: TInputOptionWizardPage;
-  AdminPage: TInputQueryWizardPage;
   ExistingEdition: String;
   ExistingInstallation: Boolean;
-  SecurityAlreadyInitialized: Boolean;
 
 function EditionLockPath(): String;
 begin
   Result := ExpandConstant('{userappdata}\{#MyDataDirName}\edition.lock');
-end;
-
-function SecurityMarkerPath(): String;
-begin
-  Result := ExpandConstant('{userappdata}\{#MyDataDirName}\security.initialized');
-end;
-
-function BootstrapAdminPath(): String;
-begin
-  Result := ExpandConstant('{userappdata}\{#MyDataDirName}\first-run-admin.cfg');
 end;
 
 function FixedProductEdition(): String;
@@ -123,11 +111,6 @@ end;
 function LegacyPermanentEditionLockPath(): String;
 begin
   Result := ExpandConstant('{userappdata}\TOR-POS-Pro\edition.permanent.lock');
-end;
-
-function LegacySecurityMarkerPath(): String;
-begin
-  Result := ExpandConstant('{userappdata}\TOR-POS-Pro\security.initialized');
 end;
 
 function ReadLegacyPermanentEdition(): String;
@@ -163,42 +146,10 @@ begin
   else Result := '';
 end;
 
-function IsFourDigitPin(const S: String): Boolean;
-var I: Integer;
-begin
-  Result := Length(S) = 4;
-  if not Result then Exit;
-  for I := 1 to Length(S) do
-    if (S[I] < '0') or (S[I] > '9') then begin Result := False; Exit; end;
-end;
-
-function HexDigit(Value: Integer): String;
-begin
-  case (Value mod 16) of
-    0: Result := '0'; 1: Result := '1'; 2: Result := '2'; 3: Result := '3';
-    4: Result := '4'; 5: Result := '5'; 6: Result := '6'; 7: Result := '7';
-    8: Result := '8'; 9: Result := '9'; 10: Result := 'A'; 11: Result := 'B';
-    12: Result := 'C'; 13: Result := 'D'; 14: Result := 'E'; 15: Result := 'F';
-  end;
-end;
-
-function Hex4(Value: Integer): String;
-begin
-  Result := HexDigit((Value div 4096) mod 16) + HexDigit((Value div 256) mod 16) + HexDigit((Value div 16) mod 16) + HexDigit(Value mod 16);
-end;
-
-function Utf16Hex(const S: String): String;
-var I: Integer;
-begin
-  Result := '';
-  for I := 1 to Length(S) do Result := Result + Hex4(Ord(S[I]));
-end;
-
 procedure InitializeWizard;
 begin
   ExistingEdition := Uppercase(ReadExistingEdition());
   ExistingInstallation := FileExists(ExpandConstant('{autopf}\{#MyDefaultDirName}\{#MyAppExeName}')) or FileExists(ExpandConstant('{localappdata}\Programs\{#MyDefaultDirName}\{#MyAppExeName}'));
-  SecurityAlreadyInitialized := (ExistingInstallation and FileExists(SecurityMarkerPath())) or (LegacyMatchesFixedEdition() and FileExists(LegacySecurityMarkerPath()));
   EditionPage := CreateInputOptionPage(wpSelectDir, 'TOR POS Version', 'Welche Version soll installiert werden?', 'Die Kassenart wird beim ersten Start direkt im TOR POS Anmeldefenster ausgewählt.', True, False);
   EditionPage.Add('EINZELHANDEL – Kiosk / Spätkauf / Markt / Blumen / Friseur / Schneiderei / Shop');
   EditionPage.Add('GASTRONOMIE – Döner / Imbiss / Restaurant / Café / Bäckerei / Bar / Foodtruck');
@@ -208,14 +159,6 @@ begin
   end else begin
     EditionPage.Values[0] := False; EditionPage.Values[1] := False; EditionPage.CheckListBox.Enabled := True;
     EditionPage.SubCaptionLabel.Caption := 'Bitte EINZELHANDEL oder GASTRONOMIE ausdrücklich auswählen. Es ist keine Version vorausgewählt.';
-  end;
-  AdminPage := CreateInputQueryPage(EditionPage.ID, 'Administrator-Zugang', 'Admin-Passwort und PIN festlegen', 'TOR POS kann nicht ohne Anmeldung geöffnet werden. Benutzername: admin. Die Startwerte admin / 1234 können übernommen oder geändert werden.');
-  AdminPage.Add('Admin-Passwort:', True); AdminPage.Add('Passwort wiederholen:', True); AdminPage.Add('4-stellige Admin-PIN:', True); AdminPage.Add('PIN wiederholen:', True);
-  AdminPage.Values[0] := 'admin'; AdminPage.Values[1] := 'admin'; AdminPage.Values[2] := '1234'; AdminPage.Values[3] := '1234';
-  if SecurityAlreadyInitialized then begin
-    AdminPage.Edits[0].Enabled := False; AdminPage.Edits[1].Enabled := False; AdminPage.Edits[2].Enabled := False; AdminPage.Edits[3].Enabled := False;
-    if LegacyMatchesFixedEdition() and (not ExistingInstallation) then AdminPage.SubCaptionLabel.Caption := 'Bestehende R181-Daten wurden für diese Produkt-Edition erkannt. Der vorhandene Admin-Zugang wird bei der ersten sicheren Datenübernahme beibehalten.'
-    else AdminPage.SubCaptionLabel.Caption := 'Admin-Zugang ist auf diesem PC bereits eingerichtet. Ein Update überschreibt das bestehende Passwort und die PIN nicht.';
   end;
 end;
 
@@ -248,24 +191,17 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
-  if (CurPageID = AdminPage.ID) and (TorPosProcessRunning() or LegacyTorPosProcessRunning()) then begin MsgBox('TOR POS ist noch geöffnet.' + #13#10 + #13#10 + 'Bitte TOR POS normal schließen und warten, bis das Programm vollständig beendet ist. Danach hier erneut auf Weiter klicken.' + #13#10 + #13#10 + 'Die Installation wird nicht erzwungen, damit keine offene Buchung, Sicherung oder Druckeroperation beschädigt wird.', mbInformation, MB_OK); Result := False; Exit; end;
   if CurPageID = EditionPage.ID then if not EditionPage.Values[0] and not EditionPage.Values[1] then begin MsgBox('Bitte wählen Sie zuerst EINZELHANDEL oder GASTRONOMIE. Ohne Auswahl kann die Installation nicht fortgesetzt werden.', mbInformation, MB_OK); Result := False; Exit; end;
-  if (CurPageID = AdminPage.ID) and (not SecurityAlreadyInitialized) then begin
-    if AdminPage.Values[0] = '' then begin MsgBox('Das Admin-Passwort darf nicht leer sein.', mbError, MB_OK); Result := False; Exit; end;
-    if AdminPage.Values[0] <> AdminPage.Values[1] then begin MsgBox('Die Passwörter stimmen nicht überein.', mbError, MB_OK); Result := False; Exit; end;
-    if not IsFourDigitPin(AdminPage.Values[2]) then begin MsgBox('Die Admin-PIN muss genau 4 Ziffern haben.', mbError, MB_OK); Result := False; Exit; end;
-    if AdminPage.Values[2] <> AdminPage.Values[3] then begin MsgBox('Die PIN-Eingaben stimmen nicht überein.', mbError, MB_OK); Result := False; Exit; end;
-  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var DataDir: String; Bootstrap: AnsiString;
+var DataDir: String;
 begin
+  { R182: the till ships with its documented access - admin / admin, staff PIN
+    1234, training code 0000 - so setup no longer asks for credentials and no
+    bootstrap credential file is written. The operator changes them later in
+    the Benutzerverwaltung. }
   if CurStep = ssPostInstall then begin
     DataDir := ExpandConstant('{userappdata}\{#MyDataDirName}'); if not DirExists(DataDir) then ForceDirectories(DataDir);
-    if not SecurityAlreadyInitialized then begin
-      Bootstrap := 'username=admin' + #13#10 + 'password_hex=' + AnsiString(Utf16Hex(AdminPage.Values[0])) + #13#10 + 'pin=' + AnsiString(AdminPage.Values[2]) + #13#10;
-      SaveStringToFile(BootstrapAdminPath(), Bootstrap, False);
-    end;
   end;
 end;

@@ -217,7 +217,7 @@ await Task.WhenAll(RecoveryFiles.WriteAsync(path,"old"),RecoveryFiles.WriteAsync
 Assert(!File.Exists(path),"Ordered recovery writes cannot resurrect a cleared cart");
 await RecoveryFiles.WriteAsync(path,"damaged");await RecoveryFiles.QuarantineAsync(path);
 Assert(File.Exists(path+".blocked") && Directory.GetFiles(root,"cart.json.damaged-*").Length==1,"Corrupt recovery retained with durable lock marker");
-await Reject(()=>new AuthenticationService(db).ChangeAdminCredentialsAsync("admin","short","1234"),"Weak replacement admin credentials refused");
+await Reject(()=>new AuthenticationService(db).ChangeAdminCredentialsAsync("admin","abc","1234"),"Replacement admin password below the 4-character floor refused");
 // A thrown queued operation must not terminate the worker.
 await Reject(()=>IoQueue.RunAsync(()=>Task.FromException(new IOException("test"))),"Queue returns IO failure");
 Assert(await IoQueue.RunAsync(()=>Task.FromResult(true)),"Queue continues after a failure");
@@ -447,6 +447,7 @@ await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
 await EditionSplitFoundationTests.Run(Assert);
+await R182ReviewTests.Run(root, Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -512,11 +513,14 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
+// R182 out-of-the-box access: 4 checks keep the shipped admin access usable at
+// the first start, keep a short password/1234 PIN a valid operator choice, keep
+// setup out of the credential business and keep a fixed Kassenart centred.
 // Split-product foundation: 26 checks keep Einzelhandel/Gastro process, storage,
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1155;
+const int ExpectedSafetyChecks = 1159;
 
 if (checks != ExpectedSafetyChecks)
 {

@@ -36,16 +36,12 @@ public partial class LoginWindow : Window
         // it is hidden from the login UI and cannot be selected programmatically.
         if (_lockedEdition == "KIOSK")
         {
-            KioskEditionRadio.IsChecked = true;
-            KioskEditionRadio.IsVisible = true;
-            ImbissEditionRadio.IsVisible = false;
+            ShowFixedEdition(KioskEditionRadio, ImbissEditionRadio);
             EditionStatusText.Text = "Kassenart: EINZELHANDEL · Lizenz/Installation fest gebunden.";
         }
         else if (_lockedEdition == "IMBISS")
         {
-            ImbissEditionRadio.IsChecked = true;
-            ImbissEditionRadio.IsVisible = true;
-            KioskEditionRadio.IsVisible = false;
+            ShowFixedEdition(ImbissEditionRadio, KioskEditionRadio);
             EditionStatusText.Text = "Kassenart: GASTRONOMIE · Lizenz/Installation fest gebunden.";
         }
         else
@@ -63,6 +59,24 @@ public partial class LoginWindow : Window
             PasswordBox.Focus();
             await RefreshTrainingHintAsync();
         };
+    }
+
+    // R182: with a fixed Kassenart the remaining entry must not stay in its half
+    // of the two-column selector - it looked pushed to one side. It spans the
+    // whole row, sits centred and is shown at the size an operator reads from a
+    // step away.
+    private static void ShowFixedEdition(RadioButton visible, RadioButton hidden)
+    {
+        visible.IsChecked = true;
+        visible.IsVisible = true;
+        hidden.IsVisible = false;
+
+        Grid.SetColumn(visible, 0);
+        Grid.SetColumnSpan(visible, 2);
+        visible.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+        visible.HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+        visible.FontSize = 22;
+        visible.MinHeight = 52;
     }
 
     public string? SelectedEdition =>

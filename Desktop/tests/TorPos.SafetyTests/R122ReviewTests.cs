@@ -8,6 +8,11 @@ using TorPos.Infrastructure;
 // G4 - the factory admin (admin/admin, PIN 1234) had must_change_password set
 //      correctly, but only the UI acted on it. Any caller that forgot the check
 //      got a FULL admin session on factory credentials.
+//      R182 turned the shipped access into a usable default: the flag is no
+//      longer set at seeding, so the checks below assert the new contract. The
+//      audit trace stays - it is now written whenever the factory password or
+//      PIN is used. AuthenticatedUser.Can() still denies everything while a
+//      must-change flag is set, which staff slots continue to rely on.
 //
 // G5 - the backup recovery code was turned into a key with one unsalted
 //      SHA-256. Also: a corrupt .tpe could declare any blob length it liked and
@@ -60,11 +65,11 @@ public static class R122ReviewTests
 
         var login = await auth.LoginWithPasswordAsync("admin", "admin");
         assert(
-            login.Success && login.User is { IsAdmin: true, MustChangePassword: true },
-            "R122 the factory admin can still sign in - otherwise the credential-change dialog would be unreachable");
+            login.Success && login.User is { IsAdmin: true, MustChangePassword: false },
+            "R182 the shipped admin access signs in without a forced credential change");
         assert(
-            login.User is not null && !login.User.Can(UserPermissions.Sale),
-            "R122 ... but that session is powerless until the credentials are replaced");
+            login.User is not null && login.User.Can(UserPermissions.Sale),
+            "R182 ... and can work immediately; the operator replaces the credentials later");
 
         using (var c = db.OpenConnection())
         {

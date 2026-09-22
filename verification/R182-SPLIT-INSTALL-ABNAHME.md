@@ -35,7 +35,10 @@ Endkunden gegeben.
 | Setup läuft ohne Fehler durch | ☐ PASS ☐ FAIL | |
 | Programmordner `...\TOR Einzelhandel\TOR-Einzelhandel.exe` | ☐ PASS ☐ FAIL | |
 | Desktop-/Startmenüeintrag heißt „TOR Einzelhandel“ | ☐ PASS ☐ FAIL | |
+| Setup fragt **keine** Zugangsdaten mehr ab | ☐ PASS ☐ FAIL | |
 | Programm startet und meldet Edition **EINZELHANDEL** | ☐ PASS ☐ FAIL | |
+| Anmeldung mit `admin` / `admin` funktioniert sofort, ohne erzwungene Passwortänderung | ☐ PASS ☐ FAIL | |
+| Kassenart steht mittig und gross über der ganzen Zeile | ☐ PASS ☐ FAIL | |
 | Datenordner `%APPDATA%\TOR-Einzelhandel` angelegt | ☐ PASS ☐ FAIL | |
 
 ## 2. Installation TOR Gastro neben TOR Einzelhandel
@@ -46,6 +49,8 @@ Endkunden gegeben.
 | Programmordner `...\TOR Gastro\TOR-Gastro.exe` | ☐ PASS ☐ FAIL | |
 | Beide Produkte stehen getrennt in „Apps & Features“ | ☐ PASS ☐ FAIL | |
 | Programm startet und meldet Edition **GASTRONOMIE** | ☐ PASS ☐ FAIL | |
+| Anmeldung mit `admin` / `admin` funktioniert sofort | ☐ PASS ☐ FAIL | |
+| Kassenart steht mittig und gross über der ganzen Zeile | ☐ PASS ☐ FAIL | |
 | Datenordner `%APPDATA%\TOR-Gastro` angelegt | ☐ PASS ☐ FAIL | |
 | Beide Programme laufen gleichzeitig (getrennte Mutexe) | ☐ PASS ☐ FAIL | |
 | Artikel in einem Produkt erscheinen **nicht** im anderen | ☐ PASS ☐ FAIL | |
