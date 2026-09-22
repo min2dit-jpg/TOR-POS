@@ -1,0 +1,46 @@
+# R182 – TOR KIOSK / TOR DÖNER Split-Migration
+
+## Ziel
+
+R182 trennt die bisher gemeinsame TOR-POS-Installation in zwei feste Produkte, ohne die R181-Daten beim Übergang zu zerstören:
+
+- **TOR KIOSK** – Edition `KIOSK`, EXE `TOR-KIOSK.exe`, AppData `TOR-KIOSK`
+- **TOR DÖNER** – Edition `IMBISS`, EXE `TOR-DOENER.exe`, AppData `TOR-DOENER`
+
+Beide Produkte werden aus demselben geprüften Quellcode gebaut. Produktidentität, Windows-AppId, Installationsordner, Prozess-Mutex, Benutzer-Datenpfad und maschinenweiter Lizenz-/Trial-Pfad sind getrennt.
+
+## R181 bleibt Rückfallbasis
+
+Die bestehende R181-Installation und `%APPDATA%\TOR-POS-Pro` werden bei der Split-Migration **nicht verschoben, nicht gelöscht und nicht überschrieben**. Eine Migration ist Copy-once und backup-first.
+
+Vor der Kopie wird ein verifiziertes Backup erzeugt. Die dedizierte Zielinstallation erhält einen Provenance-Marker mit Quelle und SHA-256 des migrierten `torpos.db`. Ein bereits initialisiertes Ziel wird nicht erneut überschrieben.
+
+## Editionssicherheit
+
+Eine automatische Übernahme ist nur zulässig, wenn `edition.permanent.lock` der alten R181-Installation exakt zur Ziel-Edition passt. Eine temporäre Testauswahl genügt nicht. Eine KIOSK-Historie darf nicht automatisch in TOR DÖNER übernommen werden und umgekehrt.
+
+## Rollback / Rejoin
+
+Solange der SHA-256-Hash der dedizierten Datenbank noch dem unmittelbar migrierten Stand entspricht, kann die unveränderte R181-Kopie als verlustfreie Rückfallbasis verwendet werden (`SafeBeforeDedicatedWrites`).
+
+Sobald in TOR KIOSK oder TOR DÖNER neue Daten geschrieben wurden, wird ein automatischer Rejoin als unsicher bewertet (`DedicatedDataChanged`). Ab diesem Punkt dürfen zwei fiskalische Historien nicht still zusammenkopiert werden. Eine spätere Zusammenführung benötigt eine ausdrücklich geprüfte Migration mit fachlicher Datenabstimmung.
+
+## Side-by-side Windows-Installation
+
+TOR KIOSK und TOR DÖNER besitzen unterschiedliche stabile Inno-Setup-AppIds, Installationsordner, EXE-Namen, Mutex-Namen und Startmenü-/Desktop-Identitäten. Deshalb können beide Produkte parallel installiert sein. Das Deinstallieren eines Produkts darf den Datenordner nicht löschen (`uninsneveruninstall`) und darf die Installation des anderen Produkts nicht adressieren.
+
+Die alte gemeinsame TOR POS Pro AppId bleibt unverändert. Dadurch wird R181 nicht versehentlich als Upgrade-Ziel eines der neuen Produkte behandelt.
+
+## Freigaberegeln
+
+PR #58 bleibt Draft, bis alle folgenden Punkte nachweislich erfüllt sind:
+
+1. vollständige Safety-Test-Suite grün;
+2. TOR KIOSK und TOR DÖNER jeweils als Release-Build erfolgreich;
+3. beide dedizierten Publish-Ausgaben erfolgreich;
+4. beide Setup-EXE erfolgreich kompiliert und als CI-Artefakt vorhanden;
+5. backup-first Migration und Editions-Mismatch regressionsgetestet;
+6. Rollback vor dedizierten Writes als sicher und nach dedizierten Writes als gesperrt regressionsgetestet;
+7. Side-by-side AppId/Installations-/Datenpfad-Trennung regressionsgetestet.
+
+Physische TSE-/Terminaltests bleiben von dieser reinen Produkttrennung getrennt und werden erst mit verfügbarer Hardware durchgeführt.
