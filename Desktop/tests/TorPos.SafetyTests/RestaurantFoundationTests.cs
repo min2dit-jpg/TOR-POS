@@ -33,6 +33,70 @@ internal static class RestaurantFoundationTests
                 RestaurantFeature.Tischplan),
             "Restaurant Plus contains Plus modules and all standard essentials");
 
+        var exportTime = DateTimeOffset.Parse("2026-09-22T18:00:00+02:00");
+        var restaurantOrderRecord = new DsfinvkOrderRecord(
+            Id: 900,
+            ParkNumber: 0,
+            PickupNumber: 0,
+            Sequence: 1,
+            Kind: OrderBestellungKind.Annahme,
+            StartedAt: exportTime,
+            CreatedAt: exportTime.AddMinutes(1),
+            Operator: "KELLNER-1",
+            ImHaus: true,
+            Lines: new[]
+            {
+                new CartLine
+                {
+                    ProductId = 99,
+                    ProductName = "Restaurant Exportartikel",
+                    Quantity = 1m,
+                    UnitPriceCents = 1290,
+                    ListUnitPriceCents = 1290,
+                    VatRate = 19m,
+                    Unit = "Stück"
+                }
+            },
+            Tse: new DsfinvkTseResult(
+                "", "", "", "", null, true, "TEST"),
+            Training: false,
+            CustomBonId: "RB-900",
+            CustomAllocationGroup: "Restaurant session-900");
+
+        var exportRows = DsfinvkClosingBuilder.Build(
+            new DsfinvkClosingInput
+            {
+                Closing = new DsfinvkClosing(1, exportTime.AddHours(1)),
+                Master = new DsfinvkMasterData(
+                    "K1",
+                    "TOR Restaurant Test",
+                    "Teststr. 1",
+                    "10115",
+                    "Berlin",
+                    "DE",
+                    "12/345/67890",
+                    "DE123456789",
+                    "TOR",
+                    "Restaurant",
+                    "TEST-001",
+                    "TOR Restaurant",
+                    "R185"),
+                OrderRecords = new[] { restaurantOrderRecord }
+            });
+
+        assert(
+            exportRows.For("Bonkopf").Any(
+                row => string.Equals(
+                    Convert.ToString(row["BON_ID"]),
+                    "RB-900",
+                    StringComparison.Ordinal)) &&
+            exportRows.For("Bonkopf_AbrKreis").Any(
+                row => string.Equals(
+                    Convert.ToString(row["ABRECHNUNGSKREIS"]),
+                    "Restaurant session-900",
+                    StringComparison.Ordinal)),
+            "Restaurant Bestellung keeps its RB BON_ID and Restaurant allocation group in DSFinV-K rows");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
