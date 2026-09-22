@@ -1097,6 +1097,138 @@ internal static class UiTranslations
             "✓ Test fişi Windows'a iletildi. Cihazdaki kâğıt çıktıyı kontrol edin.",
         ["✓ Waagenparameter gespeichert. Manuelle Eingabe bleibt als sichere Rückfallebene verfügbar."] =
             "✓ Terazi parametreleri kaydedildi. Elle giriş güvenli bir yedek yol olarak kullanılabilir kalır.",
+
+        // Technikerbereich: TSE, Recht & Fiskal, Lizenzierung
+        ["TSE-Aktivierung"] = "TSE etkinleştirme",
+        ["TOR POS unterstützt die direkte Swissbit-WORM-API und prüft ab R175 zusätzlich eine vorhandene "] =
+            "TOR POS doğrudan Swissbit WORM API'sini destekler ve R175'ten itibaren ek olarak mevcut bir ",
+        ["Recht & Fiskal"] = "Hukuk ve fiskal",
+        ["Deutschland-Status nach AO § 146a, KassenSichV und DSFinV-K. Produktivbetrieb wird nicht per Benutzer-Schalter freigegeben."] =
+            "AO § 146a, KassenSichV ve DSFinV-K uyarınca Almanya durumu. Üretim işletimi bir kullanıcı anahtarıyla açılmaz.",
+        ["Lizenzierung"] = "Lisanslama",
+        ["Kunden-Nr. und genau einem PC zugeordnete, kryptografisch signierte TOR-POS-Lizenz. Die kommerzielle Lizenz ersetzt keine TSE-, KassenSichV- oder DSFinV-K-Prüfung."] =
+            "Müşteri numarasına ve tam olarak bir bilgisayara bağlı, kriptografik olarak imzalanmış TOR POS lisansı. Ticari lisans; TSE, KassenSichV veya DSFinV-K denetiminin yerine geçmez.",
+        ["Alternative: fiskaltrust + Swissbit"] = "Alternatif: fiskaltrust + Swissbit",
+        ["TSE-Status"] = "TSE durumu",
+        ["Automatisch aus der TSE lesen"] = "TSE'den otomatik oku",
+        ["Kassen-Zuordnung"] = "Kasa eşlemesi",
+        ["Erst-Aktivierung – Zugangsdaten nur temporär"] = "İlk etkinleştirme – erişim bilgileri yalnızca geçici",
+        ["Produktivfreigabe"] = "Üretim onayı",
+        ["Elektronisches Aufzeichnungssystem"] = "Elektronik kayıt sistemi",
+        ["Pflichtmodule"] = "Zorunlu modüller",
+        ["Mitteilung nach § 146a Abs. 4 AO"] = "§ 146a Abs. 4 AO uyarınca bildirim",
+        ["Prüfungsdaten / Export"] = "Denetim verileri / dışa aktarım",
+        ["Lizenzstatus"] = "Lisans durumu",
+        ["Aktivierung"] = "Etkinleştirme",
+        ["Swissbit TSE beim Programmstart automatisch prüfen"] =
+            "Program açılışında Swissbit TSE'yi otomatik kontrol et",
+        ["Konfiguration"] = "Yapılandırma",
+        ["Swissbit-SCU Version"] = "Swissbit SCU sürümü",
+        ["TSE-Seriennummer"] = "TSE seri numarası",
+        ["BSI-Zertifizierungsnummer"] = "BSI sertifika numarası",
+        ["Gerätepfad"] = "Cihaz yolu",
+        ["Aktiviert am"] = "Etkinleştirme tarihi",
+        ["Zertifikatsablauf"] = "Sertifika bitişi",
+        ["Client-ID / Kassen-ID"] = "Client-ID / kasa kimliği",
+        ["Admin-PIN"] = "Admin PIN",
+        ["TimeAdmin-PIN"] = "TimeAdmin PIN",
+        ["Admin-PUK"] = "Admin PUK",
+        ["Credential-Seed"] = "Credential-Seed",
+        ["Meldedatum"] = "Bildirim tarihi",
+        ["Datum der Anschaffung"] = "Satın alma tarihi",
+        ["Datum der Außerbetriebnahme"] = "Hizmetten çıkarma tarihi",
+        ["DSFinV-K · Von"] = "DSFinV-K · başlangıç",
+        ["DSFinV-K · Bis"] = "DSFinV-K · bitiş",
+        ["Kunden-Nr."] = "Müşteri no.",
+        ["Kunde"] = "Müşteri",
+        ["Hersteller"] = "Üretici",
+        ["Standardprodukt"] = "Standart ürün",
+        ["Anschluss"] = "Bağlantı",
+        ["USB / Windows-Laufwerk"] = "USB / Windows sürücüsü",
+        ["Kompatibilitätsprinzip"] = "Uyumluluk ilkesi",
+        ["Sicherheitsmodus"] = "Güvenlik modu",
+        ["Nur Lese-/Verbindungstest · keine Registrierung, Aktivierung oder Transaktion"] =
+            "Yalnızca okuma/bağlantı testi · kayıt, etkinleştirme veya işlem yok",
+        ["Regel"] = "Kural",
+        ["Produktivfreigabe nur nach realer TSE-Signierung, DSFinV-K-Export und Belegprüfung."] =
+            "Üretim onayı yalnızca gerçek TSE imzalaması, DSFinV-K dışa aktarımı ve belge denetiminden sonra verilir.",
+        ["Modell"] = "Model",
+        ["DSFinV-K Zielversion"] = "DSFinV-K hedef sürümü",
+        ["TSE-Aktivierung → TSE TAR EXPORT. BMF verlangt das TAR-Format für TSE-Daten bei Prüfung."] =
+            "TSE etkinleştirme → TSE TAR EXPORT. BMF, denetimde TSE verileri için TAR biçimini ister.",
+        ["Start- und Enddatum sind frei wählbar. Vor dem Export prüft TOR den gewählten Zeitraum; fehlerhafte oder nicht abgeschlossene Daten werden nicht als fertiger Prüfdatensatz ausgegeben."] =
+            "Başlangıç ve bitiş tarihi serbestçe seçilebilir. Dışa aktarımdan önce TOR seçilen dönemi kontrol eder; hatalı veya kapanmamış veriler tamamlanmış denetim veri kümesi olarak verilmez.",
+        ["TOR ruft bei einer teilweise veränderten, aber noch nicht initialisierten TSE nicht automatisch erneut Setup auf. "] =
+            "Kısmen değiştirilmiş ama henüz ilklendirilmemiş bir TSE'de TOR kurulumu kendiliğinden yeniden çağırmaz. ",
+        ["WormAPI.dll kann jetzt real geladen, die TSE erkannt, initialisiert und per Start/Update/FinishTransaction angesprochen werden. "] =
+            "WormAPI.dll artık gerçekten yüklenebilir, TSE algılanabilir, ilklendirilebilir ve Start/Update/FinishTransaction ile çağrılabilir. ",
+        ["Zeitraum-Regel"] = "Dönem kuralı",
+        ["Von/Bis wählt den Prüfungszeitraum. DSFinV-K bleibt Z-Bericht-basiert: TOR exportiert nur vollständig abgeschlossene Kassenabschluss-Zeiträume, deren Z-Abschluss im gewählten Zeitraum liegt. Vorgänge nach dem letzten Z-Bericht werden nicht als abgeschlossen ausgegeben."] =
+            "Başlangıç/bitiş denetim dönemini seçer. DSFinV-K Z-Bericht tabanlı kalır: TOR yalnızca Z-Abschluss'u seçilen dönemde olan, tamamen kapanmış kasa kapanış dönemlerini dışa aktarır. Son Z-Bericht'ten sonraki işlemler kapanmış olarak verilmez.",
+        ["Solange hier TESTBETRIEB angezeigt wird, darf TOR POS nicht als produktive finanzamtkonforme Kasse eingesetzt oder entsprechend beworben werden. Die Freigabe ist absichtlich nicht manuell überschreibbar."] =
+            "Burada TEST MODU göründüğü sürece TOR POS, vergi dairesine uygun üretim kasası olarak kullanılamaz veya öyle tanıtılamaz. Onay bilinçli olarak elle geçersiz kılınamaz.",
+        ["Lizenz-Deaktivierung"] = "Lisans devre dışı bırakma",
+        ["Die lokale Deaktivierung sperrt die installierte Lizenz-ID auf diesem PC und erzeugt zusätzlich einen Deaktivierungsbeleg auf dem Desktop. Eine neue Aktivierung benötigt danach eine neu ausgestellte Lizenz mit neuer Lizenz-ID."] =
+            "Yerel devre dışı bırakma, kurulu lisans kimliğini bu bilgisayarda kilitler ve masaüstünde ayrıca bir devre dışı bırakma belgesi oluşturur. Yeni bir etkinleştirme bundan sonra yeni lisans kimliğiyle yeniden düzenlenmiş bir lisans gerektirir.",
+        ["Wichtige Trennung"] = "Önemli ayrım",
+        ["Eine aktive TOR-POS-Lizenz erlaubt die vertragliche Softwarenutzung. Der steuerliche Produktivbetrieb bleibt weiterhin gesperrt, bis reale TSE-, Beleg- und DSFinV-K-Abnahmetests erfolgreich abgeschlossen sind."] =
+            "Etkin bir TOR POS lisansı, sözleşmeye dayalı yazılım kullanımına izin verir. Vergisel üretim işletimi, gerçek TSE, belge ve DSFinV-K kabul testleri başarıyla tamamlanana kadar kilitli kalır.",
+        ["FISKALTRUST PRÜFEN (NUR LESEN)"] = "FISKALTRUST KONTROL ET (YALNIZCA OKUMA)",
+        ["Ich bestätige, dass Credential-Seed, PIN und PUK zur angeschlossenen TSE gehören."] =
+            "Credential-Seed, PIN ve PUK'un bağlı TSE'ye ait olduğunu onaylıyorum.",
+        ["SDK AUF PC SUCHEN"] = "SDK'YI BİLGİSAYARDA ARA",
+        ["WORMAPI.DLL AUSWÄHLEN"] = "WORMAPI.DLL SEÇ",
+        ["SWISSBIT DOWNLOAD-CENTER"] = "SWISSBIT İNDİRME MERKEZİ",
+        ["TSE SUCHEN"] = "TSE ARA",
+        ["TSE AKTIVIEREN"] = "TSE'Yİ ETKİNLEŞTİR",
+        ["TSE TAR EXPORT"] = "TSE TAR DIŞA AKTAR",
+        ["AUDIT-LOG EXPORTIEREN"] = "DENETİM GÜNLÜĞÜNÜ DIŞA AKTAR",
+        ["DSFINV-K 2.4 PRÜFEN"] = "DSFINV-K 2.4 KONTROL ET",
+        ["DSFINV-K 2.4 EXPORTIEREN"] = "DSFINV-K 2.4 DIŞA AKTAR",
+        ["AKTIVIERUNGSANFRAGE ERSTELLEN"] = "ETKİNLEŞTİRME İSTEĞİ OLUŞTUR",
+        ["LIZENZDATEI IMPORTIEREN"] = "LİSANS DOSYASINI İÇE AKTAR",
+        ["LIZENZ DEAKTIVIEREN"] = "LİSANSI DEVRE DIŞI BIRAK",
+        ["noch nicht geprüft"] = "henüz kontrol edilmedi",
+        ["TSE-Dateien: "] = "TSE dosyaları: ",
+        ["Prüfung nach 8 Sekunden beendet. Es wurde keine TSE-Schreiboperation ausgeführt."] =
+            "Kontrol 8 saniye sonra bitti. TSE'ye hiçbir yazma işlemi yapılmadı.",
+        ["5 Zeichen · wird nicht gespeichert"] = "5 karakter · kaydedilmez",
+        ["6 Zeichen · wird nicht gespeichert"] = "6 karakter · kaydedilmez",
+        ["Nur Seed des TSE-Lieferanten verwenden"] = "Yalnızca TSE tedarikçisinin seed'ini kullan",
+        ["AKTIV"] = "ETKİN",
+        ["z. B. TOR-KD-000123"] = "ör. TOR-KD-000123",
+        ["Kundenname / Firma"] = "Müşteri adı / firma",
+        ["TOR liest nur Configuration-*.json unter ProgramData\\fiskaltrust\\service. AccessToken wird weder gelesen noch angezeigt."] =
+            "TOR yalnızca ProgramData\\\\fiskaltrust\\\\service altındaki Configuration-*.json dosyasını okur. AccessToken ne okunur ne de gösterilir.",
+        ["Beispiel D:. TOR prüft nur, ob TSE_INFO.DAT an diesem Pfad vorhanden ist."] =
+            "Örnek D:. TOR yalnızca bu yolda TSE_INFO.DAT olup olmadığını kontrol eder.",
+        ["Geprüft wird ausschließlich /json/v1/Echo."] = "Yalnızca /json/v1/Echo kontrol edilir.",
+        ["Es wird nur geprüft, ob der konfigurierte TCP/gRPC-Port erreichbar ist."] =
+            "Yalnızca yapılandırılmış TCP/gRPC portuna erişilip erişilemediği kontrol edilir.",
+        ["Wird direkt über die Swissbit WORM API ausgelesen."] = "Doğrudan Swissbit WORM API üzerinden okunur.",
+        ["Wird nicht erfunden. Falls die verwendete SDK-Version sie nicht direkt liefert, bleibt das Feld leer und wird später aus zertifizierter Produkt-/Zertifikatszuordnung ergänzt."] =
+            "Uydurulmaz. Kullanılan SDK sürümü bunu doğrudan vermiyorsa alan boş kalır ve sonradan sertifikalı ürün/sertifika eşlemesinden tamamlanır.",
+        ["Neue/aktuelle Admin-PIN. Nicht in TOR-Einstellungen gespeichert."] =
+            "Yeni/geçerli Admin PIN. TOR ayarlarında saklanmaz.",
+        ["Für Zeit-Synchronisation der TSE. In v0.6.8 nur für diesen Vorgang im Arbeitsspeicher."] =
+            "TSE'nin zaman senkronizasyonu için. v0.6.8'de yalnızca bu işlem boyunca bellekte tutulur.",
+        ["Nicht speichern. Falsche PUK/Seed-Angaben können eine Produktiv-TSE dauerhaft sperren."] =
+            "Kaydetmeyin. Yanlış PUK/seed bilgileri bir üretim TSE'sini kalıcı olarak kilitleyebilir.",
+        ["Nicht pauschal annehmen: Der Seed kann vom TSE-Lieferanten abhängen."] =
+            "Peşinen varsaymayın: seed, TSE tedarikçisine göre değişebilir.",
+        ["TOR übermittelt in dieser Version NICHT an Mein ELSTER / ERiC."] =
+            "TOR bu sürümde Mein ELSTER / ERiC'e iletim YAPMAZ.",
+        ["Nur Dokumentationsfeld. Eine Eingabe löst keine Finanzamt-Übermittlung aus."] =
+            "Yalnızca belgeleme alanı. Bir giriş, vergi dairesine iletim başlatmaz.",
+        ["Bei Leasing oder Leihe: Beginn. Die Mitteilungsdaten stehen im Menü unter KASSENMELDUNG."] =
+            "Kiralama veya ödünç durumunda: başlangıç. Bildirim verileri menüde KASSENMELDUNG altındadır.",
+        ["Leer lassen, solange die Kasse in Betrieb ist."] = "Kasa işletimde olduğu sürece boş bırakın.",
+        ["Erster gewünschter Kalendertag."] = "İstenen ilk takvim günü.",
+        ["Letzter gewünschter Kalendertag · einschließlich."] = "İstenen son takvim günü · dahil.",
+        ["Pflichtfeld. Diese Nummer wird vom TOR-Händler vergeben und in der signierten Lizenz gespeichert."] =
+            "Zorunlu alan. Bu numara TOR bayisi tarafından verilir ve imzalı lisansta saklanır.",
+        ["Wird zusammen mit Kunden-Nr., PC-Gerätecode, Installations-ID und Version in die Aktivierungsanfrage geschrieben."] =
+            "Müşteri no., PC cihaz kodu, kurulum kimliği ve sürümle birlikte etkinleştirme isteğine yazılır.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -2170,5 +2302,137 @@ internal static class UiTranslations
             "✓ The test receipt was handed to Windows. Check the paper printout at the device.",
         ["✓ Waagenparameter gespeichert. Manuelle Eingabe bleibt als sichere Rückfallebene verfügbar."] =
             "✓ The scale parameters have been saved. Manual entry stays available as a safe fallback.",
+
+        // Technikerbereich: TSE, Recht & Fiskal, Lizenzierung
+        ["TSE-Aktivierung"] = "TSE activation",
+        ["TOR POS unterstützt die direkte Swissbit-WORM-API und prüft ab R175 zusätzlich eine vorhandene "] =
+            "TOR POS supports the Swissbit WORM API directly and, from R175 on, additionally checks an existing ",
+        ["Recht & Fiskal"] = "Law & fiscal",
+        ["Deutschland-Status nach AO § 146a, KassenSichV und DSFinV-K. Produktivbetrieb wird nicht per Benutzer-Schalter freigegeben."] =
+            "German status under AO § 146a, KassenSichV and DSFinV-K. Production operation is not released by a user switch.",
+        ["Lizenzierung"] = "Licensing",
+        ["Kunden-Nr. und genau einem PC zugeordnete, kryptografisch signierte TOR-POS-Lizenz. Die kommerzielle Lizenz ersetzt keine TSE-, KassenSichV- oder DSFinV-K-Prüfung."] =
+            "A cryptographically signed TOR POS licence bound to a customer number and to exactly one PC. The commercial licence does not replace a TSE, KassenSichV or DSFinV-K audit.",
+        ["Alternative: fiskaltrust + Swissbit"] = "Alternative: fiskaltrust + Swissbit",
+        ["TSE-Status"] = "TSE status",
+        ["Automatisch aus der TSE lesen"] = "Read automatically from the TSE",
+        ["Kassen-Zuordnung"] = "Till assignment",
+        ["Erst-Aktivierung – Zugangsdaten nur temporär"] = "First activation – the credentials are temporary only",
+        ["Produktivfreigabe"] = "Production release",
+        ["Elektronisches Aufzeichnungssystem"] = "Electronic recording system",
+        ["Pflichtmodule"] = "Mandatory modules",
+        ["Mitteilung nach § 146a Abs. 4 AO"] = "Notification under § 146a Abs. 4 AO",
+        ["Prüfungsdaten / Export"] = "Audit data / export",
+        ["Lizenzstatus"] = "Licence status",
+        ["Aktivierung"] = "Activation",
+        ["Swissbit TSE beim Programmstart automatisch prüfen"] =
+            "Check the Swissbit TSE automatically at program start",
+        ["Konfiguration"] = "Configuration",
+        ["Swissbit-SCU Version"] = "Swissbit SCU version",
+        ["TSE-Seriennummer"] = "TSE serial number",
+        ["BSI-Zertifizierungsnummer"] = "BSI certification number",
+        ["Gerätepfad"] = "Device path",
+        ["Aktiviert am"] = "Activated on",
+        ["Zertifikatsablauf"] = "Certificate expiry",
+        ["Client-ID / Kassen-ID"] = "Client ID / till ID",
+        ["Admin-PIN"] = "Admin PIN",
+        ["TimeAdmin-PIN"] = "TimeAdmin PIN",
+        ["Admin-PUK"] = "Admin PUK",
+        ["Credential-Seed"] = "Credential seed",
+        ["Meldedatum"] = "Notification date",
+        ["Datum der Anschaffung"] = "Date of purchase",
+        ["Datum der Außerbetriebnahme"] = "Date of decommissioning",
+        ["DSFinV-K · Von"] = "DSFinV-K · from",
+        ["DSFinV-K · Bis"] = "DSFinV-K · to",
+        ["Kunden-Nr."] = "Customer no.",
+        ["Kunde"] = "Customer",
+        ["Hersteller"] = "Manufacturer",
+        ["Standardprodukt"] = "Standard product",
+        ["Anschluss"] = "Connection",
+        ["USB / Windows-Laufwerk"] = "USB / Windows drive",
+        ["Kompatibilitätsprinzip"] = "Compatibility principle",
+        ["Sicherheitsmodus"] = "Safety mode",
+        ["Nur Lese-/Verbindungstest · keine Registrierung, Aktivierung oder Transaktion"] =
+            "Read and connection test only · no registration, activation or transaction",
+        ["Regel"] = "Rule",
+        ["Produktivfreigabe nur nach realer TSE-Signierung, DSFinV-K-Export und Belegprüfung."] =
+            "A production release only follows real TSE signing, a DSFinV-K export and a receipt check.",
+        ["Modell"] = "Model",
+        ["DSFinV-K Zielversion"] = "DSFinV-K target version",
+        ["TSE-Aktivierung → TSE TAR EXPORT. BMF verlangt das TAR-Format für TSE-Daten bei Prüfung."] =
+            "TSE activation → TSE TAR EXPORT. The BMF requires the TAR format for TSE data in an audit.",
+        ["Start- und Enddatum sind frei wählbar. Vor dem Export prüft TOR den gewählten Zeitraum; fehlerhafte oder nicht abgeschlossene Daten werden nicht als fertiger Prüfdatensatz ausgegeben."] =
+            "The start and end dates are free to choose. Before the export TOR checks the chosen period; faulty or unclosed data is not written out as a finished audit data set.",
+        ["TOR ruft bei einer teilweise veränderten, aber noch nicht initialisierten TSE nicht automatisch erneut Setup auf. "] =
+            "With a partly changed but not yet initialised TSE, TOR does not call setup again by itself. ",
+        ["WormAPI.dll kann jetzt real geladen, die TSE erkannt, initialisiert und per Start/Update/FinishTransaction angesprochen werden. "] =
+            "WormAPI.dll can now really be loaded, the TSE recognised, initialised and addressed through Start/Update/FinishTransaction. ",
+        ["Zeitraum-Regel"] = "Period rule",
+        ["Von/Bis wählt den Prüfungszeitraum. DSFinV-K bleibt Z-Bericht-basiert: TOR exportiert nur vollständig abgeschlossene Kassenabschluss-Zeiträume, deren Z-Abschluss im gewählten Zeitraum liegt. Vorgänge nach dem letzten Z-Bericht werden nicht als abgeschlossen ausgegeben."] =
+            "From/to chooses the audit period. DSFinV-K stays Z-Bericht based: TOR only exports fully closed till-closing periods whose Z-Abschluss falls in the chosen period. Transactions after the last Z-Bericht are not written out as closed.",
+        ["Solange hier TESTBETRIEB angezeigt wird, darf TOR POS nicht als produktive finanzamtkonforme Kasse eingesetzt oder entsprechend beworben werden. Die Freigabe ist absichtlich nicht manuell überschreibbar."] =
+            "As long as TEST MODE is shown here, TOR POS may not be used or advertised as a production till that complies with the tax office. The release is deliberately not overridable by hand.",
+        ["Lizenz-Deaktivierung"] = "Licence deactivation",
+        ["Die lokale Deaktivierung sperrt die installierte Lizenz-ID auf diesem PC und erzeugt zusätzlich einen Deaktivierungsbeleg auf dem Desktop. Eine neue Aktivierung benötigt danach eine neu ausgestellte Lizenz mit neuer Lizenz-ID."] =
+            "A local deactivation locks the installed licence ID on this PC and also writes a deactivation record to the desktop. A new activation then needs a newly issued licence with a new licence ID.",
+        ["Wichtige Trennung"] = "An important distinction",
+        ["Eine aktive TOR-POS-Lizenz erlaubt die vertragliche Softwarenutzung. Der steuerliche Produktivbetrieb bleibt weiterhin gesperrt, bis reale TSE-, Beleg- und DSFinV-K-Abnahmetests erfolgreich abgeschlossen sind."] =
+            "An active TOR POS licence permits the contractual use of the software. Fiscal production operation stays locked until real TSE, receipt and DSFinV-K acceptance tests have passed.",
+        ["FISKALTRUST PRÜFEN (NUR LESEN)"] = "CHECK FISKALTRUST (READ ONLY)",
+        ["Ich bestätige, dass Credential-Seed, PIN und PUK zur angeschlossenen TSE gehören."] =
+            "I confirm that the credential seed, PIN and PUK belong to the connected TSE.",
+        ["SDK AUF PC SUCHEN"] = "SEARCH THE PC FOR THE SDK",
+        ["WORMAPI.DLL AUSWÄHLEN"] = "CHOOSE WORMAPI.DLL",
+        ["SWISSBIT DOWNLOAD-CENTER"] = "SWISSBIT DOWNLOAD CENTRE",
+        ["TSE SUCHEN"] = "SEARCH FOR THE TSE",
+        ["TSE AKTIVIEREN"] = "ACTIVATE THE TSE",
+        ["TSE TAR EXPORT"] = "TSE TAR EXPORT",
+        ["AUDIT-LOG EXPORTIEREN"] = "EXPORT THE AUDIT LOG",
+        ["DSFINV-K 2.4 PRÜFEN"] = "CHECK DSFINV-K 2.4",
+        ["DSFINV-K 2.4 EXPORTIEREN"] = "EXPORT DSFINV-K 2.4",
+        ["AKTIVIERUNGSANFRAGE ERSTELLEN"] = "CREATE AN ACTIVATION REQUEST",
+        ["LIZENZDATEI IMPORTIEREN"] = "IMPORT A LICENCE FILE",
+        ["LIZENZ DEAKTIVIEREN"] = "DEACTIVATE THE LICENCE",
+        ["noch nicht geprüft"] = "not checked yet",
+        ["TSE-Dateien: "] = "TSE files: ",
+        ["Prüfung nach 8 Sekunden beendet. Es wurde keine TSE-Schreiboperation ausgeführt."] =
+            "The check ended after 8 seconds. No write operation was performed on the TSE.",
+        ["5 Zeichen · wird nicht gespeichert"] = "5 characters · not stored",
+        ["6 Zeichen · wird nicht gespeichert"] = "6 characters · not stored",
+        ["Nur Seed des TSE-Lieferanten verwenden"] = "Use the TSE supplier's seed only",
+        ["AKTIV"] = "ACTIVE",
+        ["z. B. TOR-KD-000123"] = "e.g. TOR-KD-000123",
+        ["Kundenname / Firma"] = "Customer name / company",
+        ["TOR liest nur Configuration-*.json unter ProgramData\\fiskaltrust\\service. AccessToken wird weder gelesen noch angezeigt."] =
+            "TOR only reads Configuration-*.json under ProgramData\\\\fiskaltrust\\\\service. The access token is neither read nor shown.",
+        ["Beispiel D:. TOR prüft nur, ob TSE_INFO.DAT an diesem Pfad vorhanden ist."] =
+            "Example D:. TOR only checks whether TSE_INFO.DAT exists at this path.",
+        ["Geprüft wird ausschließlich /json/v1/Echo."] = "Only /json/v1/Echo is checked.",
+        ["Es wird nur geprüft, ob der konfigurierte TCP/gRPC-Port erreichbar ist."] =
+            "Only whether the configured TCP or gRPC port is reachable is checked.",
+        ["Wird direkt über die Swissbit WORM API ausgelesen."] = "It is read directly through the Swissbit WORM API.",
+        ["Wird nicht erfunden. Falls die verwendete SDK-Version sie nicht direkt liefert, bleibt das Feld leer und wird später aus zertifizierter Produkt-/Zertifikatszuordnung ergänzt."] =
+            "It is not invented. If the SDK version in use does not supply it directly, the field stays empty and is filled in later from the certified product and certificate mapping.",
+        ["Neue/aktuelle Admin-PIN. Nicht in TOR-Einstellungen gespeichert."] =
+            "The new or current admin PIN. It is not stored in the TOR settings.",
+        ["Für Zeit-Synchronisation der TSE. In v0.6.8 nur für diesen Vorgang im Arbeitsspeicher."] =
+            "For the TSE's time synchronisation. In v0.6.8 it is held in memory for this operation only.",
+        ["Nicht speichern. Falsche PUK/Seed-Angaben können eine Produktiv-TSE dauerhaft sperren."] =
+            "Do not store it. Wrong PUK or seed values can lock a production TSE permanently.",
+        ["Nicht pauschal annehmen: Der Seed kann vom TSE-Lieferanten abhängen."] =
+            "Do not simply assume it: the seed can depend on the TSE supplier.",
+        ["TOR übermittelt in dieser Version NICHT an Mein ELSTER / ERiC."] =
+            "In this version TOR does NOT transmit to Mein ELSTER or ERiC.",
+        ["Nur Dokumentationsfeld. Eine Eingabe löst keine Finanzamt-Übermittlung aus."] =
+            "A documentation field only. An entry does not trigger a transmission to the tax office.",
+        ["Bei Leasing oder Leihe: Beginn. Die Mitteilungsdaten stehen im Menü unter KASSENMELDUNG."] =
+            "For leasing or a loan: the start. The notification data is in the menu under KASSENMELDUNG.",
+        ["Leer lassen, solange die Kasse in Betrieb ist."] = "Leave it empty while the till is in operation.",
+        ["Erster gewünschter Kalendertag."] = "The first calendar day you want.",
+        ["Letzter gewünschter Kalendertag · einschließlich."] = "The last calendar day you want · inclusive.",
+        ["Pflichtfeld. Diese Nummer wird vom TOR-Händler vergeben und in der signierten Lizenz gespeichert."] =
+            "A mandatory field. This number is issued by the TOR dealer and stored in the signed licence.",
+        ["Wird zusammen mit Kunden-Nr., PC-Gerätecode, Installations-ID und Version in die Aktivierungsanfrage geschrieben."] =
+            "It is written into the activation request together with the customer number, the PC device code, the installation ID and the version.",
     };
 }
