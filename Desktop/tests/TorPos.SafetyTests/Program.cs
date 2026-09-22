@@ -447,6 +447,7 @@ await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
 await EditionSplitFoundationTests.Run(Assert);
+await RestaurantFoundationTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -516,7 +517,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1160;
+// Restaurant foundation: 12 checks lock Standard/Plus feature gating,
+// Restaurant-only schema isolation, one live Tischvorgang per table,
+// optimistic concurrency and append-only table-session events.
+const int ExpectedSafetyChecks = 1172;
 
 if (checks != ExpectedSafetyChecks)
 {
