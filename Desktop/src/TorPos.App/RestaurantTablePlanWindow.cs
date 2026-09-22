@@ -562,6 +562,9 @@ public sealed class RestaurantTablePlanWindow : Window
             _targetTable.SelectedItem is not RestaurantTable target)
             return;
 
+        RestaurantFiscalVorgang? sourceFiscal = null;
+        RestaurantFiscalVorgang? targetFiscal = null;
+
         try
         {
             var targetSession = await _restaurant.GetLiveSessionForTableAsync(target.Id);
@@ -572,6 +575,38 @@ public sealed class RestaurantTablePlanWindow : Window
                 return;
             }
 
+            var sourceSecured =
+                await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                    _selectedSession.Id);
+            var targetSecured =
+                await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                    targetSession.Id);
+
+            if (!sourceSecured || !targetSecured)
+            {
+                await ShowErrorAsync(
+                    "Tische können erst zusammengelegt werden, wenn beide Bestellung/TSE-Stände vollständig gesichert sind.");
+                return;
+            }
+
+            var movedItems =
+                await _restaurant.ListActiveItemsAsync(
+                    _selectedSession.Id);
+
+            if (movedItems.Count == 0)
+            {
+                await ShowErrorAsync(
+                    "Der Quelltisch enthält keine offenen Positionen.");
+                return;
+            }
+
+            sourceFiscal = await _restaurantFiscal.BeginChangeAsync(
+                _selectedSession.Id,
+                _user.Username);
+            targetFiscal = await _restaurantFiscal.BeginChangeAsync(
+                targetSession.Id,
+                _user.Username);
+
             var merged = await _restaurant.MergeSessionsAsync(
                 _selectedSession.Id,
                 _selectedSession.Version,
@@ -580,12 +615,45 @@ public sealed class RestaurantTablePlanWindow : Window
                 _user.Username,
                 Environment.MachineName);
 
+            await _restaurantFiscal.SecureMergeAsync(
+                _selectedSession.Id,
+                targetSession.Id,
+                movedItems,
+                sourceFiscal,
+                targetFiscal,
+                _user.Username);
+
+            sourceFiscal = null;
+            targetFiscal = null;
+
             _selectedTable = target;
             _selectedSession = merged;
             await ReloadAsync();
         }
         catch (Exception ex)
         {
+            if (sourceFiscal is not null)
+            {
+                try
+                {
+                    await _restaurantFiscal.AbortChangeAsync(
+                        sourceFiscal,
+                        _user.Username);
+                }
+                catch { }
+            }
+
+            if (targetFiscal is not null)
+            {
+                try
+                {
+                    await _restaurantFiscal.AbortChangeAsync(
+                        targetFiscal,
+                        _user.Username);
+                }
+                catch { }
+            }
+
             await ShowErrorAsync(ex.Message);
             await ReloadAsync();
         }
