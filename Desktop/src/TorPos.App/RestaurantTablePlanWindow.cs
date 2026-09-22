@@ -425,8 +425,11 @@ public sealed class RestaurantTablePlanWindow : Window
             _selectedSession.Id);
 
         var total = currentItems.Sum(x => x.LineTotalCents);
+        var paymentLocked =
+            _selectedSession.State == RestaurantTableSessionState.CheckRequested;
 
         _detailStatus.Text =
+            (paymentLocked ? "ZAHLUNG OFFEN / PRÜFUNG ERFORDERLICH\n" : "") +
             $"BELEGT · {_selectedSession.GuestCount} Gäste · " +
             $"Kellner: {_selectedSession.AssignedWaiter}\n" +
             $"Geöffnet: {_selectedSession.OpenedAt.ToLocalTime():dd.MM.yyyy HH:mm} · " +
@@ -436,12 +439,12 @@ public sealed class RestaurantTablePlanWindow : Window
 
         _open.IsVisible = false;
         _open.IsEnabled = false;
-        _add.IsEnabled = true;
-        _move.IsEnabled = true;
-        _merge.IsEnabled = true;
-        _closeEmpty.IsEnabled = currentItems.Count == 0;
-        _split.IsEnabled = currentItems.Count > 0;
-        _checkoutSelected.IsEnabled = currentItems.Count > 0;
+        _add.IsEnabled = !paymentLocked;
+        _move.IsEnabled = !paymentLocked;
+        _merge.IsEnabled = !paymentLocked;
+        _closeEmpty.IsEnabled = !paymentLocked && currentItems.Count == 0;
+        _split.IsEnabled = !paymentLocked && currentItems.Count > 0;
+        _checkoutSelected.IsEnabled = !paymentLocked && currentItems.Count > 0;
     }
 
     private async Task OpenSelectedTableAsync()
