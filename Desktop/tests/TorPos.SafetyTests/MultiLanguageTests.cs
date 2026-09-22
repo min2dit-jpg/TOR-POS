@@ -209,6 +209,28 @@ public static class MultiLanguageTests
             inlineWindows >= 10 && assignedWindows == inlineWindows && unrenderedDialogs.Count == 0,
             "the message and confirmation windows that are built inline also render in the chosen language before they are shown");
 
+        // MainWindow rewrites its status line throughout a shift. Those writes
+        // must go through StatusLine so a TR/EN screen cannot silently fall back
+        // to German after startup. Static program messages must exist in both
+        // translation tables; interpolated values may contain operator/business
+        // data and are deliberately not rewritten by this check.
+        var mainSource = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
+        var safetySource = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.Safety.cs"));
+        var statusSources = mainSource + "\n" + safetySource;
+        var directStatusWrites = Regex.Matches(statusSources, "ScannerStatus\\.Text\\s*(?:=|\\+=)").Count;
+        var staticStatusMessages = Regex.Matches(
+                statusSources,
+                "StatusLine\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var missingStatusTranslations = staticStatusMessages
+            .Where(message => !turkishKeys.Contains(message) || !englishKeys.Contains(message))
+            .ToArray();
+        assert(
+            directStatusWrites == 1 && staticStatusMessages.Length >= 75 && missingStatusTranslations.Length == 0,
+            "every static MainWindow status message is translated and runtime writes pass through the language-aware StatusLine boundary");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
