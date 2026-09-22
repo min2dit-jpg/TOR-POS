@@ -292,7 +292,8 @@ public sealed class CommercialLicenseService : ICommercialLicenseService
                 payload.CustomerNumber,
                 payload.CustomerName,
                 payload.LicenseId,
-                payload.ValidUntilUtc);
+                payload.ValidUntilUtc,
+                payload.Features ?? Array.Empty<string>());
         }
         catch (Exception ex) when (
             ex is IOException or
