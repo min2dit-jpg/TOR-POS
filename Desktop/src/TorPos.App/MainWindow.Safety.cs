@@ -9,7 +9,7 @@ public partial class MainWindow
 {
     private async Task ShowMenuInfoAsync(string title, string message)
     {
-        ScannerStatus.Text = message;
+        StatusLine = message;
         var window = new Window { Title = title, Width = 600, Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var close = new Button { Content = "SCHLIESSEN", MinHeight = 48, MinWidth = 150 };
@@ -23,7 +23,7 @@ public partial class MainWindow
 
     private async Task ShowPrinterIssueAsync(string title, string message, bool uncertainQueue)
     {
-        ScannerStatus.Text = message;
+        StatusLine = message;
         var window = new Window
         {
             Title = title,
@@ -79,7 +79,7 @@ public partial class MainWindow
 
     private async Task<bool> ConfirmCheckoutWithoutPrinterAsync(string title, string message)
     {
-        ScannerStatus.Text = message;
+        StatusLine = message;
         var window = new Window
         {
             Title = title,
@@ -136,7 +136,7 @@ public partial class MainWindow
         }
         try
         {
-            ScannerStatus.Text = "BONDRUCKER WIRD GEPRÜFT · maximal 2 Sekunden";
+            StatusLine = "BONDRUCKER WIRD GEPRÜFT · maximal 2 Sekunden";
             // R67.2: Only actual Windows/device I/O is measured here.
             // Warning-dialog reading time must never be reported as POS latency.
             var probeStarted = Stopwatch.GetTimestamp();
@@ -164,7 +164,7 @@ public partial class MainWindow
                 return proceed;
             }
 
-            ScannerStatus.Text = "BONDRUCKER BEREIT";
+            StatusLine = "BONDRUCKER BEREIT";
             return true;
         }
         catch (TimeoutException)
@@ -193,11 +193,11 @@ public partial class MainWindow
     {
         if (withoutPrinterAccepted ?? _checkoutWithoutPrinterAccepted)
         {
-            ScannerStatus.Text += " · BONDRUCKER NICHT ERKANNT · ohne Druck fortgesetzt";
+            StatusLine = $"{StatusLine} · {UiLanguage.T("BONDRUCKER NICHT ERKANNT · ohne Druck fortgesetzt")}";
             return;
         }
         if (!explicitRequest && !_settingsCache.GetBool("receipt.auto_print", true))
-        { ScannerStatus.Text += " · BON AUS: kein Testdruck"; return; }
+        { StatusLine = $"{StatusLine} · {UiLanguage.T("BON AUS: kein Testdruck")}"; return; }
         var printer = _settingsCache.GetText("device.receipt_printer.name", "");
         if (!_settingsCache.GetBool("device.receipt_printer.enabled", false) || string.IsNullOrWhiteSpace(printer))
         {
@@ -226,7 +226,7 @@ public partial class MainWindow
             }
 
             await _receiptPrinter.PrintReceiptAsync(job, printer);
-            ScannerStatus.Text = "TESTBON an Windows übergeben · Papierausdruck prüfen · keine echte Buchung";
+            StatusLine = "TESTBON an Windows übergeben · Papierausdruck prüfen · keine echte Buchung";
         }
         catch (TimeoutException)
         {
@@ -258,7 +258,7 @@ public partial class MainWindow
     private bool _closingInProgress;
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if(_paymentInProgress) { e.Cancel=true; ScannerStatus.Text="Zahlung läuft · bitte Ergebnis abwarten"; }
+        if(_paymentInProgress) { e.Cancel=true; StatusLine="Zahlung läuft · bitte Ergebnis abwarten"; }
         else if(!_closingPrepared)
         {
             e.Cancel=true;
@@ -344,7 +344,7 @@ public partial class MainWindow
                 // Preserve known-paid state even when fiscal release is still blocked.
                 if(!reconciliation.ShouldCommit)
                 {
-                    ScannerStatus.Text=
+                    StatusLine=
                         "ZAHLUNG MANUELL BESTÄTIGT · Buchung bleibt bis Fiskal-Freigabe gesperrt · nicht erneut kassieren";
                     return;
                 }
@@ -369,7 +369,7 @@ public partial class MainWindow
 
                 UpdateCart();
 
-                ScannerStatus.Text=
+                StatusLine=
                     "KEINE BELASTUNG MANUELL BESTÄTIGT · Bon wieder offen";
             }
         }
@@ -377,7 +377,7 @@ public partial class MainWindow
         {
             CrashLog.WriteException("MainWindow operation", ex);
             var id=ReportOperationalError("ZAHLUNGSPRÜFUNG","Prüfung nicht abgeschlossen. Zahlung gesperrt lassen.",ex);
-            ScannerStatus.Text=$"PRÜFUNG NICHT ABGESCHLOSSEN · NICHT ERNEUT KASSIEREN · Fehler-ID {id}";
+            StatusLine=$"PRÜFUNG NICHT ABGESCHLOSSEN · NICHT ERNEUT KASSIEREN · Fehler-ID {id}";
         }
         finally
         {
