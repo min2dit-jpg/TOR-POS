@@ -62,10 +62,45 @@ public static class UiLanguage
         if (_current == German) return german;
 
         var table = UiTranslations.For(_current);
-        return table.TryGetValue(german, out var translated) && translated.Length > 0
-            ? translated
-            : german;
+        if (table.TryGetValue(german, out var translated) && translated.Length > 0)
+            return translated;
+
+        return Compound(german, table);
     }
+
+    // A till label is often a label glued to a value - "GESAMT: 12,50 €",
+    // "KARTENZAHLUNG · 12,50 €" - or two lines in one control, "BAR\nF1".
+    // The whole string is never in the table, because the amount changes with
+    // every sale. So when the exact lookup misses, the string is split at these
+    // separators and each piece is translated on its own. The label becomes
+    // Turkish; the amount, which is not interface text, is left exactly as the
+    // window formatted it.
+    private static readonly string[] Separators = ["\r\n", "\n", ": ", " · "];
+
+    private static string Compound(string text, IReadOnlyDictionary<string, string> table)
+    {
+        var at = -1;
+        var separator = "";
+        foreach (var candidate in Separators)
+        {
+            var index = text.IndexOf(candidate, StringComparison.Ordinal);
+            if (index < 0 || (at >= 0 && index >= at)) continue;
+            at = index;
+            separator = candidate;
+        }
+
+        if (at < 0) return text;
+
+        return Piece(text[..at], table) + separator + Piece(text[(at + separator.Length)..], table);
+    }
+
+    // Each piece gets the same treatment as the whole: an exact entry wins, and
+    // anything still compound is split again. Both pieces are shorter than what
+    // they came from, so this ends.
+    private static string Piece(string text, IReadOnlyDictionary<string, string> table) =>
+        table.TryGetValue(text, out var translated) && translated.Length > 0
+            ? translated
+            : Compound(text, table);
 
     /// <summary>
     /// Re-renders a window in the current language. Called from every window's

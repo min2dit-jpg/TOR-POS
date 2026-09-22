@@ -30,6 +30,21 @@ public static class MultiLanguageTests
                 unknownTurkish == "Ein Text, den niemand übersetzt hat",
                 "an untranslated string stays German instead of showing a placeholder, so a half-finished translation is harmless at a till");
 
+            // A till label is usually a label glued to an amount, and the amount
+            // changes with every sale, so the whole string can never be a table
+            // entry. The label has to be translated and the amount left exactly
+            // as the window formatted it - including the comma and the euro sign.
+            UiLanguage.Set("TR");
+            var total = UiLanguage.T("GESAMT: 12,50 €");
+            var card = UiLanguage.T("KARTENZAHLUNG · 12,50 €");
+            var twoLines = UiLanguage.T("BAR\nF1");
+            var unknownCompound = UiLanguage.T("Unbekannter Posten: 12,50 €");
+            UiLanguage.Set("DE");
+            assert(
+                total == "TOPLAM: 12,50 €" && card == "KART ÖDEMESİ · 12,50 €" &&
+                twoLines == "NAKİT\nF1" && unknownCompound == "Unbekannter Posten: 12,50 €",
+                "a label glued to an amount is translated without touching the amount, and an untranslated label still stays German");
+
             UiLanguage.Set("KLINGONISCH");
             var unsupported = UiLanguage.Current;
             UiLanguage.Set(null);
@@ -61,7 +76,7 @@ public static class MultiLanguageTests
         // announces a Z-Bericht. R49 and R54 rely on this, so it is checked
         // instead of trusted: a label may be translated around the term, but the
         // term itself has to survive into the translated text.
-        string[] fiscalTerms = ["Z-Bericht", "X-Bericht", "DSFinV-K", "TSE", "DATEV", "GoBD", "\u00a7 146a"];
+        string[] fiscalTerms = ["Z-Bericht", "X-Bericht", "DSFinV-K", "TSE", "DATEV", "GoBD", "§ 146a"];
         var mistranslatedTerm = Pairs(turkishBlock).Concat(Pairs(englishBlock))
             .SelectMany(pair => fiscalTerms
                 .Where(term => pair.Key.Contains(term, StringComparison.Ordinal)
@@ -98,6 +113,18 @@ public static class MultiLanguageTests
         assert(
             fiscalSources.Length == 0,
             "no fiscal or infrastructure code reaches into the interface language, so receipts, DSFinV-K, Z-Bericht and the audit log stay German");
+
+        // The payment window writes its own German into the accept button and the
+        // validation line on every keystroke, long after Opened. Without a second
+        // render pass the operator would watch the screen fall back to German
+        // while typing the amount given.
+        var payment = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/PaymentChoiceWindow.cs"));
+        assert(
+            payment.Contains("UpdateAcceptState();", StringComparison.Ordinal) &&
+            payment.Contains("UiLanguage.Apply(this);", StringComparison.Ordinal) &&
+            payment.IndexOf("UpdateAcceptState();", StringComparison.Ordinal)
+                < payment.IndexOf("private void UpdateAcceptState()", StringComparison.Ordinal),
+            "the payment screen re-renders after it rewrites its own labels, so it does not fall back to German while the operator types");
 
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.

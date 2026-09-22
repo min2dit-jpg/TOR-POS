@@ -121,6 +121,44 @@ internal static class UiTranslations
         ["LIZENZ"] = "LİSANS",
         ["UPDATE"] = "GÜNCELLEME",
         ["LOKALE KASSE"] = "YEREL KASA",
+
+        // Zahlung
+        ["ZAHLUNG"] = "ÖDEME",
+        ["Eine Seite: Verkaufsart, Zahlart und Betrag"] = "Tek sayfa: satış türü, ödeme türü ve tutar",
+        ["VERKAUFSART"] = "SATIŞ TÜRÜ",
+        ["ZAHLART"] = "ÖDEME TÜRÜ",
+        ["AUSSER HAUS"] = "PAKET",
+        ["IM HAUS"] = "İÇERİDE",
+        ["STANDARD"] = "VARSAYILAN",
+        ["Standard: AUSSER HAUS · IM HAUS gilt nur für diesen Verkauf."] =
+            "Varsayılan: PAKET · İÇERİDE yalnızca bu satış için geçerlidir.",
+        ["GEMISCHT"] = "KARMA",
+        ["BAR + KARTE"] = "NAKİT + KART",
+        ["BARZAHLUNG"] = "NAKİT ÖDEME",
+        ["KARTENZAHLUNG"] = "KART ÖDEMESİ",
+        ["KARTENZAHLUNG STARTEN"] = "KART ÖDEMESİNİ BAŞLAT",
+        ["TEST BESTÄTIGEN"] = "TESTİ ONAYLA",
+        ["ABBRECHEN"] = "VAZGEÇ",
+        ["ZU ZAHLEN"] = "ÖDENECEK",
+        ["AUSZAHLUNG"] = "KASADAN ÖDEME",
+        ["GEGEBEN"] = "VERİLEN",
+        ["RÜCKGELD"] = "PARA ÜSTÜ",
+        ["PASSEND"] = "TAM TUTAR",
+        ["25 % BAR"] = "% 25 NAKİT",
+        ["50 % BAR"] = "% 50 NAKİT",
+        ["75 % BAR"] = "% 75 NAKİT",
+        ["BAR-ANTEIL"] = "NAKİT TUTAR",
+        ["KARTEN-ANTEIL"] = "KART TUTARI",
+        ["Pfand-/Barauszahlung wird nach KASSIEREN nochmals sicher bestätigt."] =
+            "Depozito/nakit iadesi ÖDEME AL sonrasında güvenli şekilde tekrar onaylanır.",
+        ["TEST: Mit KASSIEREN wird die Kartenzahlung in dieser Testkasse bestätigt. Es wird keine echte Karte belastet."] =
+            "TEST: ÖDEME AL ile kart ödemesi bu test kasasında onaylanır. Gerçek bir kart borçlandırılmaz.",
+        ["Mit KASSIEREN wird die Zahlung an das konfigurierte Kartenterminal übergeben. Keine zweite Zahlart-Seite."] =
+            "ÖDEME AL ile ödeme, tanımlı kart terminaline aktarılır. İkinci bir ödeme türü sayfası yoktur.",
+        ["Gegebener Betrag muss mindestens dem Zahlbetrag entsprechen."] =
+            "Verilen tutar en az ödenecek tutar kadar olmalıdır.",
+        ["BAR-Anteil muss größer 0 und kleiner als der Gesamtbetrag sein."] =
+            "NAKİT tutar 0'dan büyük ve toplam tutardan küçük olmalıdır.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -215,5 +253,43 @@ internal static class UiTranslations
         ["LIZENZ"] = "LICENCE",
         ["UPDATE"] = "UPDATE",
         ["LOKALE KASSE"] = "LOCAL TILL",
+
+        // Zahlung
+        ["ZAHLUNG"] = "PAYMENT",
+        ["Eine Seite: Verkaufsart, Zahlart und Betrag"] = "One page: sale type, payment method and amount",
+        ["VERKAUFSART"] = "SALE TYPE",
+        ["ZAHLART"] = "PAYMENT METHOD",
+        ["AUSSER HAUS"] = "TAKEAWAY",
+        ["IM HAUS"] = "EAT IN",
+        ["STANDARD"] = "DEFAULT",
+        ["Standard: AUSSER HAUS · IM HAUS gilt nur für diesen Verkauf."] =
+            "Default: TAKEAWAY · EAT IN applies to this sale only.",
+        ["GEMISCHT"] = "MIXED",
+        ["BAR + KARTE"] = "CASH + CARD",
+        ["BARZAHLUNG"] = "CASH PAYMENT",
+        ["KARTENZAHLUNG"] = "CARD PAYMENT",
+        ["KARTENZAHLUNG STARTEN"] = "START CARD PAYMENT",
+        ["TEST BESTÄTIGEN"] = "CONFIRM TEST",
+        ["ABBRECHEN"] = "CANCEL",
+        ["ZU ZAHLEN"] = "TO PAY",
+        ["AUSZAHLUNG"] = "PAYOUT",
+        ["GEGEBEN"] = "GIVEN",
+        ["RÜCKGELD"] = "CHANGE",
+        ["PASSEND"] = "EXACT",
+        ["25 % BAR"] = "25 % CASH",
+        ["50 % BAR"] = "50 % CASH",
+        ["75 % BAR"] = "75 % CASH",
+        ["BAR-ANTEIL"] = "CASH SHARE",
+        ["KARTEN-ANTEIL"] = "CARD SHARE",
+        ["Pfand-/Barauszahlung wird nach KASSIEREN nochmals sicher bestätigt."] =
+            "A deposit refund or cash payout is confirmed again safely after CHECKOUT.",
+        ["TEST: Mit KASSIEREN wird die Kartenzahlung in dieser Testkasse bestätigt. Es wird keine echte Karte belastet."] =
+            "TEST: CHECKOUT confirms the card payment on this test till. No real card is charged.",
+        ["Mit KASSIEREN wird die Zahlung an das konfigurierte Kartenterminal übergeben. Keine zweite Zahlart-Seite."] =
+            "CHECKOUT hands the payment to the configured card terminal. There is no second payment-method page.",
+        ["Gegebener Betrag muss mindestens dem Zahlbetrag entsprechen."] =
+            "The amount given must be at least the amount due.",
+        ["BAR-Anteil muss größer 0 und kleiner als der Gesamtbetrag sein."] =
+            "The cash share must be greater than 0 and less than the total.",
     };
 }
