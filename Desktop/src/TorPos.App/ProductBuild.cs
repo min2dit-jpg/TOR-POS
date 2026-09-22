@@ -12,6 +12,11 @@ public static class ProductBuild
     public const string ProductName = "TOR Gastro";
     public const string DataDirectoryName = "TOR-Gastro";
     public const string RunningMutexName = "TOR-Gastro-Running";
+#elif TOR_RESTAURANT_PRODUCT
+    public const string? FixedEdition = "RESTAURANT";
+    public const string ProductName = "TOR Restaurant";
+    public const string DataDirectoryName = "TOR-Restaurant";
+    public const string RunningMutexName = "TOR-Restaurant-Running";
 #else
     // Legacy/shared build remains available while the split is being qualified.
     public const string? FixedEdition = null;
