@@ -147,8 +147,15 @@ public static class EditionSplitFoundationTests
                 // Copied while the connection is still open: SQLite checkpoints the WAL into
                 // torpos.db and deletes it as soon as the last connection closes. Copying now
                 // reproduces exactly what a till looks like after a power cut.
+                // File.Copy would raise a Windows sharing violation here because the seeding
+                // connection still holds both files with write access, so the source is opened
+                // explicitly with FileShare.ReadWrite.
                 foreach (var name in new[] { "torpos.db", "torpos.db-wal" })
-                    File.Copy(Path.Combine(crashSeed, name), Path.Combine(crashLegacy, name));
+                {
+                    using var seedStream = new FileStream(Path.Combine(crashSeed, name), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    using var crashStream = new FileStream(Path.Combine(crashLegacy, name), FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    seedStream.CopyTo(crashStream);
+                }
             }
             File.WriteAllText(Path.Combine(crashLegacy, "edition.permanent.lock"), "KIOSK");
 
