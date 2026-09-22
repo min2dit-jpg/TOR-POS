@@ -194,6 +194,40 @@ public static class EditionSplitFoundationTests
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (Directory.Exists(migrationRoot)) Directory.Delete(migrationRoot, recursive: true);
         }
+
+
+        // R182: the products ship ready to work. Setup no longer asks for
+        // credentials, the documented access (admin / admin, staff PIN 1234,
+        // training code 0000) is usable at the first start instead of being
+        // blocked by a forced credential dialog, and an operator who does
+        // replace it is not pushed into a 10-character password. The audit
+        // trace for a session on shipped credentials is asserted in R122.
+        var accessRoot = Path.Combine(Path.GetTempPath(), "tor-split-access-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(accessRoot);
+        try
+        {
+            var accessDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(accessRoot, "access.db"));
+            var accessAuth = new AuthenticationService(accessDb, new AuditLogRepository(accessDb));
+            await accessAuth.InitializeAsync();
+
+            var factory = await accessAuth.LoginWithPasswordAsync("admin", "admin");
+            assert(factory.Success && factory.User is { IsAdmin: true, MustChangePassword: false } && factory.User.Can(TorPos.Core.UserPermissions.Sale) && factory.User.Can(TorPos.Core.UserPermissions.ZReport), "the shipped admin access works at the first start instead of being blocked by a forced credential change");
+
+            await accessAuth.ChangeAdminCredentialsAsync("admin", "1234", "1234");
+            var replaced = await accessAuth.LoginWithPasswordAsync("admin", "1234");
+            assert(replaced.Success && replaced.User is { IsAdmin: true, MustChangePassword: false }, "an operator may choose a short password and a 1234 PIN instead of a forced 10-character password");
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(accessRoot)) Directory.Delete(accessRoot, recursive: true);
+        }
+
+        var setup = File.ReadAllText(FindRepoFile("Desktop/TOR-POS-Pro-Setup.iss"));
+        assert(!setup.Contains("AdminPage", StringComparison.Ordinal) && !setup.Contains("first-run-admin.cfg", StringComparison.Ordinal), "setup no longer asks for admin credentials and writes no bootstrap credential file");
+
+        var loginCode = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/LoginWindow.axaml.cs"));
+        assert(loginCode.Contains("Grid.SetColumnSpan(visible, 2)", StringComparison.Ordinal) && loginCode.Contains("HorizontalAlignment.Center", StringComparison.Ordinal) && loginCode.Contains("FontSize = 22", StringComparison.Ordinal), "a fixed Kassenart spans the whole row, sits centred and is shown large enough to read at the till");
     }
 
     private static string FindRepoFile(string relative)
