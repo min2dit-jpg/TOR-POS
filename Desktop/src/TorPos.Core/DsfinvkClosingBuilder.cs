@@ -70,7 +70,9 @@ public sealed record DsfinvkOrderRecord(
     bool ImHaus,
     IReadOnlyList<CartLine> Lines,
     DsfinvkTseResult? Tse,
-    bool Training = false);
+    bool Training = false,
+    string? CustomBonId = null,
+    string? CustomAllocationGroup = null);
 
 /// <summary>Where the receipt a Storno or Retoure refers to was closed.</summary>
 public sealed record DsfinvkOriginalReference(long ZNumber, DateTimeOffset ZCreatedAt, string BonId);
@@ -213,7 +215,11 @@ public static class DsfinvkClosingBuilder
             foreach (var training in _input.Trainings)
                 vorgaenge.Add((training.Receipt.CreatedAt, 3, TrainingBonId(training.Receipt.ReceiptNumber), () => WriteTraining(training)));
             foreach (var record in _input.OrderRecords)
-                vorgaenge.Add((record.CreatedAt, 2, OrderRecordBonId(record.ParkNumber, record.Sequence), () => WriteOrderRecord(record)));
+                vorgaenge.Add((
+                    record.CreatedAt,
+                    2,
+                    record.CustomBonId ?? OrderRecordBonId(record.ParkNumber, record.Sequence),
+                    () => WriteOrderRecord(record)));
             foreach (var aborted in _input.Aborted)
                 vorgaenge.Add((aborted.EndedAt, 4, AbortedBonId(aborted.Number), () => WriteAborted(aborted)));
 
@@ -513,7 +519,7 @@ public static class DsfinvkClosingBuilder
         /// </summary>
         private void WriteOrderRecord(DsfinvkOrderRecord record)
         {
-            var bonId = OrderRecordBonId(record.ParkNumber, record.Sequence);
+            var bonId = record.CustomBonId ?? OrderRecordBonId(record.ParkNumber, record.Sequence);
             var total = record.Lines.Sum(l => l.LineTotalCents);
 
             Add("Bonkopf", new()
@@ -562,8 +568,18 @@ public static class DsfinvkClosingBuilder
                 ["BASISWAEH_BETRAG"] = new DsfinvkMoney(0),
             });
 
-            var stub = new ParkedReceipt { ParkNumber = record.ParkNumber, PickupNumber = record.PickupNumber };
-            Add("Bonkopf_AbrKreis", new() { ["BON_ID"] = bonId, ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(OrderAllocationGroup(stub), 50) });
+            var allocationGroup = record.CustomAllocationGroup;
+            if (string.IsNullOrWhiteSpace(allocationGroup))
+            {
+                var stub = new ParkedReceipt { ParkNumber = record.ParkNumber, PickupNumber = record.PickupNumber };
+                allocationGroup = OrderAllocationGroup(stub);
+            }
+
+            Add("Bonkopf_AbrKreis", new()
+            {
+                ["BON_ID"] = bonId,
+                ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(allocationGroup, 50)
+            });
 
             if (record.Kind == OrderBestellungKind.Storno &&
                 _input.OrderRecords.FirstOrDefault(r => r.ParkNumber == record.ParkNumber && r.Sequence == 1) is not null)
