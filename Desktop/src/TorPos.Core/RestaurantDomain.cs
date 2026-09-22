@@ -158,3 +158,14 @@ public static class RestaurantSplitCalculator
             MidpointRounding.AwayFromZero);
     }
 }
+
+
+public sealed record RestaurantCheckoutDraft(
+    string SessionId,
+    long SessionVersion,
+    string OperationId,
+    CartLine[] Lines,
+    RestaurantSplitSelection[] Selections)
+{
+    public long TotalCents => Lines.Sum(x => x.LineTotalCents);
+}
