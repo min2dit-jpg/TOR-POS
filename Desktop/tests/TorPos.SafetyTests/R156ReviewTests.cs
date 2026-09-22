@@ -220,7 +220,7 @@ public static class R156ReviewTests
 
         assert(
             snapshotCode.Contains("new PaymentChoiceWindow(cashEnabled: true, cardEnabled: true, allowImHaus: true)", StringComparison.Ordinal) &&
-            snapshotCode.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 9 dialogs)", StringComparison.Ordinal),
+            snapshotCode.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 10 dialogs)", StringComparison.Ordinal),
             "R156 CI renders the real payment hub and includes it in the five-size/dialog layout gate");
 
     }

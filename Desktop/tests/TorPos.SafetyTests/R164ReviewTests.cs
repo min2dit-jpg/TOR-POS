@@ -23,7 +23,7 @@ public static class R164ReviewTests
             snapshot.Contains("SnapshotUserManagementAsync", StringComparison.Ordinal) &&
             snapshot.Contains("second load", StringComparison.Ordinal) &&
             snapshot.Contains("Laden fehlgeschlagen:", StringComparison.Ordinal) &&
-            snapshot.Contains("9 dialogs", StringComparison.Ordinal),
+            snapshot.Contains("10 dialogs", StringComparison.Ordinal),
             "R164 CI opens the employee window and reloads it twice to catch visual-parent regressions");
 
         return Task.CompletedTask;

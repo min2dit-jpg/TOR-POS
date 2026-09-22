@@ -55,7 +55,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 9 dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 10 dialogs)");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -186,6 +186,11 @@ async Task RunAsync()
     // regression set so the old TOR placeholder/magnifier cannot return.
     await SnapshotDialogAsync(new StartupLoadingWindow(), "startup-loading", check, failures, output);
     await SnapshotDialogAsync(new LoginWindow(auth, settings), "login", check, failures, output);
+    // R182: a dedicated TOR Einzelhandel / TOR Gastro build shows one fixed
+    // Kassenart centred across the row. That is the screen a customer actually
+    // sees, and the till it runs on has a small display, so it belongs in the
+    // layout gate rather than only in a source-level check.
+    await SnapshotDialogAsync(new LoginWindow(auth, settings, "IMBISS"), "login-locked", check, failures, output);
 
     // R164: the real employee-management window is opened and then reloaded
     // once more, exactly matching the refresh path after a successful save.

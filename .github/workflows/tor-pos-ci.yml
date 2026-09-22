@@ -114,6 +114,23 @@ jobs:
           if (-not (Test-Path publish\split\TOR-Einzelhandel\TOR-Einzelhandel.exe)) { throw 'TOR Einzelhandel executable missing.' }
           if (-not (Test-Path publish\split\TOR-Gastro\TOR-Gastro.exe)) { throw 'TOR Gastro executable missing.' }
 
+      # R182: building and packaging a dedicated product never proved it can
+      # start. A hardcoded avares://TorPos.App/... asset URI shipped a product
+      # that threw FileNotFoundException while loading its login window, and
+      # every source-level check passed. This renders the real windows of each
+      # dedicated build - including the startup splash and the login screen -
+      # so a product that cannot come up fails here instead of at the till.
+      - name: Ayrik urunlerin gercek pencerelerini ciz ve kontrol et
+        timeout-minutes: 12
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=KIOSK -- ci-results/ui-einzelhandel 1366x768 --check 2>&1 |
+            Tee-Object -FilePath ci-results/ui-einzelhandel.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=IMBISS -- ci-results/ui-gastro 1366x768 --check 2>&1 |
+            Tee-Object -FilePath ci-results/ui-gastro.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # SafetyTests is an executable, not an xUnit/MSTest test project.
       # Do not substitute dotnet test: use the same entry point as the BAT file.
       - name: Mevcut guvenlik ve regresyon testlerini calistir

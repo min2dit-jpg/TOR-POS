@@ -22,6 +22,8 @@ Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
 - Eine Sitzung auf Auslieferungszugangsdaten bleibt im Audit-Log sichtbar (`ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED`); die Spur wird nun bei Verwendung des Auslieferungspassworts bzw. der -PIN geschrieben. Mitarbeiterkonten bleiben unverändert deaktiviert ausgeliefert.
 - Das 7-Tage-Demo gilt **einmal pro PC und pro Produkt**; die maschinenweite Demo-Identität übersteht eine Deinstallation.
 - Eine fest gebundene Kassenart wird auf dem Anmeldebildschirm mittig über die ganze Zeile und in Lesegröße dargestellt statt in einer Hälfte des Auswahlrasters.
+- **CI startet die Produkte jetzt wirklich:** bauen und paketieren allein hat nie bewiesen, dass ein dediziertes Produkt hochkommt - genau deshalb konnte ein Build ausgeliefert werden, der beim Laden des Anmeldefensters abbrach. Die realen Fenster jedes dedizierten Builds, einschliesslich Startbildschirm und Anmeldung mit fest gebundener Kassenart, werden nun in der CI gerendert und geprüft.
+- Der Hinweis auf dem Anmeldebildschirm nennt keine Mitarbeiter-Zugangsdaten mehr, die so nicht funktionieren: Mitarbeiterkonten werden weiterhin deaktiviert ausgeliefert und zuerst in der Benutzerverwaltung aktiviert.
 - CI baut, published und paketiert beide Produkte und liefert `TOR-Einzelhandel-Setup.exe` und `TOR-Gastro-Setup.exe` als Artefakt. Safety-Baseline: **1159 Checks**.
 - Keine fiskalische Produktionsfreigabe: alle sechs `FiscalRelease`-Nachweisflags bleiben geschlossen. Die erste physische Windows-Installationsabnahme wird über `verification/R182-SPLIT-INSTALL-ABNAHME.md` geführt; TSE-, Terminal- und Druckerabnahme bleiben davon getrennt.
 
