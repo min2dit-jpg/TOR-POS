@@ -25,7 +25,17 @@ public static class ProductBuild
     public static void ConfigureEnvironment()
     {
         if (FixedEdition is null)
+        {
+            // R182: the shared build must never inherit a product identity from the
+            // environment it was started in. Without this an externally set
+            // TOR_POS_PRODUCT_EDITION would redirect AppPaths - including the
+            // machine-wide trial/licence identity - into a split product's roots.
+            Environment.SetEnvironmentVariable(
+                "TOR_POS_PRODUCT_EDITION", null, EnvironmentVariableTarget.Process);
+            Environment.SetEnvironmentVariable(
+                "TOR_POS_PRODUCT_NAME", null, EnvironmentVariableTarget.Process);
             return;
+        }
 
         Environment.SetEnvironmentVariable(
             "TOR_POS_PRODUCT_EDITION",

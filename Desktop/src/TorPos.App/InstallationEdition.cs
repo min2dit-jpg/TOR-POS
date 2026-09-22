@@ -83,13 +83,27 @@ public static class InstallationEdition
     {
         var requested = firstRunSelection;
 
+        // R182: in a dedicated TOR KIOSK / TOR DÖNER build the compiled product identity
+        // outranks every runtime source. The TOR_POS_EDITION fallback stays available for
+        // the shared build only, and a mismatching request is refused instead of applied.
+        var productEditionValue = ProductBuild.FixedEdition;
+
         if (string.IsNullOrWhiteSpace(requested))
-            requested = Environment.GetEnvironmentVariable("TOR_POS_EDITION");
+            requested = productEditionValue
+                ?? Environment.GetEnvironmentVariable("TOR_POS_EDITION");
 
         var edition = Normalize(requested);
         if (edition is null)
             throw new InvalidOperationException(
                 "Vor der Anmeldung muss Einzelhandel oder Gastronomie gewählt werden.");
+
+        if (productEditionValue is { } productEdition &&
+            !string.Equals(edition, productEdition, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Diese Installation gehört zu {ProductBuild.ProductName} " +
+                $"({DisplayName(productEdition)}).");
+        }
 
         var permanent = ReadPermanent();
         if (permanent is not null &&
