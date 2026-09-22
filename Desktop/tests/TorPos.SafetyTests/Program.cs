@@ -512,10 +512,11 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
-// Split-product foundation: 20 checks keep KIOSK/DÖNER process, storage,
-// compile-time identity, side-by-side installers and backup-first legacy
-// migration separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1149;
+// Split-product foundation: 24 checks keep KIOSK/DÖNER process, storage,
+// compile-time identity, per-product demo identity, side-by-side installers and
+// backup-first legacy migration - including a crash-interrupted WAL source -
+// separated while the shared R181 source remains intact for rollback.
+const int ExpectedSafetyChecks = 1153;
 
 if (checks != ExpectedSafetyChecks)
 {

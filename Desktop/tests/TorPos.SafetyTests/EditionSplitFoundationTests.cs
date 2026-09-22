@@ -20,10 +20,27 @@ public static class EditionSplitFoundationTests
             Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "invalid");
             assert(AppPaths.ProductEdition is null && AppPaths.ProductDataDirectoryName() == "TOR-POS-Pro", "unknown product identity fails back to the legacy shared R181 data root");
 
+            Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "KIOSK");
+            var kioskDemoRoot = AppPaths.TrialIdentityDirectory;
+            Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "IMBISS");
+            var doenerDemoRoot = AppPaths.TrialIdentityDirectory;
+            Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", null);
+            var sharedDemoRoot = AppPaths.TrialIdentityDirectory;
+            var machineRoot = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            assert(kioskDemoRoot != doenerDemoRoot && kioskDemoRoot != sharedDemoRoot && doenerDemoRoot != sharedDemoRoot && kioskDemoRoot.StartsWith(machineRoot, StringComparison.Ordinal) && doenerDemoRoot.StartsWith(machineRoot, StringComparison.Ordinal), "each product owns a separate machine-wide demo identity, so the 7-day demo is granted once per PC and per product");
+
+            // The shared build must not inherit a product identity from its environment:
+            // that would move its data root and machine-wide demo identity into a split product.
+            Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "IMBISS");
+            ProductBuild.ConfigureEnvironment();
+            assert(AppPaths.ProductEdition is null && AppPaths.ProductDataDirectoryName() == "TOR-POS-Pro", "the shared build pins its own product identity instead of inheriting one from the environment");
+
             var project = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/TorPos.App.csproj"));
             assert(project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'KIOSK'\">TOR-KIOSK</AssemblyName>", StringComparison.Ordinal) && project.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'IMBISS'\">TOR-DOENER</AssemblyName>", StringComparison.Ordinal) && project.Contains("TOR_KIOSK_PRODUCT", StringComparison.Ordinal) && project.Contains("TOR_DOENER_PRODUCT", StringComparison.Ordinal), "one audited App project emits distinct TOR KIOSK and TOR DÖNER binaries");
             var program = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/Program.cs"));
             var app = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/App.axaml.cs"));
+            var editionGuard = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/InstallationEdition.cs"));
+            assert(editionGuard.Contains("var productEditionValue = ProductBuild.FixedEdition;", StringComparison.Ordinal) && editionGuard.Contains("productEditionValue is { } productEdition", StringComparison.Ordinal) && editionGuard.Contains("?? Environment.GetEnvironmentVariable(\"TOR_POS_EDITION\")", StringComparison.Ordinal), "a dedicated build refuses any edition that does not match its compiled product identity");
             assert(program.Contains("ProductBuild.ConfigureEnvironment()", StringComparison.Ordinal) && program.Contains("ProductBuild.RunningMutexName", StringComparison.Ordinal) && app.Contains("var builtEdition = ProductBuild.FixedEdition;", StringComparison.Ordinal) && app.Contains("return builtEdition;", StringComparison.Ordinal), "split builds fix both process identity and login edition before normal application flow");
         }
         finally { Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", original); }
@@ -102,6 +119,43 @@ public static class EditionSplitFoundationTests
             var wrongTarget = Path.Combine(migrationRoot, "wrong-target");
             var mismatch = await LegacyEditionSplitMigration.TryMigrateAsync(legacy, wrongTarget, backups, "IMBISS");
             assert(mismatch.State == LegacySplitMigrationState.LegacyEditionMismatch && !Directory.Exists(wrongTarget) && changedRollback.State == LegacySplitRollbackState.DedicatedDataChanged && walMigration.State == LegacySplitMigrationState.Migrated && walOnlyRollback.State == LegacySplitRollbackState.DedicatedDataChanged, "wrong-edition migration is refused and automatic rollback closes after dedicated fiscal data changes, including committed WAL-only writes");
+
+            // R182 regression: a till that lost power keeps committed transactions in
+            // torpos.db-wal. Opening the copied database recovers and checkpoints those
+            // frames into torpos.db, so the copy has to be compared BEFORE that happens
+            // and the comparison has to cover the WAL. Otherwise an intact R181 backup
+            // looks like a concurrent source mutation and the product refuses to start.
+            var crashLegacy = Path.Combine(migrationRoot, "legacy-wal-source");
+            var crashSeed = Path.Combine(migrationRoot, "wal-seed");
+            Directory.CreateDirectory(crashLegacy);
+            Directory.CreateDirectory(crashSeed);
+            var crashSeedDb = Path.Combine(crashSeed, "torpos.db");
+            await using (var crashWriter = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = crashSeedDb, Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate, Pooling = false }.ToString()))
+            {
+                await crashWriter.OpenAsync();
+                await using (var pragma = crashWriter.CreateCommand())
+                {
+                    pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;";
+                    await pragma.ExecuteNonQueryAsync();
+                }
+                await using (var seed = crashWriter.CreateCommand())
+                {
+                    seed.CommandText = "CREATE TABLE probe(id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO probe(value) VALUES ('R181-uncheckpointed');";
+                    await seed.ExecuteNonQueryAsync();
+                }
+
+                // Copied while the connection is still open: SQLite checkpoints the WAL into
+                // torpos.db and deletes it as soon as the last connection closes. Copying now
+                // reproduces exactly what a till looks like after a power cut.
+                foreach (var name in new[] { "torpos.db", "torpos.db-wal" })
+                    File.Copy(Path.Combine(crashSeed, name), Path.Combine(crashLegacy, name));
+            }
+            File.WriteAllText(Path.Combine(crashLegacy, "edition.permanent.lock"), "KIOSK");
+
+            var crashTarget = Path.Combine(migrationRoot, "wal-source-target");
+            var crashMigration = await LegacyEditionSplitMigration.TryMigrateAsync(crashLegacy, crashTarget, backups, "KIOSK");
+            var crashRollback = LegacyEditionSplitMigration.EvaluateRollback(crashTarget);
+            assert(crashMigration.State == LegacySplitMigrationState.Migrated && File.Exists(Path.Combine(crashTarget, "torpos.db")) && File.Exists(Path.Combine(crashLegacy, "torpos.db-wal")) && crashRollback.State == LegacySplitRollbackState.SafeBeforeDedicatedWrites, "an R181 installation whose committed writes are still in the WAL migrates, keeps its source intact and stays rollback-safe");
 
             File.Delete(Path.Combine(legacy, "edition.permanent.lock"));
             var unprovenTarget = Path.Combine(migrationRoot, "unproven-target");
