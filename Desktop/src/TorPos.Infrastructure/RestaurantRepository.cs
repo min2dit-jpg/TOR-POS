@@ -293,6 +293,184 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<RestaurantSessionItem> AddItemAsync(
+        string sessionId,
+        long expectedSessionVersion,
+        Product product,
+        decimal quantity,
+        string operatorName,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        operatorName = (operatorName ?? "").Trim();
+        if (sessionId.Length == 0) throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedSessionVersion < 1) throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
+        if (product.Id <= 0) throw new ArgumentException("Artikel fehlt.", nameof(product));
+        if (quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(quantity));
+
+        var quantityMilli = (long)Math.Round(quantity * 1000m, MidpointRounding.AwayFromZero);
+        if (quantityMilli <= 0)
+            throw new ArgumentOutOfRangeException(nameof(quantity));
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            var token = Guid.NewGuid().ToString("N");
+
+            await using (var touch = c.CreateCommand())
+            {
+                touch.Transaction = tx;
+                touch.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET updated_at=$now,
+                        version=version+1
+                    WHERE id=$id
+                      AND version=$version
+                      AND state='OPEN';
+                    """;
+                touch.Parameters.AddWithValue("$now", now);
+                touch.Parameters.AddWithValue("$id", sessionId);
+                touch.Parameters.AddWithValue("$version", expectedSessionVersion);
+                if (await touch.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            long itemId;
+            await using (var insert = c.CreateCommand())
+            {
+                insert.Transaction = tx;
+                insert.CommandText = """
+                    INSERT INTO restaurant_session_items(
+                        session_id,line_token,product_id,product_name,variant_name,
+                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                        added_by,added_at,version)
+                    VALUES(
+                        $session,$token,$product,$name,'',
+                        $quantity,$price,$vat,$pfand,'ACTIVE',
+                        $operator,$now,1)
+                    RETURNING id;
+                    """;
+                insert.Parameters.AddWithValue("$session", sessionId);
+                insert.Parameters.AddWithValue("$token", token);
+                insert.Parameters.AddWithValue("$product", product.Id);
+                insert.Parameters.AddWithValue("$name", product.Name);
+                insert.Parameters.AddWithValue("$quantity", quantityMilli);
+                insert.Parameters.AddWithValue("$price", product.BasePriceCents + product.PfandCents);
+                insert.Parameters.AddWithValue("$vat", product.VatRate);
+                insert.Parameters.AddWithValue("$pfand", product.PfandCents);
+                insert.Parameters.AddWithValue("$operator", operatorName);
+                insert.Parameters.AddWithValue("$now", now);
+                itemId = Convert.ToInt64(await insert.ExecuteScalarAsync(ct));
+            }
+
+            await AppendEventAsync(
+                c, tx, sessionId, "POSITION_HINZUGEFUEGT",
+                operatorName, deviceId,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    lineToken = token,
+                    productId = product.Id,
+                    productName = product.Name,
+                    quantityMilli,
+                    unitPriceCents = product.BasePriceCents + product.PfandCents
+                }),
+                now, ct);
+
+            await tx.CommitAsync(ct);
+
+            return new RestaurantSessionItem(
+                itemId,
+                sessionId,
+                token,
+                product.Id,
+                product.Name,
+                "",
+                quantityMilli,
+                product.BasePriceCents + product.PfandCents,
+                product.VatRate,
+                product.PfandCents,
+                RestaurantSessionItemState.Active,
+                operatorName,
+                DateTimeOffset.Parse(now),
+                1);
+        });
+    }
+
+    public async Task<IReadOnlyList<RestaurantSessionItem>> ListActiveItemsAsync(
+        string sessionId,
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        if (sessionId.Length == 0)
+            return Array.Empty<RestaurantSessionItem>();
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            var result = new List<RestaurantSessionItem>();
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT id,session_id,line_token,product_id,product_name,variant_name,
+                       quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                       added_by,added_at,version
+                FROM restaurant_session_items
+                WHERE session_id=$session
+                  AND state='ACTIVE'
+                ORDER BY id;
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                result.Add(new RestaurantSessionItem(
+                    r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetInt64(3),
+                    r.GetString(4),
+                    r.GetString(5),
+                    r.GetInt64(6),
+                    r.GetInt64(7),
+                    Convert.ToDecimal(r.GetDouble(8)),
+                    r.GetInt64(9),
+                    RestaurantSessionItemState.Active,
+                    r.GetString(11),
+                    DateTimeOffset.Parse(r.GetString(12)),
+                    r.GetInt64(13)));
+            }
+
+            return (IReadOnlyList<RestaurantSessionItem>)result;
+        });
+    }
+
+    public async Task<RestaurantTableSession?> GetSessionAsync(
+        string sessionId,
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        if (sessionId.Length == 0)
+            return null;
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT id,table_id,opened_at,updated_at,closed_at,state,
+                       opened_by,assigned_waiter,guest_count,note,version
+                FROM restaurant_sessions
+                WHERE id=$id;
+                """;
+            q.Parameters.AddWithValue("$id", sessionId);
+            await using var r = await q.ExecuteReaderAsync(ct);
+            return await r.ReadAsync(ct) ? ReadSession(r) : null;
+        });
+    }
+
     private static RestaurantTableSession ReadSession(SqliteDataReader r)
     {
         var state = r.GetString(5) switch
