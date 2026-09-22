@@ -69,6 +69,37 @@ Die **gespeicherten** Editionscodes bleiben `KIOSK` und `IMBISS`. Datenbank
 `edition.permanent.lock` auf Kundenrechnern tragen diese Werte; nur die nach
 aussen sichtbaren Produktnamen sind neu.
 
+### Bedienoberflächensprache (DE/TR/EN)
+
+Die Bedienoberfläche kann auf Deutsch, Türkisch oder Englisch laufen
+(Einstellungen → Alltag → Sprache, gespeichert als `ui.language`). Deutsch ist
+die Vorgabe und bleibt es auch bei einem unbekannten oder leeren Wert.
+
+Der deutsche Text bleibt im Fenster und ist zugleich der Nachschlageschlüssel
+(`UiLanguage` / `UiTranslations`). Daraus folgen drei Eigenschaften:
+
+- Ein fehlender Eintrag ist kein Fehler, sondern zeigt das deutsche Original.
+  Eine unvollständige Übersetzung ist an einer echten Kasse damit harmlos.
+- Eine Beschriftung, an der ein Betrag klebt - `GESAMT: 12,50 €`,
+  `KARTENZAHLUNG · 12,50 €` - wird an `": "`, `" · "` und am Zeilenumbruch
+  zerlegt und stückweise übersetzt. Die Beschriftung wird übersetzt, der Betrag
+  bleibt exakt so, wie ihn das Fenster formatiert hat.
+- Deutsche Fachbegriffe der Kassenführung bleiben in jeder Sprache deutsch:
+  Z-Bericht, X-Bericht, DSFinV-K, TSE, DATEV, GoBD, § 146a. Mit diesen Wörtern
+  spricht die Betreiberin oder der Betreiber mit Steuerberatung und Prüfung.
+
+**Übersetzt wird ausschliesslich die Bedienoberfläche.** Bon, DSFinV-K-Export,
+Z-Bericht, TSE-Prozessdaten und das Protokoll sind deutsche Aufzeichnungen und
+entstehen in `TorPos.Core` / `TorPos.Infrastructure`. Beide Projekte
+referenzieren die Sprachschicht nicht; eine Prüfung im Sicherheitslauf setzt
+diese Grenze durch.
+
+Jedes Bedienfenster rendert sich beim Öffnen in der gewählten Sprache. Sechs
+Fenster tun das bewusst nicht, und die Prüfung nennt jedes davon mit Grund:
+`TextReportWindow` und `ZArchiveWindow` zeigen einen Z- oder X-Bericht wörtlich,
+die beiden Kundenanzeigen richten sich an die Kundschaft, und die beiden
+Startfenster laufen, bevor die gespeicherte Sprache gelesen ist.
+
 ### Cloud
 
 Separater Node.js-Dienst für TOR-Cloud-Funktionen. Cloud-Verfügbarkeit darf den lokalen Kassiervorgang nicht zu einer Online-Abhängigkeit machen.
