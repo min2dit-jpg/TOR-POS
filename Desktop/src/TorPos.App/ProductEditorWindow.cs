@@ -2894,6 +2894,7 @@ public sealed class ComboComponentWindow : Window
     private readonly TextBox _qty=new(){Text="1",MinWidth=120};
     public ComboComponentWindow(IReadOnlyList<Product> products)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="Menü-Bestandteil";Width=620;Height=300;WindowStartupLocation=WindowStartupLocation.CenterOwner;
         _product.ItemsSource=products.Select(x=>new ComboProductChoice(x.Id,x.Name,x.BasePriceCents,x.VatRate)).ToArray();_product.SelectedIndex=products.Count>0?0:-1;
         var ok=new Button{Content="ÜBERNEHMEN",MinHeight=46,MinWidth=160};var cancel=new Button{Content="ABBRECHEN",MinHeight=46,MinWidth=140};
@@ -2906,6 +2907,7 @@ public sealed class ComboQuantityWindow : Window
     private readonly TextBox _qty=new(){MinWidth=140};
     public ComboQuantityWindow(string name,decimal quantity)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="Menü-Menge";Width=480;Height=240;WindowStartupLocation=WindowStartupLocation.CenterOwner;_qty.Text=quantity.ToString("0.##");
         var ok=new Button{Content="ÜBERNEHMEN",MinHeight=46,MinWidth=150};var cancel=new Button{Content="ABBRECHEN",MinHeight=46,MinWidth=130};
         ok.Click+=(_,_)=>{var raw=(_qty.Text??"").Replace(',','.');if(decimal.TryParse(raw,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var q)&&q>0)Close(q);};cancel.Click+=(_,_)=>Close(null);

@@ -13,6 +13,7 @@ public sealed class OrderBoardWindow : Window
  IReadOnlyList<OrderOverview> rows=Array.Empty<OrderOverview>();bool busy;
  public OrderBoardWindow(OrderWorkflowService service,bool training,string actor)
  {
+  Opened += (_,_) => UiLanguage.Apply(this);
   this.service=service;this.training=training;this.actor=actor;
   Title="Bestellübersicht";Width=1050;Height=680;MinWidth=780;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterOwner;
   var root=new Grid{Margin=new Thickness(18),RowDefinitions=new("Auto,Auto,*,Auto,Auto,Auto"),RowSpacing=12};Content=root;

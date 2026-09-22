@@ -336,6 +336,7 @@ public sealed class DuplicateArticlesWindow : Window
 {
     public DuplicateArticlesWindow(IReadOnlyList<DuplicateArticleRow> rows)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "Duplikate anzeigen";
         Width = 900;
         Height = 650;
@@ -398,6 +399,7 @@ public sealed class InventoryWindow : Window
         IReceiptPrinterService printer,
         ISettingsRepository settings)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _management = management;
         _user = user;
         _printer = printer;
@@ -812,6 +814,7 @@ public sealed class PfandLeergutSettingsWindow : Window
 
     public PfandLeergutSettingsWindow(ISettingsRepository settings)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _settings = settings;
         Title = "Pfand / Leergut";
         Width = 560;

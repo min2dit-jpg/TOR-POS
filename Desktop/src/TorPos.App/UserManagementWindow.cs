@@ -22,6 +22,7 @@ public sealed class UserManagementWindow : Window
         IAuthenticationService authentication,
         AuthenticatedUser admin)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _authentication = authentication;
         _admin = admin;
 

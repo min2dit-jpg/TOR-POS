@@ -13,6 +13,7 @@ public sealed class SumUpConnectionWindow : Window
 
     public SumUpConnectionWindow()
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "SumUp Solo · Verbindung + 1,00 € Gerätetest"; Width = 780; Height = 860;
         MinWidth = 600; MinHeight = 600; WindowStartupLocation = WindowStartupLocation.CenterOwner;
 

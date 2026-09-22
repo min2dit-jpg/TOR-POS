@@ -25,6 +25,7 @@ public sealed class ReceiptChoiceWindow : Window
 {
     public ReceiptChoiceWindow(long totalCents, bool testReceipt)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "Beleg";
         Width = 640;
         Height = 400;

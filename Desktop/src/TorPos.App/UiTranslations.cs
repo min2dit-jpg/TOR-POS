@@ -159,6 +159,39 @@ internal static class UiTranslations
             "Verilen tutar en az ödenecek tutar kadar olmalıdır.",
         ["BAR-Anteil muss größer 0 und kleiner als der Gesamtbetrag sein."] =
             "NAKİT tutar 0'dan büyük ve toplam tutardan küçük olmalıdır.",
+
+        // Artikel-, Pfand- und Bon-Dialoge
+        ["Größe wählen"] = "Boyut seçin",
+        ["Größe / Variante auswählen"] = "Boyut / varyant seçin",
+        ["AUSWAHL ÜBERNEHMEN"] = "SEÇİMİ UYGULA",
+        ["Bon-Ausgabe"] = "Fiş çıktısı",
+        ["BON EIN"] = "FİŞ AÇIK",
+        ["BON AUS"] = "FİŞ KAPALI",
+        ["BON EIN / AUS"] = "FİŞ AÇIK / KAPALI",
+        ["Automatischer Bondruck ist aktuell EIN."] = "Otomatik fiş yazdırma şu anda AÇIK.",
+        ["Automatischer Bondruck ist aktuell AUS."] = "Otomatik fiş yazdırma şu anda KAPALI.",
+        ["Pfand-Rückgabe / Leergut"] = "Depozito iadesi / boş şişe",
+        ["PFAND-RÜCKGABE"] = "DEPOZİTO İADESİ",
+        ["8 CENT"] = "8 SENT",
+        ["15 CENT"] = "15 SENT",
+        ["25 CENT"] = "25 SENT",
+        ["LEERGUT KISTE LEER"] = "BOŞ ŞİŞE KASASI BOŞ",
+        ["LEERGUT KISTE VOLL"] = "BOŞ ŞİŞE KASASI DOLU",
+        ["LEERGUT ZURÜCKNEHMEN"] = "BOŞ ŞİŞE AL",
+        ["GETRÄNKE"] = "İÇECEKLER",
+        ["MILCH / MILCHGETRÄNK"] = "SÜT / SÜTLÜ İÇECEK",
+        ["Kiste: immer 19 %"] = "Kasa: her zaman %19",
+        ["Flaschenpfand: Steuersatz des Getränks"] = "Şişe depozitosu: içeceğin vergi oranı",
+        ["Extra auswählen"] = "Ekstra seçin",
+        ["EXTRA HINZUFÜGEN"] = "EKSTRA EKLE",
+        ["EXTRA"] = "EKSTRA",
+        ["Das gewählte Extra wird als eigene Position zum aktuellen Verkauf hinzugefügt."] =
+            "Seçilen ekstra, güncel satışa ayrı bir kalem olarak eklenir.",
+        ["Pfand auszahlen"] = "Depozito öde",
+        ["PFAND AUSZAHLEN"] = "DEPOZİTO ÖDE",
+        ["AUSGEZAHLT"] = "ÖDENDİ",
+        ["Diesen Betrag bar an den Kunden auszahlen. Gebucht wird er als Pfand-Rückzahlung."] =
+            "Bu tutarı müşteriye nakit ödeyin. Depozito iadesi olarak kaydedilir.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -291,5 +324,38 @@ internal static class UiTranslations
             "The amount given must be at least the amount due.",
         ["BAR-Anteil muss größer 0 und kleiner als der Gesamtbetrag sein."] =
             "The cash share must be greater than 0 and less than the total.",
+
+        // Artikel-, Pfand- und Bon-Dialoge
+        ["Größe wählen"] = "Choose size",
+        ["Größe / Variante auswählen"] = "Select size / variant",
+        ["AUSWAHL ÜBERNEHMEN"] = "APPLY SELECTION",
+        ["Bon-Ausgabe"] = "Receipt output",
+        ["BON EIN"] = "RECEIPT ON",
+        ["BON AUS"] = "RECEIPT OFF",
+        ["BON EIN / AUS"] = "RECEIPT ON / OFF",
+        ["Automatischer Bondruck ist aktuell EIN."] = "Automatic receipt printing is currently ON.",
+        ["Automatischer Bondruck ist aktuell AUS."] = "Automatic receipt printing is currently OFF.",
+        ["Pfand-Rückgabe / Leergut"] = "Deposit return / empties",
+        ["PFAND-RÜCKGABE"] = "DEPOSIT RETURN",
+        ["8 CENT"] = "8 CENT",
+        ["15 CENT"] = "15 CENT",
+        ["25 CENT"] = "25 CENT",
+        ["LEERGUT KISTE LEER"] = "EMPTIES CRATE EMPTY",
+        ["LEERGUT KISTE VOLL"] = "EMPTIES CRATE FULL",
+        ["LEERGUT ZURÜCKNEHMEN"] = "TAKE BACK EMPTIES",
+        ["GETRÄNKE"] = "DRINKS",
+        ["MILCH / MILCHGETRÄNK"] = "MILK / MILK DRINK",
+        ["Kiste: immer 19 %"] = "Crate: always 19 %",
+        ["Flaschenpfand: Steuersatz des Getränks"] = "Bottle deposit: the drink's tax rate",
+        ["Extra auswählen"] = "Choose extra",
+        ["EXTRA HINZUFÜGEN"] = "ADD EXTRA",
+        ["EXTRA"] = "EXTRA",
+        ["Das gewählte Extra wird als eigene Position zum aktuellen Verkauf hinzugefügt."] =
+            "The chosen extra is added to the current sale as its own line.",
+        ["Pfand auszahlen"] = "Pay out deposit",
+        ["PFAND AUSZAHLEN"] = "PAY OUT DEPOSIT",
+        ["AUSGEZAHLT"] = "PAID OUT",
+        ["Diesen Betrag bar an den Kunden auszahlen. Gebucht wird er als Pfand-Rückzahlung."] =
+            "Pay this amount to the customer in cash. It is booked as a deposit refund.",
     };
 }

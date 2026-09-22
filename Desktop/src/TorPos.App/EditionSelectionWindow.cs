@@ -9,6 +9,7 @@ public sealed class EditionSelectionWindow : Window
 {
     public EditionSelectionWindow()
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "TOR POS – Ersteinrichtung";
         Width = 760;
         Height = 470;

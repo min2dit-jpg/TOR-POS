@@ -41,6 +41,7 @@ public sealed class FirstRunSetupWindow : Window
     public FirstRunSetupWindow(ISettingsRepository settings, IReceiptPrinterService printer,
         ITseProvider tse, IPaymentTerminalService terminal, string edition)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _settings = settings; _printer = printer; _tse = tse; _terminal = terminal; _edition = edition;
         _terminalProfiles = _terminal.Profiles.Select(x => new TerminalProfileChoice(x)).ToArray();
         _terminalProfile.ItemsSource = _terminalProfiles;

@@ -24,6 +24,7 @@ public sealed class GooglePairingWindow : Window
 
     public GooglePairingWindow(GoogleGmailService google, GoogleGmailService.PairingSession pairing)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _google = google;
         _pairing = pairing;
         Title = "TOR POS · Mit Google anmelden";

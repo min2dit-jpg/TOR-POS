@@ -9,6 +9,7 @@ internal sealed class CheckoutReviewWindow : Window
 {
     public CheckoutReviewWindow(CheckoutOperation operation, IAuthenticationService auth)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="ZAHLUNG PRÜFEN"; Width=620; Height=580; WindowStartupLocation=WindowStartupLocation.CenterOwner;
         var user=new TextBox{Text="admin",PlaceholderText="Administrator"};
         var password=new TextBox{PasswordChar='●',PlaceholderText="Admin-Passwort"};
@@ -43,6 +44,7 @@ internal sealed class RequiredAdminCredentialsWindow : Window
 {
     public RequiredAdminCredentialsWindow(IAuthenticationService auth)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="ADMIN-ZUGANG EINRICHTEN"; Width=500; Height=440; CanResize=false;
         WindowStartupLocation=WindowStartupLocation.CenterOwner;
         var oldPassword=new TextBox{PasswordChar='●',PlaceholderText="Aktuelles Passwort"};

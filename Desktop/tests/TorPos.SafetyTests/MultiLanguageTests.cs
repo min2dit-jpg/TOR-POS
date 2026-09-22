@@ -126,6 +126,47 @@ public static class MultiLanguageTests
                 < payment.IndexOf("private void UpdateAcceptState()", StringComparison.Ordinal),
             "the payment screen re-renders after it rewrites its own labels, so it does not fall back to German while the operator types");
 
+        // A window that never calls Apply() looks exactly like a missing
+        // translation and is not one: the strings are in the table and simply
+        // never reach the screen. Every window renders itself, except these six,
+        // and each of them has a reason.
+        //
+        //   TextReportWindow, ZArchiveWindow  - they show a Z-Bericht or X-Bericht
+        //                                       verbatim; that is the fiscal record.
+        //   CustomerDisplayWindow,            - they face the customer, who is
+        //   OrderCustomerDisplayWindow          served in German.
+        //   StartupLoadingWindow,             - they run before the stored language
+        //   StartupErrorWindow                  has been read.
+        string[] germanOnlyWindows =
+        [
+            "TextReportWindow", "ZArchiveWindow",
+            "CustomerDisplayWindow", "OrderCustomerDisplayWindow",
+            "StartupLoadingWindow", "StartupErrorWindow"
+        ];
+        var windows = 0;
+        var unrendered = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(FindRepoDirectory("Desktop/src/TorPos.App"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                     && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        {
+            var source = File.ReadAllText(file);
+            var declarations = Regex.Matches(source, "class\\s+(\\w+)\\s*:\\s*Window\\b").ToArray();
+            windows += declarations.Length;
+            for (var i = 0; i < declarations.Length; i++)
+            {
+                var name = declarations[i].Groups[1].Value;
+                if (germanOnlyWindows.Contains(name)) continue;
+
+                var start = declarations[i].Index;
+                var end = i + 1 < declarations.Length ? declarations[i + 1].Index : source.Length;
+                if (!source[start..end].Contains("UiLanguage.Apply", StringComparison.Ordinal))
+                    unrendered.Add(name);
+            }
+        }
+        assert(
+            windows > 40 && unrendered.Count == 0,
+            "every operator window renders itself in the chosen language, and the windows that stay German are named and justified");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));
