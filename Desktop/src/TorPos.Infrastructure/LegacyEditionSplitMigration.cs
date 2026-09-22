@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -15,6 +16,14 @@ public enum LegacySplitMigrationState
     Migrated
 }
 
+public enum LegacySplitRollbackState
+{
+    NoMigrationMarker,
+    LegacySourceMissing,
+    SafeBeforeDedicatedWrites,
+    DedicatedDataChanged
+}
+
 public sealed record LegacySplitMigrationResult(
     LegacySplitMigrationState State,
     string TargetEdition,
@@ -27,7 +36,13 @@ public sealed record LegacySplitMigrationMarker(
     DateTimeOffset MigratedAtUtc,
     string SourceDirectory,
     string TargetEdition,
-    string BackupPath);
+    string BackupPath,
+    string? TargetDatabaseSha256 = null);
+
+public sealed record LegacySplitRollbackResult(
+    LegacySplitRollbackState State,
+    string? LegacyDirectory = null,
+    string? BackupPath = null);
 
 /// <summary>
 /// R182 split foundation. Copies an R181 shared installation into the matching
@@ -142,13 +157,15 @@ public static class LegacyEditionSplitMigration
 
             var stagedDb = Path.Combine(staging, "torpos.db");
             VerifyDatabaseReadable(stagedDb);
+            var migratedDbHash = Sha256File(stagedDb);
 
             var marker = new LegacySplitMigrationMarker(
-                1,
+                2,
                 DateTimeOffset.UtcNow,
                 legacyDirectory,
                 edition,
-                backupPath);
+                backupPath,
+                migratedDbHash);
             await File.WriteAllTextAsync(
                 Path.Combine(staging, MarkerFileName),
                 JsonSerializer.Serialize(marker, new JsonSerializerOptions { WriteIndented = true }),
@@ -180,6 +197,60 @@ public static class LegacyEditionSplitMigration
         return new LegacySplitMigrationResult(
             LegacySplitMigrationState.Migrated,
             edition, legacyDirectory, targetDirectory, backupPath);
+    }
+
+    /// <summary>
+    /// Proves whether returning to the untouched shared R181 data is lossless.
+    /// It never copies/deletes data. Once the dedicated database changed, an
+    /// automatic rejoin is deliberately refused because fiscal histories must
+    /// not be silently merged or discarded.
+    /// </summary>
+    public static LegacySplitRollbackResult EvaluateRollback(string targetDirectory)
+    {
+        var markerPath = Path.Combine(targetDirectory, MarkerFileName);
+        if (!File.Exists(markerPath))
+            return new LegacySplitRollbackResult(LegacySplitRollbackState.NoMigrationMarker);
+
+        LegacySplitMigrationMarker? marker;
+        try
+        {
+            marker = JsonSerializer.Deserialize<LegacySplitMigrationMarker>(File.ReadAllText(markerPath));
+        }
+        catch
+        {
+            return new LegacySplitRollbackResult(LegacySplitRollbackState.NoMigrationMarker);
+        }
+
+        if (marker is null || string.IsNullOrWhiteSpace(marker.SourceDirectory))
+            return new LegacySplitRollbackResult(LegacySplitRollbackState.NoMigrationMarker);
+
+        if (!File.Exists(Path.Combine(marker.SourceDirectory, "torpos.db")))
+        {
+            return new LegacySplitRollbackResult(
+                LegacySplitRollbackState.LegacySourceMissing,
+                marker.SourceDirectory,
+                marker.BackupPath);
+        }
+
+        var targetDb = Path.Combine(targetDirectory, "torpos.db");
+        if (string.IsNullOrWhiteSpace(marker.TargetDatabaseSha256) || !File.Exists(targetDb))
+        {
+            return new LegacySplitRollbackResult(
+                LegacySplitRollbackState.DedicatedDataChanged,
+                marker.SourceDirectory,
+                marker.BackupPath);
+        }
+
+        var unchanged = string.Equals(
+            Sha256File(targetDb),
+            marker.TargetDatabaseSha256,
+            StringComparison.OrdinalIgnoreCase);
+        return new LegacySplitRollbackResult(
+            unchanged
+                ? LegacySplitRollbackState.SafeBeforeDedicatedWrites
+                : LegacySplitRollbackState.DedicatedDataChanged,
+            marker.SourceDirectory,
+            marker.BackupPath);
     }
 
     private static bool IsInitializedTarget(string targetDirectory)
@@ -234,6 +305,12 @@ public static class LegacyEditionSplitMigration
         var value = Convert.ToString(command.ExecuteScalar());
         if (!string.Equals(value, "ok", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Migrated database failed SQLite quick_check.");
+    }
+
+    private static string Sha256File(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static void CopyDirectory(string source, string destination, CancellationToken ct)
