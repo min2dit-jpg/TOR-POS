@@ -268,6 +268,8 @@ public partial class SettingsWindow : Window
             "Für den normalen Betrieb wird KASSE empfohlen.");
         Form(section, "Darstellung", Combo("ui.scale", "AUTO", "KOMPAKT", "STANDARD", "GROSS"),
             "AUTO ist für die meisten Touchscreens die beste Wahl.");
+        Form(section, "Sprache", Combo("ui.language", "DE", "TR", "EN"),
+            "Gilt nur für die Bedienoberfläche. Bon, DSFinV-K, Z-Bericht und Protokolle bleiben deutsch.");
         page.Children.Add(section);
 
         page.Children.Add(InfoCard(

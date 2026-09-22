@@ -447,6 +447,7 @@ await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
 await EditionSplitFoundationTests.Run(Assert);
+await MultiLanguageTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -512,11 +513,15 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
+// Operator-interface language DE/TR/EN: 6 checks keep German the source text,
+// keep an unfinished translation harmless, keep an unknown code from blanking
+// the interface, keep both tables symmetric, keep fiscal documents out of the
+// translation path and keep the stored language choice from being purged.
 // Split-product foundation checks keep Einzelhandel/Gastro process, storage,
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1160;
+const int ExpectedSafetyChecks = 1166;
 
 if (checks != ExpectedSafetyChecks)
 {
