@@ -69,6 +69,42 @@ public sealed class RestaurantTablePlanWindow : Window
         IsEnabled = false
     };
 
+    private readonly ComboBox _targetTable = new()
+    {
+        MinWidth = 220,
+        MinHeight = 44,
+        PlaceholderText = "Zieltisch auswählen"
+    };
+
+    private readonly Button _move = new()
+    {
+        Content = "UMBUCHEN",
+        MinHeight = 44,
+        IsEnabled = false
+    };
+
+    private readonly Button _merge = new()
+    {
+        Content = "ZUSAMMENLEGEN",
+        MinHeight = 44,
+        IsEnabled = false
+    };
+
+    private readonly Button _closeEmpty = new()
+    {
+        Content = "LEEREN TISCH SCHLIESSEN",
+        MinHeight = 44,
+        IsEnabled = false
+    };
+
+    private readonly Button _split = new()
+    {
+        Content = "RECHNUNG TEILEN",
+        MinHeight = 44,
+        FontWeight = FontWeight.Bold,
+        IsEnabled = false
+    };
+
     private IReadOnlyList<RestaurantTable> _tables = Array.Empty<RestaurantTable>();
     private RestaurantTable? _selectedTable;
     private RestaurantTableSession? _selectedSession;
@@ -100,6 +136,10 @@ public sealed class RestaurantTablePlanWindow : Window
 
         _open.Click += async (_, _) => await OpenSelectedTableAsync();
         _add.Click += async (_, _) => await AddSelectedProductAsync();
+        _move.Click += async (_, _) => await MoveSelectedSessionAsync();
+        _merge.Click += async (_, _) => await MergeSelectedSessionAsync();
+        _closeEmpty.Click += async (_, _) => await CloseEmptySelectedSessionAsync();
+        _split.Click += async (_, _) => await ShowSplitPreviewAsync();
 
         _product.ItemsSource = _catalog.Products
             .Where(x => x.IsActive)
@@ -111,6 +151,12 @@ public sealed class RestaurantTablePlanWindow : Window
                 Text = p is null
                     ? ""
                     : $"{p.Name} · {Formatting.Money(p.BasePriceCents + p.PfandCents)}"
+            });
+
+        _targetTable.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RestaurantTable>(
+            (t, _) => new TextBlock
+            {
+                Text = t is null ? "" : t.DisplayName
             });
 
         var left = new DockPanel();
@@ -132,6 +178,33 @@ public sealed class RestaurantTablePlanWindow : Window
                 _product,
                 _quantity,
                 _add
+            }
+        };
+
+        var tableActions = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Tischaktionen",
+                    FontSize = 18,
+                    FontWeight = FontWeight.Bold
+                },
+                _targetTable,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children = { _move, _merge }
+                },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children = { _split, _closeEmpty }
+                }
             }
         };
 
@@ -159,7 +232,8 @@ public sealed class RestaurantTablePlanWindow : Window
                     Margin = new Thickness(0, 8, 0, 0)
                 },
                 _items,
-                addRow
+                addRow,
+                tableActions
             }
         };
 
@@ -231,6 +305,9 @@ public sealed class RestaurantTablePlanWindow : Window
     {
         _tables = await _restaurant.ListTablesAsync();
         _tablePanel.Children.Clear();
+        _targetTable.ItemsSource = _tables
+            .Where(x => _selectedTable is null || x.Id != _selectedTable.Id)
+            .ToArray();
 
         foreach (var table in _tables)
         {
@@ -250,6 +327,10 @@ public sealed class RestaurantTablePlanWindow : Window
             _detailStatus.Text = "Links einen Tisch wählen.";
             _open.IsEnabled = false;
             _add.IsEnabled = false;
+            _move.IsEnabled = false;
+            _merge.IsEnabled = false;
+            _closeEmpty.IsEnabled = false;
+            _split.IsEnabled = false;
             _items.ItemsSource = Array.Empty<string>();
         }
     }
@@ -309,6 +390,10 @@ public sealed class RestaurantTablePlanWindow : Window
             _open.IsVisible = true;
             _open.IsEnabled = true;
             _add.IsEnabled = false;
+            _move.IsEnabled = false;
+            _merge.IsEnabled = false;
+            _closeEmpty.IsEnabled = false;
+            _split.IsEnabled = false;
             _items.ItemsSource = Array.Empty<string>();
             return;
         }
@@ -333,6 +418,10 @@ public sealed class RestaurantTablePlanWindow : Window
         _open.IsVisible = false;
         _open.IsEnabled = false;
         _add.IsEnabled = true;
+        _move.IsEnabled = true;
+        _merge.IsEnabled = true;
+        _closeEmpty.IsEnabled = currentItems.Count == 0;
+        _split.IsEnabled = currentItems.Count > 0;
     }
 
     private async Task OpenSelectedTableAsync()
@@ -387,6 +476,179 @@ public sealed class RestaurantTablePlanWindow : Window
             await ShowErrorAsync(ex.Message);
             await ReloadAsync();
         }
+    }
+
+    private async Task MoveSelectedSessionAsync()
+    {
+        if (_selectedSession is null ||
+            _targetTable.SelectedItem is not RestaurantTable target)
+            return;
+
+        try
+        {
+            _selectedSession = await _restaurant.MoveSessionToTableAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                target.Id,
+                _user.Username,
+                Environment.MachineName);
+
+            _selectedTable = target;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task MergeSelectedSessionAsync()
+    {
+        if (_selectedSession is null ||
+            _targetTable.SelectedItem is not RestaurantTable target)
+            return;
+
+        try
+        {
+            var targetSession = await _restaurant.GetLiveSessionForTableAsync(target.Id);
+            if (targetSession is null)
+            {
+                await ShowErrorAsync(
+                    "Zum Zusammenlegen muss der Zieltisch bereits geöffnet sein. Für einen freien Zieltisch bitte UMBUCHEN verwenden.");
+                return;
+            }
+
+            var merged = await _restaurant.MergeSessionsAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                targetSession.Id,
+                targetSession.Version,
+                _user.Username,
+                Environment.MachineName);
+
+            _selectedTable = target;
+            _selectedSession = merged;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task CloseEmptySelectedSessionAsync()
+    {
+        if (_selectedSession is null)
+            return;
+
+        try
+        {
+            await _restaurant.CloseEmptySessionAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                _user.Username,
+                Environment.MachineName);
+
+            _selectedSession = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ShowSplitPreviewAsync()
+    {
+        if (_selectedSession is null)
+            return;
+
+        var items = await _restaurant.ListActiveItemsAsync(_selectedSession.Id);
+        if (items.Count == 0)
+            return;
+
+        var total = items.Sum(x => x.LineTotalCents);
+        var persons = new NumericUpDown
+        {
+            Minimum = 2,
+            Maximum = 20,
+            Value = 2,
+            Width = 100,
+            MinHeight = 42
+        };
+
+        var preview = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 16
+        };
+
+        void RefreshPreview()
+        {
+            var count = Math.Clamp(
+                Convert.ToInt32(persons.Value ?? 2m),
+                2,
+                20);
+
+            var shares = RestaurantSplitCalculator.EqualShares(total, count);
+            preview.Text =
+                $"Gesamtsumme: {Formatting.Money(total)}\n\n" +
+                string.Join(
+                    "\n",
+                    shares.Select((amount, index) =>
+                        $"Person {index + 1}: {Formatting.Money(amount)}"));
+        }
+
+        persons.ValueChanged += (_, _) => RefreshPreview();
+        RefreshPreview();
+
+        var close = new Button
+        {
+            Content = "SCHLIESSEN",
+            MinWidth = 130,
+            MinHeight = 42
+        };
+
+        var dialog = new Window
+        {
+            Title = "TOR Restaurant · Splitrechnung",
+            Width = 520,
+            Height = 480,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        close.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(22),
+            Spacing = 14,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "RECHNUNG NACH PERSONEN TEILEN",
+                    FontSize = 20,
+                    FontWeight = FontWeight.Bold
+                },
+                new TextBlock
+                {
+                    Text = "Diese Ansicht berechnet nur die Aufteilung. Es wird noch kein Bon erzeugt und keine TSE-Transaktion abgeschlossen.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.75
+                },
+                new TextBlock { Text = "Personen" },
+                persons,
+                preview,
+                close
+            }
+        };
+
+        await dialog.ShowDialog(this);
     }
 
     private async Task ShowErrorAsync(string message)
