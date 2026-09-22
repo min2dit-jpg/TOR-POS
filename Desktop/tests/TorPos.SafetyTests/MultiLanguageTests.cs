@@ -56,6 +56,22 @@ public static class MultiLanguageTests
             turkishKeys.Count > 0 && turkishKeys.SetEquals(englishKeys),
             "every translated string exists in Turkish and English, so no language is left half-finished");
 
+        // German fiscal terms of art are the names of legal records and stay
+        // German in every interface language - a Turkish till still prints and
+        // announces a Z-Bericht. R49 and R54 rely on this, so it is checked
+        // instead of trusted: a label may be translated around the term, but the
+        // term itself has to survive into the translated text.
+        string[] fiscalTerms = ["Z-Bericht", "X-Bericht", "DSFinV-K", "TSE", "DATEV", "GoBD", "\u00a7 146a"];
+        var mistranslatedTerm = Pairs(turkishBlock).Concat(Pairs(englishBlock))
+            .SelectMany(pair => fiscalTerms
+                .Where(term => pair.Key.Contains(term, StringComparison.Ordinal)
+                            && !pair.Value.Contains(term, StringComparison.Ordinal))
+                .Select(term => $"{pair.Key} -> {pair.Value} ({term})"))
+            .FirstOrDefault();
+        assert(
+            mistranslatedTerm is null && fiscalTerms.All(term => !turkishKeys.Contains(term)),
+            "German fiscal terms of art keep their name in Turkish and English, so the legal record is called the same thing in every language");
+
         // A window changes some labels while it runs - PFAND becomes EXTRA on the
         // Gastro till. Apply() must treat that new text as the source instead of
         // writing the previous label back over it on the next pass.
@@ -94,6 +110,10 @@ public static class MultiLanguageTests
 
         return Task.CompletedTask;
     }
+
+    private static IEnumerable<KeyValuePair<string, string>> Pairs(string block) =>
+        Regex.Matches(block, "\\[\"((?:[^\"\\\\]|\\\\.)*)\"\\]\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
+            .Select(m => new KeyValuePair<string, string>(m.Groups[1].Value, m.Groups[2].Value));
 
     private static HashSet<string> Keys(string block) =>
         Regex.Matches(block, "\\[\"((?:[^\"\\\\]|\\\\.)*)\"\\]")

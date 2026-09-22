@@ -44,7 +44,7 @@ static class R54ReviewTests
   await settings.SaveManyAsync(new Dictionary<string,string>{{"ui.language","TR"},{"business.mode","IMBISS"}});await SafetyDatabase.EnsureCurrentAsync(db);
   // R54 made the interface German-only and purged this key on every start; the
   // DE/TR/EN restoration reverses that, so the contract is the opposite now.
-  check((await settings.LoadAllAsync()).GetValueOrDefault("ui.language")=="TR","Upgrade keeps the chosen interface language instead of purging it at every start");UiLanguage.Set("TR");check(UiLanguage.Current=="TR"&&UiLanguage.T("KASSE")=="KASSE","Interface language switches while a string nobody translated stays German");UiLanguage.Set("DE");
+  check((await settings.LoadAllAsync()).GetValueOrDefault("ui.language")=="TR","Upgrade keeps the chosen interface language instead of purging it at every start");UiLanguage.Set("TR");check(UiLanguage.Current=="TR"&&UiLanguage.T("KASSE")=="KASA"&&UiLanguage.T("Z-Bericht")=="Z-Bericht","Interface language switches while German fiscal terms of art stay German");UiLanguage.Set("DE");
   var starter=new ImbissStarterCatalogService(db);await starter.EnsureAsync("IMBISS");
   using(var c=db.OpenConnection()){using var q=c.CreateCommand();q.CommandText="UPDATE products SET image_path='C:\\ProductImages\\tor-imbiss-doener.png' WHERE id=$id; UPDATE products SET image_path='C:\\Photos\\my-product.jpg' WHERE id=$other;";q.Parameters.AddWithValue("$id",part);q.Parameters.AddWithValue("$other",other);q.ExecuteNonQuery();}
   await starter.EnsureAsync("IMBISS");check(string.IsNullOrEmpty((await repo.GetByIdAsync(part))!.ImagePath),"Existing generated photo removed even after template marker");
