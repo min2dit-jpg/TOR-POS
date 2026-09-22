@@ -517,10 +517,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-// Restaurant foundation: 12 checks lock Standard/Plus feature gating,
+// Restaurant foundation: 14 checks lock Standard/Plus feature gating,
 // Restaurant-only schema isolation, one live Tischvorgang per table,
-// optimistic concurrency and append-only table-session events.
-const int ExpectedSafetyChecks = 1172;
+// cent-exact item capture, optimistic concurrency and append-only events.
+const int ExpectedSafetyChecks = 1174;
 
 if (checks != ExpectedSafetyChecks)
 {
