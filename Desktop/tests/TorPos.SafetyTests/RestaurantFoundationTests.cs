@@ -58,8 +58,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 25,
-                "Restaurant database reaches schema version 25");
+                result.ToVersion == 26,
+                "Restaurant database reaches schema version 26");
 
             await using (var c = db.OpenConnection())
             {
@@ -256,6 +256,58 @@ internal static class RestaurantFoundationTests
                 mergedItems.Single().LineTotalCents == 2580 &&
                 await repo.GetLiveSessionForTableAsync(secondTableId) is null,
                 "Tische zusammenlegen moves open positions and releases the source table");
+
+            var payableItems = await repo.ListActiveItemsAsync(merged.Id);
+            var payable = payableItems.Single();
+            var paymentDraft = await repo.BuildCheckoutDraftAsync(
+                merged.Id,
+                merged.Version,
+                new[]
+                {
+                    new RestaurantSplitSelection(
+                        payable.Id,
+                        payable.QuantityMilli)
+                });
+
+            var lockedVersion = await repo.PreparePaymentReservationAsync(
+                paymentDraft);
+
+            var lockedSession = await repo.GetSessionAsync(merged.Id);
+            assert(
+                lockedSession is not null &&
+                lockedSession.State == RestaurantTableSessionState.CheckRequested &&
+                lockedSession.Version == lockedVersion &&
+                await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
+                "Prepared Restaurant payment durably locks the table before external payment");
+
+            var writeWhilePaymentRejected = false;
+            try
+            {
+                await repo.AddItemAsync(
+                    merged.Id,
+                    lockedVersion,
+                    product,
+                    1m,
+                    "KELLNER-3");
+            }
+            catch (InvalidOperationException)
+            {
+                writeWhilePaymentRejected = true;
+            }
+
+            assert(
+                writeWhilePaymentRejected,
+                "Table edits are rejected while a Restaurant payment is unresolved");
+
+            await repo.CancelPaymentReservationAsync(
+                paymentDraft.OperationId);
+
+            var reopenedAfterCancel = await repo.GetSessionAsync(merged.Id);
+            assert(
+                reopenedAfterCancel is not null &&
+                reopenedAfterCancel.State == RestaurantTableSessionState.Open &&
+                !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
+                "No-charge cancellation reopens the Restaurant table and clears the payment lock");
 
             var emptyTableId = await repo.SaveTableAsync(
                 areaId,
