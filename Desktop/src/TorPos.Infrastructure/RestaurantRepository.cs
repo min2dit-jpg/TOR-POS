@@ -148,7 +148,7 @@ public sealed class RestaurantRepository
                     SELECT COUNT(*)
                     FROM restaurant_sessions
                     WHERE table_id=$table
-                      AND state='OPEN';
+                      AND state IN ('OPEN','CHECK_REQUESTED');
                     """;
                 existing.Parameters.AddWithValue("$table", tableId);
                 if (Convert.ToInt32(await existing.ExecuteScalarAsync(ct)) > 0)
