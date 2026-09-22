@@ -2226,6 +2226,13 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                 throw new InvalidOperationException("Geparkter Bon wurde bereits abgeschlossen.");
         }
 
+        await RestaurantPaymentStore.ApplyCommittedSaleAsync(
+            c,
+            (SqliteTransaction)tx,
+            snapshot,
+            saleId,
+            ct);
+
         await using (var done = c.CreateCommand())
         {
             done.Transaction = (SqliteTransaction)tx;
