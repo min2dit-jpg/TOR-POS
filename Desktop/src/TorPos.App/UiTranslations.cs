@@ -13,8 +13,8 @@ namespace TorPos.App;
 /// That keeps a half-finished translation harmless at a real till.
 ///
 /// German fiscal terms of art stay German on purpose - Z-Bericht, X-Bericht,
-/// DSFinV-K, TSE, DATEV, GoBD, "Kassenmeldung § 146a Abs. 4 AO". The operator
-/// discusses those words with their Steuerberater and a Finanzamt auditor;
+/// Z-Abschluss, DSFinV-K, TSE, DATEV, GoBD, "Kassenmeldung § 146a Abs. 4 AO". The
+/// operator discusses those words with their Steuerberater and a Finanzamt auditor;
 /// translating them would make the till harder to use, not easier.
 /// </summary>
 internal static class UiTranslations
@@ -192,6 +192,41 @@ internal static class UiTranslations
         ["AUSGEZAHLT"] = "ÖDENDİ",
         ["Diesen Betrag bar an den Kunden auszahlen. Gebucht wird er als Pfand-Rückzahlung."] =
             "Bu tutarı müşteriye nakit ödeyin. Depozito iadesi olarak kaydedilir.",
+
+        // Tagesgeschäft: Kassenbewegung, Suche, Schnellartikel, geparkte Bons
+        ["Kassenbewegung"] = "Kasa hareketi",
+        ["EINLAGE"] = "KASAYA GİRİŞ",
+        ["ENTNAHME"] = "KASADAN ÇIKIŞ",
+        ["Betrag in €"] = "Tutar (€)",
+        ["Grund / Belegtext"] = "Gerekçe / belge metni",
+        ["BUCHEN"] = "KAYDET",
+        ["Bitte die Art wählen."] = "Lütfen türü seçin.",
+        ["Bitte die Art der Kassenbewegung wählen."] = "Lütfen kasa hareketinin türünü seçin.",
+        ["Einlagen und Entnahmen sind Geschäftsvorfälle: Art und Grund werden erfasst und von der TSE abgesichert."] =
+            "Kasaya giriş ve kasadan çıkış birer işletme olayıdır: tür ve gerekçe kaydedilir ve TSE ile güvence altına alınır.",
+        ["EAN / Barcode suchen"] = "EAN / barkod ara",
+        ["EAN / Barcode eingeben"] = "EAN / barkod girin",
+        ["EAN suchen"] = "EAN ara",
+        ["SUCHEN"] = "ARA",
+        ["Nur für manuelle Suche. Im Kassenfenster können Artikel jederzeit direkt gescannt werden."] =
+            "Yalnızca elle arama içindir. Kasa ekranında ürünler her zaman doğrudan okutulabilir.",
+        ["Schnellartikel"] = "Hızlı ürün",
+        ["Schnellartikel / freie Preiseingabe"] = "Hızlı ürün / serbest fiyat girişi",
+        ["ZUM VERKAUF HINZUFÜGEN"] = "SATIŞA EKLE",
+        ["Bezeichnung"] = "Tanım",
+        ["Preis €"] = "Fiyat €",
+        ["Bitte einen Preis größer 0,00 € eingeben."] = "Lütfen 0,00 €'dan büyük bir fiyat girin.",
+        ["Für Artikel ohne Stammdatensatz oder eine einmalige freie Preiseingabe. Der Schnellartikel wird nur in den aktuellen Bon gelegt; der Warenbestand wird nicht verändert."] =
+            "Stok kaydı olmayan ürünler veya tek seferlik serbest fiyat girişi içindir. Hızlı ürün yalnızca güncel fişe eklenir; stok değişmez.",
+        ["Geparkte Bons"] = "Bekletilen fişler",
+        ["Offene Bestellungen"] = "Açık siparişler",
+        ["BESTELLUNG AUFRUFEN"] = "SİPARİŞİ ÇAĞIR",
+        ["BON ÜBERNEHMEN"] = "FİŞİ DEVRAL",
+        ["BESTELLUNG STORNIEREN"] = "SİPARİŞİ İPTAL ET",
+        ["BON LÖSCHEN"] = "FİŞİ SİL",
+        ["SCHLIESSEN"] = "KAPAT",
+        ["Offene geparkte Bons müssen vor dem Z-Abschluss kassiert werden."] =
+            "Bekletilen açık fişler Z-Abschluss öncesinde tahsil edilmelidir.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -357,5 +392,40 @@ internal static class UiTranslations
         ["AUSGEZAHLT"] = "PAID OUT",
         ["Diesen Betrag bar an den Kunden auszahlen. Gebucht wird er als Pfand-Rückzahlung."] =
             "Pay this amount to the customer in cash. It is booked as a deposit refund.",
+
+        // Tagesgeschäft: Kassenbewegung, Suche, Schnellartikel, geparkte Bons
+        ["Kassenbewegung"] = "Cash movement",
+        ["EINLAGE"] = "CASH IN",
+        ["ENTNAHME"] = "CASH OUT",
+        ["Betrag in €"] = "Amount in €",
+        ["Grund / Belegtext"] = "Reason / voucher text",
+        ["BUCHEN"] = "BOOK",
+        ["Bitte die Art wählen."] = "Please choose the type.",
+        ["Bitte die Art der Kassenbewegung wählen."] = "Please choose the type of cash movement.",
+        ["Einlagen und Entnahmen sind Geschäftsvorfälle: Art und Grund werden erfasst und von der TSE abgesichert."] =
+            "Cash in and cash out are business transactions: type and reason are recorded and secured by the TSE.",
+        ["EAN / Barcode suchen"] = "Search EAN / barcode",
+        ["EAN / Barcode eingeben"] = "Enter EAN / barcode",
+        ["EAN suchen"] = "Search EAN",
+        ["SUCHEN"] = "SEARCH",
+        ["Nur für manuelle Suche. Im Kassenfenster können Artikel jederzeit direkt gescannt werden."] =
+            "For manual search only. In the till window products can always be scanned directly.",
+        ["Schnellartikel"] = "Quick item",
+        ["Schnellartikel / freie Preiseingabe"] = "Quick item / free price entry",
+        ["ZUM VERKAUF HINZUFÜGEN"] = "ADD TO SALE",
+        ["Bezeichnung"] = "Description",
+        ["Preis €"] = "Price €",
+        ["Bitte einen Preis größer 0,00 € eingeben."] = "Please enter a price greater than 0.00 €.",
+        ["Für Artikel ohne Stammdatensatz oder eine einmalige freie Preiseingabe. Der Schnellartikel wird nur in den aktuellen Bon gelegt; der Warenbestand wird nicht verändert."] =
+            "For products without a master record, or a one-off free price entry. A quick item is only put on the current receipt; stock is not changed.",
+        ["Geparkte Bons"] = "Parked receipts",
+        ["Offene Bestellungen"] = "Open orders",
+        ["BESTELLUNG AUFRUFEN"] = "OPEN ORDER",
+        ["BON ÜBERNEHMEN"] = "TAKE OVER RECEIPT",
+        ["BESTELLUNG STORNIEREN"] = "CANCEL ORDER",
+        ["BON LÖSCHEN"] = "DELETE RECEIPT",
+        ["SCHLIESSEN"] = "CLOSE",
+        ["Offene geparkte Bons müssen vor dem Z-Abschluss kassiert werden."] =
+            "Open parked receipts must be paid before the Z-Abschluss.",
     };
 }

@@ -76,7 +76,8 @@ public static class MultiLanguageTests
         // announces a Z-Bericht. R49 and R54 rely on this, so it is checked
         // instead of trusted: a label may be translated around the term, but the
         // term itself has to survive into the translated text.
-        string[] fiscalTerms = ["Z-Bericht", "X-Bericht", "DSFinV-K", "TSE", "DATEV", "GoBD", "§ 146a"];
+        string[] fiscalTerms =
+            ["Z-Bericht", "X-Bericht", "Z-Abschluss", "DSFinV-K", "TSE", "DATEV", "GoBD", "§ 146a"];
         var mistranslatedTerm = Pairs(turkishBlock).Concat(Pairs(englishBlock))
             .SelectMany(pair => fiscalTerms
                 .Where(term => pair.Key.Contains(term, StringComparison.Ordinal)

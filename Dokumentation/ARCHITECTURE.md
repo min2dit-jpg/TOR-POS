@@ -85,7 +85,7 @@ Der deutsche Text bleibt im Fenster und ist zugleich der Nachschlageschlüssel
   zerlegt und stückweise übersetzt. Die Beschriftung wird übersetzt, der Betrag
   bleibt exakt so, wie ihn das Fenster formatiert hat.
 - Deutsche Fachbegriffe der Kassenführung bleiben in jeder Sprache deutsch:
-  Z-Bericht, X-Bericht, DSFinV-K, TSE, DATEV, GoBD, § 146a. Mit diesen Wörtern
+  Z-Bericht, X-Bericht, Z-Abschluss, DSFinV-K, TSE, DATEV, GoBD, § 146a. Mit diesen Wörtern
   spricht die Betreiberin oder der Betreiber mit Steuerberatung und Prüfung.
 
 **Übersetzt wird ausschliesslich die Bedienoberfläche.** Bon, DSFinV-K-Export,
