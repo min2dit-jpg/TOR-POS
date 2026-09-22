@@ -218,6 +218,19 @@ internal static class RestaurantFoundationTests
                 staleItemRejected,
                 "Stale concurrent item add is rejected instead of duplicating a table position");
 
+            var fiscalState = new RestaurantFiscalOrderService(db, null!);
+            await InsertRestaurantBestellungAsync(
+                db,
+                session.Id,
+                sequence: 1,
+                kind: "ANNAHME",
+                product,
+                quantityMilli: 2000);
+
+            assert(
+                await fiscalState.IsCurrentStateSecuredAsync(session.Id),
+                "Restaurant secured-state matches the table after immutable Bestellung capture");
+
             var splitItems = await repo.ListActiveItemsAsync(session.Id);
             var splitQuote = RestaurantSplitCalculator.ByItems(
                 splitItems,
@@ -287,6 +300,55 @@ internal static class RestaurantFoundationTests
                 mergedItems.Single().LineTotalCents == 2580 &&
                 await repo.GetLiveSessionForTableAsync(secondTableId) is null,
                 "Tische zusammenlegen moves open positions and releases the source table");
+
+            await InsertRestaurantBestellungAsync(
+                db,
+                moved.Id,
+                sequence: 2,
+                kind: "AENDERUNG",
+                product,
+                quantityMilli: -2000);
+
+            await InsertRestaurantBestellungAsync(
+                db,
+                targetSession.Id,
+                sequence: 1,
+                kind: "ANNAHME",
+                product,
+                quantityMilli: 2000);
+
+            assert(
+                await fiscalState.IsCurrentStateSecuredAsync(moved.Id) &&
+                await fiscalState.IsCurrentStateSecuredAsync(targetSession.Id),
+                "Balanced merge deltas reconcile both source and target Restaurant orders");
+
+            await using (var c = db.OpenConnection())
+            {
+                using var partial = c.CreateCommand();
+                partial.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET quantity_milli=1000,version=version+1
+                    WHERE session_id=$session AND state='ACTIVE';
+
+                    INSERT INTO restaurant_session_items(
+                        session_id,line_token,product_id,product_name,variant_name,
+                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                        added_by,added_at,version)
+                    VALUES($session,$token,$product,$name,'',1000,$price,$vat,0,'PAID','TEST',$now,1);
+                    """;
+                partial.Parameters.AddWithValue("$session", targetSession.Id);
+                partial.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
+                partial.Parameters.AddWithValue("$product", product.Id);
+                partial.Parameters.AddWithValue("$name", product.Name);
+                partial.Parameters.AddWithValue("$price", product.BasePriceCents);
+                partial.Parameters.AddWithValue("$vat", (double)product.VatRate);
+                partial.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                partial.ExecuteNonQuery();
+            }
+
+            assert(
+                await fiscalState.IsCurrentStateSecuredAsync(targetSession.Id),
+                "Partial payment keeps ACTIVE plus PAID quantities reconciled with the original Bestellung");
 
             var payableItems = await repo.ListActiveItemsAsync(merged.Id);
             var payable = payableItems.Single();
@@ -439,6 +501,64 @@ internal static class RestaurantFoundationTests
             SqliteConnection.ClearAllPools();
             try { Directory.Delete(root, true); } catch { }
         }
+    }
+
+    private static async Task InsertRestaurantBestellungAsync(
+        SqliteDatabase db,
+        string sessionId,
+        int sequence,
+        string kind,
+        Product product,
+        long quantityMilli)
+    {
+        await using var c = db.OpenConnection();
+        await using var tx = c.BeginTransaction();
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
+        long id;
+        await using (var head = c.CreateCommand())
+        {
+            head.Transaction = tx;
+            head.CommandText = """
+                INSERT INTO restaurant_bestellungen(
+                    session_id,sequence,kind,started_at,created_at,operator_name,total_cents,
+                    client_id,transaction_number,signature_counter,serial_number,signature,
+                    start_log_time,log_time,outage,outage_reason)
+                VALUES($session,$sequence,$kind,$now,$now,'TEST',$total,
+                    '','','','','','','',1,'TEST')
+                RETURNING id;
+                """;
+            head.Parameters.AddWithValue("$session", sessionId);
+            head.Parameters.AddWithValue("$sequence", sequence);
+            head.Parameters.AddWithValue("$kind", kind);
+            head.Parameters.AddWithValue("$now", now);
+            head.Parameters.AddWithValue(
+                "$total",
+                (long)Math.Round(
+                    QuantityStorage.FromMilli(quantityMilli) * product.BasePriceCents,
+                    MidpointRounding.AwayFromZero));
+            id = Convert.ToInt64(await head.ExecuteScalarAsync());
+        }
+
+        await using (var item = c.CreateCommand())
+        {
+            item.Transaction = tx;
+            item.CommandText = """
+                INSERT INTO restaurant_bestellung_items(
+                    bestellung_id,product_id,product_name,quantity_milli,
+                    unit_price_cents,vat_rate,pfand_cents)
+                VALUES($b,$product,$name,$quantity,$price,$vat,0);
+                """;
+            item.Parameters.AddWithValue("$b", id);
+            item.Parameters.AddWithValue("$product", product.Id);
+            item.Parameters.AddWithValue("$name", product.Name);
+            item.Parameters.AddWithValue("$quantity", quantityMilli);
+            item.Parameters.AddWithValue("$price", product.BasePriceCents);
+            item.Parameters.AddWithValue("$vat", (double)product.VatRate);
+            await item.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
     }
 
     private static bool TableExists(SqliteConnection c, string name)
