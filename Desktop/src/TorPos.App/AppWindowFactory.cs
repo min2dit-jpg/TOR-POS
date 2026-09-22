@@ -96,6 +96,7 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<RestaurantRepository>(),
             _services.GetRequiredService<RestaurantFiscalOrderService>(),
             _services.GetRequiredService<RestaurantKitchenOutbox>(),
+            _services.GetRequiredService<RestaurantKitchenDispatcher>(),
             _services.GetRequiredService<IProductCatalog>(),
             user);
 
