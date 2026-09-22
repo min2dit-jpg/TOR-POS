@@ -2226,12 +2226,13 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                 throw new InvalidOperationException("Geparkter Bon wurde bereits abgeschlossen.");
         }
 
-        await RestaurantPaymentStore.ApplyCommittedSaleAsync(
-            c,
-            (SqliteTransaction)tx,
-            snapshot,
-            saleId,
-            ct);
+        var restaurantOrderStartedAt =
+            await RestaurantPaymentStore.ApplyCommittedSaleAsync(
+                c,
+                (SqliteTransaction)tx,
+                snapshot,
+                saleId,
+                ct);
 
         await using (var done = c.CreateCommand())
         {
@@ -2263,7 +2264,8 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             TotalCents = total,
             TransactionType = "SALE",
             Lines = lines.ToArray(),
-            OperatorName = operatorName
+            OperatorName = operatorName,
+            OrderStartedAt = restaurantOrderStartedAt
         };
     });
 }public async Task<Sale?> GetLastAsync(CancellationToken ct = default)
@@ -2386,7 +2388,12 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                           WHERE op.cashed_sale_id=s.id ORDER BY b.sequence LIMIT 1),
                          (SELECT COALESCE(NULLIF(op.tse_start_log_time,''), op.vorgang_started_at, op.created_at)
                           FROM parked_receipts op
-                          WHERE op.cashed_sale_id=s.id AND (op.tse_transaction_number<>'' OR op.tse_outage=1) LIMIT 1))
+                          WHERE op.cashed_sale_id=s.id AND (op.tse_transaction_number<>'' OR op.tse_outage=1) LIMIT 1),
+                         (SELECT COALESCE(NULLIF(rb.start_log_time,''), rb.started_at)
+                          FROM restaurant_payment_reservations rr
+                          JOIN restaurant_bestellungen rb ON rb.session_id=rr.session_id
+                          WHERE rr.sale_id=s.id AND rr.state='APPLIED'
+                          ORDER BY rb.sequence LIMIT 1))
                 FROM sales s
                 LEFT JOIN sale_operators o ON o.sale_id=s.id
                 LEFT JOIN sale_tse_signatures t ON t.sale_id=s.id
