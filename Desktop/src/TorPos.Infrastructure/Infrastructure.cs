@@ -111,6 +111,7 @@ public static class AppPaths
             var raw = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
             if (string.Equals(raw, "KIOSK", StringComparison.OrdinalIgnoreCase)) return "KIOSK";
             if (string.Equals(raw, "IMBISS", StringComparison.OrdinalIgnoreCase)) return "IMBISS";
+            if (string.Equals(raw, "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return "RESTAURANT";
             return null;
         }
     }
@@ -120,6 +121,7 @@ public static class AppPaths
         {
             "KIOSK" => "TOR-Einzelhandel",
             "IMBISS" => "TOR-Gastro",
+            "RESTAURANT" => "TOR-Restaurant",
             _ => "TOR-POS-Pro"
         };
     public static string TrialIdentityPath =>
