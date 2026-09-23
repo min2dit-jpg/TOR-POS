@@ -58,6 +58,15 @@ public sealed record RestaurantHandheldAddItemRequest(
     string DeviceId,
     string DeviceToken);
 
+public sealed record RestaurantHandheldCancelItemRequest(
+    string SessionId,
+    long ExpectedSessionVersion,
+    long SessionItemId,
+    string OperatorName,
+    string OperatorPin,
+    string DeviceId,
+    string DeviceToken);
+
 public sealed record RestaurantHandheldCommandResult(
     string SessionId,
     long SessionVersion);
@@ -95,5 +104,9 @@ public interface IRestaurantHandheldService
 
     Task<RestaurantHandheldCommandResult> AddItemAsync(
         RestaurantHandheldAddItemRequest request,
+        CancellationToken ct = default);
+
+    Task<RestaurantHandheldCommandResult> CancelItemAsync(
+        RestaurantHandheldCancelItemRequest request,
         CancellationToken ct = default);
 }
