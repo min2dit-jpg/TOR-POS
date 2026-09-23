@@ -165,10 +165,70 @@ public sealed class TseFailSafeService
                     true);
             }
 
+            // Runtime device safety must not depend on release-paperwork flags.
+            // A failed re-probe or an unknown physical generation is rejected
+            // before calling the signing provider, even while qualification
+            // evidence is still incomplete.
+            if (releaseProbe.State != TseConnectionState.Ready)
+            {
+                var reason =
+                    "TSE vor Transaktionsstart nicht betriebsbereit: " +
+                    releaseProbe.Message;
+
+                await _outages.OpenAsync(reason, actor, ct);
+                await _audit.WriteAsync(
+                    actor,
+                    "TSE_REPROBE_NOT_READY",
+                    "TSE",
+                    releaseProbe.Device?.SerialNumber ?? "",
+                    reason,
+                    ct);
+
+                return (
+                    new TseTransactionResult(false, reason),
+                    true);
+            }
+
+            TseProviderDescriptor? releaseProvider = null;
+            try
+            {
+                releaseProvider = TseProviderCatalog.Get(_provider.ProviderId);
+            }
+            catch
+            {
+                // Provider identity is handled by the existing release gate
+                // and provider implementation. Do not guess a transport here.
+            }
+
+            var requiresPhysicalGeneration =
+                releaseProvider is not null &&
+                (releaseProvider.Transport == TseProviderTransport.HardwareSdk ||
+                 releaseProvider.Transport == TseProviderTransport.LocalMiddleware);
+
+            if (requiresPhysicalGeneration &&
+                FiscalRelease.DetectPhysicalTseGeneration(releaseProbe.Device) ==
+                    PhysicalTseGeneration.Unknown)
+            {
+                const string reason =
+                    "TSE-Generation nicht eindeutig erkannt; Signierung wird fail-closed verweigert.";
+
+                await _outages.OpenAsync(reason, actor, ct);
+                await _audit.WriteAsync(
+                    actor,
+                    "TSE_GENERATION_UNKNOWN",
+                    "TSE",
+                    releaseProbe.Device?.SerialNumber ?? "",
+                    reason,
+                    ct);
+
+                return (
+                    new TseTransactionResult(false, reason),
+                    true);
+            }
+
             if (FiscalRelease.CommonQualificationsValidated)
             {
                 var releaseAllowed =
-                    releaseProbe.State == TseConnectionState.Ready &&
                     FiscalRelease.EnabledForProvider(
                         _provider.ProviderId,
                         releaseProbe.Device);
