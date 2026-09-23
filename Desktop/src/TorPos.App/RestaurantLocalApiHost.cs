@@ -321,6 +321,53 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     })
                 .RequireRateLimiting("device");
 
+            app.MapGet(
+                    "/api/v1/sessions/{sessionId}/items",
+                    async (
+                        HttpContext context,
+                        string sessionId,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            var items =
+                                await _handheld.GetItemsAsync(
+                                    sessionId,
+                                    deviceId,
+                                    deviceToken,
+                                    token);
+
+                            return Results.Ok(items);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
             app.MapPost(
                     "/api/v1/items",
                     async (
