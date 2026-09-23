@@ -167,6 +167,46 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             session.Version);
     }
 
+    public async Task<IReadOnlyList<RestaurantHandheldItemSummary>> GetItemsAsync(
+        string sessionId,
+        string deviceId,
+        string deviceToken,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            deviceId,
+            deviceToken,
+            ct);
+
+        sessionId = (sessionId ?? "").Trim();
+        if (sessionId.Length == 0)
+            throw new ArgumentException(
+                "Tischvorgang fehlt.",
+                nameof(sessionId));
+
+        _ = await _restaurant.GetSessionAsync(
+                sessionId,
+                ct)
+            ?? throw new InvalidOperationException(
+                "Tischvorgang nicht gefunden.");
+
+        return (await _restaurant.ListActiveItemsAsync(
+                sessionId,
+                ct))
+            .Select(x => new RestaurantHandheldItemSummary(
+                x.Id,
+                x.ProductId,
+                x.ProductName,
+                x.VariantName,
+                x.QuantityMilli / 1000m,
+                x.UnitPriceCents,
+                x.LineTotalCents))
+            .ToArray();
+    }
+
     public async Task<RestaurantHandheldCommandResult> AddItemAsync(
         RestaurantHandheldAddItemRequest request,
         CancellationToken ct = default)
