@@ -742,6 +742,21 @@ internal static class RestaurantFoundationTests
                 afterItem.Version == reassigned.Version + 1,
                 "Adding a table item is cent-exact and advances the session version");
 
+            var liveSummaries =
+                await repo.ListLiveTableSummariesAsync();
+
+            var liveSummary = liveSummaries.Single(x =>
+                x.TableId == tableId);
+
+            if (!liveSummary.IsOpen ||
+                liveSummary.SessionId != session.Id ||
+                liveSummary.SessionVersion != afterItem!.Version ||
+                liveSummary.OpenTotalCents != 2580)
+            {
+                throw new InvalidOperationException(
+                    "Single-query Restaurant table summary must preserve live session version and cent-exact open total.");
+            }
+
             var staleItemRejected = false;
             try
             {
