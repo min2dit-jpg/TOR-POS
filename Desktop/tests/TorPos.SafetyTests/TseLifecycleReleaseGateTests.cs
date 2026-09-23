@@ -61,9 +61,17 @@ internal static class TseLifecycleReleaseGateTests
 
         assert(
             FiscalRelease.DetectPhysicalTseGeneration(
-                Device("Swissbit TSE 1.1", hardwareVersion: "2.99")) ==
+                Device(
+                    nameof(PhysicalTseGeneration.Generation1_1),
+                    hardwareVersion: "2.99")) ==
                 PhysicalTseGeneration.Generation1_1,
-            "Physical release gate uses TSE description for Gen 1.1 and ignores a misleading 2.x hardware revision");
+            "Physical release gate accepts an explicit TOR-normalized Gen 1.1 label and ignores a misleading 2.x hardware revision");
+
+        assert(
+            FiscalRelease.DetectPhysicalTseGeneration(
+                Device("Swissbit TSE 1.1", hardwareVersion: "2.99")) ==
+                PhysicalTseGeneration.Unknown,
+            "Unverified Swissbit description text is never guessed into a physical TSE generation");
 
         assert(
             FiscalRelease.DetectPhysicalTseGeneration(
@@ -73,9 +81,11 @@ internal static class TseLifecycleReleaseGateTests
 
         assert(
             FiscalRelease.DetectPhysicalTseGeneration(
-                Device("Swissbit TSE 1", hardwareVersion: "2.10")) ==
+                Device(
+                    nameof(PhysicalTseGeneration.Generation1),
+                    hardwareVersion: "2.10")) ==
                 PhysicalTseGeneration.Generation1,
-            "Physical release gate detects Gen 1 only from generation evidence, not hardware revision");
+            "Physical release gate accepts only explicit normalized generation evidence, not hardware revision");
 
         var unknown = Device("", "Swissbit Hardware", "2.0");
         assert(
@@ -108,6 +118,8 @@ internal static class TseLifecycleReleaseGateTests
             FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
         var failSafe = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.Infrastructure/TseFailSafeService.cs"));
+        var swissbitBridge = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/SwissbitWormApiBridge.cs"));
         var xaml = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml"));
         var releaseGateScript = File.ReadAllText(
@@ -121,6 +133,10 @@ internal static class TseLifecycleReleaseGateTests
         var reprobeIndex = failSafe.IndexOf(
             "var releaseProbe = await _provider.ProbeAsync(ct);",
             StringComparison.Ordinal);
+        var generationGuardIndex = failSafe.IndexOf(
+            "TSE_GENERATION_UNKNOWN",
+            reprobeIndex < 0 ? 0 : reprobeIndex,
+            StringComparison.Ordinal);
         var commonGateIndex = failSafe.IndexOf(
             "if (FiscalRelease.CommonQualificationsValidated)",
             reprobeIndex < 0 ? 0 : reprobeIndex,
@@ -129,10 +145,15 @@ internal static class TseLifecycleReleaseGateTests
         assert(
             failSafe.Contains("TseCertificateState.Expired", StringComparison.Ordinal) &&
             failSafe.Contains("TSE_CERTIFICATE_EXPIRED", StringComparison.Ordinal) &&
+            failSafe.Contains("TSE_REPROBE_NOT_READY", StringComparison.Ordinal) &&
             reprobeIndex >= 0 &&
-            commonGateIndex > reprobeIndex &&
+            generationGuardIndex > reprobeIndex &&
+            commonGateIndex > generationGuardIndex &&
             failSafe.Contains("releaseProbe.Device?.CertificateExpiresAtUtc", StringComparison.Ordinal) &&
             failSafe.Contains("FiscalRelease.EnabledForProvider(", StringComparison.Ordinal) &&
+            swissbitBridge.Contains("worm_info_tseDescription", StringComparison.Ordinal) &&
+            swissbitBridge.Contains("adapter mapping can populate this field", StringComparison.Ordinal) &&
+            !swissbitBridge.Contains("The TSE description is the only generation evidence here", StringComparison.Ordinal) &&
             main.Contains("static bool _tseCertificateDialogShownForProcess", StringComparison.Ordinal) &&
             main.Contains("_tseCertificateTimer.Interval = TimeSpan.FromMinutes(15)", StringComparison.Ordinal) &&
             main.Contains("_tseCertificateTimer.Start()", StringComparison.Ordinal) &&
@@ -142,7 +163,7 @@ internal static class TseLifecycleReleaseGateTests
             releaseGateScript.Contains("PhysicalTseGeneration11E2EValidated", StringComparison.Ordinal) &&
             releaseGateScript.Contains("PhysicalTseGeneration2E2EValidated", StringComparison.Ordinal) &&
             releaseGateScript.Contains("physical_tse_acceptances", StringComparison.Ordinal),
-            "Exact certificate expiry is independent of release paperwork; runtime and CI bind physical approval to the current TSE generation; long-running tills re-evaluate 90/30/0 thresholds");
+            "Exact certificate expiry, ready-state re-probe and unknown-generation rejection are independent of release paperwork; Swissbit metadata is not guessed into a generation; long-running tills re-evaluate 90/30/0 thresholds");
 
         return Task.CompletedTask;
     }
