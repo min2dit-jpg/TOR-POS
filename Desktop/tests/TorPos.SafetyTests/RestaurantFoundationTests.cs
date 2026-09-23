@@ -145,6 +145,7 @@ internal static class RestaurantFoundationTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         var standardHandheldRejected = false;
