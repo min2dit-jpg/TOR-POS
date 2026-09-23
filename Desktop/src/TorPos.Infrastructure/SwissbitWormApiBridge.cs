@@ -1297,53 +1297,10 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         return mount;
     }
 
-    private static IReadOnlyList<string> FindCandidateMountPoints()
-    {
-        if (!OperatingSystem.IsWindows())
-            return Array.Empty<string>();
-
-        var result = new List<string>();
-
-        foreach (var drive in DriveInfo.GetDrives())
-        {
-            try
-            {
-                if (!drive.IsReady)
-                    continue;
-
-                var root = drive.RootDirectory.FullName;
-
-                var hasCommunicationFile =
-                    File.Exists(Path.Combine(root, "TSE_COMM.DAT"));
-
-                var hasInfoFile =
-                    File.Exists(Path.Combine(root, "TSE_INFO.DAT"));
-
-                var swissbitLabel =
-                    string.Equals(
-                        drive.VolumeLabel,
-                        "SWISSBIT",
-                        StringComparison.OrdinalIgnoreCase);
-
-                if (hasCommunicationFile ||
-                    hasInfoFile ||
-                    swissbitLabel)
-                {
-                    // Swissbit Windows examples use the drive/mount point.
-                    result.Add(root.TrimEnd(
-                        Path.DirectorySeparatorChar,
-                        Path.AltDirectorySeparatorChar));
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        return result
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
+    // The scan itself lives in SwissbitDeviceScan, because recognising the
+    // stick must also work when this bridge could not load the DLL at all.
+    private static IReadOnlyList<string> FindCandidateMountPoints() =>
+        SwissbitDeviceScan.FindMountPoints();
 
     private async Task<T> RunExclusiveAsync<T>(
         Func<T> action,

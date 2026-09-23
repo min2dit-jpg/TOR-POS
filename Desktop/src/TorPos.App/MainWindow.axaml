@@ -397,7 +397,7 @@
         <Border CornerRadius="22" Width="44" Height="44" ClipToBounds="True"
                 BorderBrush="#279CFF" BorderThickness="1"
                 BoxShadow="0 0 14 1 #80279CFF">
-          <Image Source="avares://TorPos.App/Assets/TorPos-Brand.jpg"
+          <Image Source="/Assets/TorPos-Brand.jpg"
                  Stretch="UniformToFill"/>
         </Border>
 

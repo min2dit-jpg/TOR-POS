@@ -96,6 +96,41 @@ jobs:
           $demoExit = $LASTEXITCODE
           if ($demoExit -ne 0) { exit $demoExit }
 
+      - name: Ayrik TOR Einzelhandel ve TOR Gastro buildlerini derle
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet build src/TorPos.App/TorPos.App.csproj -c Release --no-restore -m:1 -p:TorProductEdition=KIOSK --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/einzelhandel-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build src/TorPos.App/TorPos.App.csproj -c Release --no-restore -m:1 -p:TorProductEdition=IMBISS --verbosity minimal 2>&1 | Tee-Object -FilePath ci-results/gastro-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Ayrik TOR Einzelhandel ve TOR Gastro publish paketlerini olustur
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          Remove-Item -Recurse -Force publish\split -ErrorAction SilentlyContinue
+          pwsh -NoProfile -File BUILD-SPLIT-EDITIONS.ps1 -Configuration Release -Runtime win-x64 -OutputRoot publish\split 2>&1 |
+            Tee-Object -FilePath ci-results/split-publish.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path publish\split\TOR-Einzelhandel\TOR-Einzelhandel.exe)) { throw 'TOR Einzelhandel executable missing.' }
+          if (-not (Test-Path publish\split\TOR-Gastro\TOR-Gastro.exe)) { throw 'TOR Gastro executable missing.' }
+
+      # R182: building and packaging a dedicated product never proved it can
+      # start. A hardcoded avares://TorPos.App/... asset URI shipped a product
+      # that threw FileNotFoundException while loading its login window, and
+      # every source-level check passed. This renders the real windows of each
+      # dedicated build - including the startup splash and the login screen -
+      # so a product that cannot come up fails here instead of at the till.
+      - name: Ayrik urunlerin gercek pencerelerini ciz ve kontrol et
+        timeout-minutes: 12
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=KIOSK -- ci-results/ui-einzelhandel 1366x768 --check 2>&1 |
+            Tee-Object -FilePath ci-results/ui-einzelhandel.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=IMBISS -- ci-results/ui-gastro 1366x768 --check 2>&1 |
+            Tee-Object -FilePath ci-results/ui-gastro.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # SafetyTests is an executable, not an xUnit/MSTest test project.
       # Do not substitute dotnet test: use the same entry point as the BAT file.
       - name: Mevcut guvenlik ve regresyon testlerini calistir
@@ -122,6 +157,20 @@ jobs:
           dotnet run --project tools/TorPos.UiSnapshot -c Release -- ci-results/ui --check 2>&1 | Tee-Object -FilePath ci-results/ui-layout.log
           $uiExit = $LASTEXITCODE
           if ($uiExit -ne 0) { exit $uiExit }
+
+      # Turkish and English words are not German words: a button that fits
+      # KASSIEREN can be cut in half by its translation. The layout gate is
+      # therefore run once per interface language, on the till size.
+      - name: Ekran yerlesimini Turkce ve Ingilizce kontrol et
+        timeout-minutes: 12
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -- ci-results/ui 1366x768 --check --language TR 2>&1 |
+            Tee-Object -FilePath ci-results/ui-layout-tr.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -- ci-results/ui 1366x768 --check --language EN 2>&1 |
+            Tee-Object -FilePath ci-results/ui-layout-en.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # R159: publish as a self-contained single-file app. The package root
       # contains one obvious TOR-POS.exe; documentation stays in its own folder.
@@ -171,6 +220,36 @@ jobs:
             choco install innosetup --no-progress -y
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+
+      - name: Ayrik TOR Einzelhandel ve TOR Gastro Setup EXElerini olustur
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $isccCandidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'Inno Setup ISCC.exe not found.' }
+
+          Remove-Item -Recurse -Force installer-output -ErrorAction SilentlyContinue
+          & $iscc "TOR-Einzelhandel-Setup.iss" 2>&1 | Tee-Object -FilePath ci-results/einzelhandel-installer.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $iscc "TOR-Gastro-Setup.iss" 2>&1 | Tee-Object -FilePath ci-results/gastro-installer.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if (-not (Test-Path installer-output\TOR-Einzelhandel-Setup.exe)) { throw 'TOR Einzelhandel Setup missing.' }
+          if (-not (Test-Path installer-output\TOR-Gastro-Setup.exe)) { throw 'TOR Gastro Setup missing.' }
+
+      - name: Ayrik Setup EXElerini sakla
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-POS-Split-Setups-${{ github.sha }}
+          path: |
+            Desktop/installer-output/TOR-Einzelhandel-Setup.exe
+            Desktop/installer-output/TOR-Gastro-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
       - name: Kunden Setup icin standart Windows publish olustur
         run: |

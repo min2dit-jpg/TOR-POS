@@ -12,6 +12,7 @@ public static class FiscalRelease
     public const bool PhysicalTseE2EValidated = false;
     public const bool IndependentFiscalReviewValidated = false;
 
+
     public static bool Enabled =>
         DsfinvkValidated &&
         KassenSichVReceiptValidated &&

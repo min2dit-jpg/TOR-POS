@@ -3,8 +3,10 @@ using TorPos.App;
 // R85: cashier-facing error text was split from raw technical exception detail.
 // ScannerStatus now shows only a category plus a Fehler-ID; the full exception
 // goes exclusively to CrashLog, retrievable later by a technician through
-// CrashLog.FindErrorId. CrashLog.LogDirectory is not parameterized (it is
-// always %LocalAppData%\TOR POS Pro\Logs), so unlike every other fixture in
+// CrashLog.FindErrorId. Since R182 CrashLog.LogDirectory follows the product
+// identity of the running build (%LocalAppData%\<Produkt>\Logs); the suite runs
+// the shared build, so it still resolves to the real TOR POS Pro folder. Unlike
+// every other fixture in
 // this suite these checks write a uniquely-named session log directly into
 // that real, shared directory and remove it again in a finally block - the
 // same directory production sessions and other test runs also write to, so

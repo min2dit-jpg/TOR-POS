@@ -261,9 +261,12 @@ public partial class MainWindow
         _categoryId = id;
 
         var category = _catalog.Categories.FirstOrDefault(x => x.Id == id);
+        // The heading is translated here and the category name is not: the name
+        // is the operator's own data, it is what the receipt and the product
+        // list show, and they can rename it at any time.
         SelectedCategoryText.Text = category is null
             ? "ARTIKEL"
-            : $"ARTIKEL · {category.Name.ToUpperInvariant()}";
+            : $"{UiLanguage.T("ARTIKEL")} · {category.Name.ToUpperInvariant()}";
 
         EnsureSelectedCategoryVisible();
         BuildProducts();

@@ -12,10 +12,25 @@ namespace TorPos.App;
 
 public partial class SettingsWindow : Window
 {
+    // The line at the bottom of the settings window is written from ~65 places
+    // while the window is open, so rendering at Opened would never reach it.
+    // Every write goes through here instead. Service messages from Core and
+    // Infrastructure pass through the same boundary: those projects never
+    // reference the language layer, and this is the point where their German
+    // text reaches the screen. Anything without an entry stays German, and
+    // paths, printer names and device answers are data and pass through.
+    private string? SettingsStatus
+    {
+        set => StatusText.Text = UiLanguage.T(value);
+    }
+
     private readonly ISettingsRepository _settings;
     private readonly DatabaseBackupService _backup;
     private readonly PerformanceCounters _performance;
     private readonly ITseProvider _tseProvider;
+    private readonly ITseOutageRepository _tseOutages;
+    private readonly TseTimeAdminPinStore _tseTimeAdminPin;
+    private readonly CloudTseSettings _cloudTse;
     private readonly IReceiptPrinterService _receiptPrinter;
     private readonly IPaymentTerminalService _paymentTerminal;
     private readonly IFiscalComplianceService _compliance;
@@ -104,6 +119,9 @@ public partial class SettingsWindow : Window
         DatabaseBackupService backup,
         PerformanceCounters performance,
         ITseProvider tseProvider,
+        ITseOutageRepository tseOutages,
+        TseTimeAdminPinStore tseTimeAdminPin,
+        CloudTseSettings cloudTse,
         IReceiptPrinterService receiptPrinter,
         IPaymentTerminalService paymentTerminal,
         IFiscalComplianceService compliance,
@@ -122,6 +140,9 @@ public partial class SettingsWindow : Window
         _backup = backup;
         _performance = performance;
         _tseProvider = tseProvider;
+        _tseOutages = tseOutages;
+        _tseTimeAdminPin = tseTimeAdminPin;
+        _cloudTse = cloudTse;
         _receiptPrinter = receiptPrinter;
         _paymentTerminal = paymentTerminal;
         _compliance = compliance;
@@ -135,7 +156,7 @@ public partial class SettingsWindow : Window
         _windowFactory = windowFactory;
         _initialPage = initialPage;
 
-        NavList.ItemsSource = _navigation;
+        NavList.ItemsSource = _navigation.Select(UiLanguage.T).ToArray();
         BuildPages();
 
         Opened += async (_,_) =>
@@ -268,6 +289,8 @@ public partial class SettingsWindow : Window
             "Für den normalen Betrieb wird KASSE empfohlen.");
         Form(section, "Darstellung", Combo("ui.scale", "AUTO", "KOMPAKT", "STANDARD", "GROSS"),
             "AUTO ist für die meisten Touchscreens die beste Wahl.");
+        Form(section, "Sprache", Combo("ui.language", "DE", "TR", "EN"),
+            "Gilt nur für die Bedienoberfläche. Bon, DSFinV-K, Z-Bericht und Protokolle bleiben deutsch.");
         page.Children.Add(section);
 
         page.Children.Add(InfoCard(
@@ -438,7 +461,7 @@ public partial class SettingsWindow : Window
         var page = Page("Geräte · Technische Einrichtung",
             "Treiber, Ports und Protokolle werden einmalig vom Techniker eingerichtet.");
         var printer = Section("Bondrucker / Windows");
-        printer.Children.Add(ReadOnlyRow("Windows-Drucker", "Auswahl unter Geräte → Drucker / Yazıcılar."));
+        printer.Children.Add(ReadOnlyRow("Windows-Drucker", "Auswahl unter Geräte → Drucker."));
         var lastTest = Text("device.receipt_printer.last_test"); lastTest.IsReadOnly = true; Form(printer, "Letzter Test", lastTest);
         var lastError = Text("device.receipt_printer.last_error"); lastError.IsReadOnly = true; Form(printer, "Letzter Fehler", lastError);
         printer.Children.Add(ToggleRow(Check("device.receipt_printer.autocut_driver", "Auto-Cut im Windows-Treiber verwenden")));
@@ -578,7 +601,7 @@ public partial class SettingsWindow : Window
         probe.Click += async (_,_) =>
         {
             await SaveTerminalFieldsAsync();
-            StatusText.Text = "Kartenterminal wird gesucht ...";
+            SettingsStatus = "Kartenterminal wird gesucht ...";
 
             var result = await _paymentTerminal.ProbeAsync();
 
@@ -588,13 +611,13 @@ public partial class SettingsWindow : Window
             _text["payment.terminal.last_error"].Text =
                 result.Success ? "" : result.Message;
 
-            StatusText.Text = result.Message;
+            SettingsStatus = result.Message;
         };
 
         register.Click += async (_,_) =>
         {
             await SaveTerminalFieldsAsync();
-            StatusText.Text = "ZVT-Anmeldung wird geprüft ...";
+            SettingsStatus = "ZVT-Anmeldung wird geprüft ...";
 
             var result = await _paymentTerminal.RegisterAsync();
 
@@ -604,13 +627,13 @@ public partial class SettingsWindow : Window
             _text["payment.terminal.last_error"].Text =
                 result.Success ? "" : result.Message;
 
-            StatusText.Text = result.Message;
+            SettingsStatus = result.Message;
         };
 
         endOfDay.Click += async (_,_) =>
         {
             await SaveTerminalFieldsAsync();
-            StatusText.Text = "Terminal-Tagesabschluss wird angestoßen ...";
+            SettingsStatus = "Terminal-Tagesabschluss wird angestoßen ...";
 
             var result = await _paymentTerminal.EndOfDayAsync();
 
@@ -620,7 +643,7 @@ public partial class SettingsWindow : Window
             _text["payment.terminal.end_of_day.last_error"].Text =
                 result.Success ? "" : result.Message;
 
-            StatusText.Text = result.Message;
+            SettingsStatus = result.Message;
         };
 
         row.Children.Add(probe);
@@ -888,12 +911,12 @@ public partial class SettingsWindow : Window
                 ["receipt.logo_path"] = target
             });
             await _audit.WriteAsync(_currentUser.Username, "RECEIPT_LOGO_SET", "SETTINGS", "", Path.GetFileName(target));
-            status.Text = "Bonlogo aktiv · wird automatisch oben auf neue Bon-Ausdrucke gesetzt.";
-            StatusText.Text = "Bonlogo gespeichert";
+            status.Text = UiLanguage.T("Bonlogo aktiv · wird automatisch oben auf neue Bon-Ausdrucke gesetzt.");
+            SettingsStatus = "Bonlogo gespeichert";
         }
         catch (Exception ex)
         {
-            status.Text = "Logo konnte nicht übernommen werden: " + ex.Message;
+            status.Text = UiLanguage.T("Logo konnte nicht übernommen werden") + ": " + ex.Message;
         }
     }
 
@@ -911,18 +934,18 @@ public partial class SettingsWindow : Window
                 try { File.Delete(old); } catch { }
             }
             await _audit.WriteAsync(_currentUser.Username, "RECEIPT_LOGO_REMOVE", "SETTINGS", "", "Bonlogo entfernt");
-            status.Text = "Kein Bonlogo aktiv.";
-            StatusText.Text = "Bonlogo entfernt";
+            status.Text = UiLanguage.T("Kein Bonlogo aktiv.");
+            SettingsStatus = "Bonlogo entfernt";
         }
         catch (Exception ex)
         {
-            status.Text = "Logo konnte nicht entfernt werden: " + ex.Message;
+            status.Text = UiLanguage.T("Logo konnte nicht entfernt werden") + ": " + ex.Message;
         }
     }
 
     private Control DevicesPage()
     {
-        var page = Page("Drucker / Yazıcılar & Geräte",
+        var page = Page("Drucker & Geräte",
             "Windows-Drucker auswählen, testen und unten SPEICHERN drücken. Das Kartenterminal wird über den Marken-Assistenten verbunden.");
 
         var scaleAssistant = new Button
@@ -1003,13 +1026,13 @@ public partial class SettingsWindow : Window
         refresh.Click += (_, _) =>
         {
             string Value(string key) => _text.TryGetValue(key, out var box) && !string.IsNullOrWhiteSpace(box.Text) ? box.Text! : "Nicht geprüft";
-            status.Text = "Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest\n" +
-                "Kartenterminal: " + Value("payment.terminal.last_status") + " · " + Value("payment.terminal.last_test") +
-                "\nTerminalhinweis: " + Value("payment.terminal.last_error") +
+            status.Text = UiLanguage.T("Gespeicherte / zuletzt geprüfte Angaben – kein Live-Verbindungstest") + "\n" +
+                UiLanguage.T("Kartenterminal") + ": " + Value("payment.terminal.last_status") + " · " + Value("payment.terminal.last_test") +
+                "\n" + UiLanguage.T("Terminalhinweis") + ": " + Value("payment.terminal.last_error") +
                 "\nTSE: " + Value("tse.status") + " · " + Value("tse.last_test") +
-                "\nTSE-Hinweis: " + Value("tse.last_error") +
-                "\nVerbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE.\n" +
-                "Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht.";
+                "\n" + UiLanguage.T("TSE-Hinweis") + ": " + Value("tse.last_error") +
+                "\n" + UiLanguage.T("Verbindung prüfen / konfigurieren: Erweitert / Techniker → Zahlung bzw. TSE.") + "\n" +
+                UiLanguage.T("Produktivfreigabe ist separat erforderlich; ein erreichbares Gerät genügt nicht.");
         };
         var devices = Section("Terminal & TSE");
         devices.Children.Add(refresh); devices.Children.Add(status);
@@ -1037,7 +1060,7 @@ public partial class SettingsWindow : Window
 
             if (printerName.Length == 0)
             {
-                drawerStatus.Text = "Zuerst einen Bondrucker auswählen bzw. über die DRUCKER-ZENTRALE übernehmen.";
+                drawerStatus.Text = UiLanguage.T("Zuerst einen Bondrucker auswählen bzw. über die DRUCKER-ZENTRALE übernehmen.");
                 return;
             }
 
@@ -1051,14 +1074,14 @@ public partial class SettingsWindow : Window
                         ? Math.Clamp(configuredChannel, 1, 2)
                         : 1;
                 await _receiptPrinter.TestCashDrawerAsync(printerName, timeout.Token, drawerChannel);
-                drawerStatus.Text =
+                drawerStatus.Text = UiLanguage.T(
                     "✓ Schubladenbefehl an Windows übergeben. Bitte physisch prüfen, ob die Kassenschublade geöffnet hat. " +
-                    "TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.";
+                    "TOR kann über die Windows-Druckwarteschlange keine mechanische Öffnung zurücklesen.");
             }
             catch (Exception ex)
             {
                 CrashLog.WriteException("R169 settings drawer test", ex);
-                drawerStatus.Text = "⚠ Kassenschubladen-Test fehlgeschlagen: " + ex.Message;
+                drawerStatus.Text = UiLanguage.T("⚠ Kassenschubladen-Test fehlgeschlagen") + ": " + ex.Message;
             }
             finally
             {
@@ -1129,7 +1152,7 @@ public partial class SettingsWindow : Window
             if(!_currentUser.IsAdmin || App.CloudSync is not {} cloud)return;
             foreach(var button in buttons)button.IsEnabled=false;
             try {await action(cloud);status.Text=message+await cloud.StatusAsync();}
-            catch(Exception ex){status.Text="Cloud: "+ex.Message;}
+            catch(Exception ex){status.Text=UiLanguage.T("Cloud:") + " " + ex.Message;}
             finally {token.Text="";foreach(var button in buttons)button.IsEnabled=true;}
         }
         save.Click+=async (_,_)=>await Run(async cloud=>{
@@ -1153,11 +1176,11 @@ public partial class SettingsWindow : Window
         page.Children.Add(info);
         page.AttachedToVisualTree+=async (_,_)=>{
             try {
-                if(App.CloudSync is not {} cloud){status.Text="Cloud-Dienst nicht verfügbar";return;}
+                if(App.CloudSync is not {} cloud){status.Text=UiLanguage.T("Cloud-Dienst nicht verfügbar");return;}
                 var config=await cloud.ConfigurationAsync();
                 url.Text=config?.BaseUrl??"http://127.0.0.1:8787";code.Text=config?.DeviceCode??"DEMO-KASSE-01";enabled.IsChecked=config?.Enabled??false;
                 status.Text=await cloud.StatusAsync();
-            }catch(Exception ex){status.Text="Cloud: "+ex.Message;}
+            }catch(Exception ex){status.Text=UiLanguage.T("Cloud:") + " " + ex.Message;}
         };
         Closed+=(_,_)=>token.Text="";
         return page;
@@ -1185,16 +1208,17 @@ public partial class SettingsWindow : Window
                 loading = true;
                 list.ItemsSource = names;
                 list.SelectedItem = names.FirstOrDefault(x => string.Equals(x, name.Text, StringComparison.OrdinalIgnoreCase));
-                status.Text = names.Count == 0 ? "Keine Windows-Drucker gefunden. Drucker zuerst in Windows installieren." :
-                    $"{names.Count} Drucker gefunden. Gewünschten Drucker auswählen, testen und SPEICHERN drücken.";
+                status.Text = names.Count == 0
+                    ? UiLanguage.T("Keine Windows-Drucker gefunden. Drucker zuerst in Windows installieren.")
+                    : $"{names.Count} " + UiLanguage.T("Drucker gefunden. Gewünschten Drucker auswählen, testen und SPEICHERN drücken.");
             }
-            catch (Exception ex) { CrashLog.WriteException("Printer discovery", ex); status.Text = "Suche fehlgeschlagen: " + ex.Message; }
+            catch (Exception ex) { CrashLog.WriteException("Printer discovery", ex); status.Text = UiLanguage.T("Suche fehlgeschlagen") + ": " + ex.Message; }
             finally { loading = false; refresh.IsEnabled = true; list.IsEnabled = true; test.IsEnabled = true; }
         };
         test.Click += async (_, _) =>
         {
             var selected = name.Text?.Trim() ?? "";
-            if (selected.Length == 0) { status.Text = "Zuerst einen Drucker aus der Liste auswählen."; return; }
+            if (selected.Length == 0) { status.Text = UiLanguage.T("Zuerst einen Drucker aus der Liste auswählen."); return; }
             refresh.IsEnabled = false; test.IsEnabled = false; list.IsEnabled = false;
             try
             {
@@ -1202,13 +1226,13 @@ public partial class SettingsWindow : Window
                 var probe = await _receiptPrinter.ProbeAsync(selected, probeTimeout.Token);
                 if (!probe.Success)
                 {
-                    status.Text = "Drucker nicht bereit: " + probe.Message + " · Verbindung, Strom, Papier und Windows-Druckerstatus prüfen.";
+                    status.Text = UiLanguage.T("Drucker nicht bereit") + ": " + probe.Message + " · " + UiLanguage.T("Verbindung, Strom, Papier und Windows-Druckerstatus prüfen.");
                     if (_text.TryGetValue(prefix + ".last_error", out var probeError)) probeError.Text = probe.Message;
                     return;
                 }
 
                 await _receiptPrinter.PrintTestAsync(selected);
-                status.Text = $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} · An Windows übergeben. Papierausdruck am Gerät kontrollieren.";
+                status.Text = $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} · " + UiLanguage.T("An Windows übergeben. Papierausdruck am Gerät kontrollieren.");
                 if (_text.TryGetValue(prefix + ".last_error", out var error)) error.Text = "";
             }
             catch (Exception ex)
@@ -1217,9 +1241,9 @@ public partial class SettingsWindow : Window
                 var uncertain = ex is TimeoutException ||
                     ex.Message.Contains("unklar", StringComparison.OrdinalIgnoreCase) ||
                     ex.Message.Contains("Timeout", StringComparison.OrdinalIgnoreCase);
-                status.Text = uncertain
+                status.Text = UiLanguage.T(uncertain
                     ? "Druckstatus unklar. Nicht blind erneut drucken; zuerst Windows-Druckwarteschlange und Papierbeleg prüfen."
-                    : "Drucker nicht bereit. Verbindung, Strom, Papier und Windows-Druckerstatus prüfen.";
+                    : "Drucker nicht bereit. Verbindung, Strom, Papier und Windows-Druckerstatus prüfen.");
                 if (_text.TryGetValue(prefix + ".last_error", out var error)) error.Text = ex.Message;
             }
             finally
@@ -1285,7 +1309,7 @@ public partial class SettingsWindow : Window
         {
             _legalMode.Text = "FISKALSTATUS FEHLER";
             _legalMode.Foreground = AppTheme.WarningAmber;
-            StatusText.Text = ex.Message;
+            SettingsStatus = ex.Message;
         }
     }
 
@@ -1383,14 +1407,17 @@ public partial class SettingsWindow : Window
             var ready = ascii.Count(x => x.EmailState == "READY");
 
             _datevStatus.Text =
-                $"STANDARD-DATEI: {ascii.Count} Export(e) · bereit {ready} · per E-Mail gesendet {emailed} · Versandfehler {failed}\n" +
-                $"CSV-Ordner: {_datevAscii.ExportDirectory}\n\n" +
-                $"KASSENARCHIV ONLINE (optional/später): {api.Count} vorbereitete Paket(e) · Online-API noch nicht freigeschaltet.";
+                UiLanguage.T("STANDARD-DATEI") + $": {ascii.Count} " + UiLanguage.T("Export(e)") +
+                " · " + UiLanguage.T("bereit") + $" {ready} · " + UiLanguage.T("per E-Mail gesendet") +
+                $" {emailed} · " + UiLanguage.T("Versandfehler") + $" {failed}\n" +
+                UiLanguage.T("CSV-Ordner") + $": {_datevAscii.ExportDirectory}\n\n" +
+                UiLanguage.T("KASSENARCHIV ONLINE (optional/später)") + $": {api.Count} " +
+                UiLanguage.T("vorbereitete Paket(e) · Online-API noch nicht freigeschaltet.");
             _datevStatus.Foreground = failed > 0 ? AppTheme.WarningAmber : AppTheme.AccentTeal;
         }
         catch (Exception ex)
         {
-            _datevStatus.Text = "DATEV-Status konnte nicht gelesen werden: " + ex.Message;
+            _datevStatus.Text = UiLanguage.T("DATEV-Status konnte nicht gelesen werden") + ": " + ex.Message;
             _datevStatus.Foreground = AppTheme.WarningAmber;
         }
     }
@@ -1424,13 +1451,13 @@ public partial class SettingsWindow : Window
         {
             if (App.CloudSync is not { } cloud)
             {
-                _torMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar.";
+                _torMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar.");
                 return;
             }
             var config = await cloud.ConfigurationAsync();
             if (config is null || !config.Enabled)
             {
-                _torMailStatus.Text = "TOR POS Cloud zuerst unter Geräte einrichten und aktivieren.";
+                _torMailStatus.Text = UiLanguage.T("TOR POS Cloud zuerst unter Geräte einrichten und aktivieren.");
                 return;
             }
             await _settings.SaveManyAsync(new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
@@ -1439,14 +1466,14 @@ public partial class SettingsWindow : Window
             });
             await RefreshTorMailStatusAsync();
             await RefreshGoogleMailStatusAsync();
-            StatusText.Text = "TOR Mail ist jetzt der aktive Versandweg.";
+            SettingsStatus = UiLanguage.T("TOR Mail ist jetzt der aktive Versandweg.");
         };
 
         torTest.Click += async (_, _) =>
         {
             if (App.CloudSync is not { } cloud)
             {
-                _torMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar.";
+                _torMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar.");
                 return;
             }
             foreach (var b in torButtons) b.IsEnabled = false;
@@ -1456,15 +1483,15 @@ public partial class SettingsWindow : Window
                     _settings,
                     new BusinessManagementService(new SqliteDatabase(AppPaths.DatabasePath), _settings, _audit),
                     cloud: cloud);
-                StatusText.Text = "TOR Mail Test-E-Mail wird gesendet …";
+                SettingsStatus = UiLanguage.T("TOR Mail Test-E-Mail wird gesendet …");
                 await service.SendTorMailTestAsync(_text["reports.email.recipient"].Text ?? "");
-                _torMailStatus.Text = "TOR Mail bereit ✓\nTest-E-Mail wurde über den TOR POS Cloud-Versanddienst gesendet.";
-                StatusText.Text = "TOR Mail Test-E-Mail erfolgreich gesendet.";
+                _torMailStatus.Text = UiLanguage.T("TOR Mail bereit ✓\nTest-E-Mail wurde über den TOR POS Cloud-Versanddienst gesendet.");
+                SettingsStatus = UiLanguage.T("TOR Mail Test-E-Mail erfolgreich gesendet.");
             }
             catch (Exception ex)
             {
-                _torMailStatus.Text = "TOR Mail Test fehlgeschlagen:\n" + ex.Message;
-                StatusText.Text = "TOR Mail Test-E-Mail fehlgeschlagen.";
+                _torMailStatus.Text = UiLanguage.T("TOR Mail Test fehlgeschlagen:") + "\n" + ex.Message;
+                SettingsStatus = UiLanguage.T("TOR Mail Test-E-Mail fehlgeschlagen.");
             }
             finally { foreach (var b in torButtons) b.IsEnabled = true; }
         };
@@ -1495,48 +1522,48 @@ public partial class SettingsWindow : Window
 
         googleConnect.Click += async (_, _) =>
         {
-            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar."; return; }
+            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar."); return; }
             foreach (var b in googleButtons) b.IsEnabled = false;
             try
             {
-                _googleMailStatus.Text = "Sicherer QR-Code wird erstellt …";
+                _googleMailStatus.Text = UiLanguage.T("Sicherer QR-Code wird erstellt …");
                 using var gmail = new GoogleGmailService(_settings, cloud);
                 var pairing = await gmail.StartPairingAsync();
                 var ok = await new GooglePairingWindow(gmail, pairing).ShowDialog<bool>(this);
                 await RefreshGoogleMailStatusAsync();
-                StatusText.Text = ok ? "Google-Konto erfolgreich verbunden." : "Google-Anmeldung beendet.";
+                SettingsStatus = UiLanguage.T(ok ? "Google-Konto erfolgreich verbunden." : "Google-Anmeldung beendet.");
             }
             catch (Exception ex)
             {
-                _googleMailStatus.Text = "Google-Anmeldung konnte nicht gestartet werden:\n" + ex.Message;
-                StatusText.Text = "Google-Anmeldung fehlgeschlagen.";
+                _googleMailStatus.Text = UiLanguage.T("Google-Anmeldung konnte nicht gestartet werden:") + "\n" + ex.Message;
+                SettingsStatus = UiLanguage.T("Google-Anmeldung fehlgeschlagen.");
             }
             finally { foreach (var b in googleButtons) b.IsEnabled = true; }
         };
 
         googleTest.Click += async (_, _) =>
         {
-            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar."; return; }
+            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar."); return; }
             foreach (var b in googleButtons) b.IsEnabled = false;
             try
             {
                 using var gmail = new GoogleGmailService(_settings, cloud);
-                StatusText.Text = "Google Test-E-Mail wird gesendet …";
+                SettingsStatus = UiLanguage.T("Google Test-E-Mail wird gesendet …");
                 await gmail.SendTestAsync(_text["reports.email.recipient"].Text ?? "");
-                _googleMailStatus.Text = "Google-Verbindung aktiv ✓\nTest-E-Mail wurde über Gmail API gesendet.";
-                StatusText.Text = "Google Test-E-Mail erfolgreich gesendet.";
+                _googleMailStatus.Text = UiLanguage.T("Google-Verbindung aktiv ✓\nTest-E-Mail wurde über Gmail API gesendet.");
+                SettingsStatus = UiLanguage.T("Google Test-E-Mail erfolgreich gesendet.");
             }
             catch (Exception ex)
             {
-                _googleMailStatus.Text = "Google Test-E-Mail fehlgeschlagen:\n" + ex.Message;
-                StatusText.Text = "Google Test-E-Mail fehlgeschlagen.";
+                _googleMailStatus.Text = UiLanguage.T("Google Test-E-Mail fehlgeschlagen:") + "\n" + ex.Message;
+                SettingsStatus = UiLanguage.T("Google Test-E-Mail fehlgeschlagen.");
             }
             finally { foreach (var b in googleButtons) b.IsEnabled = true; }
         };
 
         googleDisconnect.Click += async (_, _) =>
         {
-            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = "TOR POS Cloud-Dienst ist nicht verfügbar."; return; }
+            if (App.CloudSync is not { } cloud) { _googleMailStatus.Text = UiLanguage.T("TOR POS Cloud-Dienst ist nicht verfügbar."); return; }
             if (!await ConfirmSimpleAsync("Google-Verbindung trennen", "Google-Zugriff für diese Kasse wirklich widerrufen? Danach wird SMTP als Fallback verwendet.")) return;
             foreach (var b in googleButtons) b.IsEnabled = false;
             try
@@ -1544,12 +1571,12 @@ public partial class SettingsWindow : Window
                 using var gmail = new GoogleGmailService(_settings, cloud);
                 await gmail.DisconnectAsync();
                 await RefreshGoogleMailStatusAsync();
-                StatusText.Text = "Google-Verbindung getrennt.";
+                SettingsStatus = UiLanguage.T("Google-Verbindung getrennt.");
             }
             catch (Exception ex)
             {
-                _googleMailStatus.Text = "Google-Verbindung konnte nicht getrennt werden:\n" + ex.Message;
-                StatusText.Text = "Google-Verbindung trennen fehlgeschlagen.";
+                _googleMailStatus.Text = UiLanguage.T("Google-Verbindung konnte nicht getrennt werden:") + "\n" + ex.Message;
+                SettingsStatus = UiLanguage.T("Google-Verbindung trennen fehlgeschlagen.");
             }
             finally { foreach (var b in googleButtons) b.IsEnabled = true; }
         };
@@ -1585,7 +1612,7 @@ public partial class SettingsWindow : Window
                 _text["reports.email.smtp.user"].Text = sender;
             else if (string.IsNullOrWhiteSpace(sender) && !string.IsNullOrWhiteSpace(user))
                 _text["reports.email.sender"].Text = user;
-            StatusText.Text = "Gmail-Standard gesetzt: smtp.gmail.com · Port 587 · STARTTLS";
+            SettingsStatus = UiLanguage.T("Gmail-Standard gesetzt: smtp.gmail.com · Port 587 · STARTTLS");
         };
         smtp.Children.Add(gmailPreset);
 
@@ -1598,7 +1625,7 @@ public partial class SettingsWindow : Window
             });
             await RefreshTorMailStatusAsync();
             await RefreshGoogleMailStatusAsync();
-            StatusText.Text = "SMTP ist jetzt der aktive Versandweg.";
+            SettingsStatus = UiLanguage.T("SMTP ist jetzt der aktive Versandweg.");
         };
         smtp.Children.Add(useSmtp);
 
@@ -1623,8 +1650,8 @@ public partial class SettingsWindow : Window
                     _settings,
                     new BusinessManagementService(new SqliteDatabase(AppPaths.DatabasePath), _settings, _audit));
                 var password = ReportEmailService.ResolveAppPassword(_reportSmtpPassword.Text, _reportSmtpPasswordProtected);
-                StatusText.Text = "Test-E-Mail wird gesendet ...";
-                smtpDetails.Text = "SMTP-Verbindung wird geprüft ...";
+                SettingsStatus = UiLanguage.T("Test-E-Mail wird gesendet ...");
+                smtpDetails.Text = UiLanguage.T("SMTP-Verbindung wird geprüft ...");
                 await service.SendTestAsync(
                     _text["reports.email.recipient"].Text ?? "",
                     _text["reports.email.sender"].Text ?? "",
@@ -1633,12 +1660,12 @@ public partial class SettingsWindow : Window
                     _check["reports.email.smtp.ssl"].IsChecked == true,
                     _text["reports.email.smtp.user"].Text ?? "",
                     password);
-                StatusText.Text = "Test-E-Mail erfolgreich gesendet.";
-                smtpDetails.Text = "ERFOLG: Test-E-Mail wurde gesendet.\nSTARTTLS, TLS-Handshake und SMTP-Anmeldung funktionieren.";
+                SettingsStatus = UiLanguage.T("Test-E-Mail erfolgreich gesendet.");
+                smtpDetails.Text = UiLanguage.T("ERFOLG: Test-E-Mail wurde gesendet.\nSTARTTLS, TLS-Handshake und SMTP-Anmeldung funktionieren.");
             }
             catch (Exception ex)
             {
-                StatusText.Text = "E-Mail-Test fehlgeschlagen. Details im SMTP-Diagnosefeld.";
+                SettingsStatus = UiLanguage.T("E-Mail-Test fehlgeschlagen. Details im SMTP-Diagnosefeld.");
                 smtpDetails.Text = ex.Message;
             }
             finally { test.IsEnabled = true; }
@@ -1695,7 +1722,7 @@ public partial class SettingsWindow : Window
         test.Click += (_,_) =>
         {
             _backup.TestDirectory(_text["backup.directory"].Text, out var message);
-            StatusText.Text = message;
+            SettingsStatus = message;
         };
 
         var create = new Button { Content = "SICHERUNG JETZT ERSTELLEN", MinHeight = 44, MinWidth = 220 };
@@ -1703,14 +1730,14 @@ public partial class SettingsWindow : Window
         {
             try
             {
-                StatusText.Text = "Sicherung wird erstellt ...";
+                SettingsStatus = UiLanguage.T("Sicherung wird erstellt ...");
                 var path = await _backup.CreateBackupAsync(_text["backup.directory"].Text);
                 path = await new BackupEncryptionService(_settings).EncryptIfEnabledAsync(path);
-                StatusText.Text = $"Sicherung erstellt: {path}";
+                SettingsStatus = $"{UiLanguage.T("Sicherung erstellt:")} {path}";
             }
             catch (Exception ex)
             {
-                StatusText.Text = $"Sicherung fehlgeschlagen: {ex.Message}";
+                SettingsStatus = UiLanguage.T("Sicherung fehlgeschlagen:") + " " + ex.Message;
             }
         };
 
@@ -1718,7 +1745,7 @@ public partial class SettingsWindow : Window
         full.Click+=async(_,_)=>{
             if(!full.IsEnabled)return;full.IsEnabled=false;string? restored=null;string? package=null;string? decrypted=null;
             try{
-                StatusText.Text="Sicherung und Wiederherstellungsprüfung laufen ...";
+                SettingsStatus=UiLanguage.T("Sicherung und Wiederherstellungsprüfung laufen ...");
                 var service=new FullBackupService(new SqliteDatabase(AppPaths.DatabasePath),AppPaths.DataDirectory);
                 package=await service.CreateAsync(_backup.ResolveDirectory(_text["backup.directory"].Text));
                 var encryption=new BackupEncryptionService(_settings);
@@ -1734,8 +1761,8 @@ public partial class SettingsWindow : Window
                 }
                 restored=Path.Combine(Path.GetTempPath(),"tor-restore-check-"+Guid.NewGuid().ToString("N"));
                 var result=await FullBackupService.VerifyRestoreAsync(toVerify,restored);
-                StatusText.Text=$"Geprüft: {result.Files} Dateien · {result.Products} Artikel · {result.Sales} Verkäufe · {package}";
-            }catch(Exception ex){StatusText.Text="Prüfung fehlgeschlagen: "+ex.Message+(package is null?"":" · Paket: "+package);}
+                SettingsStatus=$"{UiLanguage.T("Geprüft:")} {result.Files} {UiLanguage.T("Dateien")} · {result.Products} {UiLanguage.T("Artikel")} · {result.Sales} {UiLanguage.T("Verkäufe")} · {package}";
+            }catch(Exception ex){SettingsStatus=UiLanguage.T("Prüfung fehlgeschlagen:")+" "+ex.Message+(package is null?"":" · "+UiLanguage.T("Paket:")+" "+package);}
             finally{
                 try{if(restored is not null&&Directory.Exists(restored))Directory.Delete(restored,true);}catch(Exception ex){CrashLog.WriteException("Backup check cleanup",ex);}
                 try{if(decrypted is not null&&File.Exists(decrypted))File.Delete(decrypted);}catch(Exception ex){CrashLog.WriteException("Backup check cleanup",ex);}
@@ -1770,18 +1797,20 @@ public partial class SettingsWindow : Window
             if (current.Enabled)
             {
                 status.Text =
-                    $"Aktiv · Wiederherstellungscode-Kennung {current.RecoveryFingerprint}. " +
-                    "Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. " +
-                    "Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der " +
-                    "Wiederherstellungscode benötigt." +
+                    UiLanguage.T("Aktiv · Wiederherstellungscode-Kennung") + $" {current.RecoveryFingerprint}. " +
+                    UiLanguage.T(
+                        "Neue Sicherungen (manuell und täglich automatisch) werden verschlüsselt. " +
+                        "Auf diesem Computer wird automatisch entschlüsselt; auf einem anderen Computer wird der " +
+                        "Wiederherstellungscode benötigt.") +
                     // R122: an existing installation keeps the old key derivation
                     // until a NEW code is generated - the old one cannot be
                     // converted, because the code itself was never stored.
                     (current.UsesLegacyKeyDerivation
-                        ? "\n\nHINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet " +
-                          "die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt " +
-                          "wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN " +
-                          "wählen und den neuen Code sicher notieren."
+                        ? "\n\n" + UiLanguage.T(
+                            "HINWEIS: Dieser Wiederherstellungscode stammt aus einer älteren Version und verwendet " +
+                            "die frühere Schlüsselableitung. Vorhandene Sicherungen bleiben uneingeschränkt " +
+                            "wiederherstellbar. Für das aktuelle Verfahren einmal WIEDERHERSTELLUNGSCODE NEU ERSTELLEN " +
+                            "wählen und den neuen Code sicher notieren.")
                         : "");
                 enableButton.IsVisible = false;
                 regenerateButton.IsVisible = true;
@@ -1789,10 +1818,10 @@ public partial class SettingsWindow : Window
             }
             else
             {
-                status.Text =
+                status.Text = UiLanguage.T(
                     "Nicht aktiv · Sicherungen werden unverschlüsselt geschrieben. " +
                     "Bei Aktivierung wird ein Wiederherstellungscode einmalig angezeigt - ohne diesen Code " +
-                    "kann eine Sicherung nach einem Totalausfall dieses Computers nicht wiederhergestellt werden.";
+                    "kann eine Sicherung nach einem Totalausfall dieses Computers nicht wiederhergestellt werden.");
                 enableButton.IsVisible = true;
                 regenerateButton.IsVisible = false;
                 disableButton.IsVisible = false;
@@ -1891,6 +1920,7 @@ public partial class SettingsWindow : Window
             }
         };
 
+        UiLanguage.Apply(dialog);
         await dialog.ShowDialog(this);
     }
 
@@ -1954,9 +1984,9 @@ public partial class SettingsWindow : Window
                 TrainingAccessPolicy.SettingKey,
                 TrainingAccessPolicy.FactoryCode);
             codeBox.Text = TrainingAccessPolicy.Effective(current);
-            status.Text = TrainingAccessPolicy.IsFactoryDefault(current)
+            status.Text = UiLanguage.T(TrainingAccessPolicy.IsFactoryDefault(current)
                 ? "Aktuell gilt der Auslieferungscode 0000. Solange er gilt, steht er auch auf der Anmeldeseite."
-                : "Ein eigener Code ist gesetzt. Die Anmeldeseite nennt ihn nicht mehr.";
+                : "Ein eigener Code ist gesetzt. Die Anmeldeseite nennt ihn nicht mehr.");
         }
 
         save.Click += async (_,_) =>
@@ -1965,7 +1995,7 @@ public partial class SettingsWindow : Window
             var typed = (codeBox.Text ?? "").Trim();
             if (!TrainingAccessPolicy.IsValidCode(typed))
             {
-                status.Text = "Der Training-Code muss aus genau 4 Ziffern bestehen. Nicht gespeichert.";
+                status.Text = UiLanguage.T("Der Training-Code muss aus genau 4 Ziffern bestehen. Nicht gespeichert.");
                 return;
             }
 
@@ -1977,7 +2007,7 @@ public partial class SettingsWindow : Window
             await _audit.WriteAsync(_currentUser.Username, "TRAINING_CODE_CHANGED", "SETTINGS", "",
                 "Training-Zugangscode geändert; der Code selbst wird nicht protokolliert.");
             await LoadAsync();
-            status.Text = "Gespeichert. " + status.Text;
+            status.Text = UiLanguage.T("Gespeichert.") + " " + status.Text;
         };
 
         Form(section, "Training-Code", codeBox,
@@ -2075,7 +2105,7 @@ private Control TsePage()
         ftProbe.IsEnabled = false;
         try
         {
-            StatusText.Text = "fiskaltrust Queue / Swissbit-SCU werden ohne TSE-Schreiboperation geprüft ...";
+            SettingsStatus = "fiskaltrust Queue / Swissbit-SCU werden ohne TSE-Schreiboperation geprüft ...";
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             var result = await FiskaltrustSwissbitProbe.ProbeAsync(timeout.Token);
 
@@ -2100,12 +2130,12 @@ private Control TsePage()
                 " · Middleware: " + (result.MiddlewareReachable ? "ERREICHBAR" : "NICHT VOLLSTÄNDIG ERREICHBAR") +
                 "\n" + result.Message;
 
-            StatusText.Text = result.Message;
+            SettingsStatus = result.Message;
         }
         catch (OperationCanceledException)
         {
             ftResult.Text = "Prüfung nach 8 Sekunden beendet. Es wurde keine TSE-Schreiboperation ausgeführt.";
-            StatusText.Text = ftResult.Text;
+            SettingsStatus = ftResult.Text;
         }
         finally
         {
@@ -2131,6 +2161,205 @@ private Control TsePage()
     Form(status, "Letzter Fehler", lastError);
 
     page.Children.Add(status);
+
+    // § 146a AO treats a TSE failure as a documented outage. The record has
+    // existed from the start in tse_outage_log - protected against DELETE by a
+    // trigger - and travels into the DSFinV-K export. What was missing is a way
+    // to read it: asked "when was the TSE down and why", the operator had to
+    // produce an export or open the database. Now it is on the screen where the
+    // TSE is administered.
+    var outages = Section("TSE-Ausfälle");
+    outages.Children.Add(ReadOnlyRow(
+        "Nachweis",
+        "Jeder Ausfall wird mit Beginn, Ende und Grund protokolliert und kann nicht gelöscht werden. Dieselben Daten gehen in den DSFinV-K-Export."));
+
+    // A read-only TextBox, not a TextBlock, and deliberately so: UiLanguage
+    // translates TextBlock.Text but never TextBox.Text, because that is where
+    // operator data lives. An outage reason is the recorded cause of a fiscal
+    // outage - it must reach a Pruefer exactly as the till wrote it, in every
+    // interface language.
+    var outageList = new TextBox
+    {
+        Text = UiLanguage.T("Ausfallliste wird gelesen ..."),
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MinHeight = 120,
+        MaxHeight = 320,
+        FontSize = 13
+    };
+    outages.Children.Add(ToggleRow(outageList));
+
+    var reloadOutages = new Button { Content = "AUSFALLLISTE AKTUALISIEREN", MinHeight = 44 };
+    reloadOutages.Click += async (_, _) => await LoadTseOutagesAsync(outageList);
+    outages.Children.Add(reloadOutages);
+    _ = LoadTseOutagesAsync(outageList);
+
+    page.Children.Add(outages);
+
+    // Separate from the activation screen on purpose. A TSE whose clock has
+    // expired needs one thing - worm_tse_updateTime - and sending an operator
+    // through the full activation form to get it puts a PUK box in front of
+    // somebody who only has to fix a date. A wrong PUK entered twice can block
+    // a production TSE for good.
+    // The device choice. Everything above ITseProvider is written against the
+    // interface, so this is the only place in the operator interface where a
+    // cloud TSE and a USB stick look different at all.
+    var kind = Section("Art der TSE");
+    kind.Children.Add(ReadOnlyRow(
+        "Auswahl",
+        "SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."));
+    Form(
+        kind,
+        "Art der TSE",
+        Combo(TseProviderKind.Setting, TseProviderKind.SwissbitUsb, TseProviderKind.Cloud),
+        "Ein unbekannter Wert fällt auf SWISSBIT_USB zurück. Eine Kasse wird nie stillschweigend auf ein anderes Fiskalgerät umgestellt.");
+    page.Children.Add(kind);
+
+    var cloud = Section("Cloud-TSE");
+    cloud.Children.Add(ReadOnlyRow(
+        "Freigabe",
+        CloudTseRelease.IsValidated(_cloudTse.Current.Vendor)
+            ? "Cloud-TSE ist für diesen Anbieter freigegeben."
+            : "Cloud-TSE ist für diesen Anbieter NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."));
+    cloud.Children.Add(ReadOnlyRow(
+        "Mandant / Queue",
+        "Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."));
+
+    // A closed list, not free text. An unknown vendor is never validated
+    // anyway, but a typo should look like a typo rather than like a setting.
+    var cloudVendor = Combo(
+        CloudTseSettings.VendorSetting,
+        ["", .. CloudTseVendors.All]);
+    var cloudUrl = Text(CloudTseSettings.BaseUrlSetting);
+    var cloudTenant = Text(CloudTseSettings.TenantSetting);
+    var cloudQueue = Text(CloudTseSettings.QueueSetting);
+    var cloudClient = Text(CloudTseSettings.ClientSetting);
+
+    Form(cloud, "Anbieter", cloudVendor, "Der zertifizierte Cloud-TSE-Anbieter, mit dem ein Vertrag besteht. Jeder Anbieter wird einzeln freigegeben: die Freigabe eines Anbieters öffnet keinen anderen.");
+
+    Form(cloud, "Endpunkt", cloudUrl, "Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt.");
+    Form(cloud, "Mandant", cloudTenant);
+    Form(cloud, "Queue", cloudQueue);
+    Form(cloud, "Client-ID", cloudClient, "Muss die Kassen-Seriennummer sein - dieselbe Nummer wie auf dem Bon und im DSFinV-K-Export.");
+
+    var cloudKey = new TextBox
+    {
+        MinHeight = 38,
+        PasswordChar = '*',
+        PlaceholderText = "leer lassen = gespeicherten Schlüssel behalten"
+    };
+    Form(cloud, "API-Schlüssel", cloudKey, "Wird DPAPI-geschützt gespeichert und nie im Klartext abgelegt oder protokolliert.");
+
+    var cloudResult = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.85 };
+    var cloudTest = new Button { Content = "CLOUD-TSE VERBINDUNG PRÜFEN", MinHeight = 44 };
+
+    cloudTest.Click += async (_, _) =>
+    {
+        if (!cloudTest.IsEnabled)
+            return;
+
+        cloudTest.IsEnabled = false;
+        try
+        {
+            await _cloudTse.SaveAsync(
+                new CloudTseConfiguration(
+                    (cloudVendor.SelectedItem as string) ?? "",
+                    cloudUrl.Text ?? "",
+                    cloudTenant.Text ?? "",
+                    cloudQueue.Text ?? "",
+                    cloudClient.Text ?? "",
+                    _cloudTse.Current.ProtectedApiKey),
+                cloudKey.Text);
+
+            cloudKey.Text = "";
+
+            SettingsStatus = "Cloud-TSE Endpunkt wird geprüft ...";
+
+            // Reachability only: no fiscal data is sent and the key is not
+            // used. A till must never freeze on a network call, so this is
+            // bounded and runs off the UI thread like every other probe.
+            var provider = new CloudTseProvider(() => _cloudTse.Current);
+            var health = await provider.CheckHealthAsync(_cloudTse.Current);
+
+            cloudResult.Text = health.Reachable
+                ? $"Erreichbar · {health.Message} · {health.RoundTripMs} ms"
+                : $"Nicht erreichbar · {health.Message}";
+
+            SettingsStatus = cloudResult.Text;
+        }
+        finally
+        {
+            cloudTest.IsEnabled = true;
+        }
+    };
+
+    cloud.Children.Add(cloudTest);
+    cloud.Children.Add(cloudResult);
+    page.Children.Add(cloud);
+
+    var clock = Section("TSE-Uhrzeit");
+    clock.Children.Add(ReadOnlyRow(
+        "Warum",
+        "Eine TSE signiert nicht mehr, sobald ihre eigene Uhr ungültig ist. Das passiert nach längerer Lagerung oder wenn die Kasse lange ausgeschaltet war."));
+
+    var timePin = new TextBox
+    {
+        MinHeight = 38,
+        PasswordChar = '*',
+        MaxLength = 8,
+        PlaceholderText = "TimeAdmin-PIN"
+    };
+
+    // A plain CheckBox, not Check(): Check() registers the control in the
+    // generic save list, and this one only reports what the store already
+    // holds. Writing it back from the form would let a stray save decide
+    // whether a PIN exists.
+    var timeStored = new CheckBox
+    {
+        Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert",
+        MinHeight = 30,
+        IsEnabled = false,
+        IsChecked = _tseTimeAdminPin.Enabled
+    };
+    clock.Children.Add(ToggleRow(timeStored));
+
+    Form(
+        clock,
+        "TimeAdmin-PIN",
+        timePin,
+        "Nur die TimeAdmin-PIN. Sie kann ausschließlich die Uhr stellen - keine PIN ändern, keinen Client registrieren, die TSE nicht außer Betrieb setzen. Admin-PIN, PUK und Credential-Seed werden nirgends gespeichert.");
+
+    var saveTimePin = new Button { Content = "PIN SPEICHERN", MinHeight = 44 };
+    var clearTimePin = new Button { Content = "GESPEICHERTE PIN LÖSCHEN", MinHeight = 44 };
+
+    saveTimePin.Click += async (_, _) =>
+    {
+        var entered = timePin.Text ?? "";
+        timePin.Text = "";
+
+        if (string.IsNullOrWhiteSpace(entered))
+        {
+            SettingsStatus = "Keine TimeAdmin-PIN eingegeben.";
+            return;
+        }
+
+        await _tseTimeAdminPin.SaveAsync(entered);
+        timeStored.IsChecked = true;
+        SettingsStatus = "TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt.";
+    };
+
+    clearTimePin.Click += async (_, _) =>
+    {
+        timePin.Text = "";
+        await _tseTimeAdminPin.ClearAsync();
+        timeStored.IsChecked = false;
+        SettingsStatus = "Gespeicherte TimeAdmin-PIN gelöscht.";
+    };
+
+    clock.Children.Add(saveTimePin);
+    clock.Children.Add(clearTimePin);
+    page.Children.Add(clock);
 
     var identity = Section("Automatisch aus der TSE lesen");
 
@@ -2313,7 +2542,7 @@ private Control TsePage()
 
     findSdk.Click += async (_,_) =>
     {
-        StatusText.Text =
+        SettingsStatus =
             "Windows wird nach einer kompatiblen Swissbit WormAPI.dll durchsucht ...";
 
         var libraries =
@@ -2321,7 +2550,7 @@ private Control TsePage()
 
         if (libraries.Count == 0)
         {
-            StatusText.Text =
+            SettingsStatus =
                 "Keine kompatible WormAPI.dll auf diesem PC gefunden. " +
                 "Offizielles Swissbit SDK herunterladen oder DLL manuell auswählen.";
             return;
@@ -2337,7 +2566,7 @@ private Control TsePage()
         exportTar.IsEnabled =
             _tseProvider.ExportAvailable;
 
-        StatusText.Text =
+        SettingsStatus =
             configured.RequiredApiAvailable
                 ? $"Swissbit SDK gefunden: {configured.LibraryPath} · jetzt TSE SUCHEN drücken."
                 : configured.Message;
@@ -2377,7 +2606,7 @@ private Control TsePage()
         exportTar.IsEnabled =
             _tseProvider.ExportAvailable;
 
-        StatusText.Text =
+        SettingsStatus =
             configured.RequiredApiAvailable
                 ? $"Swissbit SDK geladen: {configured.LibraryPath} · jetzt TSE SUCHEN drücken."
                 : configured.Message;
@@ -2395,13 +2624,13 @@ private Control TsePage()
                     UseShellExecute = true
                 });
 
-            StatusText.Text =
+            SettingsStatus =
                 "Swissbit Download-Center wurde im Browser geöffnet. " +
                 "TSE-Downloads können eine Anmeldung erfordern.";
         }
         catch (Exception ex)
         {
-            StatusText.Text =
+            SettingsStatus =
                 "Browser konnte nicht geöffnet werden: " +
                 ex.Message;
         }
@@ -2409,7 +2638,7 @@ private Control TsePage()
 
     detect.Click += async (_,_) =>
     {
-        StatusText.Text = "Swissbit SDK und TSE werden geprüft ...";
+        SettingsStatus = "Swissbit SDK und TSE werden geprüft ...";
 
         var result =
             await _tseProvider.ProbeAsync();
@@ -2429,18 +2658,21 @@ private Control TsePage()
 
         if (result.Device is not null)
         {
-            _text["tse.serial"].Text =
-                result.Device.SerialNumber;
-
-            _text["tse.bsi_id"].Text =
-                result.Device.BsiCertificationId;
-
-            _text["tse.device_path"].Text =
-                result.Device.DevicePath;
-
-            _text["tse.expiry_date"].Text =
-                result.Device.CertificateValidUntil?
-                    .ToString("yyyy-MM-dd") ?? "";
+            // Only what the device actually reported. The WORM API does not
+            // return a BSI certification id at all - the bridge passes an empty
+            // string for it - so writing it back unconditionally wiped the
+            // number the operator had entered from the certificate, every
+            // single time the TSE was activated or re-read. The
+            // Programmierungsprotokoll then kept printing "FEHLT" no matter how
+            // often they typed it in.
+            //
+            // A field the device cannot answer for is the operator's to keep.
+            AdoptFromDevice("tse.serial", result.Device.SerialNumber);
+            AdoptFromDevice("tse.bsi_id", result.Device.BsiCertificationId);
+            AdoptFromDevice("tse.device_path", result.Device.DevicePath);
+            AdoptFromDevice(
+                "tse.expiry_date",
+                result.Device.CertificateValidUntil?.ToString("yyyy-MM-dd") ?? "");
         }
 
         await _settings.SaveManyAsync(
@@ -2462,14 +2694,14 @@ private Control TsePage()
                     _text["tse.expiry_date"].Text ?? ""
             });
 
-        StatusText.Text = result.Message;
+        SettingsStatus = result.Message;
     };
 
     activate.Click += async (_,_) =>
     {
         if (activationConfirmation.IsChecked != true)
         {
-            StatusText.Text =
+            SettingsStatus =
                 "Aktivierung gesperrt: Bestätigung für Credential-Seed / PIN / PUK fehlt.";
             return;
         }
@@ -2481,7 +2713,7 @@ private Control TsePage()
             timeAdminPin.Text ?? "",
             credentialSeed.Text ?? "");
 
-        StatusText.Text =
+        SettingsStatus =
             "Swissbit TSE-Aktivierung läuft. TSE nicht entfernen ...";
 
         var result =
@@ -2569,7 +2801,7 @@ private Control TsePage()
                     _text["tse.expiry_date"].Text ?? ""
             });
 
-        StatusText.Text = result.Message + masterDataNote;
+        SettingsStatus = result.Message + masterDataNote;
     };
 
     exportTar.Click += async (_,_) =>
@@ -2582,7 +2814,7 @@ private Control TsePage()
             desktop,
             $"TOR-TSE-TAR-{DateTime.Now:yyyyMMdd-HHmmss}.tar");
 
-        StatusText.Text =
+        SettingsStatus =
             "TSE TAR-Export läuft ...";
 
         var result =
@@ -2596,7 +2828,7 @@ private Control TsePage()
             imported = serials.Count > 0 ? " · TSE-Stammdaten übernommen" : "";
         }
 
-        StatusText.Text =
+        SettingsStatus =
             result.Success
                 ? $"TSE TAR gespeichert: {result.FilePath}{imported}"
                 : result.Message;
@@ -2791,12 +3023,12 @@ private Control TsePage()
                     "",
                     path);
 
-                StatusText.Text =
+                SettingsStatus =
                     $"Audit-Log exportiert: {path}";
             }
             catch (Exception ex)
             {
-                StatusText.Text =
+                SettingsStatus =
                     "Audit-Export fehlgeschlagen: " +
                     ex.Message;
             }
@@ -2824,11 +3056,11 @@ private Control TsePage()
                                   .Where(x => x.Blocking)
                                   .Select(x => x.Message));
 
-                StatusText.Text = text;
+                SettingsStatus = text;
             }
             catch (Exception ex)
             {
-                StatusText.Text =
+                SettingsStatus =
                     "DSFinV-K Prüfung fehlgeschlagen: " +
                     ex.Message;
             }
@@ -2847,7 +3079,7 @@ private Control TsePage()
 
                 if (!report.Ready)
                 {
-                    StatusText.Text =
+                    SettingsStatus =
                         "DSFinV-K Export gesperrt: " +
                         string.Join(
                             " | ",
@@ -2867,7 +3099,7 @@ private Control TsePage()
                 var folder = folders.FirstOrDefault();
                 if (folder is null)
                 {
-                    StatusText.Text = "DSFinV-K Export abgebrochen · kein Zielordner ausgewählt.";
+                    SettingsStatus = "DSFinV-K Export abgebrochen · kein Zielordner ausgewählt.";
                     return;
                 }
 
@@ -2885,7 +3117,7 @@ private Control TsePage()
                     path);
 
                 var warnings = report.Issues.Count(x => !x.Blocking);
-                StatusText.Text =
+                SettingsStatus =
                     $"DSFinV-K 2.4 exportiert · {range.FromDate:dd.MM.yyyy}–{range.ToDate:dd.MM.yyyy} · {path}" +
                     (warnings > 0 ? $" · {warnings} Hinweis(e) im Exportprotokoll" : "");
 
@@ -2900,7 +3132,7 @@ private Control TsePage()
             }
             catch (Exception ex)
             {
-                StatusText.Text =
+                SettingsStatus =
                     "DSFinV-K Export fehlgeschlagen: " +
                     ex.Message;
             }
@@ -3023,11 +3255,11 @@ private Control TsePage()
                     customerName.Text ?? "",
                     TorRelease.Version);
 
-                StatusText.Text = $"Aktivierungsanfrage gespeichert: {target}";
+                SettingsStatus = $"Aktivierungsanfrage gespeichert: {target}";
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Aktivierungsanfrage fehlgeschlagen: " + ex.Message;
+                SettingsStatus = "Aktivierungsanfrage fehlgeschlagen: " + ex.Message;
             }
         };
 
@@ -3066,7 +3298,7 @@ private Control TsePage()
             }
 
             RefreshLicenseStatus(edition);
-            StatusText.Text = result.Message;
+            SettingsStatus = result.Message;
         };
 
 
@@ -3075,7 +3307,7 @@ private Control TsePage()
             var current = _commercialLicense.Check(edition);
             if (!current.IsActive)
             {
-                StatusText.Text = "Keine aktive Lizenz vorhanden, die deaktiviert werden kann.";
+                SettingsStatus = "Keine aktive Lizenz vorhanden, die deaktiviert werden kann.";
                 RefreshLicenseStatus(edition);
                 return;
             }
@@ -3109,13 +3341,13 @@ private Control TsePage()
                     $"KundenNr={current.CustomerNumber}; Kunde={current.CustomerName}; Device={_commercialLicense.DeviceCode}; Edition={edition}; Receipt={receipt}; Result={result.State}");
 
                 RefreshLicenseStatus(edition);
-                StatusText.Text = result.State == CommercialLicenseState.Deactivated
+                SettingsStatus = result.State == CommercialLicenseState.Deactivated
                     ? $"Lizenz deaktiviert · Deaktivierungsbeleg: {receipt}"
                     : result.Message;
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Lizenz-Deaktivierung fehlgeschlagen: " + ex.Message;
+                SettingsStatus = "Lizenz-Deaktivierung fehlgeschlagen: " + ex.Message;
             }
         };
 
@@ -3199,11 +3431,11 @@ private Control TsePage()
             {
                 var updater = new TorUpdateService(_settings, _backup);
                 await updater.SetEnabledAsync(updateEnabled.IsChecked == true);
-                updateStatus.Text = updateEnabled.IsChecked == true
+                updateStatus.Text = UiLanguage.T(updateEnabled.IsChecked == true
                     ? "Automatische Update-Prüfung ist aktiv."
-                    : "Automatische Update-Prüfung ist deaktiviert. Manuelle Prüfung bleibt möglich.";
+                    : "Automatische Update-Prüfung ist deaktiviert. Manuelle Prüfung bleibt möglich.");
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Einstellung: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Einstellung") + ": " + ex.Message; }
         };
         updateCheck.Click += async (_,_) =>
         {
@@ -3213,13 +3445,13 @@ private Control TsePage()
                 var updater = new TorUpdateService(_settings, _backup);
                 var result = await updater.CheckAsync(edition, force: true);
                 updateStatus.Text = result.UpdateAvailable && result.Manifest is not null
-                    ? $"Neue Version verfügbar: {result.Manifest.Revision} · {result.Manifest.Version}" +
-                      (result.Manifest.Mandatory ? " · WICHTIGES UPDATE" : "") +
+                    ? UiLanguage.T("Neue Version verfügbar") + $": {result.Manifest.Revision} · {result.Manifest.Version}" +
+                      (result.Manifest.Mandatory ? " · " + UiLanguage.T("WICHTIGES UPDATE") : "") +
                       (string.IsNullOrWhiteSpace(result.Manifest.ReleaseNotes) ? "" : "\n" + result.Manifest.ReleaseNotes) +
-                      "\nZur Kasse zurückkehren: oben erscheint für Admin der UPDATE-Button. Installation startet erst nach Sicherheitsprüfung und Backup."
-                    : result.Message;
+                      "\n" + UiLanguage.T("Zur Kasse zurückkehren: oben erscheint für Admin der UPDATE-Button. Installation startet erst nach Sicherheitsprüfung und Backup.")
+                    : UiLanguage.T(result.Message);
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Prüfung: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Prüfung") + ": " + ex.Message; }
             finally { updateCheck.IsEnabled = true; }
         };
         update.Children.Add(updateEnabled);
@@ -3235,10 +3467,10 @@ private Control TsePage()
                 var last = await _settings.GetAsync("update.last_check_utc", "");
                 var state = await _settings.GetAsync("update.last_status", "noch nicht geprüft");
                 updateStatus.Text = string.IsNullOrWhiteSpace(last)
-                    ? "Noch keine Update-Prüfung."
-                    : $"Letzte Prüfung: {last} · {state}";
+                    ? UiLanguage.T("Noch keine Update-Prüfung.")
+                    : UiLanguage.T("Letzte Prüfung") + $": {last} · {state}";
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Status: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Status") + ": " + ex.Message; }
         };
         page.Children.Add(update);
 
@@ -3277,11 +3509,11 @@ private Control TsePage()
             {
                 var updater = new TorUpdateService(_settings, _backup);
                 await updater.SetServerUrlAsync(updateServer.Text ?? "");
-                updateStatus.Text = string.IsNullOrWhiteSpace(updateServer.Text)
+                updateStatus.Text = UiLanguage.T(string.IsNullOrWhiteSpace(updateServer.Text)
                     ? "Gespeichert: TOR Cloud Server wird als Update-Quelle verwendet."
-                    : "Technische Update-Quelle gespeichert.";
+                    : "Technische Update-Quelle gespeichert.");
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Server: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Server") + ": " + ex.Message; }
         };
         update.Children.Add(updateSave);
         update.Children.Add(updateStatus);
@@ -3290,11 +3522,11 @@ private Control TsePage()
             try
             {
                 updateServer.Text = await _settings.GetAsync("update.server_url", "");
-                updateStatus.Text = string.IsNullOrWhiteSpace(updateServer.Text)
+                updateStatus.Text = UiLanguage.T(string.IsNullOrWhiteSpace(updateServer.Text)
                     ? "Keine separate Update-Quelle: TOR Cloud Server wird verwendet."
-                    : "Separate technische Update-Quelle ist konfiguriert.";
+                    : "Separate technische Update-Quelle ist konfiguriert.");
             }
-            catch (Exception ex) { updateStatus.Text = "Update-Server: " + ex.Message; }
+            catch (Exception ex) { updateStatus.Text = UiLanguage.T("Update-Server") + ": " + ex.Message; }
         };
         page.Children.Add(update);
 
@@ -3383,7 +3615,7 @@ private Control TsePage()
         }
 
         UpdateTouchLayoutSummary();
-        StatusText.Text = "Einstellungen geladen";
+        SettingsStatus = "Einstellungen geladen";
     }
 
     private async void OnSaveClick(object? sender, RoutedEventArgs e)
@@ -3511,13 +3743,13 @@ private Control TsePage()
                 "",
                 "Einstellungen gespeichert; keine Zugangsdaten protokolliert.");
             await RefreshLegalStatusAsync();
-            StatusText.Text = saved.AutomaticClosing is { } closing
+            SettingsStatus = saved.AutomaticClosing is { } closing
                 ? $"Alle Einstellungen gespeichert · vorher automatisch Kassenabschluss Z {closing.ZNumber:000000} erstellt (Stammdatenänderung, DSFinV-K 3.2)"
                 : "Alle Einstellungen gespeichert";
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Speichern fehlgeschlagen: {ex.Message}";
+            SettingsStatus = $"Speichern fehlgeschlagen: {ex.Message}";
         }
     }
 
@@ -3715,6 +3947,7 @@ private Control TsePage()
         };
         Grid.SetColumn(cancel, 1);
         dialog.Opened += (_, _) => input.Focus();
+        UiLanguage.Apply(dialog);
         return await dialog.ShowDialog<string?>(this);
     }
 
@@ -3739,12 +3972,12 @@ private Control TsePage()
             var value = input.Text ?? "";
             if (value.Length < 6)
             {
-                status.Text = "Mindestens 6 Zeichen.";
+                status.Text = UiLanguage.T("Mindestens 6 Zeichen.");
                 return;
             }
             if (!string.Equals(value, confirm.Text ?? "", StringComparison.Ordinal))
             {
-                status.Text = "Die beiden Eingaben stimmen nicht überein.";
+                status.Text = UiLanguage.T("Die beiden Eingaben stimmen nicht überein.");
                 return;
             }
             dialog.Close(value);
@@ -3785,6 +4018,7 @@ private Control TsePage()
         Grid.SetColumn(cancel, 1);
         dialog.Opened += (_, _) => input.Focus();
 
+        UiLanguage.Apply(dialog);
         var newPassword = await dialog.ShowDialog<string?>(this);
         if (newPassword is null)
             return false;
@@ -3815,31 +4049,31 @@ private Control TsePage()
             var transport = (await _settings.GetAsync("reports.email.transport", "tor")).Trim().ToLowerInvariant();
             if (App.CloudSync is not { } cloud)
             {
-                _torMailStatus.Text = "TOR Mail: Cloud-Dienst nicht verfügbar.";
+                _torMailStatus.Text = UiLanguage.T("TOR Mail: Cloud-Dienst nicht verfügbar.");
                 return;
             }
 
             var config = await cloud.ConfigurationAsync();
             if (config is null || !config.Enabled)
             {
-                _torMailStatus.Text = "TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv.";
+                _torMailStatus.Text = UiLanguage.T("TOR Mail: TOR POS Cloud ist noch nicht eingerichtet/aktiv.");
                 return;
             }
 
             _torMailStatus.Text =
-                "TOR POS Cloud verbunden ✓\n" +
-                "Aktiver Versandweg: " + (transport switch
+                UiLanguage.T("TOR POS Cloud verbunden ✓") + "\n" +
+                UiLanguage.T("Aktiver Versandweg") + ": " + (transport switch
                 {
                     "tor" => "TOR Mail",
                     "google" => "Google / Gmail API",
-                    "smtp" => "eigener SMTP",
+                    "smtp" => UiLanguage.T("eigener SMTP"),
                     _ => transport
                 }) +
-                "\nBeim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist.";
+                "\n" + UiLanguage.T("Beim Testversand wird zusätzlich geprüft, ob der zentrale TOR-Mail-Absender auf dem Server aktiv ist.");
         }
         catch (Exception ex)
         {
-            _torMailStatus.Text = "TOR-Mail-Status konnte nicht gelesen werden: " + ex.Message;
+            _torMailStatus.Text = UiLanguage.T("TOR-Mail-Status konnte nicht gelesen werden") + ": " + ex.Message;
         }
     }
 
@@ -3849,7 +4083,7 @@ private Control TsePage()
         {
             if (App.CloudSync is not { } cloud)
             {
-                _googleMailStatus.Text = "Google: TOR POS Cloud-Dienst nicht verfügbar.";
+                _googleMailStatus.Text = UiLanguage.T("Google: TOR POS Cloud-Dienst nicht verfügbar.");
                 return;
             }
             using var gmail = new GoogleGmailService(_settings, cloud);
@@ -3859,21 +4093,23 @@ private Control TsePage()
             {
                 "tor" => "TOR Mail",
                 "google" => "Gmail API / OAuth",
-                "smtp" => "eigener SMTP",
+                "smtp" => UiLanguage.T("eigener SMTP"),
                 _ => transport
             };
             if (state.Connected)
             {
-                _googleMailStatus.Text = $"Google verbunden ✓  {state.AccountEmail}\nAktiver Versandweg: {active}";
+                _googleMailStatus.Text = UiLanguage.T("Google verbunden ✓") + $"  {state.AccountEmail}\n" +
+                    UiLanguage.T("Aktiver Versandweg") + $": {active}";
             }
             else
             {
-                _googleMailStatus.Text = $"Noch kein Google-Konto verbunden.\nAktiver Versandweg: {active}";
+                _googleMailStatus.Text = UiLanguage.T("Noch kein Google-Konto verbunden.") + "\n" +
+                    UiLanguage.T("Aktiver Versandweg") + $": {active}";
             }
         }
         catch (Exception ex)
         {
-            _googleMailStatus.Text = "Google-Status konnte nicht gelesen werden: " + ex.Message;
+            _googleMailStatus.Text = UiLanguage.T("Google-Status konnte nicht gelesen werden") + ": " + ex.Message;
         }
     }
 
@@ -3904,6 +4140,7 @@ private Control TsePage()
                 buttons
             }
         };
+        UiLanguage.Apply(dialog);
         return await dialog.ShowDialog<bool>(this);
     }
 
@@ -3930,6 +4167,7 @@ private Control TsePage()
                 close
             }
         };
+        UiLanguage.Apply(dialog);
         await dialog.ShowDialog(this);
     }
 
@@ -4066,6 +4304,88 @@ private Control TsePage()
 
         container.Child = grid;
         section.Children.Add(container);
+    }
+
+    // The reason is reproduced exactly as it was recorded. It is the
+    // documented cause of a fiscal outage, not interface text, so it is never
+    // translated and never reworded - a Pruefer has to read what the till
+    // wrote at the time.
+    private async Task LoadTseOutagesAsync(TextBox target)
+    {
+        try
+        {
+            var rows = await _tseOutages.ListRecentAsync(50);
+
+            if (rows.Count == 0)
+            {
+                target.Text = UiLanguage.T("Kein TSE-Ausfall protokolliert.");
+                return;
+            }
+
+            var now = DateTimeOffset.Now;
+            var lines = rows.Select(outage =>
+            {
+                var ended = outage.EndedAt is null
+                    ? UiLanguage.T("läuft noch")
+                    : outage.EndedAt.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm");
+
+                return outage.StartedAt.LocalDateTime.ToString("dd.MM.yyyy HH:mm")
+                    + " – " + ended
+                    + " · " + Duration((outage.EndedAt ?? now) - outage.StartedAt)
+                    + " · " + outage.Reason;
+            });
+
+            target.Text = string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("TSE outage list", ex);
+            target.Text = UiLanguage.T("Ausfallliste konnte nicht gelesen werden.");
+        }
+    }
+
+    // An outage that ran overnight came out as "1461 Minuten", which nobody can
+    // read without dividing. The exact times are on the same line, so the
+    // duration only has to be graspable: the two largest units that are not
+    // zero, and no more.
+    private static string Duration(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero)
+            span = TimeSpan.Zero;
+
+        var days = (int)span.TotalDays;
+        var hours = span.Hours;
+        var minutes = span.Minutes;
+        var dayWord = UiLanguage.T(days == 1 ? "Tag" : "Tage");
+
+        if (days > 0)
+        {
+            return hours > 0
+                ? days + " " + dayWord + " " + hours + " " + UiLanguage.T("Std.")
+                : days + " " + dayWord;
+        }
+
+        if (hours > 0)
+        {
+            return minutes > 0
+                ? hours + " " + UiLanguage.T("Std.") + " " + minutes + " " + UiLanguage.T("Min.")
+                : hours + " " + UiLanguage.T("Std.");
+        }
+
+        return minutes + " " + UiLanguage.T("Min.");
+    }
+
+    /// <summary>
+    /// Takes a value the TSE reported, and leaves what is already there when it
+    /// reported nothing. Silence from a device is not a correction.
+    /// </summary>
+    private void AdoptFromDevice(string key, string? reported)
+    {
+        if (string.IsNullOrWhiteSpace(reported))
+            return;
+
+        if (_text.TryGetValue(key, out var box))
+            box.Text = reported;
     }
 
     private Control ReadOnlyRow(string label, string value)

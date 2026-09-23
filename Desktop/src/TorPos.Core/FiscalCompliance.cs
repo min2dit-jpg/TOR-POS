@@ -184,6 +184,16 @@ public interface ITseOutageRepository
     Task CloseOpenAsync(
         string actor = "SYSTEM",
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The outage history, newest first. § 146a AO expects a TSE failure to be
+    /// documented; until now the record existed only in the database and in the
+    /// DSFinV-K export, so nobody at the till could answer "when was it down
+    /// and why" without an export or a database tool.
+    /// </summary>
+    Task<IReadOnlyList<TseOutage>> ListRecentAsync(
+        int limit = 50,
+        CancellationToken ct = default);
 }
 
 public sealed record DsfinvkPreflightIssue(

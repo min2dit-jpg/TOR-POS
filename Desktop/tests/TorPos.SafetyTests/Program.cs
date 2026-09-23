@@ -217,7 +217,7 @@ await Task.WhenAll(RecoveryFiles.WriteAsync(path,"old"),RecoveryFiles.WriteAsync
 Assert(!File.Exists(path),"Ordered recovery writes cannot resurrect a cleared cart");
 await RecoveryFiles.WriteAsync(path,"damaged");await RecoveryFiles.QuarantineAsync(path);
 Assert(File.Exists(path+".blocked") && Directory.GetFiles(root,"cart.json.damaged-*").Length==1,"Corrupt recovery retained with durable lock marker");
-await Reject(()=>new AuthenticationService(db).ChangeAdminCredentialsAsync("admin","short","1234"),"Weak replacement admin credentials refused");
+await Reject(()=>new AuthenticationService(db).ChangeAdminCredentialsAsync("admin","abc","1234"),"Replacement admin password below the 4-character floor refused");
 // A thrown queued operation must not terminate the worker.
 await Reject(()=>IoQueue.RunAsync(()=>Task.FromException(new IOException("test"))),"Queue returns IO failure");
 Assert(await IoQueue.RunAsync(()=>Task.FromResult(true)),"Queue continues after a failure");
@@ -446,6 +446,11 @@ await R177ReviewTests.Run(root, Assert);
 await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
+await TseStartupWarningTests.Run(Assert);
+await TseOutageHistoryTests.Run(Assert);
+await CloudTseFoundationTests.Run(Assert);
+await EditionSplitFoundationTests.Run(Assert);
+await MultiLanguageTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
@@ -511,7 +516,30 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
-const int ExpectedSafetyChecks = 1128;
+// Operator-interface language DE/TR/EN: 11 checks keep German the source text,
+// keep an unfinished translation harmless, keep an unknown code from blanking
+// the interface, keep both tables symmetric, keep fiscal documents out of the
+// translation path and keep the stored language choice from being purged.
+// TSE start-up warning: 9 checks lock what the till says when no TSE answers -
+// every state that cannot sign reaches the operator once per run, a ready TSE
+// stays silent, training is exempt, the warning never locks the till, only an
+// admin is offered the settings route, and the message is translated with the
+// device name TSE left intact.
+// TSE outage history, clock and identity: 9 checks lock the readable outage log - bounded and
+// read-only, still undeletable, shown on the technician page, and the recorded
+// reason reaching the screen unchanged because it is evidence, not interface
+// text.
+// Cloud TSE foundation: 7 checks lock the provider seam and the refusal - the
+// device is chosen once and an unknown value falls back to the USB TSE, the
+// cloud qualification stands on its own, every fiscal call refuses without
+// fabricating a transaction number or a signature, the reachability check is
+// bounded and keyless, tenant/queue are part of the configuration, and the API
+// key is only ever stored DPAPI-protected.
+// Split-product foundation checks keep Einzelhandel/Gastro process, storage,
+// compile-time identity, per-product demo identity, side-by-side installers and
+// backup-first legacy migration - including a crash-interrupted WAL source -
+// separated while the shared R181 source remains intact for rollback.
+const int ExpectedSafetyChecks = 1210;
 
 if (checks != ExpectedSafetyChecks)
 {

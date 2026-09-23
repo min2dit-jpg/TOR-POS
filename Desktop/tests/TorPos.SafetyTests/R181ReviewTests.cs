@@ -36,9 +36,13 @@ public static class R181ReviewTests
 
         var login = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/LoginWindow.axaml.cs"));
         var app = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/App.axaml.cs"));
+        // R182 routed both lock directions through one helper that hides the other
+        // radio, so the contract is pinned on that helper and on both call sites
+        // instead of on two separate IsVisible assignments.
         assert(
-            login.Contains("ImbissEditionRadio.IsVisible = false", StringComparison.Ordinal) &&
-            login.Contains("KioskEditionRadio.IsVisible = false", StringComparison.Ordinal) &&
+            login.Contains("hidden.IsVisible = false", StringComparison.Ordinal) &&
+            login.Contains("ShowFixedEdition(KioskEditionRadio, ImbissEditionRadio)", StringComparison.Ordinal) &&
+            login.Contains("ShowFixedEdition(ImbissEditionRadio, KioskEditionRadio)", StringComparison.Ordinal) &&
             login.Contains("_lockedEdition ??", StringComparison.Ordinal),
             "R181 licensed edition hides the other sector completely on the login screen");
         assert(

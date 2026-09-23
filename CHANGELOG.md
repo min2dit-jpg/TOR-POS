@@ -1,12 +1,31 @@
 # TOR POS – Release-Index
 
-<!-- TOR_RELEASE:R181|0.7.33.881|Merd-M -->
+<!-- TOR_RELEASE:R182|0.7.33.882|Merd-D -->
 
 ## Aktueller Release
 
-**R181 · Merd-M · 0.7.33.881**
+**R182 · Merd-D · 0.7.33.882**
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
+
+### R182
+
+- **Produkttrennung:** aus demselben geprüften Quellcode entstehen zwei feste Produkte, **TOR Einzelhandel** und **TOR Gastro**. Getrennt sind Executable (`TOR-Einzelhandel.exe` / `TOR-Gastro.exe`), Windows-AppId, Installationsordner, Startmenü-/Desktop-Identität, Prozess-Mutex, Benutzer-Datenverzeichnis und maschinenweiter Lizenz-/Demo-Pfad. Beide Produkte sind parallel installierbar; eine Deinstallation löscht weder Daten noch das andere Produkt.
+- Die gespeicherten Editionscodes bleiben **KIOSK** und **IMBISS**. Datenbank, Lizenzen, Cloud-Payloads und `edition.permanent.lock` auf Kundenrechnern tragen diese Werte, und die R181-Übernahme gleicht darauf ab.
+- Der gemeinsame R181-Build bleibt als Rückfallweg erhalten und wird weiterhin gebaut und paketiert.
+- **Datenübernahme aus R181:** backup-first und copy-once. Vor der Kopie entsteht ein gegen den Quellstand geprüftes Backup, die Zielinstallation erhält einen Provenance-Marker, und der Quellstand unter `%APPDATA%\TOR-POS-Pro` wird ausschließlich gelesen. Eine Übernahme erfolgt nur bei exakt passender, dauerhaft gebundener Edition.
+- Eine nicht sauber beendete R181-Kasse behält committed Transaktionen in `torpos.db-wal`. Die Staging-Kopie wird deshalb **vor** jeder Datenbankprüfung und über `torpos.db` **und** `torpos.db-wal` verglichen; andernfalls wurde eine fehlerfreie Kopie als Quelländerung abgewiesen und das Produkt beendete sich ohne Fenster.
+- Rollback-Qualifikation unterscheidet weiterhin einen verlustfreien Rückweg vor dedizierten Schreibvorgängen von einem gesperrten automatischen Rejoin danach; WAL-Inhalte zählen dabei als persistenter Stand.
+- **Startfehler behoben:** Login- und Kassenfenster sowie der Startbildschirm luden das Markenbild über eine fest verdrahtete `avares://TorPos.App/...`-Adresse. Ein dediziertes Produkt benennt die Assembly um, und avares-Adressen sind an den Assemblynamen gebunden - die Produkte konnten dadurch überhaupt nicht starten. Die Fenster verwenden jetzt assemblyrelative Pfade.
+- Zwei Fail-open-Wege geschlossen: der gemeinsame Build übernimmt keine von außen gesetzte `TOR_POS_PRODUCT_EDITION` mehr, und `InstallationEdition.EnforceAsync` weist in einem dedizierten Build jede abweichende Edition ab, statt sie anzuwenden.
+- **Auslieferungszugang:** eine Kasse startet arbeitsbereit mit `admin` / `admin`, Personal-PIN `1234` und Trainingscode `0000`. Das Setup fragt keine Zugangsdaten mehr ab, und der erste Start wird nicht mehr durch einen erzwungenen Zugangsdialog blockiert. Wer den Zugang ersetzt, braucht mindestens vier Zeichen und genau vier PIN-Ziffern - kein 10-Zeichen-Zwang und kein Verbot von 1234/0000. Damit lässt sich in der Benutzerverwaltung erstmals auch ein vier- bis neunstelliges Admin-Passwort setzen.
+- Eine Sitzung auf Auslieferungszugangsdaten bleibt im Audit-Log sichtbar (`ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED`); die Spur wird nun bei Verwendung des Auslieferungspassworts bzw. der -PIN geschrieben. Mitarbeiterkonten bleiben unverändert deaktiviert ausgeliefert.
+- Das 7-Tage-Demo gilt **einmal pro PC und pro Produkt**; die maschinenweite Demo-Identität übersteht eine Deinstallation.
+- Eine fest gebundene Kassenart wird auf dem Anmeldebildschirm mittig über die ganze Zeile und in Lesegröße dargestellt statt in einer Hälfte des Auswahlrasters.
+- **CI startet die Produkte jetzt wirklich:** bauen und paketieren allein hat nie bewiesen, dass ein dediziertes Produkt hochkommt - genau deshalb konnte ein Build ausgeliefert werden, der beim Laden des Anmeldefensters abbrach. Die realen Fenster jedes dedizierten Builds, einschliesslich Startbildschirm und Anmeldung mit fest gebundener Kassenart, werden nun in der CI gerendert und geprüft.
+- Der Hinweis auf dem Anmeldebildschirm nennt keine Mitarbeiter-Zugangsdaten mehr, die so nicht funktionieren: Mitarbeiterkonten werden weiterhin deaktiviert ausgeliefert und zuerst in der Benutzerverwaltung aktiviert.
+- CI baut, published und paketiert beide Produkte und liefert `TOR-Einzelhandel-Setup.exe` und `TOR-Gastro-Setup.exe` als Artefakt. Safety-Baseline: **1159 Checks**.
+- Keine fiskalische Produktionsfreigabe: alle sechs `FiscalRelease`-Nachweisflags bleiben geschlossen. Die erste physische Windows-Installationsabnahme wird über `verification/R182-SPLIT-INSTALL-ABNAHME.md` geführt; TSE-, Terminal- und Druckerabnahme bleiben davon getrennt.
 
 ### R181
 

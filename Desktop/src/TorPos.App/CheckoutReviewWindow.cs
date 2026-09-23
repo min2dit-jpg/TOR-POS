@@ -9,6 +9,7 @@ internal sealed class CheckoutReviewWindow : Window
 {
     public CheckoutReviewWindow(CheckoutOperation operation, IAuthenticationService auth)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="ZAHLUNG PRÜFEN"; Width=620; Height=580; WindowStartupLocation=WindowStartupLocation.CenterOwner;
         var user=new TextBox{Text="admin",PlaceholderText="Administrator"};
         var password=new TextBox{PasswordChar='●',PlaceholderText="Admin-Passwort"};
@@ -43,12 +44,13 @@ internal sealed class RequiredAdminCredentialsWindow : Window
 {
     public RequiredAdminCredentialsWindow(IAuthenticationService auth)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="ADMIN-ZUGANG EINRICHTEN"; Width=500; Height=440; CanResize=false;
         WindowStartupLocation=WindowStartupLocation.CenterOwner;
         var oldPassword=new TextBox{PasswordChar='●',PlaceholderText="Aktuelles Passwort"};
-        var password=new TextBox{PasswordChar='●',PlaceholderText="Neues Passwort (mindestens 10 Zeichen)"};
+        var password=new TextBox{PasswordChar='●',PlaceholderText="Neues Passwort (mindestens 4 Zeichen)"};
         var confirm=new TextBox{PasswordChar='●',PlaceholderText="Neues Passwort wiederholen"};
-        var pin=new TextBox{PasswordChar='●',PlaceholderText="Neue PIN (4 Ziffern, nicht 1234 / 0000)"};
+        var pin=new TextBox{PasswordChar='●',PlaceholderText="Neue PIN (4 Ziffern)"};
         var status=new TextBlock{TextWrapping=Avalonia.Media.TextWrapping.Wrap};
         var save=new Button{Content="Zugang sicher speichern"};
         save.Click+=async (_,_)=>

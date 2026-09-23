@@ -20,6 +20,12 @@ public sealed class AuthenticationService : IAuthenticationService
     private readonly SqliteDatabase _db;
     private readonly IAuditLog? _audit;
 
+    // R182: the shipped access stays usable, so "running on factory credentials"
+    // is no longer a stored flag that disables the session. It is detected at
+    // login and still leaves the audit trace the Verfahrensdokumentation relies on.
+    private const string FactoryAdminPassword = "admin";
+    private const string FactoryAdminPin = "1234";
+
     public AuthenticationService(SqliteDatabase db, IAuditLog? audit = null)
     {
         _db = db;
@@ -38,7 +44,12 @@ public async Task InitializeAsync(CancellationToken ct = default)
             var bootstrap = ReadBootstrapAndDelete();
             var password = string.IsNullOrWhiteSpace(bootstrap.Password) ? "admin" : bootstrap.Password;
             var pin = IsValidPin(bootstrap.Pin) ? bootstrap.Pin : "1234";
-            await CreateAdminAsync(c, "admin", password, pin, mustChangePassword: !bootstrap.WasFound || password == "admin" || pin == "1234" || pin == "0000", ct);
+            // R182: the documented factory access is a usable default, not a locked
+            // state. A till ships ready to work with admin/admin and the 0000
+            // training code; the operator changes the credentials later in the
+            // Benutzerverwaltung. Marking it must-change made Can() deny every
+            // permission, so the first start was blocked by a forced dialog.
+            await CreateAdminAsync(c, "admin", password, pin, mustChangePassword: false, ct);
         }
         else
         {
@@ -91,12 +102,13 @@ public async Task InitializeAsync(CancellationToken ct = default)
         if (!row.IsAdmin && row.MustChangePassword)
             return new AuthenticationResult(false, "Mitarbeiter-Zugang noch nicht eingerichtet. Bitte durch Administrator konfigurieren.");
 
-        // R122 (G4): the admin login MUST still succeed here - that is the only
-        // way to reach the dialog that replaces the factory credentials. What
-        // was missing is a trace: an admin session running on admin/admin left
-        // nothing behind in the audit log. AuthenticatedUser.Can() makes such a
-        // session powerless; this makes it visible.
-        if (row.IsAdmin && row.MustChangePassword)
+        // R122 (G4) / R182: an admin session running on the shipped credentials is
+        // no longer blocked, but it must still be visible. The trace is written
+        // whenever the factory password is used, not only while a must-change flag
+        // is set.
+        if (row.IsAdmin &&
+            (row.MustChangePassword ||
+             string.Equals(password, FactoryAdminPassword, StringComparison.Ordinal)))
             await WriteAuditSafeAsync(row.Username, "ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED", ct);
 
         var passwordUpgraded = await TryUpgradePasswordKdfAsync(c, row, password, ct);
@@ -138,8 +150,10 @@ public async Task InitializeAsync(CancellationToken ct = default)
         if (!row.IsAdmin && row.MustChangePassword)
             return new AuthenticationResult(false, "Mitarbeiter-Zugang noch nicht eingerichtet. Bitte durch Administrator konfigurieren.");
 
-        // R122 (G4): same as the password path above.
-        if (row.IsAdmin && row.MustChangePassword)
+        // R122 (G4) / R182: same as the password path above.
+        if (row.IsAdmin &&
+            (row.MustChangePassword ||
+             string.Equals(pin, FactoryAdminPin, StringComparison.Ordinal)))
             await WriteAuditSafeAsync(row.Username, "ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED", ct);
 
         var pinUpgraded = await TryUpgradePinKdfAsync(c, row, pin, ct);
@@ -153,9 +167,13 @@ public async Task InitializeAsync(CancellationToken ct = default)
 {
     await IoQueue.RunAsync(async () =>
     {
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 10)
-            throw new InvalidOperationException("Neues Passwort muss mindestens 10 Zeichen haben.");
-        if (!IsValidPin(newPin) || newPin == "1234" || newPin == "0000")
+        // R182: an operator who chooses to replace the factory access should not be
+        // forced into a 10-character password or away from a 4-digit PIN they can
+        // actually use at the till. The structural rules stay: a password is
+        // required and a PIN is exactly four digits.
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 4)
+            throw new InvalidOperationException("Neues Passwort muss mindestens 4 Zeichen haben.");
+        if (!IsValidPin(newPin))
             throw new InvalidOperationException("PIN muss genau 4 Ziffern haben.");
         var login = await LoginWithPasswordAsync("admin", currentPassword, ct);
         if (!login.Success)

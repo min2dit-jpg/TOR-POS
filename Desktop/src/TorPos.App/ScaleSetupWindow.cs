@@ -186,9 +186,9 @@ public sealed class ScaleSetupWindow : Window
         _tcp.IsVisible = ModeId == "TCP";
         _barcode.IsVisible = ModeId == "BARCODE";
         if (ModeId == "MANUAL")
-            _status.Text = "✓ Manuelle Waage: keine Verbindung erforderlich. Gewichtsartikel können sofort in g oder kg erfasst werden.";
+            _status.Text = UiLanguage.T("✓ Manuelle Waage: keine Verbindung erforderlich. Gewichtsartikel können sofort in g oder kg erfasst werden.");
         else
-            _status.Text = "Geräteparameter eingeben und KONFIGURATION PRÜFEN wählen.";
+            _status.Text = UiLanguage.T("Geräteparameter eingeben und KONFIGURATION PRÜFEN wählen.");
     }
 
     private async Task LoadAsync()
@@ -219,7 +219,7 @@ public sealed class ScaleSetupWindow : Window
     {
         if (_manualFallback.IsChecked != true && ModeId == "MANUAL")
         {
-            _status.Text = "⚠ Bei MANUELL muss die manuelle Gewichtseingabe aktiviert bleiben.";
+            _status.Text = UiLanguage.T("⚠ Bei MANUELL muss die manuelle Gewichtseingabe aktiviert bleiben.");
             return false;
         }
 
@@ -229,7 +229,7 @@ public sealed class ScaleSetupWindow : Window
                 if (string.IsNullOrWhiteSpace(_comPort.Text) ||
                     !int.TryParse(_baud.Text, out var baud) || baud < 1200 || baud > 921600)
                 {
-                    _status.Text = "⚠ COM-Port und gültige Baudrate angeben.";
+                    _status.Text = UiLanguage.T("⚠ COM-Port und gültige Baudrate angeben.");
                     return false;
                 }
                 break;
@@ -237,7 +237,7 @@ public sealed class ScaleSetupWindow : Window
                 if (string.IsNullOrWhiteSpace(_ip.Text) ||
                     !int.TryParse(_tcpPort.Text, out var port) || port is < 1 or > 65535)
                 {
-                    _status.Text = "⚠ IP-Adresse und gültigen TCP-Port angeben.";
+                    _status.Text = UiLanguage.T("⚠ IP-Adresse und gültigen TCP-Port angeben.");
                     return false;
                 }
                 break;
@@ -245,15 +245,15 @@ public sealed class ScaleSetupWindow : Window
                 var prefix = (_barcodePrefix.Text ?? "").Trim();
                 if (prefix.Length is < 1 or > 4 || prefix.Any(ch => !char.IsDigit(ch)))
                 {
-                    _status.Text = "⚠ Waagenbarcode-Präfix muss 1–4 Ziffern enthalten.";
+                    _status.Text = UiLanguage.T("⚠ Waagenbarcode-Präfix muss 1–4 Ziffern enthalten.");
                     return false;
                 }
                 break;
         }
 
-        _status.Text = ModeId == "MANUAL"
+        _status.Text = UiLanguage.T(ModeId == "MANUAL"
             ? "✓ Manuelle Gewichtseingabe ist betriebsbereit."
-            : "✓ Konfiguration formal gültig. Ein echter Live-Gerätetest wird erst mit dem freigegebenen Protokoll/Adapter durchgeführt.";
+            : "✓ Konfiguration formal gültig. Ein echter Live-Gerätetest wird erst mit dem freigegebenen Protokoll/Adapter durchgeführt.");
         return true;
     }
 
@@ -276,9 +276,9 @@ public sealed class ScaleSetupWindow : Window
             ["scale.manual_fallback"] = _manualFallback.IsChecked == true ? "true" : "false"
         });
 
-        _status.Text = ModeId == "MANUAL"
+        _status.Text = UiLanguage.T(ModeId == "MANUAL"
             ? "✓ Gespeichert. Separate Waage ablesen → Gewicht am Kassenartikel manuell eingeben."
-            : "✓ Waagenparameter gespeichert. Manuelle Eingabe bleibt als sichere Rückfallebene verfügbar.";
+            : "✓ Waagenparameter gespeichert. Manuelle Eingabe bleibt als sichere Rückfallebene verfügbar.");
     }
 
     private static Control Field(string label, Control input)

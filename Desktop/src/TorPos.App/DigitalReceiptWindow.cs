@@ -25,6 +25,7 @@ public sealed class ReceiptChoiceWindow : Window
 {
     public ReceiptChoiceWindow(long totalCents, bool testReceipt)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "Beleg";
         Width = 640;
         Height = 400;
@@ -169,8 +170,8 @@ public sealed class DigitalReceiptWindow : Window
     public void ShowLink(string url, DateTimeOffset expiresAt)
     {
         _heading.Text = "IHR DIGITALER KASSENBON";
-        _message.Text = "Mit dem Handy scannen: Bon ansehen, als PDF herunterladen, teilen oder drucken. " +
-                        $"Abrufbar bis {expiresAt.ToLocalTime():dd.MM.yyyy}.";
+        _message.Text = UiLanguage.T("Mit dem Handy scannen: Bon ansehen, als PDF herunterladen, teilen oder drucken.") + " " +
+                        UiLanguage.T("Abrufbar bis") + $" {expiresAt.ToLocalTime():dd.MM.yyyy}.";
         try
         {
             using var ms = new MemoryStream(QrCodeRenderer.PngBytes(url));

@@ -14,13 +14,13 @@ public static class R161ReviewTests
         var iconPath = FindRepoFile("Desktop/src/TorPos.App/Assets/TorPos.ico");
 
         assert(
-            login.Contains("avares://TorPos.App/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
+            login.Contains("Source=\"/Assets/TorPos-Brand.jpg\"", StringComparison.Ordinal) &&
             login.Contains("Text=\"TOR-POS\"", StringComparison.Ordinal) &&
             !login.Contains("<TextBlock Text=\"TOR\"", StringComparison.Ordinal),
             "R161 login screen uses the new TOR POS brand image and no longer renders the old green TOR placeholder");
 
         assert(
-            startup.Contains("avares://TorPos.App/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
+            startup.Contains("avares://{assetAssembly}/Assets/TorPos-Brand.jpg", StringComparison.Ordinal) &&
             startup.Contains("AssetLoader.Open", StringComparison.Ordinal) &&
             !startup.Contains("TorPos-Magnifier.png", StringComparison.Ordinal) &&
             startup.Contains("Text = \"TOR POS\"", StringComparison.Ordinal),
@@ -35,8 +35,8 @@ public static class R161ReviewTests
         assert(
             snapshot.Contains("new StartupLoadingWindow()", StringComparison.Ordinal) &&
             snapshot.Contains("new LoginWindow(auth, settings)", StringComparison.Ordinal) &&
-            snapshot.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 9 dialogs)", StringComparison.Ordinal),
-            "R161 CI captures splash and login as visual-regression dialogs");
+            snapshot.Contains("LAYOUT CHECK PASSED ({sizes.Count} sizes, 10 dialogs, language {language})", StringComparison.Ordinal),
+            "R161 CI captures splash and login as visual-regression dialogs, in the language it measured");
 
         return Task.CompletedTask;
     }

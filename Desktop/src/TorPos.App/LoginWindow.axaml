@@ -17,7 +17,7 @@
               BorderBrush="#279CFF"
               BorderThickness="1.2"
               BoxShadow="0 0 18 1 #66279CFF">
-        <Image Source="avares://TorPos.App/Assets/TorPos-Brand.jpg"
+        <Image Source="/Assets/TorPos-Brand.jpg"
                Stretch="UniformToFill"/>
       </Border>
       <TextBlock Text="TOR-POS"
@@ -141,7 +141,7 @@
                 FontWeight="Bold"
                 MinHeight="52"/>
       </Grid>
-      <TextBlock Text="Standard: admin / admin · kassierer1 / 1234 · Training-Code 0000"
+      <TextBlock Text="Standard: admin / admin · Training-Code 0000 · Mitarbeiter zuerst in der Benutzerverwaltung aktivieren"
                  HorizontalAlignment="Center"
                  Opacity="0.45"
                  FontSize="10"/>

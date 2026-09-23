@@ -133,7 +133,25 @@ public partial class App : Avalonia.Application
             parkedReceipts.PrintCommitted = orderPrintDispatcher.Notify;
             orderPrintDispatcher.Start();
             var commercialLicense = new CommercialLicenseService();
-            var tseProvider = new SwissbitHardwareTseProvider();
+            // Read once at start-up so the checkout path never waits on a
+            // database read to learn whether it may refresh the TSE clock.
+            var tseTimeAdminPin = new TseTimeAdminPinStore(settings);
+            await tseTimeAdminPin.RefreshAsync();
+            // The choice of fiscal device is made once, here, and nowhere else.
+            // Everything above ITseProvider - outage handling, DSFinV-K, the
+            // receipt fields, the signature counter - is written against the
+            // interface, so a till on a cloud TSE and a till on a USB stick run
+            // the same code everywhere but this line.
+            var cloudTse = new CloudTseSettings(settings);
+            await cloudTse.RefreshAsync();
+
+            var tseKind = TseProviderKind.Normalize(
+                await settings.GetAsync(TseProviderKind.Setting, TseProviderKind.SwissbitUsb));
+
+            ITseProvider tseProvider = tseKind == TseProviderKind.Cloud
+                ? new CloudTseProvider(() => cloudTse.Current)
+                : new SwissbitHardwareTseProvider(
+                    timeAdminPin: () => tseTimeAdminPin.Current);
             var tseOutages = new TseOutageRepository(db, audit);
             var tseFailSafe = new TseFailSafeService(
                 tseProvider,
@@ -219,6 +237,9 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<IPaymentTerminalService>(paymentTerminal);
             appServices.AddSingleton<ISettingsRepository>(settings);
             appServices.AddSingleton<ITseProvider>(tseProvider);
+            appServices.AddSingleton<ITseOutageRepository>(tseOutages);
+            appServices.AddSingleton(tseTimeAdminPin);
+            appServices.AddSingleton(cloudTse);
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);
@@ -280,6 +301,7 @@ public partial class App : Avalonia.Application
                     WindowStartupLocation=WindowStartupLocation.CenterScreen
                 };
                 closing.Closing+=(_,e)=> { if(!exitCleanupDone) e.Cancel=true; };
+                UiLanguage.Apply(closing);
                 desktop.MainWindow=closing; closing.Show();
                 await dailyBackup.DisposeAsync();
                 await monthlyReports.DisposeAsync();
@@ -316,6 +338,7 @@ public partial class App : Avalonia.Application
 
             string? ResolveLockedEdition()
             {
+                var builtEdition = ProductBuild.FixedEdition;
                 var permanent = InstallationEdition.ReadPermanent();
                 var kiosk = commercialLicense.Check("KIOSK");
                 var imbiss = commercialLicense.Check("IMBISS");
@@ -324,6 +347,28 @@ public partial class App : Avalonia.Application
                     : imbiss.IsActive
                         ? "IMBISS"
                         : null;
+
+                // R182 foundation: a dedicated TOR Einzelhandel / TOR Gastro build is
+                // authoritative. The opposite edition is never offered even in
+                // licence-free validation mode.
+                if (builtEdition is not null)
+                {
+                    if (licensed is not null &&
+                        !string.Equals(licensed, builtEdition, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            $"Diese Lizenz gehört nicht zu {ProductBuild.ProductName}.");
+                    }
+
+                    if (permanent is not null &&
+                        !string.Equals(permanent, builtEdition, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            "Installations-Edition und Produkt-Build widersprechen sich.");
+                    }
+
+                    return builtEdition;
+                }
 
                 if (licensed is not null &&
                     permanent is not null &&

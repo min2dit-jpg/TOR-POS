@@ -72,7 +72,8 @@ public static class AppPaths
         get
         {
             var basePath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var path = DataDirectoryOverride ?? Path.Combine(basePath, "TOR-POS-Pro");
+            var productDirectory = ProductDataDirectoryName();
+            var path = DataDirectoryOverride ?? Path.Combine(basePath, productDirectory);
             Directory.CreateDirectory(path);
             Directory.CreateDirectory(Path.Combine(path, "ProductImages"));
             Directory.CreateDirectory(Path.Combine(path, "ReceiptAssets"));
@@ -101,7 +102,26 @@ public static class AppPaths
     public static string TrialIdentityDirectory =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "TOR-POS-Pro");
+            ProductDataDirectoryName());
+
+    public static string? ProductEdition
+    {
+        get
+        {
+            var raw = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+            if (string.Equals(raw, "KIOSK", StringComparison.OrdinalIgnoreCase)) return "KIOSK";
+            if (string.Equals(raw, "IMBISS", StringComparison.OrdinalIgnoreCase)) return "IMBISS";
+            return null;
+        }
+    }
+
+    public static string ProductDataDirectoryName() =>
+        ProductEdition switch
+        {
+            "KIOSK" => "TOR-Einzelhandel",
+            "IMBISS" => "TOR-Gastro",
+            _ => "TOR-POS-Pro"
+        };
     public static string TrialIdentityPath =>
         Path.Combine(TrialIdentityDirectory, "trial-installation.id");
 }
@@ -767,10 +787,12 @@ public async Task InitializeAsync(CancellationToken ct = default)
         // exactly as they did before this column existed.
         await EnsureColumnAsync(c,"sales","cash_portion_cents","INTEGER NOT NULL DEFAULT 0",ct);
         await EnsureColumnAsync(c,"sales","card_portion_cents","INTEGER NOT NULL DEFAULT 0",ct);
-        await using(var language=c.CreateCommand()) {
-            language.CommandText="DELETE FROM app_settings WHERE key='ui.language';";
-            await language.ExecuteNonQueryAsync(ct);
-        }
+        // R54 dropped the interface language to German-only and purged the stored
+        // preference here. That DELETE sat in InitializeAsync without a schema
+        // guard, so it ran on every single start: any language an operator chose
+        // was wiped again at the next launch. With DE/TR/EN restored the
+        // preference has to survive, so the purge is gone. An unknown or legacy
+        // value is harmless - the interface falls back to German.
 
         await EnsureColumnAsync(c, "users", "locked_until", "TEXT NOT NULL DEFAULT ''", ct);
         // R103: maps an unguessable digital-receipt token to a sale, for
