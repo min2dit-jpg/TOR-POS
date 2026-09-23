@@ -185,8 +185,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 29,
-                "Restaurant database reaches schema version 29");
+                result.ToVersion == 30,
+                "Restaurant database reaches schema version 30");
 
             await using (var c = db.OpenConnection())
             {
@@ -249,6 +249,20 @@ internal static class RestaurantFoundationTests
                 paired.DeviceId,
                 paired.DeviceToken);
 
+            await using (var c = db.OpenConnection())
+            {
+                using var token = c.CreateCommand();
+                token.CommandText =
+                    "SELECT token_hash FROM restaurant_handheld_devices WHERE device_id=$id;";
+                token.Parameters.AddWithValue("$id", paired.DeviceId);
+                var stored = Convert.ToString(token.ExecuteScalar()) ?? "";
+
+                assert(
+                    !string.Equals(stored, paired.DeviceToken, StringComparison.Ordinal) &&
+                    stored.Length == 64,
+                    "Restaurant handheld stores only a SHA-256 token hash, never the raw device token");
+            }
+
             var pairingReuseRejected = false;
             try
             {
@@ -297,14 +311,16 @@ internal static class RestaurantFoundationTests
                 tableId,
                 "KELLNER-1",
                 guestCount: 3,
+                note: "Kinderstuhl",
                 deviceId: "KASSE-1");
 
             assert(
                 session.TableId == tableId &&
                 session.State == RestaurantTableSessionState.Open &&
                 session.GuestCount == 3 &&
+                session.Note == "Kinderstuhl" &&
                 session.Version == 1,
-                "Opening a table creates one versioned live Tischvorgang");
+                "Opening a table captures guests and note in one versioned Tischvorgang");
 
             var duplicateRejected = false;
             try
@@ -325,16 +341,30 @@ internal static class RestaurantFoundationTests
                 duplicateRejected,
                 "Second live Tischvorgang for the same table is rejected");
 
-            var reassigned = await repo.ReassignWaiterAsync(
+            var details = await repo.UpdateSessionDetailsAsync(
                 session.Id,
                 expectedVersion: 1,
+                guestCount: 4,
+                note: "Geburtstagstisch",
+                actor: "KELLNER-1",
+                deviceId: "KASSE-1");
+
+            assert(
+                details.GuestCount == 4 &&
+                details.Note == "Geburtstagstisch" &&
+                details.Version == 2,
+                "Restaurant guest count and table note update advances concurrency version");
+
+            var reassigned = await repo.ReassignWaiterAsync(
+                session.Id,
+                expectedVersion: 2,
                 newWaiter: "KELLNER-2",
                 actor: "ADMIN",
                 deviceId: "KASSE-1");
 
             assert(
                 reassigned.AssignedWaiter == "KELLNER-2" &&
-                reassigned.Version == 2,
+                reassigned.Version == 3,
                 "Kellner reassignment increments the optimistic concurrency version");
 
             var staleRejected = false;
@@ -342,7 +372,7 @@ internal static class RestaurantFoundationTests
             {
                 await repo.ReassignWaiterAsync(
                     session.Id,
-                    expectedVersion: 1,
+                    expectedVersion: 2,
                     newWaiter: "KELLNER-3",
                     actor: "ADMIN");
             }
@@ -637,6 +667,25 @@ internal static class RestaurantFoundationTests
             assert(
                 !(await kitchen.PendingAsync()).Any(x => x.Id == kitchenJobId),
                 "Handed-over Restaurant kitchen job leaves the pending queue");
+
+            var notedSession = await repo.UpdateSessionDetailsAsync(
+                kitchenSessionAfterItem.Id,
+                kitchenSessionAfterItem.Version,
+                guestCount: 2,
+                note: "Ohne Salz",
+                actor: "KELLNER-1");
+
+            var noteJobId = await kitchen.EnqueueNoteAsync(
+                notedSession,
+                "Tisch 6",
+                "KELLNER-1");
+
+            assert(
+                (await kitchen.PendingAsync()).Any(x =>
+                    x.Id == noteJobId &&
+                    x.Action == "NOTE" &&
+                    x.SessionItemId is null),
+                "Restaurant table note change is queued as a separate kitchen NOTE job");
 
             var failJobId = await kitchen.EnqueueNewItemAsync(
                 kitchenSessionAfterItem,
