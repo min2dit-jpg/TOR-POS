@@ -79,7 +79,11 @@ public sealed class TseVorgangService
         }
 
         var (start, _) = await _tse.StartTransactionAsync(
-            new TseTransactionStartRequest(clientId, FiscalProcessData.StartProcessData, FiscalProcessData.StartProcessType),
+            new TseTransactionStartRequest(
+                clientId,
+                FiscalProcessData.StartProcessData,
+                FiscalProcessData.StartProcessType,
+                StableTransactionId: vorgangId),
             actor,
             ct);
 
