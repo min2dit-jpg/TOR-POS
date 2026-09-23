@@ -319,6 +319,42 @@ internal static class RestaurantFoundationTests
                 paired.DeviceId,
                 paired.DeviceToken);
 
+            string lastSeenAfterFirstAuth;
+            await using (var authRead = db.OpenConnection())
+            {
+                await using var q = authRead.CreateCommand();
+                q.CommandText =
+                    "SELECT last_seen_at FROM restaurant_handheld_devices WHERE device_id=$id;";
+                q.Parameters.AddWithValue("$id", paired.DeviceId);
+                lastSeenAfterFirstAuth =
+                    Convert.ToString(
+                        await q.ExecuteScalarAsync()) ?? "";
+            }
+
+            await Task.WhenAll(
+                Enumerable.Range(0, 12)
+                    .Select(_ =>
+                        pairing.RequireAuthenticatedAsync(
+                            paired.DeviceId,
+                            paired.DeviceToken)));
+
+            string lastSeenAfterPollingBurst;
+            await using (var authRead = db.OpenConnection())
+            {
+                await using var q = authRead.CreateCommand();
+                q.CommandText =
+                    "SELECT last_seen_at FROM restaurant_handheld_devices WHERE device_id=$id;";
+                q.Parameters.AddWithValue("$id", paired.DeviceId);
+                lastSeenAfterPollingBurst =
+                    Convert.ToString(
+                        await q.ExecuteScalarAsync()) ?? "";
+            }
+
+            assert(
+                lastSeenAfterPollingBurst ==
+                    lastSeenAfterFirstAuth,
+                "Repeated Restaurant handheld authentication within the heartbeat window does not create a database write storm");
+
             await using (var c = db.OpenConnection())
             {
                 using var token = c.CreateCommand();
