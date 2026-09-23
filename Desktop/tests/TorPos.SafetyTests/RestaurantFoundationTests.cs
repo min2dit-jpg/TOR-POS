@@ -1078,6 +1078,24 @@ internal static class RestaurantFoundationTests
                 splitQuote.Lines.Single().QuantityMilli == 1000,
                 "Item split selects a partial quantity with cent-exact amount");
 
+            var partialCheckoutDraft = await repo.BuildCheckoutDraftAsync(
+                session.Id,
+                afterItem!.Version,
+                new[]
+                {
+                    new RestaurantSplitSelection(
+                        splitItems.Single().Id,
+                        1000)
+                });
+
+            assert(
+                partialCheckoutDraft.TotalCents == 1290 &&
+                partialCheckoutDraft.Lines.Length == 1 &&
+                partialCheckoutDraft.Lines.Single().Quantity == 1m &&
+                partialCheckoutDraft.Selections.Single().QuantityMilli == 1000 &&
+                !string.IsNullOrWhiteSpace(partialCheckoutDraft.OperationId),
+                "Restaurant item split produces a real partial checkout draft without mutating the open table");
+
             var equalShares = RestaurantSplitCalculator.EqualShares(1000, 3);
             assert(
                 equalShares.SequenceEqual(new long[] { 334, 333, 333 }) &&
