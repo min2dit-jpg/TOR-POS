@@ -622,7 +622,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         {
                             return Results.Unauthorized();
                         }
-                        catch (ArgumentOutOfRangeException ex)
+                        catch (ArgumentException ex)
                         {
                             return Results.BadRequest(new
                             {
