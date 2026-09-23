@@ -80,8 +80,10 @@ Weiter gemeldet und per Foto belegt (TOR Einzelhandel, Admin-Sitzung):
 - nach dem Hinweis ist **Anmeldung und Verkauf möglich**
 - der Hinweis erscheint **nur einmal** pro Programmlauf
 - die Schaltfläche **TSE-EINSTELLUNGEN ÖFFNEN** ist in der Admin-Sitzung vorhanden
-- die Statuszeile hinter dem Fenster trägt denselben Zustand
-- das Badge **TSE-AUSFALL** steht in der Kopfzeile
+- **nach dem Schließen** des Fensters bleibt das Badge **TSE-AUSFALL** in der
+  Kopfzeile stehen, und die Statuszeile trägt den vollen Satz
+  „Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht
+  signiert“
 
 Wichtig für die weitere Abnahme: der gemeldete Zustand ist **SdkMissing**, nicht
 NotFound. Ohne die offizielle `WormAPI.dll` bricht die Prüfung ab, **bevor** nach
