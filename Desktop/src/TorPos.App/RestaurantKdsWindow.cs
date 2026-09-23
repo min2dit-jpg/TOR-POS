@@ -155,19 +155,94 @@ public sealed class RestaurantKdsWindow : Window
                 ? ""
                 : selected;
 
+        var cancellations = await _kitchen.CancellationAlertsAsync(
+            station);
         var items = await _kitchen.BoardAsync(
             station);
 
         _board.Children.Clear();
 
+        foreach (var cancellation in cancellations)
+            _board.Children.Add(CreateCancellationCard(cancellation));
+
         foreach (var item in items)
             _board.Children.Add(CreateCard(item));
 
         _status.Text =
-            items.Count == 0
+            cancellations.Count == 0 && items.Count == 0
                 ? "Keine offenen Küchenpositionen."
                 : $"{items.Count} offene Küchenposition(en) · " +
+                  $"{cancellations.Count} Storno-Hinweis(e) · " +
                   DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss");
+    }
+
+    private Control CreateCancellationCard(
+        RestaurantKitchenCancellationAlert item)
+    {
+        var acknowledge = new Button
+        {
+            Content = "STORNO BESTÄTIGEN",
+            MinHeight = 42,
+            MinWidth = 170
+        };
+
+        acknowledge.Click += async (_, _) =>
+        {
+            await _kitchen.MarkHandedOverAsync(
+                item.JobId);
+            await ReloadAsync();
+        };
+
+        return new Border
+        {
+            Padding = new Thickness(14),
+            Background = new SolidColorBrush(
+                Color.Parse("#4A1717")),
+            BorderBrush = new SolidColorBrush(
+                Color.Parse("#A84545")),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(10),
+            Child = new Grid
+            {
+                ColumnDefinitions =
+                    new ColumnDefinitions("*,Auto"),
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Spacing = 5,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text =
+                                    $"STORNO · {item.TableName} · " +
+                                    $"{item.Quantity:0.###} × {item.ProductName}",
+                                FontSize = 20,
+                                FontWeight = FontWeight.Bold,
+                                TextWrapping = TextWrapping.Wrap
+                            },
+                            new TextBlock
+                            {
+                                Text =
+                                    $"Kellner: {item.Waiter} · " +
+                                    $"Station: {KitchenStations.DisplayName(item.Station)} · " +
+                                    item.CreatedAt.LocalDateTime.ToString(
+                                        "dd.MM.yyyy HH:mm:ss"),
+                                Opacity = 0.8,
+                                TextWrapping = TextWrapping.Wrap
+                            }
+                        }
+                    },
+                    new Border
+                    {
+                        [Grid.ColumnProperty] = 1,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = acknowledge
+                    }
+                }
+            }
+        };
     }
 
     private Control CreateCard(
