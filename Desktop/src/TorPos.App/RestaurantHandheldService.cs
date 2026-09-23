@@ -84,6 +84,89 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         return result;
     }
 
+    public async Task<IReadOnlyList<RestaurantHandheldCatalogProduct>> GetCatalogAsync(
+        string deviceId,
+        string deviceToken,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            deviceId,
+            deviceToken,
+            ct);
+
+        var categories = _catalog.Categories
+            .ToDictionary(x => x.Id);
+
+        return _catalog.Products
+            .Where(x =>
+                x.IsActive &&
+                !x.IsWeighted &&
+                !x.IsCombo &&
+                x.Variants.Count == 0)
+            .OrderBy(x =>
+                categories.TryGetValue(x.CategoryId, out var category)
+                    ? category.Name
+                    : "")
+            .ThenBy(x => x.Name)
+            .Select(x =>
+            {
+                categories.TryGetValue(
+                    x.CategoryId,
+                    out var category);
+
+                return new RestaurantHandheldCatalogProduct(
+                    x.Id,
+                    x.Name,
+                    category?.Name ?? "",
+                    x.BasePriceCents + x.PfandCents,
+                    x.VatRate,
+                    KitchenStations.Normalize(
+                        category?.KitchenStation));
+            })
+            .ToArray();
+    }
+
+    public async Task<RestaurantHandheldCommandResult> OpenTableAsync(
+        RestaurantHandheldOpenTableRequest request,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            request.DeviceId,
+            request.DeviceToken,
+            ct);
+
+        var table = (await _restaurant.ListTablesAsync(ct))
+            .FirstOrDefault(x => x.Id == request.TableId)
+            ?? throw new InvalidOperationException(
+                "Tisch ist nicht vorhanden oder deaktiviert.");
+
+        if (await _restaurant.GetLiveSessionForTableAsync(
+                table.Id,
+                ct) is not null)
+        {
+            throw new InvalidOperationException(
+                "Tisch ist bereits belegt.");
+        }
+
+        var session = await _restaurant.OpenTableAsync(
+            table.Id,
+            request.OperatorName,
+            request.GuestCount,
+            request.Note,
+            request.DeviceId,
+            ct);
+
+        return new RestaurantHandheldCommandResult(
+            session.Id,
+            session.Version);
+    }
+
     public async Task<RestaurantHandheldCommandResult> AddItemAsync(
         RestaurantHandheldAddItemRequest request,
         CancellationToken ct = default)
