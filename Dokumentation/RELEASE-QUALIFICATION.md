@@ -1,6 +1,6 @@
 # TOR POS – Release Qualification
 
-Stand: R182 · 2026-09-22
+Stand: R182 · 2026-09-23
 
 Dieses Dokument trennt **Entwicklungsstand**, **automatische Tests**, **Hardware-Abnahme** und **Produktionsfreigabe**. Ein grüner Build allein ist keine fiskalische Freigabe.
 
@@ -33,15 +33,15 @@ Voraussetzungen:
 
 Ergebnis: Code ist automatisiert geprüft, aber noch nicht hardware- oder fiskalisch freigegeben.
 
-**R182-Baseline:** 1160 Safety-/Regression-Checks.
+**R182-Baseline:** 1236 Safety-/Regression-Checks.
 
 ### 3. Hardware Acceptance
 
 Für Funktionen mit realer Hardware müssen die vorgesehenen Geräte tatsächlich angeschlossen und mit dem konkreten Build geprüft werden.
 
 Für Swissbit/TSE mindestens:
-1. Gerät/Provider eindeutig erkennen
-2. TSE-Identität und Seriennummer erfassen
+1. Gerät/Provider und TSE-Generation (1 / 1.1 / 2) eindeutig erkennen
+2. TSE-Identität, Seriennummer und exakten Zertifikatsablauf erfassen
 3. Client-Registrierung mit der vorgesehenen Kasse prüfen
 4. kontrollierten BAR-Testvorgang ausführen
 5. Start/Finish und Signaturzähler prüfen
@@ -84,10 +84,17 @@ Die zentralen `FiscalRelease`-Nachweise stehen weiterhin auf **false**:
 - `KassenSichVReceiptValidated`
 - `ParkedOrderTseValidated`
 - `PfandTaxValidated`
-- `PhysicalTseE2EValidated`
+- `PhysicalTseGeneration1E2EValidated`
+- `PhysicalTseGeneration11E2EValidated`
+- `PhysicalTseGeneration2E2EValidated`
+- `CloudTseValidated`
 - `IndependentFiscalReviewValidated`
 
-Daher bleibt die produktive fiskalische Buchung gesperrt.
+Daher bleibt die produktive fiskalische Buchung gesperrt. Physische TSE-Abnahmen
+sind generationsgebunden: Gen 1, Gen 1.1 und Gen 2 besitzen getrennte
+E2E-Freigaben. Eine Abnahme darf keine andere Generation freigeben; eine
+unbekannte Gerätegeneration bleibt fail-closed. Cloud-TSE besitzt eine davon
+getrennte Freigabe.
 
 Zusätzlich bleibt der produktive Remote-Updatepfad gesperrt, solange kein TOR/Demirkaan-Code-Signing-Zertifikat als `UpdateSignerThumbprint` fest hinterlegt ist.
 
@@ -101,7 +108,7 @@ Bei grüner CI müssen mindestens nachgewiesen sein:
 - Version R182 / 0.7.33.882 in allen Versionsspiegeln
 - vollständiger Build und Demo-Build
 - Release-Build je dediziertem Produkt (KIOSK und IMBISS)
-- 1160/1160 Safety-/Regression-Checks
+- 1236/1236 Safety-/Regression-Checks
 - UI-Snapshot-Prüfung des gemeinsamen Builds
 - gerenderte UI-Prüfung **jedes dedizierten Produkts**, damit ein nicht startfähiges Produkt in der CI und nicht an der Kasse auffällt
 - Cloud-Checks

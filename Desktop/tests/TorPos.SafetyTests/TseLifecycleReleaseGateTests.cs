@@ -110,6 +110,8 @@ internal static class TseLifecycleReleaseGateTests
             FindRepoFile("Desktop/src/TorPos.Infrastructure/TseFailSafeService.cs"));
         var xaml = File.ReadAllText(
             FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml"));
+        var releaseGateScript = File.ReadAllText(
+            FindRepoFile("Desktop/tools/Verify-Fiscal-Release-Gates.ps1"));
 
         assert(
             Count(main, "FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice)") >= 2 &&
@@ -135,8 +137,12 @@ internal static class TseLifecycleReleaseGateTests
             main.Contains("_tseCertificateTimer.Interval = TimeSpan.FromMinutes(15)", StringComparison.Ordinal) &&
             main.Contains("_tseCertificateTimer.Start()", StringComparison.Ordinal) &&
             main.Contains("_tseCertificateTimer.Stop()", StringComparison.Ordinal) &&
-            xaml.Contains("TseCertificateWarningBadge", StringComparison.Ordinal),
-            "Exact certificate expiry is checked outside release paperwork; production re-probes current generation; long-running tills re-evaluate 90/30/0 thresholds periodically");
+            xaml.Contains("TseCertificateWarningBadge", StringComparison.Ordinal) &&
+            releaseGateScript.Contains("PhysicalTseGeneration1E2EValidated", StringComparison.Ordinal) &&
+            releaseGateScript.Contains("PhysicalTseGeneration11E2EValidated", StringComparison.Ordinal) &&
+            releaseGateScript.Contains("PhysicalTseGeneration2E2EValidated", StringComparison.Ordinal) &&
+            releaseGateScript.Contains("physical_tse_acceptances", StringComparison.Ordinal),
+            "Exact certificate expiry is independent of release paperwork; runtime and CI bind physical approval to the current TSE generation; long-running tills re-evaluate 90/30/0 thresholds");
 
         return Task.CompletedTask;
     }

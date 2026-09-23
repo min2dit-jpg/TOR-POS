@@ -23,7 +23,9 @@
 
 - Hersteller: Swissbit
 - Produkt:
+- TSE-Generation: 1 / 1.1 / 2
 - TSE-Seriennummer:
+- Zertifikat gültig bis (UTC):
 - Client-ID:
 - WORM-API-/SDK-Version:
 - TSE-Status vor Test:
@@ -38,6 +40,8 @@
 |---|---|---|
 | SDK lädt | ☐ PASS ☐ FAIL | |
 | TSE wird erkannt | ☐ PASS ☐ FAIL | |
+| TSE-Generation eindeutig erkannt | ☐ PASS ☐ FAIL | |
+| Exakter Zertifikatsablauf wird gelesen | ☐ PASS ☐ FAIL | |
 | TSE-Identität / Client-ID plausibel | ☐ PASS ☐ FAIL | |
 | BAR Testbon 19 % | ☐ PASS ☐ FAIL | |
 | BAR Testbon 7 % | ☐ PASS ☐ FAIL | |
@@ -100,6 +104,11 @@
 -
 
 ## Abnahmeentscheidung
+
+Diese physische Abnahme gilt ausschließlich für TSE-Generation: **_____**
+
+> Eine bestandene Gen-1-, Gen-1.1- oder Gen-2-Abnahme darf keine andere
+> Generation freigeben.
 
 ☐ BESTANDEN  
 ☐ NICHT BESTANDEN  
