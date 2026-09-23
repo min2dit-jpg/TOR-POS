@@ -2226,13 +2226,18 @@ private Control TsePage()
         "Mandant / Queue",
         "Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."));
 
-    var cloudVendor = Text(CloudTseSettings.VendorSetting);
+    // A closed list, not free text. An unknown vendor is never validated
+    // anyway, but a typo should look like a typo rather than like a setting.
+    var cloudVendor = Combo(
+        CloudTseSettings.VendorSetting,
+        ["", .. CloudTseVendors.All]);
     var cloudUrl = Text(CloudTseSettings.BaseUrlSetting);
     var cloudTenant = Text(CloudTseSettings.TenantSetting);
     var cloudQueue = Text(CloudTseSettings.QueueSetting);
     var cloudClient = Text(CloudTseSettings.ClientSetting);
 
-    Form(cloud, "Anbieter", cloudVendor, "Name des zertifizierten Cloud-TSE-Anbieters laut Vertrag.");
+    Form(cloud, "Anbieter", cloudVendor, "Der zertifizierte Cloud-TSE-Anbieter, mit dem ein Vertrag besteht. Jeder Anbieter wird einzeln freigegeben: die Freigabe eines Anbieters öffnet keinen anderen.");
+
     Form(cloud, "Endpunkt", cloudUrl, "Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt.");
     Form(cloud, "Mandant", cloudTenant);
     Form(cloud, "Queue", cloudQueue);
@@ -2259,7 +2264,7 @@ private Control TsePage()
         {
             await _cloudTse.SaveAsync(
                 new CloudTseConfiguration(
-                    cloudVendor.Text ?? "",
+                    (cloudVendor.SelectedItem as string) ?? "",
                     cloudUrl.Text ?? "",
                     cloudTenant.Text ?? "",
                     cloudQueue.Text ?? "",

@@ -32,9 +32,6 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class CloudTseProvider : ITseProvider
 {
-    public const string NotReleasedMessage =
-        "Cloud-TSE ist in diesem Build nicht freigegeben. Es wird nichts signiert.";
-
     private readonly Func<CloudTseConfiguration> _configuration;
     private readonly HttpClient _http;
     private readonly TimeSpan _timeout;
@@ -108,7 +105,7 @@ public sealed class CloudTseProvider : ITseProvider
         return new TseProbeResult(
             TseConnectionState.Error,
             health.Reachable
-                ? $"Cloud-TSE erreichbar ({health.RoundTripMs} ms) · {NotReleasedMessage}"
+                ? $"Cloud-TSE erreichbar ({health.RoundTripMs} ms) · {Refusal()}"
                 : $"Cloud-TSE nicht erreichbar · {health.Message}");
     }
 
@@ -172,7 +169,7 @@ public sealed class CloudTseProvider : ITseProvider
     public Task<TseActivationResult> ActivateAsync(
         TseActivationRequest request,
         CancellationToken ct = default) =>
-        Task.FromResult(new TseActivationResult(false, NotReleasedMessage));
+        Task.FromResult(new TseActivationResult(false, Refusal()));
 
     public Task<TseTransactionResult> StartTransactionAsync(
         TseTransactionStartRequest request,
@@ -192,12 +189,16 @@ public sealed class CloudTseProvider : ITseProvider
     public Task<TseExportResult> ExportTarAsync(
         string targetPath,
         CancellationToken ct = default) =>
-        Task.FromResult(new TseExportResult(false, NotReleasedMessage));
+        Task.FromResult(new TseExportResult(false, Refusal()));
 
     // Success=false and every fiscal field at its default. Nothing that
     // could be mistaken for a transaction number or a counter.
-    private static TseTransactionResult Refused() =>
-        new(false, NotReleasedMessage);
+    private TseTransactionResult Refused() =>
+        new(false, Refusal());
+
+    /// <summary>Why this till will not sign right now, in the words of the vendor it is pointed at.</summary>
+    private string Refusal() =>
+        CloudTseRelease.NotReleasedMessage(Read().Vendor);
 
     private CloudTseConfiguration Read()
     {
@@ -219,14 +220,11 @@ public sealed class CloudTseProvider : ITseProvider
     /// </summary>
     private static string? Blocker(CloudTseConfiguration config)
     {
-        // Read into a local first. CloudTseValidated is a const, so testing it
-        // directly makes the compiler declare everything after it unreachable -
-        // a warning that would then sit on top of the checks below and hide a
-        // real one the day the flag flips.
-        var released = FiscalRelease.CloudTseValidated;
-
-        if (!released)
-            return NotReleasedMessage;
+        // One flag per vendor, and an unknown vendor is never validated. A
+        // single cloud flag would have meant qualifying against one vendor's
+        // sandbox opened production for every other vendor too.
+        if (!CloudTseRelease.IsValidated(config.Vendor))
+            return CloudTseRelease.NotReleasedMessage(config.Vendor);
 
         if (!config.IsAddressable)
             return $"Cloud-TSE ist nicht vollständig eingerichtet: {config.MissingPart()} fehlt.";

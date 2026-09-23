@@ -30,22 +30,27 @@ public static class CloudTseFoundationTests
             app.Contains("TseProviderKind.Normalize(", StringComparison.Ordinal),
             "cloud TSE: the device is chosen once at the composition root, and an unknown value falls back to the USB TSE rather than to the cloud");
 
-        // Nothing signs while the gate is closed - and the gate is the first
-        // thing checked, before configuration and before reachability.
+        // Nothing signs while the vendor's gate is closed - and the gate is the
+        // first thing checked, before configuration and before reachability.
         var blocker = Block(provider, "private static string? Blocker(", "public static string UnprotectApiKey");
         assert(
-            checkout.Contains("public const bool CloudTseValidated = false;", StringComparison.Ordinal) &&
-            blocker.IndexOf("FiscalRelease.CloudTseValidated", StringComparison.Ordinal) <
+            core.Contains("public const bool FiskaltrustValidated = false;", StringComparison.Ordinal) &&
+            core.Contains("public const bool FiskalyValidated = false;", StringComparison.Ordinal) &&
+            core.Contains("public const bool DeutscheFiskalValidated = false;", StringComparison.Ordinal) &&
+            blocker.IndexOf("CloudTseRelease.IsValidated", StringComparison.Ordinal) <
                 blocker.IndexOf("config.IsAddressable", StringComparison.Ordinal),
-            "cloud TSE: an unqualified cloud path refuses first, so a perfectly configured and reachable endpoint still signs nothing");
+            "cloud TSE: every vendor is qualified on its own flag, and an unqualified one refuses before configuration or reachability is even looked at");
 
-        // The cloud flag deliberately does not join the six release flags: a
-        // till qualified on a USB TSE has proven nothing about a cloud one, and
-        // adding it to Enabled would also block every USB customer.
-        var enabled = Block(checkout, "public static bool Enabled =>", "public static IReadOnlyList<string> MissingQualifications()");
+        // The trap a single cloud flag would have been: qualifying one vendor's
+        // sandbox opening production for vendors nobody ever ran a transaction
+        // against. And a name TOR does not know is never a released one.
+        var validated = Block(core, "public static bool IsValidated(string? vendor)", "public static string NotReleasedMessage");
         assert(
-            !enabled.Contains("CloudTseValidated", StringComparison.Ordinal),
-            "cloud TSE: the cloud qualification stands on its own and neither rides on nor blocks the six existing fiscal release flags");
+            Regex.IsMatch(validated, @"_\s*=>\s*false") &&
+            !checkout.Contains("CloudTseValidated", StringComparison.Ordinal) &&
+            !Block(checkout, "public static bool Enabled =>", "public static IReadOnlyList<string> MissingQualifications()")
+                .Contains("Cloud", StringComparison.Ordinal),
+            "cloud TSE: an unknown vendor is never validated, and cloud qualification neither rides on nor blocks the six existing fiscal release flags");
 
         // The refusal itself. Every call that would produce fiscal data returns
         // failure, and none of them invents a transaction number, a counter or

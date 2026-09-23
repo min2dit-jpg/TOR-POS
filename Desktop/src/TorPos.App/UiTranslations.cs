@@ -558,7 +558,8 @@ internal static class UiTranslations
         ["Mandant"] = "Hesap",
         ["Queue"] = "Queue",
         ["API-Schlüssel"] = "API anahtarı",
-        ["Name des zertifizierten Cloud-TSE-Anbieters laut Vertrag."] = "Sözleşmeye göre sertifikalı Cloud-TSE sağlayıcısının adı.",
+        ["Der zertifizierte Cloud-TSE-Anbieter, mit dem ein Vertrag besteht. Jeder Anbieter wird einzeln freigegeben: die Freigabe eines Anbieters öffnet keinen anderen."] =
+            "Sözleşme yapılan sertifikalı Cloud-TSE sağlayıcısı. Her sağlayıcı ayrı ayrı onaylanır: birinin onayı diğerini açmaz.",
         ["Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt."] = "Tam HTTPS adresi. Diğer protokoller reddedilir.",
         ["Muss die Kassen-Seriennummer sein - dieselbe Nummer wie auf dem Bon und im DSFinV-K-Export."] =
             "Kasa seri numarası olmalıdır - fişteki ve DSFinV-K dışa aktarımındaki numaranın aynısı.",
@@ -2211,7 +2212,8 @@ internal static class UiTranslations
         ["Mandant"] = "Tenant",
         ["Queue"] = "Queue",
         ["API-Schlüssel"] = "API key",
-        ["Name des zertifizierten Cloud-TSE-Anbieters laut Vertrag."] = "Name of the certified cloud TSE vendor as per contract.",
+        ["Der zertifizierte Cloud-TSE-Anbieter, mit dem ein Vertrag besteht. Jeder Anbieter wird einzeln freigegeben: die Freigabe eines Anbieters öffnet keinen anderen."] =
+            "The certified cloud TSE vendor you hold a contract with. Each vendor is released on its own: releasing one opens no other.",
         ["Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt."] = "Full HTTPS address. Other protocols are rejected.",
         ["Muss die Kassen-Seriennummer sein - dieselbe Nummer wie auf dem Bon und im DSFinV-K-Export."] =
             "Must be the till serial number - the same number as on the receipt and in the DSFinV-K export.",

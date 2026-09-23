@@ -12,18 +12,6 @@ public static class FiscalRelease
     public const bool PhysicalTseE2EValidated = false;
     public const bool IndependentFiscalReviewValidated = false;
 
-    /// <summary>
-    /// A cloud TSE is a separate certified device operated by a vendor, with
-    /// its own contract, its own qualification and its own failure modes. It
-    /// deliberately does NOT ride on the six flags above: those are about this
-    /// program's own fiscal behaviour, and a till that qualified with a USB TSE
-    /// has proven nothing about a cloud one.
-    ///
-    /// While this is false the cloud provider refuses to sign. It never
-    /// fabricates a signature, a transaction number or a counter - an unsigned
-    /// sale is a documented outage, an invented signature is a forged record.
-    /// </summary>
-    public const bool CloudTseValidated = false;
 
     public static bool Enabled =>
         DsfinvkValidated &&
