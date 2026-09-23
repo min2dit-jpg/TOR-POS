@@ -7,7 +7,8 @@ public sealed record DirectCloudTseConfiguration(
     string Endpoint,
     string MandantId,
     string TssId,
-    string ClientId);
+    string ProviderClientId,
+    string CashRegisterSerialNumber);
 
 public static class DirectCloudTseConfigurationPolicy
 {
@@ -42,7 +43,10 @@ public static class DirectCloudTseConfigurationPolicy
         var endpoint = (configuration.Endpoint ?? "").Trim();
         var mandantId = (configuration.MandantId ?? "").Trim();
         var tssId = (configuration.TssId ?? "").Trim();
-        var clientId = (configuration.ClientId ?? "").Trim();
+        var providerClientId =
+            (configuration.ProviderClientId ?? "").Trim();
+        var cashRegisterSerialNumber =
+            (configuration.CashRegisterSerialNumber ?? "").Trim();
 
         if (!Uri.TryCreate(
                 endpoint,
@@ -69,10 +73,16 @@ public static class DirectCloudTseConfigurationPolicy
                 "Cloud-TSE-TSS-ID fehlt.");
         }
 
-        if (clientId.Length == 0)
+        if (providerClientId.Length == 0)
         {
             throw new InvalidOperationException(
-                "Cloud-TSE-Client-ID fehlt.");
+                "Cloud-TSE Provider-Client-ID fehlt.");
+        }
+
+        if (cashRegisterSerialNumber.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "Kassen-Seriennummer für die Cloud-TSE-Zuordnung fehlt.");
         }
 
         return configuration with
@@ -81,7 +91,8 @@ public static class DirectCloudTseConfigurationPolicy
             Endpoint = uri.ToString().TrimEnd('/'),
             MandantId = mandantId,
             TssId = tssId,
-            ClientId = clientId
+            ProviderClientId = providerClientId,
+            CashRegisterSerialNumber = cashRegisterSerialNumber
         };
     }
 }
