@@ -490,8 +490,12 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 ?? throw new InvalidOperationException(
                     "Tischvorgang nicht gefunden.");
 
-            var table = (await _restaurant.ListTablesAsync(ct))
-                .FirstOrDefault(x => x.Id == session.TableId);
+            item ??= throw new InvalidOperationException(
+                "Restaurant-Position konnte nicht wiederhergestellt werden.");
+
+            var table = await _restaurant.GetTableAsync(
+                session.TableId,
+                ct);
 
             var category = _catalog.Categories
                 .FirstOrDefault(x => x.Id == product.CategoryId);
