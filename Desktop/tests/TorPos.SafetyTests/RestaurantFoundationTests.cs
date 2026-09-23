@@ -721,6 +721,86 @@ internal static class RestaurantFoundationTests
                 VatRate = 19m
             };
 
+            var concurrentTableId = await repo.SaveTableAsync(
+                areaId,
+                "TCONC",
+                "Parallel Tisch",
+                seats: 4,
+                sortOrder: 89);
+
+            var concurrentSession = await repo.OpenTableAsync(
+                concurrentTableId,
+                "KELLNER-A",
+                guestCount: 2,
+                deviceId: "HANDHELD-A");
+
+            async Task<bool> TryParallelAddAsync(
+                string waiter,
+                string deviceId)
+            {
+                try
+                {
+                    await repo.AddItemAsync(
+                        concurrentSession.Id,
+                        concurrentSession.Version,
+                        product,
+                        1m,
+                        waiter,
+                        deviceId);
+                    return true;
+                }
+                catch (InvalidOperationException ex)
+                    when (ex.Message.Contains(
+                        "zwischenzeitlich geändert",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            var parallelResults = await Task.WhenAll(
+                TryParallelAddAsync(
+                    "KELLNER-A",
+                    "HANDHELD-A"),
+                TryParallelAddAsync(
+                    "KELLNER-B",
+                    "HANDHELD-B"));
+
+            var afterParallel =
+                await repo.GetSessionAsync(
+                    concurrentSession.Id)
+                ?? throw new InvalidOperationException(
+                    "Parallel test session missing.");
+
+            assert(
+                parallelResults.Count(x => x) == 1 &&
+                afterParallel.Version ==
+                    concurrentSession.Version + 1 &&
+                (await repo.ListActiveItemsAsync(
+                    concurrentSession.Id)).Count == 1,
+                "Two simultaneous Restaurant waiter writes never silently overwrite or duplicate the same table version");
+
+            await repo.AddItemAsync(
+                concurrentSession.Id,
+                afterParallel.Version,
+                product,
+                1m,
+                "KELLNER-B",
+                "HANDHELD-B");
+
+            var afterParallelRetry =
+                await repo.GetSessionAsync(
+                    concurrentSession.Id)
+                ?? throw new InvalidOperationException(
+                    "Parallel retry session missing.");
+
+            assert(
+                afterParallelRetry.Version ==
+                    concurrentSession.Version + 2 &&
+                (await repo.ListActiveItemsAsync(
+                    concurrentSession.Id)).Count == 2,
+                "Conflicted Restaurant waiter command succeeds after refreshing the table version without losing the first waiter write");
+
             var idempotentTableId = await repo.SaveTableAsync(
                 areaId,
                 "TIDEM",
