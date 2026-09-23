@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 28;
+    public const int TargetSchemaVersion = 29;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1840,6 +1840,45 @@ public sealed class SchemaMigrationService
                           status TEXT NOT NULL CHECK(status IN ('OFFEN','IN_ARBEIT','FERTIG')),
                           updated_at TEXT NOT NULL,
                           updated_by TEXT NOT NULL DEFAULT '');
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                29,
+                "R187_RESTAURANT_HANDHELD_PAIRING",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_pairing_codes(
+                          id TEXT PRIMARY KEY,
+                          code_hash TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          expires_at TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          consumed_at TEXT NULL,
+                          consumed_by_device TEXT NOT NULL DEFAULT '');
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_pairing_expires
+                          ON restaurant_pairing_codes(expires_at,consumed_at);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_handheld_devices(
+                          device_id TEXT PRIMARY KEY,
+                          display_name TEXT NOT NULL,
+                          token_hash TEXT NOT NULL UNIQUE,
+                          paired_at TEXT NOT NULL,
+                          paired_by TEXT NOT NULL,
+                          last_seen_at TEXT NOT NULL,
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_handheld_active
+                          ON restaurant_handheld_devices(is_active,last_seen_at);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
