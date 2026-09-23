@@ -41,7 +41,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 #endif
 
     public RestaurantLocalApiStatus Status { get; private set; } =
-        new(false, "", 0, "", "Handheld-API nicht gestartet.");
+        new(false, "", 0, "", "Restaurant-Geräte-API nicht gestartet.");
 
     public RestaurantLocalApiHost(
         ISettingsRepository settings,
@@ -68,6 +68,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
             await StopCoreAsync();
 
             if (!_entitlements.IsEnabled(
+                    RestaurantFeature.MehrereKassen) &&
+                !_entitlements.IsEnabled(
                     RestaurantFeature.HandheldBestellung))
             {
                 Status = new(
@@ -79,9 +81,14 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                 return;
             }
 
-            var enabledRaw = await _settings.GetAsync(
+            var legacyEnabled = await _settings.GetAsync(
                 "restaurant.handheld.api.enabled",
                 "false",
+                ct);
+
+            var enabledRaw = await _settings.GetAsync(
+                "restaurant.local.api.enabled",
+                legacyEnabled,
                 ct);
 
             if (!bool.TryParse(enabledRaw, out var enabled) ||
@@ -92,20 +99,25 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     "",
                     0,
                     "",
-                    "Handheld-API ist deaktiviert.");
+                    "Restaurant-Geräte-API ist deaktiviert.");
                 return;
             }
 
-            var portRaw = await _settings.GetAsync(
+            var legacyPort = await _settings.GetAsync(
                 "restaurant.handheld.api.port",
                 "17831",
+                ct);
+
+            var portRaw = await _settings.GetAsync(
+                "restaurant.local.api.port",
+                legacyPort,
                 ct);
 
             if (!int.TryParse(portRaw, out var port) ||
                 port is < 1024 or > 65535)
             {
                 throw new InvalidOperationException(
-                    "Handheld-API-Port muss zwischen 1024 und 65535 liegen.");
+                    "Restaurant-Geräte-API-Port muss zwischen 1024 und 65535 liegen.");
             }
 
 #if TOR_RESTAURANT_PRODUCT
@@ -161,7 +173,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                 () => Results.Ok(new
                 {
                     product = "TOR Restaurant Plus",
-                    apiVersion = 1,
+                    apiVersion = 2,
                     secure = true
                 }));
 
@@ -197,7 +209,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 paired.PairedAt,
                                 certificateSha256 =
                                     CertificateSha256(cert),
-                                apiVersion = 1
+                                apiVersion = 2
                             });
                         }
                         catch (InvalidOperationException ex)
@@ -702,14 +714,14 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                 $"https://{host}:{port}",
                 port,
                 CertificateSha256(cert),
-                "Handheld-API läuft über HTTPS.");
+                "Restaurant-Geräte-API läuft über HTTPS.");
 #else
             Status = new(
                 false,
                 "",
                 0,
                 "",
-                "Handheld-API ist nur im TOR Restaurant Build verfügbar.");
+                "Restaurant-Geräte-API ist nur im TOR Restaurant Build verfügbar.");
 #endif
         }
         finally
@@ -761,7 +773,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
             "",
             0,
             "",
-            "Handheld-API nicht gestartet.");
+            "Restaurant-Geräte-API nicht gestartet.");
     }
 
 #if TOR_RESTAURANT_PRODUCT
