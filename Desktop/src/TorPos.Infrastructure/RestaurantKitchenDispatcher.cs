@@ -44,6 +44,10 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
         await _gate.WaitAsync(ct);
         try
         {
+            var blockedPrinters =
+                new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase);
+
             foreach (var job in await _outbox.PendingAsync(ct))
             {
                 ct.ThrowIfCancellationRequested();
@@ -56,6 +60,8 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                     continue;
                 }
 
+                var printerName = job.PrinterName;
+
                 try
                 {
                     var defaultPrinter = await _settings.GetAsync(
@@ -63,7 +69,6 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                         "",
                         ct);
 
-                    var printerName = job.PrinterName;
                     var enabled = false;
 
                     if (!string.IsNullOrWhiteSpace(job.Station))
@@ -104,14 +109,17 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
 
                     if (!enabled)
                     {
-                        // Durable outbox remains pending. Enabling the kitchen
-                        // printer later will resume delivery without losing jobs.
-                        return;
+                        // This route stays pending, but it must not block
+                        // another station/printer from receiving its jobs.
+                        continue;
                     }
 
                     if (string.IsNullOrWhiteSpace(printerName))
                         throw new InvalidOperationException(
                             "Küchendrucker ist aktiviert, aber kein Drucker ausgewählt.");
+
+                    if (blockedPrinters.Contains(printerName))
+                        continue;
 
                     var payload = JsonSerializer.Deserialize<KitchenPayload>(
                         job.PayloadJson)
@@ -185,13 +193,17 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                         continue;
                     }
 
-                    var failed = await _outbox.MarkFailedAttemptAsync(
+                    if (!string.IsNullOrWhiteSpace(printerName))
+                        blockedPrinters.Add(printerName);
+
+                    await _outbox.MarkFailedAttemptAsync(
                         job.Id,
                         ex.Message,
                         ct);
 
-                    if (!failed)
-                        break;
+                    // A broken station/printer must not stop unrelated
+                    // kitchen routes during the same dispatch pass.
+                    continue;
                 }
             }
         }
