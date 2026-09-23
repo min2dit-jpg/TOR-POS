@@ -63,9 +63,10 @@ public static class FiscalRelease
             return PhysicalTseGeneration.Unknown;
         }
 
-        // Generation evidence is accepted only from device.Generation.
-        // SwissbitWormApiBridge fills it from worm_info_tseDescription.
-        // Hardware/software version numbers are revisions, not generations.
+        // Generation evidence is accepted only from the explicitly normalized
+        // device.Generation field. Vendor descriptions and hardware/software
+        // revisions are not parsed here. Until an adapter has a documented
+        // real-device mapping, it must leave Generation empty and we fail closed.
         return ParsePhysicalGeneration(device.Generation);
     }
 
@@ -215,39 +216,29 @@ public static class FiscalRelease
         if (string.IsNullOrWhiteSpace(value))
             return PhysicalTseGeneration.Unknown;
 
-        var text = value
-            .Trim()
-            .ToUpperInvariant()
-            .Replace('_', ' ')
-            .Replace('-', ' ');
+        // Only TOR's canonical, adapter-normalized labels are accepted.
+        // Do not infer a generation from unverified vendor strings such as
+        // descriptions or version numbers. Real Swissbit hardware must first
+        // be observed and its documented discriminator mapped by the adapter.
+        var normalized = value.Trim();
 
-        // Check 1.1 before 1 so "TSE 1.1" can never be downgraded to Gen 1.
-        if (text == "1.1" ||
-            text.StartsWith("1.1.", StringComparison.Ordinal) ||
-            text.Contains("TSE 1.1", StringComparison.Ordinal) ||
-            text.Contains("GEN 1.1", StringComparison.Ordinal) ||
-            text.Contains("GENERATION 1.1", StringComparison.Ordinal))
-        {
-            return PhysicalTseGeneration.Generation1_1;
-        }
-
-        if (text == "2" ||
-            text.StartsWith("2.", StringComparison.Ordinal) ||
-            text.Contains("TSE 2", StringComparison.Ordinal) ||
-            text.Contains("GEN 2", StringComparison.Ordinal) ||
-            text.Contains("GENERATION 2", StringComparison.Ordinal))
-        {
-            return PhysicalTseGeneration.Generation2;
-        }
-
-        if (text == "1" ||
-            text.StartsWith("1.0", StringComparison.Ordinal) ||
-            text.Contains("TSE 1", StringComparison.Ordinal) ||
-            text.Contains("GEN 1", StringComparison.Ordinal) ||
-            text.Contains("GENERATION 1", StringComparison.Ordinal))
-        {
+        if (string.Equals(
+                normalized,
+                nameof(PhysicalTseGeneration.Generation1),
+                StringComparison.OrdinalIgnoreCase))
             return PhysicalTseGeneration.Generation1;
-        }
+
+        if (string.Equals(
+                normalized,
+                nameof(PhysicalTseGeneration.Generation1_1),
+                StringComparison.OrdinalIgnoreCase))
+            return PhysicalTseGeneration.Generation1_1;
+
+        if (string.Equals(
+                normalized,
+                nameof(PhysicalTseGeneration.Generation2),
+                StringComparison.OrdinalIgnoreCase))
+            return PhysicalTseGeneration.Generation2;
 
         return PhysicalTseGeneration.Unknown;
     }
