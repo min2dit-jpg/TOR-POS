@@ -317,7 +317,7 @@ public partial class SettingsWindow : Window
         Form(section, "Mindestbestand", Text("function.low_stock_threshold"), "Warnschwelle, z.B. 5 Stück.");
         page.Children.Add(section);
 
-        if (InstallationEdition.ReadLocked() == "IMBISS")
+        if (InstallationEdition.ReadLocked() is "IMBISS" or "RESTAURANT")
         {
             var pickup = Section("Abholnummer / Bestellablauf");
             pickup.Children.Add(ReadOnlyRow("Schnellauswahl", "OFF = aus · SALE = Nummer beim Kassieren · ORDER = Nummer sofort bei Bestellannahme"));
