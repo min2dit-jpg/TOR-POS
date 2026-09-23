@@ -260,6 +260,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(restaurantKitchenOutbox);
             appServices.AddSingleton(restaurantKitchenDispatcher);
             appServices.AddSingleton<TorPos.Application.IRestaurantHandheldService, RestaurantHandheldService>();
+            appServices.AddSingleton<RestaurantLocalApiHost>();
             appServices.AddSingleton<IAppWindowFactory, AppWindowFactory>();
 
             var serviceProvider = appServices.BuildServiceProvider(
@@ -271,6 +272,8 @@ public partial class App : Avalonia.Application
 
             var windowFactory =
                 serviceProvider.GetRequiredService<IAppWindowFactory>();
+            var restaurantLocalApi =
+                serviceProvider.GetRequiredService<RestaurantLocalApiHost>();
 
             await settings.SaveManyAsync(new Dictionary<string,string>
             {
@@ -282,6 +285,17 @@ public partial class App : Avalonia.Application
             TouchKeyboard.Install(uiSettings.GetValueOrDefault("ui.keyboard.auto", "true") != "false");
 
             await catalog.ReloadAsync();
+
+            try
+            {
+                await restaurantLocalApi.StartOrRestartAsync();
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException(
+                    "Restaurant local API startup failed",
+                    ex);
+            }
 
             // Shared services live for the complete application process. A simple
             // ABMELDEN must not dispose the printer or create an exit backup.
@@ -317,6 +331,8 @@ public partial class App : Avalonia.Application
                 }
                 catch(Exception ex) { CrashLog.WriteException("Exit backup failed or timed out",ex); }
                 await orderPrintDispatcher.DisposeAsync();
+                try { await restaurantLocalApi.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch(Exception ex) { CrashLog.WriteException("Restaurant local API shutdown failed",ex); }
                 try { await restaurantKitchenDispatcher.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
                 catch(Exception ex) { CrashLog.WriteException("Restaurant kitchen dispatcher shutdown failed",ex); }
                 try { await receiptPrinter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
