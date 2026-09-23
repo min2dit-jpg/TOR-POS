@@ -47,19 +47,49 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
 
                 try
                 {
-                    var printerName = string.IsNullOrWhiteSpace(job.PrinterName)
-                        ? await _settings.GetAsync(
-                            "device.kitchen_printer.name",
-                            "",
-                            ct)
-                        : job.PrinterName;
+                    var defaultPrinter = await _settings.GetAsync(
+                        "device.kitchen_printer.name",
+                        "",
+                        ct);
 
-                    var enabled = bool.TryParse(
-                        await _settings.GetAsync(
-                            "device.kitchen_printer.enabled",
-                            "false",
-                            ct),
-                        out var isEnabled) && isEnabled;
+                    var printerName = job.PrinterName;
+                    var enabled = false;
+
+                    if (!string.IsNullOrWhiteSpace(job.Station))
+                    {
+                        var prefix = KitchenStations.SettingsPrefix(job.Station);
+                        var stationEnabled = bool.TryParse(
+                            await _settings.GetAsync(
+                                prefix + ".enabled",
+                                "false",
+                                ct),
+                            out var stationIsEnabled) && stationIsEnabled;
+
+                        var stationPrinter = await _settings.GetAsync(
+                            prefix + ".name",
+                            "",
+                            ct);
+
+                        if (stationEnabled &&
+                            !string.IsNullOrWhiteSpace(stationPrinter))
+                        {
+                            enabled = true;
+                            printerName = stationPrinter;
+                        }
+                    }
+
+                    if (!enabled)
+                    {
+                        enabled = bool.TryParse(
+                            await _settings.GetAsync(
+                                "device.kitchen_printer.enabled",
+                                "false",
+                                ct),
+                            out var defaultEnabled) && defaultEnabled;
+
+                        if (string.IsNullOrWhiteSpace(printerName))
+                            printerName = defaultPrinter;
+                    }
 
                     if (!enabled)
                     {
