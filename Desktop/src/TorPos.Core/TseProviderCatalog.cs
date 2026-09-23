@@ -71,6 +71,34 @@ public static class TseProviderCatalog
             .OrderBy(x => x.ProviderId, StringComparer.Ordinal)
             .ToArray();
 
+    public static string? CloudVendorForProvider(string providerId)
+    {
+        var provider = Get(providerId);
+
+        if (provider.Transport != TseProviderTransport.DirectCloudApi)
+            return null;
+
+        return provider.ProviderId switch
+        {
+            FiskalyDirectCloud => CloudTseVendors.Fiskaly,
+            DeutscheFiskalDirectCloud => CloudTseVendors.DeutscheFiskal,
+            _ => null
+        };
+    }
+
+    public static bool IsProviderReleaseValidated(string providerId)
+    {
+        var provider = Get(providerId);
+
+        if (!provider.RequiresCloudReleaseGate)
+            return true;
+
+        var vendor = CloudVendorForProvider(provider.ProviderId);
+
+        return vendor is not null &&
+               CloudTseRelease.IsValidated(vendor);
+    }
+
     /// <summary>
     /// Provider-specific gate only. Global fiscal production release remains a
     /// separate decision. Local Middleware is deliberately not treated as a
@@ -80,7 +108,17 @@ public static class TseProviderCatalog
     {
         var provider = Get(providerId);
 
-        if (provider.RequiresCloudReleaseGate)
-            FiscalRelease.RequireCloudTse();
+        if (!provider.RequiresCloudReleaseGate)
+            return;
+
+        var vendor = CloudVendorForProvider(provider.ProviderId);
+
+        if (vendor is null ||
+            !CloudTseRelease.IsValidated(vendor))
+        {
+            throw new InvalidOperationException(
+                CloudTseRelease.NotReleasedMessage(
+                    vendor ?? provider.ProviderId));
+        }
     }
 }
