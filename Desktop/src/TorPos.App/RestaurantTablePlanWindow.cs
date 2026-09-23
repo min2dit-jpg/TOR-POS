@@ -85,6 +85,15 @@ public sealed class RestaurantTablePlanWindow : Window
         IsEnabled = false
     };
 
+    private readonly Button _takeOver = new()
+    {
+        Content = "TISCH ÜBERNEHMEN",
+        MinHeight = 44,
+        FontWeight = FontWeight.Bold,
+        IsEnabled = false,
+        IsVisible = false
+    };
+
     private readonly Button _open = new()
     {
         Content = "TISCH ÖFFNEN",
@@ -188,6 +197,7 @@ public sealed class RestaurantTablePlanWindow : Window
 
         _open.Click += async (_, _) => await OpenSelectedTableAsync();
         _saveDetails.Click += async (_, _) => await SaveSessionDetailsAsync();
+        _takeOver.Click += async (_, _) => await TakeOverSelectedSessionAsync();
         _add.Click += async (_, _) => await AddSelectedProductAsync();
         _move.Click += async (_, _) => await MoveSelectedSessionAsync();
         _merge.Click += async (_, _) => await MergeSelectedSessionAsync();
@@ -311,6 +321,7 @@ public sealed class RestaurantTablePlanWindow : Window
                 },
                 _tableNote,
                 _saveDetails,
+                _takeOver,
                 new TextBlock
                 {
                     Text = "Positionen",
@@ -423,6 +434,8 @@ public sealed class RestaurantTablePlanWindow : Window
             _guestCount.IsEnabled = false;
             _tableNote.IsEnabled = false;
             _saveDetails.IsEnabled = false;
+            _takeOver.IsVisible = false;
+            _takeOver.IsEnabled = false;
             _guestCount.Value = 1;
             _tableNote.Text = "";
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
@@ -493,6 +506,8 @@ public sealed class RestaurantTablePlanWindow : Window
             _guestCount.IsEnabled = true;
             _tableNote.IsEnabled = true;
             _saveDetails.IsEnabled = false;
+            _takeOver.IsVisible = false;
+            _takeOver.IsEnabled = false;
             if (_guestCount.Value is null || _guestCount.Value < 1)
                 _guestCount.Value = 1;
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
@@ -529,6 +544,48 @@ public sealed class RestaurantTablePlanWindow : Window
         _guestCount.IsEnabled = !paymentLocked;
         _tableNote.IsEnabled = !paymentLocked;
         _saveDetails.IsEnabled = !paymentLocked;
+
+        var belongsToCurrentUser = string.Equals(
+            _selectedSession.AssignedWaiter,
+            _user.Username,
+            StringComparison.OrdinalIgnoreCase);
+
+        _takeOver.IsVisible = !belongsToCurrentUser;
+        _takeOver.IsEnabled = !paymentLocked && !belongsToCurrentUser;
+        _takeOver.Content = belongsToCurrentUser
+            ? "IHR TISCH"
+            : $"TISCH ÜBERNEHMEN · {_selectedSession.AssignedWaiter}";
+    }
+
+    private async Task TakeOverSelectedSessionAsync()
+    {
+        if (_selectedSession is null)
+            return;
+
+        if (string.Equals(
+                _selectedSession.AssignedWaiter,
+                _user.Username,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            _selectedSession = await _restaurant.ReassignWaiterAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                _user.Username,
+                _user.Username,
+                Environment.MachineName);
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
     }
 
     private async Task SaveSessionDetailsAsync()
