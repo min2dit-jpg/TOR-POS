@@ -73,14 +73,30 @@ Produkte gestartet und gemeldet, dass das Warnfenster in **TOR Einzelhandel und
 TOR Gastro** erschienen ist. Geprüft wurde der Stand aus CI-Run 662
 (Commit `c13d971`).
 
-Damit ist die **erste** Zeile der Tabelle als gemeldet zu lesen. Sie ist hier
+Weiter gemeldet und per Foto belegt (TOR Einzelhandel, Admin-Sitzung):
+
+- das Fenster benennt den Zustand korrekt mit **„Swissbit SDK nicht gefunden“**
+  und gibt die Gerätemeldung „WormAPI.dll nicht gefunden“ darunter aus
+- nach dem Hinweis ist **Anmeldung und Verkauf möglich**
+- der Hinweis erscheint **nur einmal** pro Programmlauf
+- die Schaltfläche **TSE-EINSTELLUNGEN ÖFFNEN** ist in der Admin-Sitzung vorhanden
+- die Statuszeile hinter dem Fenster trägt denselben Zustand
+- das Badge **TSE-AUSFALL** steht in der Kopfzeile
+
+Wichtig für die weitere Abnahme: der gemeldete Zustand ist **SdkMissing**, nicht
+NotFound. Ohne die offizielle `WormAPI.dll` bricht die Prüfung ab, **bevor** nach
+Hardware gesucht wird. Die Zeile „nach Anstecken einer betriebsbereiten TSE kein
+Warnfenster mehr“ kann deshalb erst geprüft werden, wenn das Swissbit SDK
+eingerichtet ist; bis dahin bleibt der Hinweis unabhängig von der angesteckten
+Hardware bestehen.
+
+Damit sind die entsprechenden Zeilen der Tabelle als gemeldet zu lesen. Sie ist hier
 festgehalten, damit sie nicht verloren geht, und ersetzt das Protokoll **nicht**:
 keine Zeile ist gekreuzt, kein Tester ist unterschrieben, und das Gesamtergebnis
-bleibt offen. Offen sind insbesondere noch: ob das Fenster den Zustand korrekt
-benennt, ob nach dem Hinweis wirklich weiterverkauft werden kann, ob der Hinweis
-nur einmal pro Programmlauf erscheint, die Unterscheidung Admin/Kassenkraft, die
-Statuszeile, der Protokolleintrag und das Verschwinden des Hinweises nach dem
-Anstecken einer betriebsbereiten TSE.
+bleibt offen. Offen sind insbesondere noch: die **Kassenkraft-Sitzung** (keine
+Schaltfläche, stattdessen der Hinweis auf die Betreiberin oder den Betreiber),
+das Badge-Tooltip mit Beginn und Grund, der Eintrag in `tse_outage_log` und das
+Verschwinden des Hinweises nach dem Anstecken einer betriebsbereiten TSE.
 
 ### Startprüfung ohne TSE
 
