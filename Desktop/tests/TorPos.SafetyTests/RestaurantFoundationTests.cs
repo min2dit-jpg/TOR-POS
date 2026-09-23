@@ -143,12 +143,13 @@ internal static class RestaurantFoundationTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         var standardHandheldRejected = false;
         try
         {
-            await standardHandheld.GetTablesAsync();
+            await standardHandheld.GetTablesAsync("TEST","TEST");
         }
         catch (InvalidOperationException)
         {
@@ -184,8 +185,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 28,
-                "Restaurant database reaches schema version 28");
+                result.ToVersion == 29,
+                "Restaurant database reaches schema version 29");
 
             await using (var c = db.OpenConnection())
             {
@@ -196,8 +197,10 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_bestellungen") &&
                     TableExists(c, "restaurant_bestellung_items") &&
                     TableExists(c, "restaurant_kitchen_jobs") &&
-                    TableExists(c, "restaurant_kitchen_status"),
-                    "Restaurant-only tables including Bestellung and kitchen records are created for the Restaurant product");
+                    TableExists(c, "restaurant_kitchen_status") &&
+                    TableExists(c, "restaurant_pairing_codes") &&
+                    TableExists(c, "restaurant_handheld_devices"),
+                    "Restaurant-only tables including Bestellung, kitchen and handheld pairing records are created for the Restaurant product");
 
                 var immutableBestellung = false;
                 try
@@ -228,6 +231,59 @@ internal static class RestaurantFoundationTests
                     immutableBestellung,
                     "Restaurant Bestellung records are append-only");
             }
+
+            var pairing = new RestaurantHandheldPairingService(
+                db,
+                plusEntitlements);
+
+            var pairingCode = await pairing.CreatePairingCodeAsync(
+                "ADMIN",
+                TimeSpan.FromMinutes(5));
+
+            var paired = await pairing.PairAsync(
+                pairingCode.Code,
+                "DEVICE-001",
+                "Handheld 1");
+
+            await pairing.RequireAuthenticatedAsync(
+                paired.DeviceId,
+                paired.DeviceToken);
+
+            var pairingReuseRejected = false;
+            try
+            {
+                await pairing.PairAsync(
+                    pairingCode.Code,
+                    "DEVICE-002",
+                    "Handheld 2");
+            }
+            catch (InvalidOperationException)
+            {
+                pairingReuseRejected = true;
+            }
+
+            assert(
+                pairingReuseRejected,
+                "Restaurant handheld pairing code is one-time use");
+
+            await pairing.DeactivateAsync(
+                paired.DeviceId);
+
+            var deactivatedRejected = false;
+            try
+            {
+                await pairing.RequireAuthenticatedAsync(
+                    paired.DeviceId,
+                    paired.DeviceToken);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                deactivatedRejected = true;
+            }
+
+            assert(
+                deactivatedRejected,
+                "Deactivated Restaurant handheld token is rejected");
 
             var repo = new RestaurantRepository(db);
             var areaId = await repo.SaveAreaAsync("Innenbereich");
@@ -734,7 +790,8 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_tables") &&
                     !TableExists(c, "restaurant_sessions") &&
                     !TableExists(c, "restaurant_bestellungen") &&
-                    !TableExists(c, "restaurant_kitchen_jobs"),
+                    !TableExists(c, "restaurant_kitchen_jobs") &&
+                    !TableExists(c, "restaurant_handheld_devices"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
