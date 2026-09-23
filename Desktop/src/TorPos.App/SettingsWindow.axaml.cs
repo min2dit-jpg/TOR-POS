@@ -2658,18 +2658,21 @@ private Control TsePage()
 
         if (result.Device is not null)
         {
-            _text["tse.serial"].Text =
-                result.Device.SerialNumber;
-
-            _text["tse.bsi_id"].Text =
-                result.Device.BsiCertificationId;
-
-            _text["tse.device_path"].Text =
-                result.Device.DevicePath;
-
-            _text["tse.expiry_date"].Text =
-                result.Device.CertificateValidUntil?
-                    .ToString("yyyy-MM-dd") ?? "";
+            // Only what the device actually reported. The WORM API does not
+            // return a BSI certification id at all - the bridge passes an empty
+            // string for it - so writing it back unconditionally wiped the
+            // number the operator had entered from the certificate, every
+            // single time the TSE was activated or re-read. The
+            // Programmierungsprotokoll then kept printing "FEHLT" no matter how
+            // often they typed it in.
+            //
+            // A field the device cannot answer for is the operator's to keep.
+            AdoptFromDevice("tse.serial", result.Device.SerialNumber);
+            AdoptFromDevice("tse.bsi_id", result.Device.BsiCertificationId);
+            AdoptFromDevice("tse.device_path", result.Device.DevicePath);
+            AdoptFromDevice(
+                "tse.expiry_date",
+                result.Device.CertificateValidUntil?.ToString("yyyy-MM-dd") ?? "");
         }
 
         await _settings.SaveManyAsync(
@@ -4370,6 +4373,19 @@ private Control TsePage()
         }
 
         return minutes + " " + UiLanguage.T("Min.");
+    }
+
+    /// <summary>
+    /// Takes a value the TSE reported, and leaves what is already there when it
+    /// reported nothing. Silence from a device is not a correction.
+    /// </summary>
+    private void AdoptFromDevice(string key, string? reported)
+    {
+        if (string.IsNullOrWhiteSpace(reported))
+            return;
+
+        if (_text.TryGetValue(key, out var box))
+            box.Text = reported;
     }
 
     private Control ReadOnlyRow(string label, string value)

@@ -115,6 +115,20 @@ public static class TseOutageHistoryTests
             store.Contains("_current = \"\";", StringComparison.Ordinal),
             "TSE clock: only the TimeAdmin PIN is ever stored, protected for the Windows user, and a PIN that cannot be decrypted degrades to none instead of crashing a sale");
 
+        // The WORM API returns no BSI certification id - the bridge passes an
+        // empty string for it - and the settings page used to write that empty
+        // string straight back over the number the operator had typed from the
+        // BSI certificate. Every activation wiped it, and the
+        // Programmierungsprotokoll kept reporting FEHLT.
+        var bridge = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/SwissbitWormApiBridge.cs"));
+        var adopt = Block(settings, "private void AdoptFromDevice", "private Control ReadOnlyRow");
+        assert(
+            settings.Contains("AdoptFromDevice(\"tse.bsi_id\", result.Device.BsiCertificationId);", StringComparison.Ordinal) &&
+            !Regex.IsMatch(settings, @"_text\[""tse\.bsi_id""\]\.Text\s*=\s*\r?\n?\s*result\.Device") &&
+            adopt.Contains("if (string.IsNullOrWhiteSpace(reported))", StringComparison.Ordinal) &&
+            adopt.Contains("return;", StringComparison.Ordinal),
+            "TSE identity: a field the device does not answer for keeps what the operator entered, so reading the TSE cannot erase the BSI certification id");
+
         return Task.CompletedTask;
     }
 
