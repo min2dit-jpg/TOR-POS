@@ -757,6 +757,45 @@ internal static class RestaurantFoundationTests
                     "Single-query Restaurant table summary must preserve live session version and cent-exact open total.");
             }
 
+            var concurrentSummaries =
+                await Task.WhenAll(
+                    Enumerable.Range(0, 12)
+                        .Select(_ =>
+                            repo.ListLiveTableSummariesAsync()));
+
+            if (concurrentSummaries.Any(snapshot =>
+                    snapshot.Single(x => x.TableId == tableId)
+                        .OpenTotalCents != 2580))
+            {
+                throw new InvalidOperationException(
+                    "Concurrent Restaurant read-only table refreshes must stay consistent under WAL.");
+            }
+
+            var readOnlyRejectedWrite = false;
+            try
+            {
+                await using var readOnly =
+                    db.OpenReadConnection();
+                await using var illegalWrite =
+                    readOnly.CreateCommand();
+                illegalWrite.CommandText =
+                    "UPDATE restaurant_tables SET display_name='ILLEGAL' WHERE id=$id;";
+                illegalWrite.Parameters.AddWithValue(
+                    "$id",
+                    tableId);
+                await illegalWrite.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException)
+            {
+                readOnlyRejectedWrite = true;
+            }
+
+            if (!readOnlyRejectedWrite)
+            {
+                throw new InvalidOperationException(
+                    "Restaurant read-only hot-path connection must reject writes.");
+            }
+
             var staleItemRejected = false;
             try
             {
