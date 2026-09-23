@@ -10,6 +10,7 @@ namespace TorPos.Infrastructure;
 public interface IDirectCloudTseClient
 {
     bool IsConfigured { get; }
+    bool ExportAvailable { get; }
 
     Task<TseProbeResult> ProbeAsync(
         CancellationToken ct = default);
@@ -81,7 +82,8 @@ public sealed class DirectCloudTseProvider : ITseProvider
 
     public bool ExportAvailable =>
         FiscalRelease.CloudTseValidated &&
-        _client.IsConfigured;
+        _client.IsConfigured &&
+        _client.ExportAvailable;
 
     public TseRuntimeStatus GetRuntimeStatus()
     {
