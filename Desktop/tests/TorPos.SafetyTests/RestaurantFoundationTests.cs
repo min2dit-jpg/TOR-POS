@@ -147,6 +147,7 @@ internal static class RestaurantFoundationTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         var standardHandheldRejected = false;
@@ -252,8 +253,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 33,
-                "Restaurant database reaches schema version 33");
+                result.ToVersion == 34,
+                "Restaurant database reaches schema version 34");
 
             await using (var c = db.OpenConnection())
             {
@@ -269,7 +270,8 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_handheld_devices") &&
                     TableExists(c, "restaurant_reservations") &&
                     TableExists(c, "restaurant_terminals") &&
-                    TableExists(c, "restaurant_device_commands"),
+                    TableExists(c, "restaurant_device_commands") &&
+                    TableExists(c, "restaurant_operator_sessions"),
                     "Restaurant-only tables including Bestellung, kitchen, reservations, terminal and device-command records are created for the Restaurant product");
 
                 var immutableBestellung = false;
@@ -385,6 +387,98 @@ internal static class RestaurantFoundationTests
             assert(
                 pairingReuseRejected,
                 "Restaurant handheld pairing code is one-time use");
+
+            var operatorAuth =
+                new AuthenticationService(db);
+            await operatorAuth.InitializeAsync();
+
+            var operatorSessions =
+                new RestaurantOperatorSessionService(
+                    db,
+                    plusEntitlements,
+                    operatorAuth);
+
+            var operatorLogin =
+                await operatorSessions.LoginAsync(
+                    paired.DeviceId,
+                    "admin",
+                    "1234");
+
+            string storedOperatorTokenHash;
+            await using (var operatorRead = db.OpenReadConnection())
+            {
+                await using var q = operatorRead.CreateCommand();
+                q.CommandText = """
+                    SELECT token_hash
+                    FROM restaurant_operator_sessions
+                    WHERE device_id=$device
+                      AND username='admin'
+                      AND revoked_at IS NULL
+                    LIMIT 1;
+                    """;
+                q.Parameters.AddWithValue(
+                    "$device",
+                    paired.DeviceId);
+                storedOperatorTokenHash =
+                    Convert.ToString(
+                        await q.ExecuteScalarAsync()) ?? "";
+            }
+
+            assert(
+                operatorLogin.SessionToken.Length == 64 &&
+                storedOperatorTokenHash.Length == 64 &&
+                !string.Equals(
+                    operatorLogin.SessionToken,
+                    storedOperatorTokenHash,
+                    StringComparison.Ordinal),
+                "Restaurant operator session stores only a SHA-256 token hash, never the raw shift token");
+
+            var authenticatedOperator =
+                await operatorSessions.RequireAsync(
+                    paired.DeviceId,
+                    operatorLogin.SessionToken);
+
+            assert(
+                authenticatedOperator.Username == "admin" &&
+                authenticatedOperator.Can(
+                    UserPermissions.Sale),
+                "Restaurant operator session resolves the canonical current POS user with Sale permission");
+
+            var wrongDeviceRejected = false;
+            try
+            {
+                await operatorSessions.RequireAsync(
+                    "DEVICE-OTHER",
+                    operatorLogin.SessionToken);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                wrongDeviceRejected = true;
+            }
+
+            assert(
+                wrongDeviceRejected,
+                "Restaurant operator session token is bound to its paired device");
+
+            await operatorSessions.LogoutAsync(
+                paired.DeviceId,
+                operatorLogin.SessionToken);
+
+            var loggedOutRejected = false;
+            try
+            {
+                await operatorSessions.RequireAsync(
+                    paired.DeviceId,
+                    operatorLogin.SessionToken);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                loggedOutRejected = true;
+            }
+
+            assert(
+                loggedOutRejected,
+                "Restaurant operator logout revokes the shift token immediately");
 
             await pairing.DeactivateAsync(
                 paired.DeviceId);
@@ -1419,7 +1513,8 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_handheld_devices") &&
                     !TableExists(c, "restaurant_reservations") &&
                     !TableExists(c, "restaurant_terminals") &&
-                    !TableExists(c, "restaurant_device_commands"),
+                    !TableExists(c, "restaurant_device_commands") &&
+                    !TableExists(c, "restaurant_operator_sessions"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
