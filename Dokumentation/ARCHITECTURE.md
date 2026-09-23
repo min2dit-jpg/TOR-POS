@@ -129,6 +129,13 @@ Gerätenamen, Pfade, Ausnahmetexte und Beträge sind Daten und bleiben unveränd
 deshalb wird eine Beschriftung getrennt von dem übersetzt, was an sie angehängt
 wird.
 
+Die Tabelle umfasst rund 1300 Strings je Sprache und deckt die gesamte
+Bedienoberfläche ab: Anmeldung, Kasse, Zahlung, Dialoge, Berichte, Stammdaten,
+Einstellungen einschliesslich Technikerbereich, TSE, Lizenzierung sowie die
+Einrichtungsassistenten. Türkisch und Englisch bleiben symmetrisch; kein Schlüssel
+steht zweimal in derselben Tabelle. Die Abdeckung ist je Bereich geprüft, damit
+ein neuer Text nicht unbemerkt nur deutsch erscheint.
+
 ### Cloud
 
 Separater Node.js-Dienst für TOR-Cloud-Funktionen. Cloud-Verfügbarkeit darf den lokalen Kassiervorgang nicht zu einer Online-Abhängigkeit machen.
