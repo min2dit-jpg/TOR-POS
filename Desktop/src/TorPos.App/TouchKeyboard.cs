@@ -55,7 +55,7 @@ internal sealed class TouchKeyboard
             if(e.Source is TextBox box && !box.IsReadOnly && box.IsEnabled)
             {
                 target = box;
-                hint.Text = box.PasswordChar != '\0' ? "Geschützte Eingabe" : "Bildschirmtastatur · DE";
+                hint.Text = UiLanguage.T(box.PasswordChar != '\0' ? "Geschützte Eingabe" : "Bildschirmtastatur · DE");
                 var name = ((box.Name ?? "") + " " + (box.PlaceholderText ?? "")).ToLowerInvariant();
                 numbers = new[] {"preis", "price", "amount", "quantity", "bestand", "menge", "pin", "cents", "anzahl"}.Any(name.Contains);
                 if(keys.IsVisible) Render();
@@ -81,7 +81,7 @@ internal sealed class TouchKeyboard
     bool Valid() => target is { IsReadOnly:false, IsEnabled:true, IsVisible:true } && TopLevel.GetTopLevel(target)==window;
     void Show()
     {
-        if(!Valid()) { hint.Text="Zuerst in ein Eingabefeld tippen."; return; }
+        if(!Valid()) { hint.Text=UiLanguage.T("Zuerst in ein Eingabefeld tippen."); return; }
         if(scrolling is null)
         {
             var previousHeight=body.Bounds.Height;

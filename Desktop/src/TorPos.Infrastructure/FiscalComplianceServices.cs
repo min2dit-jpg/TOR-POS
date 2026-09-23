@@ -161,6 +161,41 @@ public async Task<TseOutage?> GetOpenAsync(CancellationToken ct = default)
         await q.ExecuteNonQueryAsync(ct);
         await _audit.WriteAsync(actor, "TSE_OUTAGE_CLOSED", "TSE_OUTAGE", existing.Id.ToString(), $"started_at={existing.StartedAt:O}; ended_at={now:O}", ct);
     });
+}
+
+public async Task<IReadOnlyList<TseOutage>> ListRecentAsync(int limit = 50, CancellationToken ct = default)
+{
+    // Read-only. The table is protected against DELETE by a trigger, so the
+    // list is the history as it happened and cannot be tidied up for a Pruefer.
+    if (limit < 1) limit = 1;
+    if (limit > 500) limit = 500;
+
+    return await IoQueue.RunAsync(async () =>
+    {
+        await using var c = _db.OpenConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT id,started_at,ended_at,reason,actor,state
+            FROM tse_outage_log
+            ORDER BY id DESC
+            LIMIT $limit;
+            """;
+        q.Parameters.AddWithValue("$limit", limit);
+        var rows = new List<TseOutage>();
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+        {
+            var ended = r.GetString(2);
+            rows.Add(new TseOutage(
+                r.GetInt64(0),
+                DateTimeOffset.Parse(r.GetString(1)),
+                string.IsNullOrWhiteSpace(ended) ? null : DateTimeOffset.Parse(ended),
+                r.GetString(3),
+                r.GetString(4),
+                r.GetString(5)));
+        }
+        return (IReadOnlyList<TseOutage>)rows;
+    });
 }}
 
 public sealed class CashMovementRepository : ICashMovementRepository

@@ -82,14 +82,14 @@ public sealed class TextReportWindow : Window
                     DefaultExtension = "pdf",
                     FileTypeChoices = new[] { new FilePickerFileType("PDF") { Patterns = new[] { "*.pdf" } } }
                 });
-                if (file is null) { _status.Text = "PDF-Speichern abgebrochen."; return; }
+                if (file is null) { _status.Text = UiLanguage.T("PDF-Speichern abgebrochen."); return; }
                 var path = await Task.Run(() => _management.SavePdf(_document, file.Path.LocalPath));
-                _status.Text = $"PDF gespeichert: {path}";
+                _status.Text = UiLanguage.T("PDF gespeichert") + $": {path}";
             }
             catch (Exception ex)
             {
                 CrashLog.WriteException("Report PDF", ex);
-                _status.Text = "PDF-Fehler: " + ex.Message;
+                _status.Text = UiLanguage.T("PDF-Fehler") + ": " + ex.Message;
             }
             finally { pdf.IsEnabled = true; }
         };
@@ -114,20 +114,20 @@ public sealed class TextReportWindow : Window
         {
             if (_printer is null || _settings is null)
             {
-                _status.Text = "Druckfunktion ist in diesem Fenster nicht verbunden.";
+                _status.Text = UiLanguage.T("Druckfunktion ist in diesem Fenster nicht verbunden.");
                 return;
             }
 
             if (_paperFormat.SelectedItem is not ReportFormatChoice choice)
             {
-                _status.Text = "Bitte Papierformat auswählen.";
+                _status.Text = UiLanguage.T("Bitte Papierformat auswählen.");
                 return;
             }
 
             var printerName = _printerName.SelectedItem?.ToString()?.Trim() ?? "";
             if (printerName.Length == 0)
             {
-                _status.Text = "Bitte einen Windows-Drucker auswählen.";
+                _status.Text = UiLanguage.T("Bitte einen Windows-Drucker auswählen.");
                 return;
             }
 
@@ -147,12 +147,12 @@ public sealed class TextReportWindow : Window
                         _document.CreatedAt,
                         choice.Format),
                     printerName);
-                _status.Text = $"Bericht an „{printerName}“ gesendet · {choice.Label}. Papierausdruck prüfen.";
+                _status.Text = UiLanguage.T("Bericht an") + $" „{printerName}“ " + UiLanguage.T("gesendet") + $" · {choice.Label}. " + UiLanguage.T("Papierausdruck prüfen.");
             }
             catch (Exception ex)
             {
                 CrashLog.WriteException("Report print", ex);
-                _status.Text = "Druckfehler: " + ex.Message;
+                _status.Text = UiLanguage.T("Druckfehler") + ": " + ex.Message;
             }
             finally { print.IsEnabled = true; }
         };
@@ -276,13 +276,13 @@ public sealed class TextReportWindow : Window
             else
                 SelectRecommendedPrinter();
 
-            _status.Text = installed.Count == 0
+            _status.Text = UiLanguage.T(installed.Count == 0
                 ? "Keine Windows-Drucker gefunden. Unter Einstellungen → Geräte prüfen."
-                : "Druckziel auswählen. TOR merkt sich Drucker und Papierformat für diesen Berichtstyp.";
+                : "Druckziel auswählen. TOR merkt sich Drucker und Papierformat für diesen Berichtstyp.");
         }
         catch (Exception ex)
         {
-            _status.Text = "Druckereinstellungen konnten nicht geladen werden: " + ex.Message;
+            _status.Text = UiLanguage.T("Druckereinstellungen konnten nicht geladen werden") + ": " + ex.Message;
         }
     }
 
@@ -336,6 +336,7 @@ public sealed class DuplicateArticlesWindow : Window
 {
     public DuplicateArticlesWindow(IReadOnlyList<DuplicateArticleRow> rows)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "Duplikate anzeigen";
         Width = 900;
         Height = 650;
@@ -398,6 +399,7 @@ public sealed class InventoryWindow : Window
         IReceiptPrinterService printer,
         ISettingsRepository settings)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _management = management;
         _user = user;
         _printer = printer;
@@ -488,7 +490,7 @@ public sealed class InventoryWindow : Window
             }
             catch (Exception ex)
             {
-                _status.Text = "Fehler: " + ex.Message;
+                _status.Text = UiLanguage.T("Fehler") + ": " + ex.Message;
             }
         };
 
@@ -591,7 +593,7 @@ public sealed class InventoryWindow : Window
         _list.ItemsSource = _rows.Select(InventoryLine).ToArray();
         var low = _allRows.Count(x => x.IsLowStock);
         var purchaseValue = _allRows.Sum(x => x.PurchaseStockValueCents);
-        _status.Text = $"{_rows.Count} Artikel angezeigt · {_allRows.Count} aktiv · {low} Mindestbestand-Warnung(en) · Warenwert EK {Formatting.Money(purchaseValue)}.";
+        _status.Text = $"{_rows.Count} " + UiLanguage.T("Artikel angezeigt") + $" · {_allRows.Count} " + UiLanguage.T("aktiv") + $" · {low} " + UiLanguage.T("Mindestbestand-Warnung(en)") + " · " + UiLanguage.T("Warenwert EK") + $" {Formatting.Money(purchaseValue)}.";
 
         if (_rows.Count == 0)
         {
@@ -626,8 +628,8 @@ public sealed class InventoryWindow : Window
         {
             ApplyFilter();
             _status.Text = _rows.Count == 0
-                ? $"Kein Artikel gefunden: {code}"
-                : $"{_rows.Count} Treffer für „{code}“ · bitte Artikel auswählen.";
+                ? UiLanguage.T("Kein Artikel gefunden") + $": {code}"
+                : $"{_rows.Count} " + UiLanguage.T("Treffer für") + $" „{code}“ · " + UiLanguage.T("bitte Artikel auswählen.");
             return;
         }
 
@@ -636,9 +638,9 @@ public sealed class InventoryWindow : Window
         _list.SelectedIndex = 0;
         _quantity.Focus();
         _quantity.SelectAll();
-        _status.Text = $"Scanner-Treffer: {exact.Name} · Bestand {exact.StockQuantity:0.###} {exact.Unit}" +
-            (exact.MinStockQuantity > 0m ? $" · Mindestbestand {exact.MinStockQuantity:0.###}" : "") +
-            " · neuen Bestand eingeben und ENTER drücken.";
+        _status.Text = UiLanguage.T("Scanner-Treffer") + $": {exact.Name} · " + UiLanguage.T("Bestand") + $" {exact.StockQuantity:0.###} {exact.Unit}" +
+            (exact.MinStockQuantity > 0m ? " · " + UiLanguage.T("Mindestbestand") + $" {exact.MinStockQuantity:0.###}" : "") +
+            " · " + UiLanguage.T("neuen Bestand eingeben und ENTER drücken.");
     }
 
     private async Task SaveAsync()
@@ -646,14 +648,14 @@ public sealed class InventoryWindow : Window
         var row = Selected();
         if (row is null)
         {
-            _status.Text = "Bitte einen Artikel auswählen.";
+            _status.Text = UiLanguage.T("Bitte einen Artikel auswählen.");
             return;
         }
 
         var raw = (_quantity.Text ?? "").Trim().Replace(',', '.');
         if (!decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var qty) || qty < 0)
         {
-            _status.Text = "Ungültiger Bestand.";
+            _status.Text = UiLanguage.T("Ungültiger Bestand.");
             return;
         }
 
@@ -666,13 +668,13 @@ public sealed class InventoryWindow : Window
         if (!saved)
         {
             await ReloadAsync(row.ProductId);
-            _status.Text = "Bestand wurde seit dem Öffnen an anderer Stelle verändert. TOR hat den neueren Bestand NICHT überschrieben. Bitte aktuellen Wert prüfen und erneut speichern.";
+            _status.Text = UiLanguage.T("Bestand wurde seit dem Öffnen an anderer Stelle verändert. TOR hat den neueren Bestand NICHT überschrieben. Bitte aktuellen Wert prüfen und erneut speichern.");
             return;
         }
 
         await ReloadAsync(row.ProductId);
         App.CloudSync?.RequestStockRefresh();
-        _status.Text = $"{row.Name}: Bestand {qty:0.###} gespeichert · Cloud-Abgleich vorgemerkt · nächsten Barcode scannen.";
+        _status.Text = $"{row.Name}: " + UiLanguage.T("Bestand") + $" {qty:0.###} " + UiLanguage.T("gespeichert · Cloud-Abgleich vorgemerkt · nächsten Barcode scannen.");
         _search.Focus();
         _search.SelectAll();
     }
@@ -782,7 +784,7 @@ public sealed class ZArchiveWindow : Window
         var row = Selected();
         if (row is null)
         {
-            _status.Text = "Bitte einen archivierten Z-Bericht auswählen.";
+            _status.Text = UiLanguage.T("Bitte einen archivierten Z-Bericht auswählen.");
             return;
         }
 
@@ -795,8 +797,8 @@ public sealed class ZArchiveWindow : Window
             "Nachdruck aus dem unveränderbaren Z-Archiv. Der ursprüngliche Z-Datensatz wird nicht geändert. Papierformat und Drucker sind frei wählbar.")
             .ShowDialog(this);
         _status.Text = createPdf
-            ? $"Z {row.ZNumber:000000}: Druck-/PDF-Fenster geöffnet. Archivdaten bleiben unverändert."
-            : $"Z {row.ZNumber:000000} angezeigt.";
+            ? $"Z {row.ZNumber:000000}: " + UiLanguage.T("Druck-/PDF-Fenster geöffnet. Archivdaten bleiben unverändert.")
+            : $"Z {row.ZNumber:000000} " + UiLanguage.T("angezeigt.");
     }
 }
 
@@ -812,6 +814,7 @@ public sealed class PfandLeergutSettingsWindow : Window
 
     public PfandLeergutSettingsWindow(ISettingsRepository settings)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         _settings = settings;
         Title = "Pfand / Leergut";
         Width = 560;
@@ -900,7 +903,7 @@ public sealed class PfandLeergutSettingsWindow : Window
         var boxes = new[] { _p8, _p15, _p25, _empty, _full };
         if (boxes.Any(x => !long.TryParse(x.Text, out var v) || v < 0 || v > 100000))
         {
-            _status.Text = "Bitte gültige Cent-Beträge eingeben.";
+            _status.Text = UiLanguage.T("Bitte gültige Cent-Beträge eingeben.");
             return;
         }
 
@@ -912,6 +915,6 @@ public sealed class PfandLeergutSettingsWindow : Window
             ["pfand.crate.empty.cent"] = _empty.Text!.Trim(),
             ["pfand.crate.full.cent"] = _full.Text!.Trim()
         });
-        _status.Text = "Pfand-/Leergutwerte gespeichert.";
+        _status.Text = UiLanguage.T("Pfand-/Leergutwerte gespeichert.");
     }
 }

@@ -13,6 +13,7 @@ public sealed class SumUpConnectionWindow : Window
 
     public SumUpConnectionWindow()
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "SumUp Solo · Verbindung + 1,00 € Gerätetest"; Width = 780; Height = 860;
         MinWidth = 600; MinHeight = 600; WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
@@ -59,12 +60,12 @@ public sealed class SumUpConnectionWindow : Window
         async Task Run(Func<Task> operation, bool pairing = false)
         {
             if (busy) return;
-            busy = true; inputs.IsEnabled = false; status.Text = "SumUp wird abgefragt ...";
+            busy = true; inputs.IsEnabled = false; status.Text = UiLanguage.T("SumUp wird abgefragt ...");
             try { await operation(); }
-            catch (OperationCanceledException) { status.Text = "Abgebrochen / Zeitlimit erreicht." + (pairing ? " Kopplung kann erfolgt sein: zuerst Geräteliste laden." : ""); }
-            catch (HttpRequestException) { status.Text = "Netzwerkfehler. Internetverbindung prüfen." + (pairing ? " Kopplung kann erfolgt sein: zuerst Geräteliste laden." : ""); }
-            catch (System.Text.Json.JsonException) { status.Text = "Unerwartete SumUp-Antwort. Geräteliste erneut prüfen."; }
-            catch (Exception ex) { status.Text = ex is ArgumentException or InvalidOperationException ? ex.Message : "SumUp-Antwort konnte nicht verarbeitet werden. Geräteliste prüfen."; }
+            catch (OperationCanceledException) { status.Text = UiLanguage.T("Abgebrochen / Zeitlimit erreicht.") + (pairing ? " " + UiLanguage.T("Kopplung kann erfolgt sein: zuerst Geräteliste laden.") : ""); }
+            catch (HttpRequestException) { status.Text = UiLanguage.T("Netzwerkfehler. Internetverbindung prüfen.") + (pairing ? " " + UiLanguage.T("Kopplung kann erfolgt sein: zuerst Geräteliste laden.") : ""); }
+            catch (System.Text.Json.JsonException) { status.Text = UiLanguage.T("Unerwartete SumUp-Antwort. Geräteliste erneut prüfen."); }
+            catch (Exception ex) { status.Text = ex is ArgumentException or InvalidOperationException ? UiLanguage.T(ex.Message) : UiLanguage.T("SumUp-Antwort konnte nicht verarbeitet werden. Geräteliste prüfen."); }
             finally { busy = false; inputs.IsEnabled = true; }
         }
 
@@ -75,39 +76,41 @@ public sealed class SumUpConnectionWindow : Window
             readers.ItemsSource = result;
             if (result.Count > 0) readers.SelectedIndex = 0;
             status.Text = result.Count == 0
-                ? "Zugang erfolgreich. Noch kein API-Reader gekoppelt. Unten einen Solo koppeln."
-                : $"{result.Count} Gerät(e) gefunden. Gerät auswählen und Status prüfen. 'paired' allein bestätigt keine Online-Verbindung.";
+                ? UiLanguage.T("Zugang erfolgreich. Noch kein API-Reader gekoppelt. Unten einen Solo koppeln.")
+                : $"{result.Count} " + UiLanguage.T("Gerät(e) gefunden. Gerät auswählen und Status prüfen. 'paired' allein bestätigt keine Online-Verbindung.");
         });
 
         statusButton.Click += async (_, _) => await Run(async () =>
         {
             if (readers.SelectedItem is not SumUpReader reader) throw new ArgumentException("Zuerst Geräteliste laden und Solo auswählen.");
-            status.Text = await _service.StatusAsync(merchant.Text ?? "", key.Text ?? "", reader.Id, _closing.Token);
+            status.Text = UiLanguage.T(await _service.StatusAsync(merchant.Text ?? "", key.Text ?? "", reader.Id, _closing.Token));
         });
 
         sendOneEuro.Click += async (_, _) => await Run(async () =>
         {
             if (readers.SelectedItem is not SumUpReader reader) throw new ArgumentException("Zuerst Geräteliste laden und Solo auswählen.");
             var checkout = await _service.StartOneEuroDeviceTestAsync(merchant.Text ?? "", key.Text ?? "", reader.Id, _closing.Token);
-            status.Text = "1,00 € TESTANFORDERUNG wurde von der SumUp API angenommen.\n" +
+            status.Text = UiLanguage.T("1,00 € TESTANFORDERUNG wurde von der SumUp API angenommen.") + "\n" +
                 $"Checkout-ID: {checkout.CheckoutId}\n\n" +
-                "JETZT SOLO ANSEHEN: Wenn dort 1,00 € erscheint, ist TOR POS → SumUp → Solo erfolgreich. " +
-                "KEINE KARTE VORHALTEN. Danach sofort TEST ABBRECHEN drücken oder am Solo abbrechen.";
+                UiLanguage.T(
+                    "JETZT SOLO ANSEHEN: Wenn dort 1,00 € erscheint, ist TOR POS → SumUp → Solo erfolgreich. " +
+                    "KEINE KARTE VORHALTEN. Danach sofort TEST ABBRECHEN drücken oder am Solo abbrechen.");
         });
 
         terminate.Click += async (_, _) => await Run(async () =>
         {
             if (readers.SelectedItem is not SumUpReader reader) throw new ArgumentException("Zuerst Geräteliste laden und Solo auswählen.");
             await _service.TerminateCheckoutAsync(merchant.Text ?? "", key.Text ?? "", reader.Id, _closing.Token);
-            status.Text = "ABBRUCHANFORDERUNG an SumUp gesendet. SumUp liefert dafür keine synchrone Abbruchbestätigung. " +
-                "Solo-Anzeige kontrollieren. Der Abbruch funktioniert nur, solange das Gerät auf eine Karten-/PIN-Aktion wartet.";
+            status.Text = UiLanguage.T(
+                "ABBRUCHANFORDERUNG an SumUp gesendet. SumUp liefert dafür keine synchrone Abbruchbestätigung. " +
+                "Solo-Anzeige kontrollieren. Der Abbruch funktioniert nur, solange das Gerät auf eine Karten-/PIN-Aktion wartet.");
         });
 
         pair.Click += async (_, _) => await Run(async () =>
         {
             var reader = await _service.PairAsync(merchant.Text ?? "", key.Text ?? "", code.Text ?? "", _closing.Token);
             code.Text = ""; readers.ItemsSource = new[] { reader }; readers.SelectedIndex = 0;
-            status.Text = $"Kopplungsantwort: {reader.PairingStatus} · {reader.Id}\nBestätigung am Solo kontrollieren; danach Geräteliste laden und Status prüfen. Keine Zahlung gestartet.";
+            status.Text = UiLanguage.T("Kopplungsantwort") + $": {reader.PairingStatus} · {reader.Id}\n" + UiLanguage.T("Bestätigung am Solo kontrollieren; danach Geräteliste laden und Status prüfen. Keine Zahlung gestartet.");
         }, true);
 
         // Changing account credentials invalidates the displayed account's reader selection.

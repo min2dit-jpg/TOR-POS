@@ -9,7 +9,7 @@ public partial class MainWindow
 {
     private async Task ShowMenuInfoAsync(string title, string message)
     {
-        ScannerStatus.Text = message;
+        StatusLine = message;
         var window = new Window { Title = title, Width = 600, Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var close = new Button { Content = "SCHLIESSEN", MinHeight = 48, MinWidth = 150 };
@@ -17,12 +17,105 @@ public partial class MainWindow
         window.Content = new ScrollViewer { Content = new StackPanel { Margin = new Avalonia.Thickness(22), Spacing = 20,
             Children = { new TextBlock { Text = title, FontSize = 22 },
                 new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, close } } };
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
+    }
+
+    // Shown once per program start when the TSE is not ready. A missing TSE is
+    // not a crash and must not stop the till - § 146a expects the outage to be
+    // documented and the shop to keep working, which TseFailSafeService already
+    // does. What was missing is that anyone notices: the status line under the
+    // scanner is overwritten by the next scan, and the header badge is easy to
+    // work past for a whole day. So the operator is told once, plainly, with the
+    // way to fix it if they are allowed to.
+    private async Task ShowTseUnavailableAsync(string headline, string deviceMessage)
+    {
+        var window = new Window
+        {
+            Title = "TSE-Prüfung beim Start",
+            Width = 700,
+            Height = 430,
+            MinWidth = 620,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        var openSettings = false;
+        var settings = new Button
+        {
+            Content = "TSE-EINSTELLUNGEN ÖFFNEN",
+            MinHeight = 48,
+            MinWidth = 220,
+            IsVisible = _currentUser.IsAdmin
+        };
+        var close = new Button { Content = "WEITER OHNE TSE", MinHeight = 48, MinWidth = 180 };
+        settings.Click += (_, _) => { openSettings = true; window.Close(); };
+        close.Click += (_, _) => window.Close();
+
+        // Scrolls rather than clips. This window is built inline, so the
+        // headless layout gate - which constructs window classes - never
+        // measures it, and the Turkish and English sentences are longer than
+        // the German ones they are keyed by.
+        window.Content = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Avalonia.Thickness(24),
+                Spacing = 16,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = headline,
+                        FontSize = 23,
+                        FontWeight = Avalonia.Media.FontWeight.Bold,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        Foreground = AppTheme.WarningAmber
+                    },
+                    new TextBlock
+                    {
+                        Text = deviceMessage,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        FontSize = 15,
+                        Opacity = 0.85
+                    },
+                    // One literal, not a concatenation: the translation table is
+                    // keyed by the exact German sentence, and a key that only
+                    // exists once the compiler has glued three pieces together
+                    // cannot be found by grep or by a coverage check.
+                    new TextBlock
+                    {
+                        Text = "Bis eine betriebsbereite TSE erkannt wird, wird kein Vorgang signiert. Die Kasse bleibt bedienbar und der Ausfall wird dokumentiert; die Vorgänge sind dann aber nicht fiskal abgesichert.",
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        FontSize = 15
+                    },
+                    new TextBlock
+                    {
+                        Text = _currentUser.IsAdmin
+                            ? "Prüfen: steckt die TSE im USB-Anschluss, wird sie im Explorer als Laufwerk angezeigt, ist der Techniker-Bereich eingerichtet?"
+                            : "Bitte die Betreiberin oder den Betreiber informieren. Der Verkauf kann weiterlaufen.",
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        FontSize = 15,
+                        Foreground = AppTheme.AccentBlue
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 10,
+                        Children = { settings, close }
+                    }
+                }
+            }
+        };
+
+        UiLanguage.Apply(window);
+        await window.ShowDialog(this);
+        if (openSettings)
+            await OpenSettingsPageAsync("Erweitert / Techniker 🔒");
     }
 
     private async Task ShowPrinterIssueAsync(string title, string message, bool uncertainQueue)
     {
-        ScannerStatus.Text = message;
+        StatusLine = message;
         var window = new Window
         {
             Title = title,
@@ -65,6 +158,7 @@ public partial class MainWindow
             }
         };
 
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
         if (action == "settings")
             await OpenSettingsPageAsync("Geräte");
@@ -77,7 +171,7 @@ public partial class MainWindow
 
     private async Task<bool> ConfirmCheckoutWithoutPrinterAsync(string title, string message)
     {
-        ScannerStatus.Text = message;
+        StatusLine = message;
         var window = new Window
         {
             Title = title,
@@ -112,6 +206,7 @@ public partial class MainWindow
                     Children = { continueButton, settingsButton, cancelButton } }
             }
         };
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
         if (action == "settings")
             await OpenSettingsPageAsync("Geräte");
@@ -133,7 +228,7 @@ public partial class MainWindow
         }
         try
         {
-            ScannerStatus.Text = "BONDRUCKER WIRD GEPRÜFT · maximal 2 Sekunden";
+            StatusLine = "BONDRUCKER WIRD GEPRÜFT · maximal 2 Sekunden";
             // R67.2: Only actual Windows/device I/O is measured here.
             // Warning-dialog reading time must never be reported as POS latency.
             var probeStarted = Stopwatch.GetTimestamp();
@@ -161,7 +256,7 @@ public partial class MainWindow
                 return proceed;
             }
 
-            ScannerStatus.Text = "BONDRUCKER BEREIT";
+            StatusLine = "BONDRUCKER BEREIT";
             return true;
         }
         catch (TimeoutException)
@@ -190,11 +285,11 @@ public partial class MainWindow
     {
         if (withoutPrinterAccepted ?? _checkoutWithoutPrinterAccepted)
         {
-            ScannerStatus.Text += " · BONDRUCKER NICHT ERKANNT · ohne Druck fortgesetzt";
+            StatusLine = $"{StatusLine} · {UiLanguage.T("BONDRUCKER NICHT ERKANNT · ohne Druck fortgesetzt")}";
             return;
         }
         if (!explicitRequest && !_settingsCache.GetBool("receipt.auto_print", true))
-        { ScannerStatus.Text += " · BON AUS: kein Testdruck"; return; }
+        { StatusLine = $"{StatusLine} · {UiLanguage.T("BON AUS: kein Testdruck")}"; return; }
         var printer = _settingsCache.GetText("device.receipt_printer.name", "");
         if (!_settingsCache.GetBool("device.receipt_printer.enabled", false) || string.IsNullOrWhiteSpace(printer))
         {
@@ -223,7 +318,7 @@ public partial class MainWindow
             }
 
             await _receiptPrinter.PrintReceiptAsync(job, printer);
-            ScannerStatus.Text = "TESTBON an Windows übergeben · Papierausdruck prüfen · keine echte Buchung";
+            StatusLine = "TESTBON an Windows übergeben · Papierausdruck prüfen · keine echte Buchung";
         }
         catch (TimeoutException)
         {
@@ -255,7 +350,7 @@ public partial class MainWindow
     private bool _closingInProgress;
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if(_paymentInProgress) { e.Cancel=true; ScannerStatus.Text="Zahlung läuft · bitte Ergebnis abwarten"; }
+        if(_paymentInProgress) { e.Cancel=true; StatusLine="Zahlung läuft · bitte Ergebnis abwarten"; }
         else if(!_closingPrepared)
         {
             e.Cancel=true;
@@ -309,6 +404,7 @@ public partial class MainWindow
             dialog.Content=new StackPanel {Margin=new Avalonia.Thickness(22),Spacing=12,Children={
                 new TextBlock {Text="Zuerst Windows-Druckwarteschlange und Papierbelege prüfen. Noch laufende Aufträge können später drucken.",TextWrapping=Avalonia.Media.TextWrapping.Wrap},
                 new TextBox {IsReadOnly=true,AcceptsReturn=true,Height=160,Text=string.Join("\n",jobs.Select(j=>$"{j.State} · {(j.Kitchen is not null ? "Küche P"+j.Kitchen.ParkNumber : j.PickupSlip is not null ? "Abholschein P"+j.PickupSlip.ParkNumber : j.Report is not null ? "Bericht " + j.Report.Title : j.Error is not null ? "Fehler " + j.Error.ErrorId : "Bon " + j.Receipt?.ReceiptNumber)} · {j.Id}"))},password,proof,confirm,status}};
+            UiLanguage.Apply(dialog);
             await dialog.ShowDialog(this);
         }
         catch(Exception ex) { ReportOperationalError("DRUCKER","Druckjournal prüfen.",ex,printerRelated:true); }
@@ -340,7 +436,7 @@ public partial class MainWindow
                 // Preserve known-paid state even when fiscal release is still blocked.
                 if(!reconciliation.ShouldCommit)
                 {
-                    ScannerStatus.Text=
+                    StatusLine=
                         "ZAHLUNG MANUELL BESTÄTIGT · Buchung bleibt bis Fiskal-Freigabe gesperrt · nicht erneut kassieren";
                     return;
                 }
@@ -363,7 +459,7 @@ public partial class MainWindow
                         operation.Snapshot.OperationId);
                     _restaurantCheckoutDraft = null;
                     _operationId = Guid.NewGuid().ToString("N");
-                    ScannerStatus.Text =
+                    StatusLine =
                         "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen";
                 }
                 else
@@ -380,7 +476,7 @@ public partial class MainWindow
 
                     UpdateCart();
 
-                    ScannerStatus.Text=
+                    StatusLine=
                         "KEINE BELASTUNG MANUELL BESTÄTIGT · Bon wieder offen";
                 }
             }
@@ -389,7 +485,7 @@ public partial class MainWindow
         {
             CrashLog.WriteException("MainWindow operation", ex);
             var id=ReportOperationalError("ZAHLUNGSPRÜFUNG","Prüfung nicht abgeschlossen. Zahlung gesperrt lassen.",ex);
-            ScannerStatus.Text=$"PRÜFUNG NICHT ABGESCHLOSSEN · NICHT ERNEUT KASSIEREN · Fehler-ID {id}";
+            StatusLine=$"PRÜFUNG NICHT ABGESCHLOSSEN · NICHT ERNEUT KASSIEREN · Fehler-ID {id}";
         }
         finally
         {

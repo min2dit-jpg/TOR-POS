@@ -1802,7 +1802,7 @@ public sealed class ProductEditorWindow : Window
         var weighted = _soldByWeight.IsChecked == true;
         _weightHint.IsVisible = weighted;
         _weightHint.Text = weighted
-            ? "Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt."
+            ? UiLanguage.T("Gewichtsartikel: Preis = €/kg. Verkauf kann ohne angeschlossene Waage manuell in g oder kg eingegeben werden. Bestand und Mindestbestand werden intern in kg geführt.")
             : "";
 
         if (weighted)
@@ -2390,7 +2390,7 @@ public sealed class ProductEditorWindow : Window
         if (_selectedArticle.IsWeighted)
         {
             _imageText.Text =
-                "ANGEBOT: Gewichtsartikel sind in R170 von Artikel-/Warengruppen-Angeboten ausgenommen, damit Teil-kг-Verkäufe centgenau bleiben. Normaler Bon-Rabatt bleibt möglich.";
+                "ANGEBOT: Gewichtsartikel sind in R170 von Artikel-/Warengruppen-Angeboten ausgenommen, damit Teil-kg-Verkäufe centgenau bleiben. Normaler Bon-Rabatt bleibt möglich.";
             return;
         }
 
@@ -2894,6 +2894,7 @@ public sealed class ComboComponentWindow : Window
     private readonly TextBox _qty=new(){Text="1",MinWidth=120};
     public ComboComponentWindow(IReadOnlyList<Product> products)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="Menü-Bestandteil";Width=620;Height=300;WindowStartupLocation=WindowStartupLocation.CenterOwner;
         _product.ItemsSource=products.Select(x=>new ComboProductChoice(x.Id,x.Name,x.BasePriceCents,x.VatRate)).ToArray();_product.SelectedIndex=products.Count>0?0:-1;
         var ok=new Button{Content="ÜBERNEHMEN",MinHeight=46,MinWidth=160};var cancel=new Button{Content="ABBRECHEN",MinHeight=46,MinWidth=140};
@@ -2906,6 +2907,7 @@ public sealed class ComboQuantityWindow : Window
     private readonly TextBox _qty=new(){MinWidth=140};
     public ComboQuantityWindow(string name,decimal quantity)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title="Menü-Menge";Width=480;Height=240;WindowStartupLocation=WindowStartupLocation.CenterOwner;_qty.Text=quantity.ToString("0.##");
         var ok=new Button{Content="ÜBERNEHMEN",MinHeight=46,MinWidth=150};var cancel=new Button{Content="ABBRECHEN",MinHeight=46,MinWidth=130};
         ok.Click+=(_,_)=>{var raw=(_qty.Text??"").Replace(',','.');if(decimal.TryParse(raw,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var q)&&q>0)Close(q);};cancel.Click+=(_,_)=>Close(null);

@@ -70,17 +70,24 @@ static class R49ReviewTests
         var allSettings = await settings.LoadAllAsync();
         assert(allSettings.GetText("imbiss.pickup_number.mode", "") is "OFF" or "SALE" or "ORDER",
             "R49 pickup mode setting is valid");
-        assert(!allSettings.ContainsKey("ui.language"), "R54 language preference is removed");
+        assert(!allSettings.ContainsKey("ui.language"), "a fresh till stores no interface language and therefore starts in German");
         assert(!allSettings.GetBool("device.kitchen_printer.enabled", true), "R49 kitchen printer is opt-in");
 
+        // The examples are fiscal terms of art on purpose. A cashier word only
+        // happens to be untranslated until someone translates it, so it would
+        // turn this contract red the day the next slice lands; Z-Bericht and
+        // DSFinV-K are German records by law and must never gain an entry.
         UiLanguage.Set("TR");
-        assert(UiLanguage.T("KASSE") == "KASSE" && UiLanguage.T("BESTELLUNG ANNEHMEN") == "BESTELLUNG ANNEHMEN",
-            "R54 legacy Turkish setting stays German");
+        assert(UiLanguage.T("KASSE") == "KASA" && UiLanguage.T("Z-Bericht") == "Z-Bericht" &&
+               UiLanguage.T("DSFinV-K") == "DSFinV-K",
+            "the Turkish till translates its own words and leaves the German fiscal terms alone");
         UiLanguage.Set("EN");
-        assert(UiLanguage.T("KASSE") == "KASSE" && UiLanguage.T("BESTELLUNG ANNEHMEN") == "BESTELLUNG ANNEHMEN",
-            "R54 legacy English setting stays German");
+        assert(UiLanguage.T("KASSE") == "TILL" && UiLanguage.T("Z-Bericht") == "Z-Bericht" &&
+               UiLanguage.T("DSFinV-K") == "DSFinV-K",
+            "the English till translates its own words and leaves the German fiscal terms alone");
         UiLanguage.Set("DE");
-        assert(UiLanguage.T("KASSE") == "KASSE", "R49 German operator UI remains original");
+        assert(UiLanguage.T("KASSE") == "KASSE" && UiLanguage.T("Z-Bericht") == "Z-Bericht",
+            "R49 German operator UI remains the source text even for strings that have translations");
 
         var journal = new PrintJobJournal(Path.Combine(root, "r49-print-journal"));
         var kitchen = new KitchenPrintJob(DateTimeOffset.Now, 12, order1.ParkNumber, "tester",

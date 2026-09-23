@@ -9,6 +9,7 @@ public sealed class TrialBlockedWindow : Window
 {
     public TrialBlockedWindow(TrialLicenseStatus status)
     {
+        Opened += (_, _) => UiLanguage.Apply(this);
         Title = "TOR POS Demo";
         Width = 680;
         Height = 390;

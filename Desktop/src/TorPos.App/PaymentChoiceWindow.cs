@@ -429,7 +429,17 @@ public sealed class PaymentChoiceWindow : Window
         RefreshAcceptState();
     }
 
+    // The window writes its own German into the accept button and the validation
+    // line long after Opened - on every keystroke in the cash field. Re-rendering
+    // here is what keeps those two in the chosen language; Apply() treats the new
+    // German as the source, so nothing is translated twice.
     private void RefreshAcceptState()
+    {
+        UpdateAcceptState();
+        UiLanguage.Apply(this);
+    }
+
+    private void UpdateAcceptState()
     {
         _validation.Text = "";
 

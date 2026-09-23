@@ -114,7 +114,7 @@ public sealed class DiagnosticsWindow : Window
         {
             _performance.Reset();
             RefreshPerformance();
-            _status.Text = "Performance-Messwerte zurückgesetzt.";
+            _status.Text = UiLanguage.T("Performance-Messwerte zurückgesetzt.");
         };
         openLogs.Click += (_, _) =>
         {
@@ -130,7 +130,7 @@ public sealed class DiagnosticsWindow : Window
             }
             catch (Exception ex)
             {
-                _status.Text = "Log-Ordner konnte nicht geöffnet werden: " + ex.Message;
+                _status.Text = UiLanguage.T("Log-Ordner konnte nicht geöffnet werden") + ": " + ex.Message;
             }
         };
         close.Click += (_, _) => Close();
@@ -436,7 +436,7 @@ public sealed class DiagnosticsWindow : Window
             return;
 
         _runButton.IsEnabled = false;
-        _status.Text = "Geräteprüfung läuft …";
+        _status.Text = UiLanguage.T("Geräteprüfung läuft …");
         _deviceResults.Children.Clear();
         _deviceResults.Children.Add(StatusRow(
             "PRÜFUNG",
@@ -478,13 +478,13 @@ public sealed class DiagnosticsWindow : Window
                     result.Level));
             }
 
-            _status.Text = $"Geräteprüfung abgeschlossen · {sw.Elapsed.TotalMilliseconds:0} ms gesamt.";
+            _status.Text = UiLanguage.T("Geräteprüfung abgeschlossen") + $" · {sw.Elapsed.TotalMilliseconds:0} ms " + UiLanguage.T("gesamt.");
             RefreshPerformance();
         }
         catch (Exception ex)
         {
             CrashLog.WriteException("R67 diagnostics failed.", ex);
-            _status.Text = "Diagnose fehlgeschlagen: " + ex.Message;
+            _status.Text = UiLanguage.T("Diagnose fehlgeschlagen") + ": " + ex.Message;
         }
         finally
         {
@@ -1225,7 +1225,7 @@ public sealed class DiagnosticsWindow : Window
             {
                 if (string.IsNullOrWhiteSpace(actorBox.Text))
                 {
-                    rowStatus.Text = "Bearbeiter angeben.";
+                    rowStatus.Text = UiLanguage.T("Bearbeiter angeben.");
                     return;
                 }
                 resolveButton.IsEnabled = false;
@@ -1236,7 +1236,7 @@ public sealed class DiagnosticsWindow : Window
                 }
                 catch (Exception ex)
                 {
-                    rowStatus.Text = "Fehler: " + ex.Message;
+                    rowStatus.Text = UiLanguage.T("Fehler") + ": " + ex.Message;
                     resolveButton.IsEnabled = true;
                 }
             };
@@ -1315,7 +1315,7 @@ public sealed class DiagnosticsWindow : Window
                 }
                 catch (Exception ex)
                 {
-                    rowStatus.Text = "Fehler: " + ex.Message;
+                    rowStatus.Text = UiLanguage.T("Fehler") + ": " + ex.Message;
                     retryButton.IsEnabled = true;
                 }
             };

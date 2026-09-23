@@ -19,6 +19,20 @@ namespace TorPos.App;
 
 public partial class MainWindow:Window
 {
+    // Operator-facing runtime status. All writes go through one translation
+    // boundary so a status update cannot silently fall back to German after
+    // the window has already been rendered in TR/EN. Dynamic business data
+    // remains untouched because UiLanguage only translates exact program text.
+    private string? StatusLine
+    {
+        get => ScannerStatus?.Text;
+        set
+        {
+            if (ScannerStatus is not null)
+                ScannerStatus.Text = UiLanguage.T(value);
+        }
+    }
+
     public event Action? LogoutRequested;
 
     private readonly IProductCatalog _catalog;
@@ -286,7 +300,7 @@ public partial class MainWindow:Window
             _scan = "";
             _scanStartedAt = 0;
             ScannerCapture.Text = "";
-            ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+            StatusLine = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
         };
@@ -358,7 +372,14 @@ public partial class MainWindow:Window
             }
 
             _tseCertificateTimer.Start();
+            StartTseWatch();
             FocusScannerCaptureSoon();
+        };
+
+        Closed += (_, _) =>
+        {
+            _tseWatch?.Stop();
+            _tseWatch = null;
         };
     }
 
@@ -385,7 +406,7 @@ public partial class MainWindow:Window
         }
         catch (Exception ex)
         {
-            ScannerStatus.Text = ex.Message;
+            StatusLine = ex.Message;
         }
     }
 
@@ -412,7 +433,7 @@ public partial class MainWindow:Window
         }
         catch (Exception ex)
         {
-            ScannerStatus.Text = ex.Message;
+            StatusLine = ex.Message;
         }
     }
 
@@ -439,7 +460,7 @@ public partial class MainWindow:Window
         }
         catch (Exception ex)
         {
-            ScannerStatus.Text = ex.Message;
+            StatusLine = ex.Message;
         }
     }
 
@@ -455,7 +476,7 @@ public partial class MainWindow:Window
 
         if (_engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
         {
-            ScannerStatus.Text = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
+            StatusLine = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
             return;
         }
 
@@ -595,7 +616,7 @@ public partial class MainWindow:Window
             // above was awaiting, which would make _engine.Add a silent no-op.
             if (CartLocked)
             {
-                ScannerStatus.Text = "Warenkorb gesperrt · Artikel wurde nicht hinzugefügt.";
+                StatusLine = "Warenkorb gesperrt · Artikel wurde nicht hinzugefügt.";
                 return;
             }
 
@@ -622,20 +643,20 @@ public partial class MainWindow:Window
 
             if (promotion is not null)
             {
-                ScannerStatus.Text =
+                StatusLine =
                     $"ANGEBOT · {promotion.Name} · -{promotion.DiscountPercent}% · " +
                     $"{promotion.StartDate} bis {promotion.EndDate}";
             }
             else if (promotionSuppressedByManualDiscount)
             {
-                ScannerStatus.Text =
+                StatusLine =
                     "Artikel zum Normalpreis hinzugefügt · aktives ANGEBOT wurde wegen vorhandenem manuellem Rabatt nicht gestapelt.";
             }
         }
         catch (Exception ex)
         {
             var errorId = ReportOperationalError("WARENKORB", "Artikel konnte nicht hinzugefügt werden.", ex);
-            ScannerStatus.Text = $"FEHLER {errorId} · Artikel nicht hinzugefügt.";
+            StatusLine = $"FEHLER {errorId} · Artikel nicht hinzugefügt.";
         }
     }
 
@@ -857,7 +878,7 @@ public partial class MainWindow:Window
             CrashLog.WriteException("MainWindow operation", ex);
             _recoveryFault=true;
             ReportOperationalError("RECOVERY", "Offener Bon konnte nicht gesichert werden.", ex);
-            ScannerStatus.Text="SICHERUNG FEHLGESCHLAGEN · Kassieren gesperrt · Admin prüfen";
+            StatusLine="SICHERUNG FEHLGESCHLAGEN · Kassieren gesperrt · Admin prüfen";
             RefreshSalesActionState();
         }
     }
@@ -879,7 +900,7 @@ public partial class MainWindow:Window
                 _imHaus=saved.ImHaus;
                 AdoptTseVorgang(saved.TseVorgangId, saved.StartedAt, saved.CancelledLines);
                 UpdateCart();
-                ScannerStatus.Text="ZAHLUNG OFFEN / UNGEKLÄRT · KASSE → ZAHLUNG PRÜFEN · NICHT ERNEUT KASSIEREN";
+                StatusLine="ZAHLUNG OFFEN / UNGEKLÄRT · KASSE → ZAHLUNG PRÜFEN · NICHT ERNEUT KASSIEREN";
                 return;
             }
             if (await RecoveryFiles.ReadAsync(path+".blocked") is not null)
@@ -892,7 +913,7 @@ public partial class MainWindow:Window
             if (!string.IsNullOrEmpty(snapshot.OperationId) && await _checkoutJournal.FindSaleAsync(snapshot.OperationId) is not null)
             {
                 await RecoveryFiles.WriteAsync(path,null);
-                ScannerStatus.Text="Vorheriger Verkauf bereits gespeichert · keine erneute Zahlung";
+                StatusLine="Vorheriger Verkauf bereits gespeichert · keine erneute Zahlung";
                 return;
             }
             _operationId=string.IsNullOrEmpty(snapshot.OperationId)?Guid.NewGuid().ToString("N"):snapshot.OperationId;
@@ -919,7 +940,7 @@ public partial class MainWindow:Window
                 _pendingCheckout=await _checkoutJournal.GetAsync(legacy.OperationId);
             }
             UpdateCart();
-            ScannerStatus.Text=_pendingCheckout is null ? "OFFENER BON WIEDERHERGESTELLT" : "ALTER BON · Zahlungsstatus zuerst prüfen";
+            StatusLine=_pendingCheckout is null ? "OFFENER BON WIEDERHERGESTELLT" : "ALTER BON · Zahlungsstatus zuerst prüfen";
         }
         catch(Exception ex)
         {
@@ -927,7 +948,7 @@ public partial class MainWindow:Window
             _recoveryFault=true;
             try { await RecoveryFiles.QuarantineAsync(path); } catch(Exception q) { CrashLog.WriteException("Recovery quarantine failed",q); }
             ReportOperationalError("RECOVERY","Wiederherstellung gesperrt; Originaldaten zur Prüfung aufbewahrt.",ex);
-            ScannerStatus.Text="RECOVERY FEHLER · Daten aufbewahrt · Service prüfen";
+            StatusLine="RECOVERY FEHLER · Daten aufbewahrt · Service prüfen";
         }
     }
 
@@ -1102,7 +1123,7 @@ public partial class MainWindow:Window
             _scanStartedAt = 0;
             ScannerCapture.Text = "";
             e.Handled = true;
-            ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+            StatusLine = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             _ = ProcessBarcodeSafely(code);
         }
@@ -1197,7 +1218,7 @@ public partial class MainWindow:Window
             _scan = "";
             _scanStartedAt = 0;
             ScannerCapture.Text = "";
-            ScannerStatus.Text = $"SCAN ERKANNT · {code}";
+            StatusLine = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             _ = ProcessBarcodeSafely(code);
             return;
@@ -1233,7 +1254,7 @@ public partial class MainWindow:Window
         // one is still running. A FIFO queue prevents lost/concatenated scans.
         if (_barcodeQueue.Count >= 64)
         {
-            ScannerStatus.Text = "SCANNER-WARTESCHLANGE VOLL · kurz warten";
+            StatusLine = "SCANNER-WARTESCHLANGE VOLL · kurz warten";
             ScannerStatus.Foreground = AppTheme.WarningAmber;
             return Task.CompletedTask;
         }
@@ -1269,7 +1290,7 @@ public partial class MainWindow:Window
                         "SCANNER",
                         "Barcode konnte nicht verarbeitet werden.",
                         ex);
-                    ScannerStatus.Text = $"FEHLER {errorId} · Scan fehlgeschlagen.";
+                    StatusLine = $"FEHLER {errorId} · Scan fehlgeschlagen.";
                     ScannerStatus.Foreground = AppTheme.WarningAmber;
                 }
             }
@@ -1316,7 +1337,7 @@ public partial class MainWindow:Window
         if (p is not null)
         {
             ScannerCapture.Text = "";
-            ScannerStatus.Text = $"SCAN OK · {p.Name} · EAN {code}";
+            StatusLine = $"SCAN OK · {p.Name} · EAN {code}";
             ScannerStatus.Foreground = AppTheme.AccentTeal;
             await AddProduct(p);
         }
@@ -1327,13 +1348,13 @@ public partial class MainWindow:Window
             // mismatch can be diagnosed without opening Stammdaten implicitly.
             ScannerCapture.Text = code;
             ScannerCapture.CaretIndex = ScannerCapture.Text?.Length ?? 0;
-            ScannerStatus.Text =
+            StatusLine =
                 $"EAN NICHT GEFUNDEN · {code} · Artikel unter WAREN → Stammdaten prüfen.";
             ScannerStatus.Foreground = AppTheme.WarningAmber;
         }
 
         var ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        PerformanceStatus.Text = $"Barcode {ms:0} ms";
+        PerformanceStatus.Text = UiLanguage.T("Barcode") + $" {ms:0} ms";
         PerformanceStatus.Foreground =
             ms < 100 ? AppTheme.AccentTeal : AppTheme.WarningAmber;
         FocusScannerCaptureSoon();
@@ -1380,12 +1401,12 @@ public partial class MainWindow:Window
                 "CURRENT_CART",
                 productId.ToString(),
                 $"name={item.Name}; cents={item.PriceCents}; vat={item.VatRate:0.##}; qty={quantity:0.###}");
-            ScannerStatus.Text = $"Schnellartikel · {item.Name} · {Formatting.Money(item.PriceCents)} · {item.VatRate:0} % hinzugefügt.";
+            StatusLine = $"Schnellartikel · {item.Name} · {Formatting.Money(item.PriceCents)} · {item.VatRate:0} % hinzugefügt.";
         }
         catch (Exception ex)
         {
             var errorId = ReportOperationalError("WARENKORB", "Schnellartikel konnte nicht hinzugefügt werden.", ex);
-            ScannerStatus.Text = $"FEHLER {errorId} · Schnellartikel nicht hinzugefügt.";
+            StatusLine = $"FEHLER {errorId} · Schnellartikel nicht hinzugefügt.";
         }
     }
 
@@ -1435,13 +1456,13 @@ public partial class MainWindow:Window
 
         if (!TryReadNumericQuantity(out var quantity))
         {
-            ScannerStatus.Text = "MENGE ×: Bitte zuerst eine Zahl eingeben.";
+            StatusLine = "MENGE ×: Bitte zuerst eine Zahl eingeben.";
             return;
         }
 
         if (quantity <= 0m || quantity > 9999m)
         {
-            ScannerStatus.Text = "MENGE ×: Erlaubt sind Werte größer 0 bis 9999.";
+            StatusLine = "MENGE ×: Erlaubt sind Werte größer 0 bis 9999.";
             return;
         }
 
@@ -1452,7 +1473,7 @@ public partial class MainWindow:Window
             _engine.SetQuantity(selectedIndex, quantity);
             ClearNumericInput();
             UpdateCart();
-            ScannerStatus.Text = selectedLine.IsWeighted
+            StatusLine = selectedLine.IsWeighted
                 ? $"Gewicht auf {GermanFormat.Number(quantity, "0.###")} kg gesetzt."
                 : $"Menge auf {quantity:0.###} gesetzt.";
             return;
@@ -1461,7 +1482,7 @@ public partial class MainWindow:Window
         _pendingQuantity = quantity;
         _numericEntry = "";
         UpdateNumericInputText();
-        ScannerStatus.Text = $"{quantity:0.###} × vorgemerkt · jetzt Artikel wählen oder scannen.";
+        StatusLine = $"{quantity:0.###} × vorgemerkt · jetzt Artikel wählen oder scannen.";
     }
 
     private bool TryReadNumericQuantity(out decimal quantity)
@@ -1516,7 +1537,7 @@ public partial class MainWindow:Window
         var index = CartList.SelectedIndex;
         if (index >= 0 && index < _engine.Cart.Count && _engine.Cart[index].IsWeighted)
         {
-            ScannerStatus.Text = "Gewichtsartikel: Gewicht über MENGE × ändern oder Artikel erneut wiegen.";
+            StatusLine = "Gewichtsartikel: Gewicht über MENGE × ändern oder Artikel erneut wiegen.";
             return;
         }
         _engine.ChangeQuantity(index,1);UpdateCart();
@@ -1527,7 +1548,7 @@ public partial class MainWindow:Window
         var index = CartList.SelectedIndex;
         if (index >= 0 && index < _engine.Cart.Count && _engine.Cart[index].IsWeighted)
         {
-            ScannerStatus.Text = "Gewichtsartikel: Gewicht über MENGE × ändern oder Position stornieren.";
+            StatusLine = "Gewichtsartikel: Gewicht über MENGE × ändern oder Position stornieren.";
             return;
         }
         _engine.ChangeQuantity(index,-1);
@@ -1548,7 +1569,7 @@ public partial class MainWindow:Window
 
         if (index < 0 || index >= _engine.Cart.Count)
         {
-            ScannerStatus.Text =
+            StatusLine =
                 "SOFORT STORNO: Bitte zuerst eine Position auswählen.";
             return;
         }
@@ -1601,7 +1622,7 @@ public partial class MainWindow:Window
                 "AUDIT",
                 "SOFORT STORNO wurde NICHT ausgeführt, weil die unveränderbare Protokollierung fehlgeschlagen ist.",
                 ex);
-            ScannerStatus.Text =
+            StatusLine =
                 $"SOFORT STORNO NICHT AUSGEFÜHRT · Audit-Fehler {errorId}";
             return;
         }
@@ -1650,7 +1671,7 @@ public partial class MainWindow:Window
                 $"product={line.ProductName}; qty={line.Quantity}",
                 operationId);
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"SOFORT STORNO protokolliert · {line.ProductName} entfernt.";
         }
         catch (Exception ex)
@@ -1681,7 +1702,7 @@ public partial class MainWindow:Window
                 "SOFORT STORNO",
                 "Storno konnte nicht vollständig ausgeführt werden.",
                 ex);
-            ScannerStatus.Text =
+            StatusLine =
                 $"SOFORT STORNO FEHLER · {errorId}";
         }
     }
@@ -1693,7 +1714,7 @@ public partial class MainWindow:Window
 
         if (_currentUser.IsTraining)
         {
-            ScannerStatus.Text = "BON STORNO ist im TRAININGSMODUS deaktiviert. Trainingsverkäufe sind ohnehin nicht fiskal.";
+            StatusLine = "BON STORNO ist im TRAININGSMODUS deaktiviert. Trainingsverkäufe sind ohnehin nicht fiskal.";
             return;
         }
 
@@ -1720,7 +1741,7 @@ public partial class MainWindow:Window
             catch (Exception ex)
             {
                 CrashLog.WriteException("Bon Storno picker", ex);
-                ScannerStatus.Text = "BON STORNO: Heutige Bon-Liste konnte nicht geladen werden.";
+                StatusLine = "BON STORNO: Heutige Bon-Liste konnte nicht geladen werden.";
                 return;
             }
         }
@@ -1731,7 +1752,7 @@ public partial class MainWindow:Window
         var original = await _sales.GetByIdAsync(saleId);
         if (original is null)
         {
-            ScannerStatus.Text = "BON STORNO: Bon wurde nicht gefunden.";
+            StatusLine = "BON STORNO: Bon wurde nicht gefunden.";
             return;
         }
 
@@ -1744,7 +1765,7 @@ public partial class MainWindow:Window
         var blockReason = await _sales.CheckReversalAllowedAsync(saleId, forFullStorno: true);
         if (blockReason is not null)
         {
-            ScannerStatus.Text = $"BON STORNO ABGEBROCHEN · {blockReason}";
+            StatusLine = $"BON STORNO ABGEBROCHEN · {blockReason}";
             return;
         }
 
@@ -1783,11 +1804,11 @@ public partial class MainWindow:Window
                 // leaves this sale locked, not silently retriable.
                 if (await _cardRefundLocks.HasUnresolvedAsync(saleId))
                 {
-                    ScannerStatus.Text = "BON STORNO ABGEBROCHEN · Für diesen Bon läuft bereits eine ungeklärte Kartenerstattung · Diagnose-Fenster prüfen";
+                    StatusLine = "BON STORNO ABGEBROCHEN · Für diesen Bon läuft bereits eine ungeklärte Kartenerstattung · Diagnose-Fenster prüfen";
                     return;
                 }
 
-                ScannerStatus.Text = "BON STORNO · Karten-Anteil wird am Terminal erstattet …";
+                StatusLine = "BON STORNO · Karten-Anteil wird am Terminal erstattet …";
                 cardRefundAttemptId = await _cardRefundLocks.BeginAsync(saleId, "STORNO", cardPortion);
                 var refund = await _checkoutApplication.RefundStornoCardPortionAsync(cardPortion, actionId);
                 if (refund is null || refund.Outcome != PaymentTerminalOutcome.Approved)
@@ -1803,7 +1824,7 @@ public partial class MainWindow:Window
                         original.TotalCents, 0, original.TotalCents,
                         $"card_refund_outcome={refund?.Outcome}; message={refund?.Message}", "");
 
-                    ScannerStatus.Text = refund?.Outcome == PaymentTerminalOutcome.Unknown
+                    StatusLine = refund?.Outcome == PaymentTerminalOutcome.Unknown
                         ? $"BON STORNO ANGEHALTEN · Erstattungsstatus unklar · Terminalbeleg prüfen, NICHT erneut versuchen · Bon ist gesperrt bis zur Klärung im Diagnose-Fenster · {refund.Message}"
                         : $"BON STORNO ABGEBROCHEN · Karten-Erstattung nicht bestätigt · {refund?.Message ?? "Terminal nicht erreichbar"}";
                     return;
@@ -1850,7 +1871,7 @@ public partial class MainWindow:Window
 
             await RefreshStockWarningAsync();
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"BON STORNO · Bon {original.ReceiptNumber:000000} storniert · " +
                 $"Storno-Bon {storno.ReceiptNumber:000000} · {Formatting.Money(storno.TotalCents)}";
         }
@@ -1861,7 +1882,7 @@ public partial class MainWindow:Window
                 "BON STORNO",
                 $"Bon {original.ReceiptNumber:000000} konnte nicht storniert werden: " + ex.Message,
                 ex);
-            ScannerStatus.Text = $"BON STORNO FEHLGESCHLAGEN · Fehler-ID {errorId}";
+            StatusLine = $"BON STORNO FEHLGESCHLAGEN · Fehler-ID {errorId}";
         }
     }
 
@@ -1875,7 +1896,7 @@ public partial class MainWindow:Window
 
         if (_currentUser.IsTraining)
         {
-            ScannerStatus.Text = "TEILRETOURE ist im TRAININGSMODUS deaktiviert.";
+            StatusLine = "TEILRETOURE ist im TRAININGSMODUS deaktiviert.";
             return;
         }
 
@@ -1895,7 +1916,7 @@ public partial class MainWindow:Window
             catch (Exception ex)
             {
                 CrashLog.WriteException("Partial return picker", ex);
-                ScannerStatus.Text = "TEILRETOURE: Heutige Bon-Liste konnte nicht geladen werden.";
+                StatusLine = "TEILRETOURE: Heutige Bon-Liste konnte nicht geladen werden.";
                 return;
             }
         }
@@ -1906,7 +1927,7 @@ public partial class MainWindow:Window
         var original = await _sales.GetByIdAsync(saleId);
         if (original is null)
         {
-            ScannerStatus.Text = "TEILRETOURE: Bon wurde nicht gefunden.";
+            StatusLine = "TEILRETOURE: Bon wurde nicht gefunden.";
             return;
         }
 
@@ -1916,7 +1937,7 @@ public partial class MainWindow:Window
         var blockReason = await _sales.CheckReversalAllowedAsync(saleId, forFullStorno: false);
         if (blockReason is not null)
         {
-            ScannerStatus.Text = $"TEILRETOURE ABGEBROCHEN · {blockReason}";
+            StatusLine = $"TEILRETOURE ABGEBROCHEN · {blockReason}";
             return;
         }
 
@@ -1975,11 +1996,11 @@ public partial class MainWindow:Window
                 // vice versa, not just another Teilretoure.
                 if (await _cardRefundLocks.HasUnresolvedAsync(saleId))
                 {
-                    ScannerStatus.Text = "TEILRETOURE ABGEBROCHEN · Für diesen Bon läuft bereits eine ungeklärte Kartenerstattung · Diagnose-Fenster prüfen";
+                    StatusLine = "TEILRETOURE ABGEBROCHEN · Für diesen Bon läuft bereits eine ungeklärte Kartenerstattung · Diagnose-Fenster prüfen";
                     return;
                 }
 
-                ScannerStatus.Text = "TEILRETOURE · Karten-Anteil wird am Terminal erstattet …";
+                StatusLine = "TEILRETOURE · Karten-Anteil wird am Terminal erstattet …";
                 cardRefundAttemptId = await _cardRefundLocks.BeginAsync(saleId, "RETURN", returnCardPortion);
                 var refund = await _checkoutApplication.RefundStornoCardPortionAsync(returnCardPortion, actionId);
                 if (refund is null || refund.Outcome != PaymentTerminalOutcome.Approved)
@@ -1993,7 +2014,7 @@ public partial class MainWindow:Window
                         original.TotalCents, 0, returnTotalCents,
                         $"card_refund_outcome={refund?.Outcome}; message={refund?.Message}", "");
 
-                    ScannerStatus.Text = refund?.Outcome == PaymentTerminalOutcome.Unknown
+                    StatusLine = refund?.Outcome == PaymentTerminalOutcome.Unknown
                         ? $"TEILRETOURE ANGEHALTEN · Erstattungsstatus unklar · Terminalbeleg prüfen, NICHT erneut versuchen · Bon ist gesperrt bis zur Klärung im Diagnose-Fenster · {refund.Message}"
                         : $"TEILRETOURE ABGEBROCHEN · Karten-Erstattung nicht bestätigt · {refund?.Message ?? "Terminal nicht erreichbar"}";
                     return;
@@ -2040,7 +2061,7 @@ public partial class MainWindow:Window
 
             await RefreshStockWarningAsync();
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"TEILRETOURE · Bon {original.ReceiptNumber:000000} · " +
                 $"Retoure-Bon {returned.ReceiptNumber:000000} · {Formatting.Money(returned.TotalCents)}";
         }
@@ -2051,7 +2072,7 @@ public partial class MainWindow:Window
                 "TEILRETOURE",
                 $"Bon {original.ReceiptNumber:000000}: Retoure konnte nicht gebucht werden: " + ex.Message,
                 ex);
-            ScannerStatus.Text = $"TEILRETOURE FEHLGESCHLAGEN · Fehler-ID {errorId}";
+            StatusLine = $"TEILRETOURE FEHLGESCHLAGEN · Fehler-ID {errorId}";
         }
     }
 
@@ -2069,13 +2090,13 @@ public partial class MainWindow:Window
             _pendingQuantity is not null)
         {
             ClearNumericInput();
-            ScannerStatus.Text = "Zahleneingabe gelöscht.";
+            StatusLine = "Zahleneingabe gelöscht.";
             return;
         }
 
         if (_engine.Cart.Count == 0)
         {
-            ScannerStatus.Text = "Verkaufsfenster ist bereits leer.";
+            StatusLine = "Verkaufsfenster ist bereits leer.";
             return;
         }
 
@@ -2121,7 +2142,7 @@ public partial class MainWindow:Window
                 "AUDIT",
                 "Verkauf wurde NICHT abgebrochen, weil die unveränderbare Protokollierung fehlgeschlagen ist.",
                 ex);
-            ScannerStatus.Text =
+            StatusLine =
                 $"ABBRUCH NICHT AUSGEFÜHRT · Audit-Fehler {errorId}";
             return;
         }
@@ -2191,7 +2212,7 @@ public partial class MainWindow:Window
             PrepareNextCustomer();
             await RefreshParkedCountAsync();
 
-            ScannerStatus.Text =
+            StatusLine =
                 "Verkauf abgebrochen · Grund unveränderbar protokolliert.";
         }
         catch (Exception ex)
@@ -2222,7 +2243,7 @@ public partial class MainWindow:Window
                 "VERKAUF ABBRECHEN",
                 "Verkauf konnte nicht vollständig abgebrochen werden.",
                 ex);
-            ScannerStatus.Text =
+            StatusLine =
                 $"ABBRUCH FEHLER · {errorId}";
         }
     }
@@ -2276,12 +2297,12 @@ public partial class MainWindow:Window
             _engine.IsReadOnly = false;
             PrepareNextCustomer();
             await RefreshParkedCountAsync();
-            ScannerStatus.Text = $"Geparkter Bon P{parkedNumber:000000} entfernt · kein offener Parkbon mehr.";
+            StatusLine = $"Geparkter Bon P{parkedNumber:000000} entfernt · kein offener Parkbon mehr.";
         }
         catch (Exception ex)
         {
             var errorId = ReportOperationalError("DATENBANK", "Geparkten Bon entfernen fehlgeschlagen.", ex);
-            ScannerStatus.Text = $"Geparkter Bon konnte nicht entfernt werden · Fehler-ID {errorId}";
+            StatusLine = $"Geparkter Bon konnte nicht entfernt werden · Fehler-ID {errorId}";
         }
         return true;
     }
@@ -2298,7 +2319,7 @@ public partial class MainWindow:Window
 
         if (_engine.Cart.Count == 0)
         {
-            ScannerStatus.Text = "RABATT: Kein offener Verkauf.";
+            StatusLine = "RABATT: Kein offener Verkauf.";
             return;
         }
 
@@ -2308,7 +2329,7 @@ public partial class MainWindow:Window
             await RecordControlledDeniedAsync(
                 "DISCOUNT_SET",
                 "DEPOSIT_RETURN");
-            ScannerStatus.Text = "RABATT GESPERRT · Der Bon enthält eine Pfand-Rückgabe.";
+            StatusLine = "RABATT GESPERRT · Der Bon enthält eine Pfand-Rückgabe.";
             return;
         }
 
@@ -2321,7 +2342,7 @@ public partial class MainWindow:Window
                 "DISCOUNT_SET",
                 "ACTIVE_PROMOTION_POLICY");
 
-            ScannerStatus.Text =
+            StatusLine =
                 "MANUELLER RABATT GESPERRT · Für diesen Verkauf ist bereits ein ANGEBOT aktiv.";
             return;
         }
@@ -2380,7 +2401,7 @@ public partial class MainWindow:Window
                 "AUDIT",
                 "Rabatt wurde NICHT angewendet, weil die unveränderbare Protokollierung fehlgeschlagen ist.",
                 ex);
-            ScannerStatus.Text =
+            StatusLine =
                 $"RABATT NICHT AUSGEFÜHRT · Audit-Fehler {errorId}";
             return;
         }
@@ -2404,7 +2425,7 @@ public partial class MainWindow:Window
                 $"new_discount_cents={_engine.DiscountCents}",
                 operationId);
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"RABATT protokolliert · {Formatting.Money(newDiscount)}";
         }
         catch (Exception ex)
@@ -2435,7 +2456,7 @@ public partial class MainWindow:Window
                 "RABATT",
                 "Rabatt konnte nicht vollständig ausgeführt werden.",
                 ex);
-            ScannerStatus.Text =
+            StatusLine =
                 $"RABATT FEHLER · {errorId}";
         }
     }
@@ -2458,7 +2479,7 @@ public partial class MainWindow:Window
         catch (Exception ex)
         {
             var errorId = ReportOperationalError("WARENKORB", "Pfand/Extra konnte nicht hinzugefügt werden.", ex);
-            ScannerStatus.Text = $"FEHLER {errorId} · nicht hinzugefügt.";
+            StatusLine = $"FEHLER {errorId} · nicht hinzugefügt.";
         }
     }
 
@@ -2486,7 +2507,7 @@ public partial class MainWindow:Window
         // position at the rate of the deposit, never a sale.
         if (_engine.DiscountCents > 0)
         {
-            ScannerStatus.Text = "PFAND-RÜCKGABE: Zuerst den Rabatt entfernen - beides auf einem Bon ist nicht möglich.";
+            StatusLine = "PFAND-RÜCKGABE: Zuerst den Rabatt entfernen - beides auf einem Bon ist nicht möglich.";
             return;
         }
 
@@ -2494,7 +2515,7 @@ public partial class MainWindow:Window
         var quantity = ConsumePendingQuantity();
         if (!_engine.AddDepositReturn(option.ProductId, option.Name, option.PriceCents, selection.VatRate, quantity))
         {
-            ScannerStatus.Text = "PFAND-RÜCKGABE nicht möglich.";
+            StatusLine = "PFAND-RÜCKGABE nicht möglich.";
             return;
         }
 
@@ -2507,7 +2528,7 @@ public partial class MainWindow:Window
             option.ProductId.ToString(),
             $"name={option.Name}; cents=-{option.PriceCents}; quantity={quantity}; vat={selection.VatRate}");
 
-        ScannerStatus.Text =
+        StatusLine =
             $"{option.Name} · {quantity:0.###} × {Formatting.Money(-option.PriceCents)} · {selection.VatRate:0.#} %";
     }
 
@@ -2515,14 +2536,14 @@ public partial class MainWindow:Window
     {
         if (_engine.Cart.Count == 0)
         {
-            ScannerStatus.Text = "EXTRA: Bitte zuerst einen Artikel zum Verkauf hinzufügen.";
+            StatusLine = "EXTRA: Bitte zuerst einen Artikel zum Verkauf hinzufügen.";
             return;
         }
 
         var extras = await _repo.GetExtrasAsync();
         if (extras.Count == 0)
         {
-            ScannerStatus.Text = "Keine Extras angelegt · STAMMDATEN → EXTRAS.";
+            StatusLine = "Keine Extras angelegt · STAMMDATEN → EXTRAS.";
             return;
         }
 
@@ -2550,7 +2571,7 @@ public partial class MainWindow:Window
             extra.Id.ToString(),
             $"name={extra.Name}; cents={extra.PriceCents}; vat={extra.VatRate:0.##}");
 
-        ScannerStatus.Text =
+        StatusLine =
             $"{extra.Name} · {Formatting.Money(extra.PriceCents)} hinzugefügt.";
     }
 
@@ -2558,12 +2579,12 @@ public partial class MainWindow:Window
     private async void OnOrderBoardClick(object? sender, RoutedEventArgs e)
     {
         if(!RequirePermission(UserPermissions.ParkReceipts,"BESTELLÜBERSICHT")) return;
-        if(_engine.Cart.Count>0) { ScannerStatus.Text="Aktuellen Verkauf zuerst kassieren oder parken."; return; }
+        if(_engine.Cart.Count>0) { StatusLine="Aktuellen Verkauf zuerst kassieren oder parken."; return; }
         try {
             var id=await new OrderBoardWindow(OrderWorkflow,_currentUser.IsTraining,_currentUser.Username).ShowDialog<long?>(this);
             if(id is not long selected || CartLocked) return;
             var parked=await _parkedReceipts.GetOpenByIdAsync(selected,training:_currentUser.IsTraining);
-            if(parked is null) { ScannerStatus.Text="Bestellung ist nicht mehr offen.";return; }
+            if(parked is null) { StatusLine="Bestellung ist nicht mehr offen.";return; }
             _operationId=Guid.NewGuid().ToString("N");_engine.Restore(parked.Lines,parked.DiscountCents);
             _activeParkedReceiptId=parked.Id;_activeParkNumber=parked.ParkNumber;
             _imHaus=parked.ImHaus;
@@ -2579,13 +2600,13 @@ public partial class MainWindow:Window
             return;
         if (_currentUser.IsTraining && !orderMode)
         {
-            ScannerStatus.Text = "PARKEN ist im TRAININGSMODUS deaktiviert. ORDER-Abholnummern können dagegen getestet werden.";
+            StatusLine = "PARKEN ist im TRAININGSMODUS deaktiviert. ORDER-Abholnummern können dagegen getestet werden.";
             return;
         }
 
         if (_engine.Cart.Count == 0)
         {
-            ScannerStatus.Text = "Leerer Bon kann nicht geparkt werden.";
+            StatusLine = "Leerer Bon kann nicht geparkt werden.";
             return;
         }
 
@@ -2601,7 +2622,7 @@ public partial class MainWindow:Window
 
             if (blockedMenus.Count > 0)
             {
-                ScannerStatus.Text =
+                StatusLine =
                     "PARKEN/BESTELLUNG GESPERRT · Menü-KDV fiskal nicht eindeutig · " +
                     string.Join(", ", blockedMenus.Select(x => x.MenuName).Distinct());
                 return;
@@ -2664,7 +2685,7 @@ public partial class MainWindow:Window
                     var actor = _currentUser.Username;
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
                 }
-                ScannerStatus.Text = orderMode && updated?.PickupNumber>0
+                StatusLine = orderMode && updated?.PickupNumber>0
                     ? $"BESTELLUNG {updated.PickupNumber:000} aktualisiert und wieder geöffnet gespeichert."
                     : $"Geparkter Bon P{_activeParkNumber:000000} aktualisiert.";
             }
@@ -2716,7 +2737,7 @@ public partial class MainWindow:Window
                     QueueTseVorgangWork(v => v.AbortAsync(vorgangId, lines, discount, actor, actor));
                 }
 
-                ScannerStatus.Text = orderMode && parked.PickupNumber>0
+                StatusLine = orderMode && parked.PickupNumber>0
                     ? $"BESTELLUNG ANGENOMMEN · ABHOLNR. {parked.PickupNumber:000} · Bon wird erst beim Kassieren erstellt."
                     : $"Bon {parked.DisplayNumber} geparkt.";
 
@@ -2735,7 +2756,7 @@ public partial class MainWindow:Window
         {
             CrashLog.WriteException("MainWindow operation", ex);
             var errorId = ReportOperationalError("DATENBANK", "Parken fehlgeschlagen: " + ex.Message, ex);
-            ScannerStatus.Text = $"Parken fehlgeschlagen · Fehler-ID {errorId}";
+            StatusLine = $"Parken fehlgeschlagen · Fehler-ID {errorId}";
         }
         finally { SetCheckoutBusy(false); }
     }
@@ -2747,13 +2768,13 @@ public partial class MainWindow:Window
             return;
         if (_currentUser.IsTraining && !orderMode)
         {
-            ScannerStatus.Text = "GEPARKTE BONS sind im TRAININGSMODUS deaktiviert. ORDER-Bestellungen können getestet werden.";
+            StatusLine = "GEPARKTE BONS sind im TRAININGSMODUS deaktiviert. ORDER-Bestellungen können getestet werden.";
             return;
         }
 
         if (_engine.Cart.Count > 0)
         {
-            ScannerStatus.Text =
+            StatusLine =
                 "Aktuellen Verkauf zuerst kassieren oder PARKEN.";
             return;
         }
@@ -2762,7 +2783,7 @@ public partial class MainWindow:Window
 
         if (open.Count == 0)
         {
-            ScannerStatus.Text = "Keine geparkten Bons vorhanden.";
+            StatusLine = "Keine geparkten Bons vorhanden.";
             await RefreshParkedCountAsync();
             return;
         }
@@ -2801,13 +2822,13 @@ public partial class MainWindow:Window
                         QueueTseVorgangWork(v => v.AbortParkedAsync(deleted.Id, deleted.Lines, deleted.DiscountCents, actor, actor));
                     }
                 }
-                ScannerStatus.Text = "Geparkter Bon gelöscht.";
+                StatusLine = "Geparkter Bon gelöscht.";
                 await RefreshParkedCountAsync();
             }
             catch (Exception ex)
             {
                 var errorId = ReportOperationalError("DATENBANK", "Geparkten Bon löschen fehlgeschlagen.", ex);
-                ScannerStatus.Text = $"Geparkter Bon konnte nicht gelöscht werden · Fehler-ID {errorId}";
+                StatusLine = $"Geparkter Bon konnte nicht gelöscht werden · Fehler-ID {errorId}";
             }
             return;
         }
@@ -2817,7 +2838,7 @@ public partial class MainWindow:Window
 
         if (parked is null)
         {
-            ScannerStatus.Text =
+            StatusLine =
                 "Der geparkte Bon ist nicht mehr offen.";
             await RefreshParkedCountAsync();
             return;
@@ -2832,7 +2853,7 @@ public partial class MainWindow:Window
         await ResumeTseVorgangAsync(parked);
         UpdateCart();
 
-        ScannerStatus.Text = parked.PickupNumber>0
+        StatusLine = parked.PickupNumber>0
             ? $"BESTELLUNG {parked.PickupNumber:000} übernommen · jetzt BAR/KARTE kassieren."
             : $"{parked.DisplayNumber} übernommen · jetzt kassieren.";
         await _audit.WriteAsync(
@@ -2882,7 +2903,7 @@ public partial class MainWindow:Window
         // cart (a crash) are ended as aborted before the closing.
         if (_engine.Cart.Count > 0)
         {
-            ScannerStatus.Text = "Z-BERICHT: Aktuellen Vorgang zuerst kassieren, parken oder mit C leeren.";
+            StatusLine = "Z-BERICHT: Aktuellen Vorgang zuerst kassieren, parken oder mit C leeren.";
             return;
         }
 
@@ -2904,7 +2925,7 @@ public partial class MainWindow:Window
 
         if (!parkedCheck.Allowed)
         {
-            ScannerStatus.Text = parkedCheck.Message;
+            StatusLine = parkedCheck.Message;
             await new ZReportInfoWindow(
                 "Z-BERICHT GESPERRT",
                 parkedCheck.Message,
@@ -2920,7 +2941,7 @@ public partial class MainWindow:Window
                 "Keine geparkten Bons offen. Der echte fiskale Z-Bericht ist jedoch " +
                 "noch nicht produktiv freigegeben, weil TOR POS weiterhin im TESTBETRIEB läuft.";
 
-            ScannerStatus.Text = "Z-Bericht: TESTBETRIEB · produktiv gesperrt";
+            StatusLine = "Z-Bericht: TESTBETRIEB · produktiv gesperrt";
 
             await _audit.WriteAsync(
                 _currentUser.Username,
@@ -3012,7 +3033,7 @@ public partial class MainWindow:Window
                 ? ""
                 : " · " + string.Join(" · ", datevNotes);
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"Z {archived.ZNumber:000000} abgeschlossen und unveränderbar archiviert." +
                 datevNote;
 
@@ -3028,7 +3049,7 @@ public partial class MainWindow:Window
         {
             CrashLog.WriteException("MainWindow operation", ex);
             var errorId = ReportOperationalError("Z-BERICHT", "Z-Bericht fehlgeschlagen: " + ex.Message, ex);
-            ScannerStatus.Text = $"Z-Bericht fehlgeschlagen · Fehler-ID {errorId}";
+            StatusLine = $"Z-Bericht fehlgeschlagen · Fehler-ID {errorId}";
         }
     }
 
@@ -3065,7 +3086,7 @@ public partial class MainWindow:Window
             // R139: the same running cash position the Kassensturz compares against.
             var expected = (await _cashMovements.GetCashBalanceAsync(opening, production)).ExpectedCents;
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"{movement.Kind} ({movement.BusinessCase}): {Formatting.Money(movement.AmountCents)} gebucht{tseNote} · " +
                 $"Soll-Kassenbestand{(production ? "" : " TEST")}: {Formatting.Money(expected)}";
         }
@@ -3073,7 +3094,7 @@ public partial class MainWindow:Window
         {
             CrashLog.WriteException("MainWindow operation", ex);
             var errorId = ReportOperationalError("DATENBANK", "Kassenbewegung fehlgeschlagen: " + ex.Message, ex);
-            ScannerStatus.Text = $"Kassenbewegung fehlgeschlagen · Fehler-ID {errorId}";
+            StatusLine = $"Kassenbewegung fehlgeschlagen · Fehler-ID {errorId}";
         }
     }
 
@@ -3122,7 +3143,7 @@ public partial class MainWindow:Window
 
             if (!secured)
             {
-                ScannerStatus.Text =
+                StatusLine =
                     "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein";
                 _restaurantCheckoutDraft = null;
                 _operationId = Guid.NewGuid().ToString("N");
@@ -3143,7 +3164,7 @@ public partial class MainWindow:Window
         {
             if (choice.CashTenderedCents < paymentTotal)
             {
-                ScannerStatus.Text = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
+                StatusLine = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
                 return;
             }
 
@@ -3219,14 +3240,14 @@ public partial class MainWindow:Window
         // R149: returned deposit exceeding the purchase is paid out - in cash only.
         if (snapshot.TotalCents < 0 && method != PaymentMethod.Cash)
         {
-            ScannerStatus.Text = "Pfand-Auszahlung nur BAR möglich.";
+            StatusLine = "Pfand-Auszahlung nur BAR möglich.";
             return;
         }
         CashPaymentResult? cash=null;
         SetCheckoutBusy(true);
         try
         {
-            ScannerStatus.Text = "ZAHLUNG WIRD VORBEREITET";
+            StatusLine = "ZAHLUNG WIRD VORBEREITET";
             // Give Avalonia one turn to paint the status before Windows device I/O.
             await Task.Yield();
             // Flush earlier cart writes before admitting an external effect.
@@ -3242,7 +3263,7 @@ public partial class MainWindow:Window
 
             if (!printerReady)
             {
-                ScannerStatus.Text = "ZAHLUNG ABGEBROCHEN · Bondrucker nicht erkannt";
+                StatusLine = "ZAHLUNG ABGEBROCHEN · Bondrucker nicht erkannt";
                 return;
             }
             if (method==PaymentMethod.Cash && snapshot.TotalCents <= 0)
@@ -3364,7 +3385,7 @@ public partial class MainWindow:Window
 
                 ClearCompletedCart();
                 await RefreshParkedCountAsync();
-                ScannerStatus.Text = testPickup > 0
+                StatusLine = testPickup > 0
                     ? $"TEST · ABHOLNR. {testPickup:000} · {Formatting.Money(snapshot.TotalCents)} · keine echte Buchung"
                     : $"TEST · {Formatting.Money(snapshot.TotalCents)} · keine echte Buchung";
                 // R65: Der Testverkauf ist bereits abgeschlossen. Der optionale
@@ -3387,7 +3408,7 @@ public partial class MainWindow:Window
                 {
                     _restaurantCheckoutDraft = null;
                     _operationId = Guid.NewGuid().ToString("N");
-                    ScannerStatus.Text =
+                    StatusLine =
                         "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen";
                 }
 
@@ -3425,7 +3446,7 @@ public partial class MainWindow:Window
                     _operationId = Guid.NewGuid().ToString("N");
                 }
 
-                ScannerStatus.Text=
+                StatusLine =
                     $"FISKAL-FREIGABE FEHLT · keine Zahlung gestartet · " +
                     $"{prepared.FiscalReadiness.BlockingCount} Blocker";
                 return;
@@ -3451,7 +3472,7 @@ public partial class MainWindow:Window
                 _operationId=Guid.NewGuid().ToString("N");
                 PersistOpenCartRecovery();
 
-                ScannerStatus.Text =
+                StatusLine =
                     operation.TerminalOutcome switch
                     {
                         PaymentTerminalOutcome.Declined =>
@@ -3474,7 +3495,7 @@ public partial class MainWindow:Window
                     "Zahlungsstatus unklar. Nicht erneut kassieren. " +
                     (prepared.TerminalResult?.Message ?? ""));
 
-                ScannerStatus.Text=
+                StatusLine=
                     $"ZAHLUNG GESPERRT · KASSE → ZAHLUNG PRÜFEN · {id}";
 
                 return;
@@ -3511,7 +3532,7 @@ public partial class MainWindow:Window
             }
             catch { _recoveryFault=true; }
             var id=ReportOperationalError("ZAHLUNG","Verarbeitung prüfen. Keine automatische Wiederholung.",ex);
-            ScannerStatus.Text=$"VORGANG PRÜFEN · NICHT ERNEUT KASSIEREN · Fehler-ID {id}";
+            StatusLine=$"VORGANG PRÜFEN · NICHT ERNEUT KASSIEREN · Fehler-ID {id}";
         }
         finally { SetCheckoutBusy(false); _checkoutWithoutPrinterAccepted = false; }
     }
@@ -3672,7 +3693,7 @@ public partial class MainWindow:Window
         // The sale.completed Cloud event is queued in that same transaction; Cloud uses it
         // to decrement its stock projection without making checkout wait for Internet.
         ClearCompletedCart();
-        ScannerStatus.Text = sale.PickupNumber > 0
+        StatusLine = sale.PickupNumber > 0
             ? $"ABHOLNR. {sale.PickupNumber:000} · Bon {sale.ReceiptNumber:000000} · {Formatting.Money(sale.TotalCents)}"
             : $"Bon {sale.ReceiptNumber:000000} GESPEICHERT · {Formatting.Money(sale.TotalCents)}";
         try
@@ -3705,7 +3726,7 @@ public partial class MainWindow:Window
                 () =>
                 {
                     if(paperPossible) return PrintReceiptAndReportAsync(job,printerName);
-                    ScannerStatus.Text+=" · KEIN BONDRUCKER: Papierbeleg nicht möglich";
+                    StatusLine = $"{StatusLine} · {UiLanguage.T("KEIN BONDRUCKER: Papierbeleg nicht möglich")}";
                     return Task.CompletedTask;
                 });
         }
@@ -3867,7 +3888,7 @@ public partial class MainWindow:Window
         // ReportOperationalError already writes ERROR-ID/CATEGORY/MESSAGE plus the
         // full exception to CrashLog - no need to log it a second time here.
         var errorId = ReportOperationalError(category, ex.Message, ex, printerRelated);
-        ScannerStatus.Text = $"{category} FEHLGESCHLAGEN · Fehler-ID {errorId}";
+        StatusLine = $"{category} FEHLGESCHLAGEN · Fehler-ID {errorId}";
     }
 
     private string ReportOperationalError(
@@ -4057,7 +4078,7 @@ public partial class MainWindow:Window
             using (_perf.Measure("printer.receipt_spool"))
                 await _receiptPrinter.PrintReceiptAsync(job,printerName);
 
-            ScannerStatus.Text = job.PickupNumber > 0
+            StatusLine = job.PickupNumber > 0
                 ? $"ABHOLNR. {job.PickupNumber:000} · Bon {job.ReceiptNumber:000000} · an Druckwarteschlange übergeben"
                 : $"Bon {job.ReceiptNumber:000000} · an Windows-Druckwarteschlange übergeben";
         }
@@ -4070,7 +4091,7 @@ public partial class MainWindow:Window
                 ex,
                 printerRelated: true);
 
-            ScannerStatus.Text =
+            StatusLine =
                 $"Bon {job.ReceiptNumber:000000} GESPEICHERT · Druckerfehler · " +
                 $"NICHT ERNEUT KASSIEREN · Fehler-ID {errorId}";
         }
@@ -4136,7 +4157,7 @@ public partial class MainWindow:Window
     {
         var window = new DigitalReceiptWindow();
         window.Show(this);
-        ScannerStatus.Text = "Digitaler Kassenbon wird erstellt …";
+        StatusLine = "Digitaler Kassenbon wird erstellt …";
         try
         {
             var document = DigitalReceiptDocument.From(job, payments);
@@ -4146,7 +4167,7 @@ public partial class MainWindow:Window
                 $"Digitalbeleg (Wahl des Kunden, AEAO zu § 146a Nr. 2.5.3); TOR Cloud {publication.ReceiptId}; abrufbar bis {publication.ExpiresAt:O}");
             window.ShowLink(publication.Url, publication.ExpiresAt);
             _customerDisplayWindow?.ShowThankYou(job.TotalCents, publication.Url);
-            ScannerStatus.Text = $"Digitaler Kassenbon bereit · abrufbar bis {publication.ExpiresAt.ToLocalTime():dd.MM.yyyy}";
+            StatusLine = $"Digitaler Kassenbon bereit · abrufbar bis {publication.ExpiresAt.ToLocalTime():dd.MM.yyyy}";
         }
         catch (Exception ex)
         {
@@ -4163,7 +4184,7 @@ public partial class MainWindow:Window
                 CrashLog.WriteException("Digital receipt audit", auditEx);
             }
             window.ShowFailure(reason, "Der Papierbeleg wird ausgegeben.");
-            ScannerStatus.Text = "Digitalbeleg nicht möglich · Papierbeleg";
+            StatusLine = "Digitalbeleg nicht möglich · Papierbeleg";
             await printPaper();
         }
     }
@@ -4204,26 +4225,26 @@ public partial class MainWindow:Window
 
             if (!_settingsCache.GetBool("device.receipt_printer.enabled", false))
             {
-                ScannerStatus.Text = "BON-HISTORIE: Bondrucker ist deaktiviert.";
+                StatusLine = "BON-HISTORIE: Bondrucker ist deaktiviert.";
                 return;
             }
 
             var printerName = _settingsCache.GetText("device.receipt_printer.name", "");
             if (string.IsNullOrWhiteSpace(printerName))
             {
-                ScannerStatus.Text = "BON-HISTORIE: Kein Bondrucker ausgewählt.";
+                StatusLine = "BON-HISTORIE: Kein Bondrucker ausgewählt.";
                 return;
             }
 
             var sale = await _sales.GetByIdAsync(selection.SaleId);
             if (sale is null)
             {
-                ScannerStatus.Text = "BON-HISTORIE: Bon wurde nicht gefunden.";
+                StatusLine = "BON-HISTORIE: Bon wurde nicht gefunden.";
                 return;
             }
 
             var job = BuildReceiptPrintJob(sale, sale.PaymentMethod, isCopy: true);
-            ScannerStatus.Text = $"Bon {sale.ReceiptNumber:000000} · Kopie wird gedruckt ...";
+            StatusLine = $"Bon {sale.ReceiptNumber:000000} · Kopie wird gedruckt ...";
 
             await _audit.WriteAsync(
                 _currentUser.Username,
@@ -4233,7 +4254,7 @@ public partial class MainWindow:Window
                 $"receipt={sale.ReceiptNumber}; payment={sale.PaymentMethod}");
 
             await _receiptPrinter.PrintReceiptAsync(job, printerName);
-            ScannerStatus.Text =
+            StatusLine =
                 $"Bon {sale.ReceiptNumber:000000} · Kopie an Windows übergeben; Papierausdruck prüfen.";
         }
         catch (Exception ex)
@@ -4245,7 +4266,7 @@ public partial class MainWindow:Window
                 ex,
                 printerRelated: true);
 
-            ScannerStatus.Text = $"BON-HISTORIE · Fehler-ID {errorId}";
+            StatusLine = $"BON-HISTORIE · Fehler-ID {errorId}";
         }
     }
 
@@ -4292,7 +4313,7 @@ public partial class MainWindow:Window
             "receipt.auto_print",
             enabled ? "true" : "false");
 
-        ScannerStatus.Text = enabled
+        StatusLine = enabled
             ? "BON EIN · automatische Bonausgabe aktiviert."
             : "BON AUS · automatischer Druck deaktiviert. BON-HISTORIE bleibt verfügbar.";
     }
@@ -4521,7 +4542,7 @@ public partial class MainWindow:Window
         if (section == "KASSE") ShowCashHubSection("BETRIEB");
         if (section == "BERICHTE") ShowReportsHubSection("TAGESKONTROLLE");
 
-        ScannerStatus.Text = $"{section} · Schnellzugriff geöffnet";
+        StatusLine = $"{section} · Schnellzugriff geöffnet";
     }
 
     private void HideMenuHub()
@@ -4531,7 +4552,7 @@ public partial class MainWindow:Window
         SettingsHubPanel.IsVisible = false;
         CashHubPanel.IsVisible = false;
         ReportsHubPanel.IsVisible = false;
-        ScannerStatus.Text = "Scanner bereit";
+        StatusLine = "Scanner bereit";
     }
 
     private void OnGoodsHubClick(object? sender, RoutedEventArgs e) =>
@@ -4629,10 +4650,10 @@ public partial class MainWindow:Window
 
         try
         {
-            ScannerStatus.Text = "Artikel-Etiketten werden erstellt ...";
+            StatusLine = "Artikel-Etiketten werden erstellt ...";
             var path = await _management.CreateArticleLabelsPdfAsync();
             BusinessManagementService.OpenFile(path);
-            ScannerStatus.Text = $"Etiketten-PDF erstellt: {path}";
+            StatusLine = $"Etiketten-PDF erstellt: {path}";
         }
         catch (Exception ex)
         {
@@ -4665,7 +4686,7 @@ public partial class MainWindow:Window
                 file.Path.LocalPath,
                 _currentUser.Username);
             await ReloadCatalogAfterMasterDataAsync();
-            ScannerStatus.Text = $"Artikelimport abgeschlossen: {count} Datensätze.";
+            StatusLine = $"Artikelimport abgeschlossen: {count} Datensätze.";
         }
         catch (Exception ex)
         {
@@ -4695,7 +4716,7 @@ public partial class MainWindow:Window
         try
         {
             var path = await _management.ExportArticlesCsvAsync(file.Path.LocalPath);
-            ScannerStatus.Text = $"Artikelexport erstellt: {path}";
+            StatusLine = $"Artikelexport erstellt: {path}";
         }
         catch (Exception ex)
         {
@@ -4728,7 +4749,7 @@ public partial class MainWindow:Window
                 file.Path.LocalPath,
                 _currentUser.Username);
             await ReloadCatalogAfterMasterDataAsync();
-            ScannerStatus.Text = $"Datenbankimport: {count} Artikel übernommen/aktualisiert.";
+            StatusLine = $"Datenbankimport: {count} Artikel übernommen/aktualisiert.";
         }
         catch (Exception ex)
         {
@@ -4749,7 +4770,7 @@ public partial class MainWindow:Window
     {
         if (_engine.Cart.Count > 0)
         {
-            ScannerStatus.Text = "PROGRAMM BEENDEN: Aktuellen Verkauf zuerst kassieren, PARKEN oder mit C leeren.";
+            StatusLine = "PROGRAMM BEENDEN: Aktuellen Verkauf zuerst kassieren, PARKEN oder mit C leeren.";
             return;
         }
 
@@ -4763,7 +4784,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "Keine Berechtigung für Einstellungen.";
+            StatusLine = "Keine Berechtigung für Einstellungen.";
             return;
         }
 
@@ -4819,7 +4840,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "Personalverwaltung ist nur für Admin verfügbar.";
+            StatusLine = "Personalverwaltung ist nur für Admin verfügbar.";
             return;
         }
         await new UserManagementWindow(_authentication, _currentUser).ShowDialog<bool>(this);
@@ -4850,7 +4871,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "Systemdiagnose ist nur für Admin verfügbar.";
+            StatusLine = "Systemdiagnose ist nur für Admin verfügbar.";
             return;
         }
 
@@ -4885,7 +4906,7 @@ public partial class MainWindow:Window
                 "DATABASE",
                 Path.GetFileName(path),
                 path);
-            ScannerStatus.Text = $"Datenbank-Sicherung erstellt: {path}";
+            StatusLine = $"Datenbank-Sicherung erstellt: {path}";
         }
         catch (Exception ex)
         {
@@ -4897,14 +4918,14 @@ public partial class MainWindow:Window
     {
         if (_currentUser.IsTraining)
         {
-            ScannerStatus.Text = $"{function} ist im TRAININGSMODUS deaktiviert.";
+            StatusLine = $"{function} ist im TRAININGSMODUS deaktiviert.";
             return false;
         }
 
         if (_currentUser.IsAdmin || (zPermissionAllowed && _currentUser.Can(UserPermissions.ZReport)))
             return true;
 
-        ScannerStatus.Text = $"Keine Berechtigung für {function}.";
+        StatusLine = $"Keine Berechtigung für {function}.";
         return false;
     }
 
@@ -5036,7 +5057,7 @@ public partial class MainWindow:Window
         try
         {
             var path = await _management.ExportBookingDataAsync(file.Path.LocalPath);
-            ScannerStatus.Text = $"Buchungsdaten exportiert: {path}";
+            StatusLine = $"Buchungsdaten exportiert: {path}";
         }
         catch (Exception ex)
         {
@@ -5127,6 +5148,7 @@ public partial class MainWindow:Window
 
         var close = new Button { Content = "SCHLIESSEN", MinHeight = 48 };
         close.Click += (_, _) => window.Close(); panel.Children.Add(close);
+        UiLanguage.Apply(window);
         await window.ShowDialog(this);
     }
 
@@ -5162,7 +5184,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "Personalüberwachung ist nur für Admin verfügbar.";
+            StatusLine = "Personalüberwachung ist nur für Admin verfügbar.";
             return;
         }
         await ShowReportAsync(
@@ -5182,7 +5204,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "Kassenmeldung ist nur für Admin verfügbar.";
+            StatusLine = "Kassenmeldung ist nur für Admin verfügbar.";
             return;
         }
 
@@ -5191,7 +5213,7 @@ public partial class MainWindow:Window
             var report = await _management.BuildKassenmeldungAsync();
             var path = _management.CreatePdf(report);
             await _audit.WriteAsync(_currentUser.Username, "KASSENMELDUNG_PDF_CREATED", "FISCAL_DOCUMENTATION", Path.GetFileName(path), path);
-            ScannerStatus.Text = $"Kassenmeldung erstellt: {path}";
+            StatusLine = $"Kassenmeldung erstellt: {path}";
             await new TextReportWindow(
                 _management,
                 report,
@@ -5210,7 +5232,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "Programmierungsprotokoll ist nur für Admin verfügbar.";
+            StatusLine = "Programmierungsprotokoll ist nur für Admin verfügbar.";
             return;
         }
 
@@ -5226,7 +5248,7 @@ public partial class MainWindow:Window
                 "FISCAL_DOCUMENTATION",
                 Path.GetFileName(path),
                 path);
-            ScannerStatus.Text = $"Programmierungsprotokoll erstellt: {path}";
+            StatusLine = $"Programmierungsprotokoll erstellt: {path}";
             await new TextReportWindow(
                 _management,
                 report,
@@ -5295,7 +5317,7 @@ public partial class MainWindow:Window
         try
         {
             var path = await _management.ExportGdpduAuditPackageAsync(folder.Path.LocalPath);
-            ScannerStatus.Text = $"GDPdU/GoBD Prüf-Unterlagen erstellt: {path}";
+            StatusLine = $"GDPdU/GoBD Prüf-Unterlagen erstellt: {path}";
         }
         catch (Exception ex)
         {
@@ -5307,7 +5329,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "DATEV Kassenbuch Exportjournal ist nur für Admin verfügbar.";
+            StatusLine = "DATEV Kassenbuch Exportjournal ist nur für Admin verfügbar.";
             return;
         }
 
@@ -5320,7 +5342,7 @@ public partial class MainWindow:Window
     {
         if (!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text = "DATEV Kassenarchiv Journal ist nur für Admin verfügbar.";
+            StatusLine = "DATEV Kassenarchiv Journal ist nur für Admin verfügbar.";
             return;
         }
 
@@ -5399,7 +5421,7 @@ public partial class MainWindow:Window
             var path = await _dsfinvkExport.ExportAsync(from, to, folder.Path.LocalPath);
             await _audit.WriteAsync(_currentUser.Username, "DSFINVK_EXPORT", "DSFINVK", Path.GetFileName(path),
                 $"from={from:O}; to={to:O}; hints={preflight.Issues.Count}");
-            ScannerStatus.Text = $"DSFinV-K Export erstellt: {path}";
+            StatusLine = $"DSFinV-K Export erstellt: {path}";
         }
         catch (Exception ex)
         {
@@ -5414,7 +5436,7 @@ public partial class MainWindow:Window
 
         if (!_tseProvider.ExportAvailable)
         {
-            ScannerStatus.Text = "TSE Export nicht verfügbar - Swissbit SDK / TSE prüfen.";
+            StatusLine = "TSE Export nicht verfügbar - Swissbit SDK / TSE prüfen.";
             return;
         }
 
@@ -5443,7 +5465,7 @@ public partial class MainWindow:Window
                     ? " · TSE-Stammdaten übernommen"
                     : " · keine TSE-Stammdaten im Export gefunden";
             }
-            ScannerStatus.Text = result.Success
+            StatusLine = result.Success
                 ? $"TSE Export erstellt: {result.FilePath}{masterData}"
                 : "TSE Export fehlgeschlagen: " + result.Message;
         }
@@ -5624,7 +5646,7 @@ public partial class MainWindow:Window
             assessment.Message);
 
         TseCertificateWarningBadge.IsVisible = true;
-        ScannerStatus.Text = assessment.Message;
+        StatusLine = assessment.Message;
 
         if (assessment.ShowDialog &&
             !_tseCertificateDialogShownForProcess)
@@ -5640,15 +5662,68 @@ public partial class MainWindow:Window
         }
     }
 
+    // Start-up warning is shown once; badge/status continue to reflect state.
+    private bool _tseStartupWarningShown;
+
+    private async Task WarnAboutTseOnceAsync(string headline, string deviceMessage)
+    {
+        if (_tseStartupWarningShown || _currentUser.IsTraining)
+            return;
+
+        _tseStartupWarningShown = true;
+        await ShowTseUnavailableAsync(headline, deviceMessage);
+    }
+
+    private DispatcherTimer? _tseWatch;
+    private string _tseMountSignature = "";
+
+    private void StartTseWatch()
+    {
+        if (_tseWatch is not null ||
+            !_settingsCache.GetBool("tse.auto_connect", true))
+        {
+            return;
+        }
+
+        _tseMountSignature = MountSignature();
+        _tseWatch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _tseWatch.Tick += async (_, _) =>
+        {
+            var signature = MountSignature();
+            if (signature == _tseMountSignature)
+                return;
+
+            _tseMountSignature = signature;
+            await AutoProbeTseAsync();
+        };
+        _tseWatch.Start();
+    }
+
+    private static string MountSignature()
+    {
+        try
+        {
+            return string.Join("|", SwissbitDeviceScan.FindMountPoints());
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("TSE mount scan", ex);
+            return "";
+        }
+    }
+
     private async Task AutoProbeTseAsync()
     {
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            // R113: goes through TseFailSafeService, not the raw provider, so
-            // an unreachable/failed TSE actually opens a documented outage and
-            // a later success closes it again.
-            var probe = _tseFailSafe.ProbeAsync(_currentUser.Username, timeout.Token);
+            using var timeout =
+                new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+            var probe =
+                _tseFailSafe.ProbeAsync(
+                    _currentUser.Username,
+                    timeout.Token);
+
             var completed = await Task.WhenAny(
                 probe,
                 Task.Delay(TimeSpan.FromSeconds(10)));
@@ -5657,10 +5732,17 @@ public partial class MainWindow:Window
             {
                 _lastTseDevice = null;
                 TseCertificateWarningBadge.IsVisible = false;
-                ScannerStatus.Text =
+                StatusLine =
                     "TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar";
-                ReportOperationalError("TSE","TSE-Geräteprüfung: Timeout nach 10 Sekunden.");
+                ReportOperationalError(
+                    "TSE",
+                    "TSE-Geräteprüfung: Timeout nach 10 Sekunden.");
+
                 await RefreshTseOutageBadgeAsync();
+                await WarnAboutTseOnceAsync(
+                    "TSE antwortet nicht",
+                    "Die TSE hat innerhalb von 10 Sekunden nicht geantwortet.");
+                await RefreshFiscalStatusAsync();
                 return;
             }
 
@@ -5669,19 +5751,38 @@ public partial class MainWindow:Window
 
             if (result.State == TseConnectionState.Ready)
             {
-                ScannerStatus.Text =
+                StatusLine =
                     $"TSE bereit · {result.Device?.SerialNumber}";
-            }
-            else if (result.State == TseConnectionState.Connected)
-            {
-                ScannerStatus.Text =
-                    "Swissbit TSE erkannt · Einrichtung/Status prüfen";
             }
             else
             {
-                ScannerStatus.Text = result.Message;
+                var (headline, status) = result.State switch
+                {
+                    TseConnectionState.Connected => (
+                        "TSE erkannt, aber noch nicht betriebsbereit",
+                        "Swissbit TSE erkannt · Einrichtung/Status prüfen"),
+                    TseConnectionState.NotFound => (
+                        "Keine TSE gefunden",
+                        "Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                    TseConnectionState.SdkMissing => (
+                        "Swissbit SDK nicht gefunden",
+                        "Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                    TseConnectionState.NotConfigured => (
+                        "TSE ist noch nicht eingerichtet",
+                        "TSE ist noch nicht eingerichtet · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                    _ => (
+                        "TSE meldet einen Fehler",
+                        "TSE meldet einen Fehler · Kasse bleibt bedienbar · Vorgänge werden nicht signiert")
+                };
+
+                StatusLine = status;
+                await WarnAboutTseOnceAsync(
+                    headline,
+                    result.Message);
             }
 
+            // Certificate assessment and outage badge are independent of the
+            // live USB watcher; both paths must remain active.
             await ApplyTseCertificateWarningAsync(result.Device);
             await RefreshTseOutageBadgeAsync();
             await RefreshFiscalStatusAsync();
@@ -5691,7 +5792,10 @@ public partial class MainWindow:Window
             _lastTseDevice = null;
             TseCertificateWarningBadge.IsVisible = false;
             CrashLog.WriteException("MainWindow operation", ex);
-            ReportOperationalError("TSE","TSE-Geräteprüfung fehlgeschlagen.",ex);
+            ReportOperationalError(
+                "TSE",
+                "TSE-Geräteprüfung fehlgeschlagen.",
+                ex);
             await RefreshTseOutageBadgeAsync();
         }
     }
@@ -5700,7 +5804,7 @@ public partial class MainWindow:Window
     {
         if(!_currentUser.IsAdmin)
         {
-            ScannerStatus.Text="Keine Berechtigung für Einstellungen.";
+            StatusLine="Keine Berechtigung für Einstellungen.";
             return;
         }
 
@@ -5771,7 +5875,7 @@ public partial class MainWindow:Window
 
         if (business == "KIOSK")
         {
-            ScannerStatus.Text = "EINZELHANDEL · SCANNER BEREIT · Barcode scannen";
+            StatusLine = "EINZELHANDEL · SCANNER BEREIT · Barcode scannen";
             CategoryModeHintText.Text = "OPTIONAL · Scanner ist der Hauptweg";
             ProductModeHintText.Text = "Schnellwahl optional · Scanner bleibt aktiv";
             EmptyCartHintText.Text = "BARCODE SCANNEN";
@@ -5779,7 +5883,7 @@ public partial class MainWindow:Window
         }
         else
         {
-            ScannerStatus.Text = "GASTRONOMIE · TOUCH-SCHNELLWAHL BEREIT";
+            StatusLine = "GASTRONOMIE · TOUCH-SCHNELLWAHL BEREIT";
             CategoryModeHintText.Text = "TOUCH · Warengruppe → Artikel";
             ProductModeHintText.Text = "TOUCH · Artikel → direkt im Bon";
             EmptyCartHintText.Text = "WARENGRUPPE ODER ARTIKEL ANTIPPEN";
@@ -5886,7 +5990,7 @@ public partial class MainWindow:Window
         if (!enabled) return;
         if (screen <= 0 && Screens.All.Count < 2)
         {
-            ScannerStatus.Text = "KUNDENDISPLAY: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen.";
+            StatusLine = "KUNDENDISPLAY: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen.";
             return;
         }
 
@@ -5918,7 +6022,7 @@ public partial class MainWindow:Window
         if (!enabled) return;
         if (screen <= 0 && Screens.All.Count < 2)
         {
-            ScannerStatus.Text = "BESTELLMONITOR: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen.";
+            StatusLine = "BESTELLMONITOR: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen.";
             return;
         }
 
@@ -6080,11 +6184,11 @@ public partial class MainWindow:Window
 
     private bool RequirePermission(UserPermissions permission, string function)
     {
-        if (CartLocked) { ScannerStatus.Text="Vorgang gesperrt · Zahlung / Wiederherstellung prüfen"; return false; }
+        if (CartLocked) { StatusLine="Vorgang gesperrt · Zahlung / Wiederherstellung prüfen"; return false; }
         if (_currentUser.Can(permission))
             return true;
 
-        ScannerStatus.Text = $"Keine Berechtigung für {function}.";
+        StatusLine = $"Keine Berechtigung für {function}.";
         return false;
     }
 
@@ -6119,25 +6223,25 @@ public partial class MainWindow:Window
         if (!_currentUser.IsAdmin || _availableUpdate is null) return;
         if (_paymentInProgress || _pendingCheckout is not null || _recoveryFault)
         {
-            ScannerStatus.Text = "UPDATE GESPERRT · Zahlung / Wiederherstellung zuerst abschließen.";
+            StatusLine = "UPDATE GESPERRT · Zahlung / Wiederherstellung zuerst abschließen.";
             return;
         }
         if (_engine.Cart.Count > 0)
         {
-            ScannerStatus.Text = "UPDATE GESPERRT · Aktuellen Verkauf zuerst kassieren, PARKEN oder mit C leeren.";
+            StatusLine = "UPDATE GESPERRT · Aktuellen Verkauf zuerst kassieren, PARKEN oder mit C leeren.";
             return;
         }
 
         UpdateButton.IsEnabled = false;
         try
         {
-            ScannerStatus.Text = "TOR UPDATE · Download und Sicherheitsprüfung …";
+            StatusLine = "TOR UPDATE · Download und Sicherheitsprüfung …";
             var updater = new TorUpdateService(_settings, _backup);
             var staged = await updater.DownloadAndStageAsync(_availableUpdate);
             updater.ScheduleInstallAfterExit(staged);
             await _audit.WriteAsync(_currentUser.Username, "UPDATE_STAGED", "SYSTEM", _availableUpdate.Version,
                 $"TOR update staged; backup={Path.GetFileName(staged.BackupPath)}; installer hash verified.");
-            ScannerStatus.Text = $"UPDATE BEREIT · Backup erstellt · TOR POS wird beendet und {staged.Manifest.Revision} installiert.";
+            StatusLine = $"UPDATE BEREIT · Backup erstellt · TOR POS wird beendet und {staged.Manifest.Revision} installiert.";
             Close();
         }
         catch (Exception ex)
@@ -6154,7 +6258,7 @@ public partial class MainWindow:Window
         // An open cart must not disappear silently during a user switch.
         if (_engine.Cart.Count > 0)
         {
-            ScannerStatus.Text =
+            StatusLine =
                 "ABMELDEN: Aktuellen Verkauf zuerst kassieren, PARKEN oder mit C leeren.";
             return;
         }
@@ -6182,7 +6286,7 @@ public partial class MainWindow:Window
         if (!_currentUser.IsTraining)
             return true;
 
-        ScannerStatus.Text = $"{function} ist im TRAININGSMODUS deaktiviert.";
+        StatusLine = $"{function} ist im TRAININGSMODUS deaktiviert.";
         return false;
     }
 
