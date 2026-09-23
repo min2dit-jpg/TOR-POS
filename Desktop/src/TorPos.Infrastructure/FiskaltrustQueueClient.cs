@@ -273,6 +273,20 @@ public sealed class FiskaltrustQueueClient : IDisposable
         Configuration = configuration ??
             throw new ArgumentNullException(nameof(configuration));
 
+        if (string.IsNullOrWhiteSpace(
+                configuration.CashBoxId))
+        {
+            throw new InvalidOperationException(
+                "fiskaltrust CashBox/Mandant-ID fehlt.");
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                configuration.QueueId))
+        {
+            throw new InvalidOperationException(
+                "fiskaltrust Queue-ID fehlt.");
+        }
+
         _signEndpoint = BuildEndpoint(
             configuration.QueueEndpoint,
             "json/v1/Sign");
