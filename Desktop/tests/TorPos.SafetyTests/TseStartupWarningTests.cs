@@ -24,8 +24,8 @@ public static class TseStartupWarningTests
 
         // Every state that is not Ready reaches the operator. The switch is
         // written over the enum with a default arm, so a state added to
-        // TseConnectionState later cannot silently fall through in silence the
-        // way NotFound did.
+        // TseConnectionState later cannot fall through in silence the way
+        // NotFound did.
         var states = new[]
         {
             "TseConnectionState.Connected",

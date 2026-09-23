@@ -36,6 +36,14 @@
 
 | Test | Ergebnis | Nachweis / Bemerkung |
 |---|---|---|
+| Start **ohne** angeschlossene TSE: Warnfenster erscheint | ☐ PASS ☐ FAIL | |
+| Warnfenster nennt den Zustand (keine TSE / SDK fehlt / Fehler) | ☐ PASS ☐ FAIL | |
+| Kasse bleibt nach dem Hinweis bedienbar (Verkauf möglich) | ☐ PASS ☐ FAIL | |
+| Hinweis erscheint nur **einmal** pro Programmlauf | ☐ PASS ☐ FAIL | |
+| Admin sieht den Weg in Erweitert / Techniker, Kassenkraft nicht | ☐ PASS ☐ FAIL | |
+| Statuszeile zeigt denselben Zustand dauerhaft an | ☐ PASS ☐ FAIL | |
+| Ausfall ist im Protokoll dokumentiert (nicht nur am Bildschirm) | ☐ PASS ☐ FAIL | |
+| Nach Anstecken einer betriebsbereiten TSE: kein Warnfenster mehr | ☐ PASS ☐ FAIL | |
 | SDK lädt | ☐ PASS ☐ FAIL | |
 | TSE wird erkannt | ☐ PASS ☐ FAIL | |
 | TSE-Identität / Client-ID plausibel | ☐ PASS ☐ FAIL | |
@@ -56,6 +64,23 @@
 | Bon ↔ TSE ↔ DSFinV-K Zuordnung | ☐ PASS ☐ FAIL | |
 | Drucker End-to-End | ☐ PASS ☐ FAIL | |
 | Kartenterminal End-to-End (falls aktiv) | ☐ PASS ☐ FAIL | |
+
+### Startprüfung ohne TSE
+
+Diese acht Zeilen werden **vor** dem Anstecken der TSE geprüft: Programm auf
+einem PC ohne angeschlossene TSE starten und mit einem Admin-Konto sowie mit
+einem Kassenkonto anmelden.
+
+Erwartet wird ein Hinweisfenster, **kein** blockierter Verkauf: ein TSE-Ausfall
+ist nach § 146a AO ein dokumentierter Ausfall und kein Grund, den Betrieb
+anzuhalten. Das Fenster sagt das ausdrücklich und weist zugleich darauf hin,
+dass die Vorgänge in dieser Zeit nicht fiskal abgesichert sind.
+
+Im Trainingsmodus erscheint der Hinweis bewusst nicht, weil dort ohnehin nicht
+signiert wird.
+
+Läuft die Oberfläche auf Türkisch oder Englisch, muss der Hinweis in dieser
+Sprache erscheinen und der Gerätename **TSE** unverändert enthalten bleiben.
 
 ## BAR-Testbon – Detail
 
