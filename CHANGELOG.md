@@ -8,6 +8,92 @@
 
 Verbindliche Quelle: `Desktop/src/TorPos.Core/ReleaseInfo.cs`.
 
+## Unveröffentlicht (nach R182)
+
+Diese Arbeit steht in `main`, ist aber **kein** Release: `ReleaseInfo` führt
+weiterhin R182 / Merd-D / 0.7.33.882, und die fiskalische Produktionsfreigabe
+bleibt geschlossen. Der Abschnitt wird beim nächsten Release in einen
+Revisionsabschnitt überführt.
+
+### Bedienoberfläche DE/TR/EN
+
+- Die Bedienoberfläche läuft wahlweise auf **Deutsch, Türkisch oder Englisch**
+  (Einstellungen → Alltag → Sprache). Deutsch ist Vorgabe und zugleich
+  Nachschlagschlüssel: ein fehlender Eintrag zeigt das Original, eine
+  unvollständige Übersetzung ist an einer echten Kasse damit harmlos.
+- **Fiskalische Aufzeichnungen bleiben deutsch.** Bon, DSFinV-K, Z-Bericht,
+  TSE-Prozessdaten und das Protokoll entstehen in Core/Infrastructure; beide
+  Projekte referenzieren die Sprachschicht nicht, und eine Prüfung hält diese
+  Grenze.
+- Fachbegriffe behalten in jeder Sprache ihren Namen: Z-Bericht, X-Bericht,
+  Z-Abschluss, DSFinV-K, TSE, DATEV, GoBD, § 146a. Betriebsdaten - Warengruppen,
+  Artikelnamen, Gerätenamen, Beträge - werden nie übersetzt.
+- Das Layout-Gate misst in allen drei Sprachen; eine Übersetzung, die einen Knopf
+  zerschneidet, fällt jetzt in der CI auf statt an der Kasse.
+- **TOR Restaurant und Restaurant Plus bleiben bewusst deutschsprachig.**
+
+### TSE-Lebenszyklus an der Kasse
+
+- **Start ohne betriebsbereite TSE**: jeder Zustand, der nicht signieren kann,
+  schreibt eine Statuszeile und öffnet einmal pro Programmlauf ein
+  Hinweisfenster. Zuvor sagten nur `Ready` und `Connected` überhaupt etwas -
+  `NotFound`, der häufigste Fall einer Neuinstallation, erzeugte nichts.
+- Die **Kasse wird dabei nicht gesperrt**: § 146a behandelt einen TSE-Ausfall als
+  dokumentierten Ausfall, nicht als Grund den Betrieb anzuhalten. Das Fenster
+  sagt beides - es kann weiterverkauft werden, und die Vorgänge sind in dieser
+  Zeit nicht fiskal abgesichert.
+- Eine **gesteckte TSE wird auch ohne SDK erkannt** (der Stick ist ein
+  USB-Volume, bevor er eine API ist); der Zustand bleibt `SdkMissing`, es wird
+  nichts signiert.
+- **Stecken und Ziehen im laufenden Betrieb** werden bemerkt. Bewusst ohne
+  Dialog: ein Modal mitten im Verkauf ist das, was eine Kasse nie tun darf.
+- Das **TSE-AUSFALL-Badge** wird nach jedem Probe neu gezeichnet; zuvor zeigte
+  die Kasse einen längst beendeten Ausfall weiter.
+- **Ausfallliste** unter Erweitert / Techniker: Beginn, Ende oder „läuft noch“,
+  Dauer und protokollierter Grund. `tse_outage_log` trug das seit jeher und ist
+  gegen Löschen geschützt, aber es gab keinen Weg es anzusehen.
+- **TSE-Uhr**: jeder Transaktionsrequest trug seit jeher ein `TimeAdminPin`-Feld,
+  das keine der sechs Konstruktionsstellen je füllte. Eine TSE, die lange lag,
+  scheiterte damit an jeder Signatur mit `0x1002`. Gespeichert wird ausschliesslich
+  die TimeAdmin-PIN, opt-in und DPAPI-geschützt; Admin-PIN, PUK und
+  Credential-Seed werden nirgends gespeichert.
+- **Zertifikatsende** wird bewertet und nicht mehr nur gelesen: Warnung ab 90
+  Tagen, kritisch ab 30, und ein abgelaufenes Zertifikat blockiert den
+  Transaktionsstart unabhängig vom Stand der Freigabeunterlagen.
+- **Das Lesen der TSE löscht die BSI-Zertifizierungsnummer nicht mehr.** Die
+  WORM API liefert sie nicht; die Einstellungsseite schrieb den leeren Wert nach
+  jeder Aktivierung zurück, sodass das Programmierungsprotokoll dauerhaft
+  „FEHLT“ meldete.
+
+### Freigabe-Gates
+
+- Die physische TSE-Freigabe ist **nach Generation getrennt** (1, 1.1, 2). Die
+  Freigabe einer Generation öffnet keine andere; eine unklare oder
+  widersprüchliche Generation ist fail-closed.
+- Die Generation wird **nicht mehr aus Hardware-/Softwarerevision oder
+  Gerätebeschreibung abgeleitet** - diese Felder sind keine Generationsangabe.
+  Ohne belegte Zuordnung bleibt sie unbekannt.
+- **Cloud-TSE** ist als Naht vorhanden, signiert aber nichts: jeder Aufruf, der
+  fiskalische Daten erzeugen würde, verweigert und erfindet weder
+  Transaktionsnummer noch Signaturzähler noch Signatur. Die Freigabe wird **pro
+  Anbieter** geführt, ein unbekannter Anbieter gilt nie als freigegeben, und die
+  Cloud-Qualifikation geht nicht in `FiscalRelease.Enabled` ein - eine
+  USB-Kasse wird davon nicht blockiert.
+
+### Abnahme und Dokumentation
+
+- Das Zertifikat des Produkts ist in der Hardware-Abnahme festgehalten:
+  Swissbit TSE 2.0, **BSI-K-TR-0800-2026**, TR-03153, ausgestellt 21.04.2026,
+  gültig bis 20.04.2034.
+- `verification/HARDWARE-E2E-TEMPLATE.md` ist wieder reine **Vorlage**; der
+  Betreiberbericht vom 23.09.2026 liegt als datierte Kopie daneben. Sechs von
+  neun Zeilen der Startprüfung sind gemeldet, drei bleiben offen - zwei davon,
+  bis das Swissbit SDK vorliegt.
+
+Safety-Baseline: **1287** Checks.
+
+## Release-Historie
+
 ### R182
 
 - **Produkttrennung:** aus demselben geprüften Quellcode entstehen zwei feste Produkte, **TOR Einzelhandel** und **TOR Gastro**. Getrennt sind Executable (`TOR-Einzelhandel.exe` / `TOR-Gastro.exe`), Windows-AppId, Installationsordner, Startmenü-/Desktop-Identität, Prozess-Mutex, Benutzer-Datenverzeichnis und maschinenweiter Lizenz-/Demo-Pfad. Beide Produkte sind parallel installierbar; eine Deinstallation löscht weder Daten noch das andere Produkt.
