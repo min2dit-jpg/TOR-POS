@@ -11,6 +11,7 @@ public sealed record RestaurantKitchenBoardItem(
     string ProductName,
     decimal Quantity,
     string Waiter,
+    string Note,
     string Status,
     string Station,
     DateTimeOffset AddedAt,
@@ -267,6 +268,7 @@ public sealed class RestaurantKitchenOutbox
                     i.product_name,
                     i.quantity_milli,
                     s.assigned_waiter,
+                    s.note,
                     COALESCE(k.status,'OFFEN'),
                     COALESCE(
                         (SELECT j.station
@@ -316,8 +318,9 @@ public sealed class RestaurantKitchenOutbox
                     r.GetString(5),
                     r.GetString(6),
                     r.GetString(7),
-                    DateTimeOffset.Parse(r.GetString(8)),
-                    DateTimeOffset.Parse(r.GetString(9))));
+                    r.GetString(8),
+                    DateTimeOffset.Parse(r.GetString(9)),
+                    DateTimeOffset.Parse(r.GetString(10))));
             }
 
             return result;
