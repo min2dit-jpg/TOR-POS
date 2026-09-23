@@ -223,6 +223,84 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<RestaurantTableSession> UpdateSessionDetailsAsync(
+        string sessionId,
+        long expectedVersion,
+        int guestCount,
+        string note,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        note = (note ?? "").Trim();
+        actor = (actor ?? "").Trim();
+
+        if (sessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedVersion < 1)
+            throw new ArgumentOutOfRangeException(nameof(expectedVersion));
+        if (guestCount is < 1 or > 999)
+            throw new ArgumentOutOfRangeException(nameof(guestCount));
+        if (note.Length > 500)
+            throw new ArgumentException("Tischnotiz ist zu lang.", nameof(note));
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            await using (var q = c.CreateCommand())
+            {
+                q.Transaction = tx;
+                q.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET guest_count=$guests,
+                        note=$note,
+                        updated_at=$now,
+                        version=version+1
+                    WHERE id=$id
+                      AND version=$version
+                      AND state='OPEN';
+                    """;
+                q.Parameters.AddWithValue("$guests", guestCount);
+                q.Parameters.AddWithValue("$note", note);
+                q.Parameters.AddWithValue("$now", now);
+                q.Parameters.AddWithValue("$id", sessionId);
+                q.Parameters.AddWithValue("$version", expectedVersion);
+
+                if (await q.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            await AppendEventAsync(
+                c,
+                tx,
+                sessionId,
+                "TISCHDETAILS_GEAENDERT",
+                actor,
+                deviceId,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    guestCount,
+                    note
+                }),
+                now,
+                ct);
+
+            var result = await ReadSessionAsync(
+                c,
+                tx,
+                sessionId,
+                ct);
+
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
+
     public async Task<RestaurantTableSession> ReassignWaiterAsync(
         string sessionId,
         long expectedVersion,
