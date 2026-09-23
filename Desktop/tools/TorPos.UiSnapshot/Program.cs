@@ -379,5 +379,7 @@ sealed class NoWindows : IAppWindowFactory
         AuthenticatedUser user) => throw new NotSupportedException();
     public RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
     public DiagnosticsWindow CreateDiagnosticsWindow() => throw new NotSupportedException();
 }
