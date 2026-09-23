@@ -17,7 +17,7 @@ public sealed class RestaurantReservationsWindow : Window
     private readonly TextBox _dateTime = new()
     {
         MinHeight = 42,
-        Watermark = "z. B. 24.09.2026 19:30"
+        PlaceholderText = "z. B. 24.09.2026 19:30"
     };
 
     private readonly NumericUpDown _guests = new()
