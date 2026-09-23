@@ -115,6 +115,40 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<RestaurantTable?> GetTableAsync(
+        long tableId,
+        CancellationToken ct = default)
+    {
+        if (tableId <= 0)
+            return null;
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT id,area_id,code,display_name,seats,sort_order,is_active,version
+                FROM restaurant_tables
+                WHERE id=$id
+                LIMIT 1;
+                """;
+            q.Parameters.AddWithValue("$id", tableId);
+            await using var r = await q.ExecuteReaderAsync(ct);
+            if (!await r.ReadAsync(ct))
+                return null;
+
+            return new RestaurantTable(
+                r.GetInt64(0),
+                r.GetInt64(1),
+                r.GetString(2),
+                r.GetString(3),
+                r.GetInt32(4),
+                r.GetInt32(5),
+                r.GetInt32(6) != 0,
+                r.GetInt64(7));
+        });
+    }
+
     public async Task<RestaurantTableSession> OpenTableAsync(
         long tableId,
         string operatorName,
