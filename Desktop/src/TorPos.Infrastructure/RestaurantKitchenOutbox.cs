@@ -50,13 +50,55 @@ public sealed class RestaurantKitchenOutbox
         _db = db;
     }
 
-    public async Task<string> EnqueueNewItemAsync(
+    public Task<string> EnqueueNewItemAsync(
         RestaurantTableSession session,
         RestaurantSessionItem item,
         string tableName,
         string actor,
         string station = "",
+        CancellationToken ct = default) =>
+        EnqueueNewItemCoreAsync(
+            session,
+            item,
+            tableName,
+            actor,
+            station,
+            jobId: null,
+            ct);
+
+    public Task<string> EnqueueNewItemIdempotentAsync(
+        RestaurantTableSession session,
+        RestaurantSessionItem item,
+        string tableName,
+        string actor,
+        string jobId,
+        string station = "",
         CancellationToken ct = default)
+    {
+        jobId = (jobId ?? "").Trim();
+        if (jobId.Length is < 8 or > 160)
+            throw new ArgumentException(
+                "Kitchen-Job-ID ist ungültig.",
+                nameof(jobId));
+
+        return EnqueueNewItemCoreAsync(
+            session,
+            item,
+            tableName,
+            actor,
+            station,
+            jobId,
+            ct);
+    }
+
+    private async Task<string> EnqueueNewItemCoreAsync(
+        RestaurantTableSession session,
+        RestaurantSessionItem item,
+        string tableName,
+        string actor,
+        string station,
+        string? jobId,
+        CancellationToken ct)
     {
         var payload = JsonSerializer.Serialize(new
         {
@@ -84,6 +126,7 @@ public sealed class RestaurantKitchenOutbox
             station: KitchenStations.Normalize(station),
             printerName: "",
             payload,
+            jobId,
             ct);
     }
 
@@ -431,11 +474,32 @@ public sealed class RestaurantKitchenOutbox
         string station,
         string printerName,
         string payload,
+        CancellationToken ct) =>
+        EnqueueAsync(
+            sessionId,
+            sessionItemId,
+            action,
+            station,
+            printerName,
+            payload,
+            requestedId: null,
+            ct);
+
+    private Task<string> EnqueueAsync(
+        string sessionId,
+        long? sessionItemId,
+        string action,
+        string station,
+        string printerName,
+        string payload,
+        string? requestedId,
         CancellationToken ct)
     {
         return IoQueue.RunAsync(async () =>
         {
-            var id = Guid.NewGuid().ToString("N");
+            var id = string.IsNullOrWhiteSpace(requestedId)
+                ? Guid.NewGuid().ToString("N")
+                : requestedId.Trim();
             var now = DateTimeOffset.UtcNow.ToString("O");
 
             await using var c = _db.OpenConnection();
@@ -445,7 +509,7 @@ public sealed class RestaurantKitchenOutbox
             {
                 q.Transaction = tx;
                 q.CommandText = """
-                    INSERT INTO restaurant_kitchen_jobs(
+                    INSERT OR IGNORE INTO restaurant_kitchen_jobs(
                         id,session_id,session_item_id,action,station,printer_name,
                         payload_json,state,attempts,last_error,created_at)
                     VALUES(
