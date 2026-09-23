@@ -13,6 +13,13 @@ public sealed record RestaurantPairedDevice(
     string DeviceToken,
     DateTimeOffset PairedAt);
 
+public sealed record RestaurantHandheldDeviceInfo(
+    string DeviceId,
+    string DisplayName,
+    DateTimeOffset PairedAt,
+    DateTimeOffset LastSeenAt,
+    bool IsActive);
+
 public sealed class RestaurantHandheldPairingService
 {
     private readonly SqliteDatabase _db;
@@ -264,6 +271,38 @@ public sealed class RestaurantHandheldPairingService
         if (!ok)
             throw new UnauthorizedAccessException(
                 "Handheld-Gerät ist nicht authentifiziert.");
+    }
+
+    public Task<IReadOnlyList<RestaurantHandheldDeviceInfo>> ListDevicesAsync(
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            TorPos.Core.RestaurantFeature.HandheldBestellung);
+
+        return IoQueue.RunAsync<IReadOnlyList<RestaurantHandheldDeviceInfo>>(async () =>
+        {
+            var result = new List<RestaurantHandheldDeviceInfo>();
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT device_id,display_name,paired_at,last_seen_at,is_active
+                FROM restaurant_handheld_devices
+                ORDER BY is_active DESC,last_seen_at DESC,display_name;
+                """;
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                result.Add(new RestaurantHandheldDeviceInfo(
+                    r.GetString(0),
+                    r.GetString(1),
+                    DateTimeOffset.Parse(r.GetString(2)),
+                    DateTimeOffset.Parse(r.GetString(3)),
+                    r.GetInt32(4) != 0));
+            }
+
+            return result;
+        });
     }
 
     public Task DeactivateAsync(
