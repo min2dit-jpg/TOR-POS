@@ -34,6 +34,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     private readonly RestaurantTerminalRegistry _terminals;
     private readonly RestaurantSyncService _sync;
     private readonly RestaurantRepository _restaurant;
+    private readonly RestaurantOperatorSessionService _operatorSessions;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
 #if TOR_RESTAURANT_PRODUCT
@@ -51,7 +52,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         IRestaurantHandheldService handheld,
         RestaurantTerminalRegistry terminals,
         RestaurantSyncService sync,
-        RestaurantRepository restaurant)
+        RestaurantRepository restaurant,
+        RestaurantOperatorSessionService operatorSessions)
     {
         _settings = settings;
         _entitlements = entitlements;
@@ -60,6 +62,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         _terminals = terminals;
         _sync = sync;
         _restaurant = restaurant;
+        _operatorSessions = operatorSessions;
     }
 
     public async Task StartOrRestartAsync(
@@ -141,6 +144,20 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                             _ => new FixedWindowRateLimiterOptions
                             {
                                 PermitLimit = 10,
+                                Window = TimeSpan.FromMinutes(1),
+                                QueueLimit = 0,
+                                AutoReplenishment = true
+                            }));
+
+                options.AddPolicy(
+                    "operator",
+                    httpContext =>
+                        RateLimitPartition.GetFixedWindowLimiter(
+                            httpContext.Connection.RemoteIpAddress?.ToString()
+                                ?? "unknown",
+                            _ => new FixedWindowRateLimiterOptions
+                            {
+                                PermitLimit = 20,
                                 Window = TimeSpan.FromMinutes(1),
                                 QueueLimit = 0,
                                 AutoReplenishment = true
@@ -240,6 +257,107 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         }
                     })
                 .RequireRateLimiting("pairing");
+
+            app.MapPost(
+                    "/api/v1/operator/login",
+                    async (
+                        HttpContext context,
+                        OperatorLoginRequest request,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            await _pairing.RequireAuthenticatedAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
+                            var login =
+                                await _operatorSessions.LoginAsync(
+                                    deviceId,
+                                    request.OperatorName,
+                                    request.OperatorPin,
+                                    token);
+
+                            return Results.Ok(new
+                            {
+                                operatorName = login.Username,
+                                operatorSessionToken =
+                                    login.SessionToken,
+                                expiresAt = login.ExpiresAt
+                            });
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("operator");
+
+            app.MapPost(
+                    "/api/v1/operator/logout",
+                    async (
+                        HttpContext context,
+                        OperatorLogoutRequest request,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            await _pairing.RequireAuthenticatedAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
+                            await _operatorSessions.LogoutAsync(
+                                deviceId,
+                                request.OperatorSessionToken,
+                                token);
+
+                            return Results.NoContent();
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("operator");
 
             app.MapPost(
                     "/api/v1/terminal/heartbeat",
@@ -482,7 +600,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.OperatorName,
                                         request.OperatorPin,
                                         deviceId,
-                                        deviceToken),
+                                        deviceToken,
+                                        request.OperatorSessionToken),
                                     token);
 
                             return Results.Ok(result);
@@ -536,7 +655,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.OperatorName,
                                         request.OperatorPin,
                                         deviceId,
-                                        deviceToken),
+                                        deviceToken,
+                                        request.OperatorSessionToken),
                                     token);
 
                             return Results.Ok(result);
@@ -637,7 +757,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.OperatorPin,
                                         deviceId,
                                         deviceToken,
-                                        request.CommandId),
+                                        request.CommandId,
+                                        request.OperatorSessionToken),
                                     token);
 
                             return Results.Ok(result);
@@ -690,7 +811,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.OperatorPin,
                                         deviceId,
                                         deviceToken,
-                                        request.CommandId),
+                                        request.CommandId,
+                                        request.OperatorSessionToken),
                                     token);
 
                             return Results.Ok(result);
@@ -979,6 +1101,13 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     }
 
 #if TOR_RESTAURANT_PRODUCT
+    private sealed record OperatorLoginRequest(
+        string OperatorName,
+        string OperatorPin);
+
+    private sealed record OperatorLogoutRequest(
+        string OperatorSessionToken);
+
     private sealed record PairRequest(
         string PairingCode,
         string DeviceId,
@@ -996,14 +1125,16 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         int GuestCount,
         string Note,
         string OperatorName,
-        string OperatorPin);
+        string OperatorPin,
+        string OperatorSessionToken = "");
 
     private sealed record UpdateTableRequest(
         long ExpectedSessionVersion,
         int GuestCount,
         string Note,
         string OperatorName,
-        string OperatorPin);
+        string OperatorPin,
+        string OperatorSessionToken = "");
 
     private sealed record AddItemRequest(
         string SessionId,
@@ -1012,7 +1143,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         decimal Quantity,
         string OperatorName,
         string OperatorPin,
-        string CommandId = "");
+        string CommandId = "",
+        string OperatorSessionToken = "");
 
     private sealed record CancelItemRequest(
         string SessionId,
@@ -1020,6 +1152,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         long SessionItemId,
         string OperatorName,
         string OperatorPin,
-        string CommandId = "");
+        string CommandId = "",
+        string OperatorSessionToken = "");
 #endif
 }
