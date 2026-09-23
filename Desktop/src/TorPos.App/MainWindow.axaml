@@ -436,6 +436,9 @@
           <Border x:Name="TseOutageBadge" IsVisible="False" Background="#5A1A1A" BorderBrush="#FF8A80" BorderThickness="1" CornerRadius="8" Padding="12,8">
             <TextBlock x:Name="TseOutageText" Text="TSE-AUSFALL" Foreground="#FF8A80" FontWeight="Bold" FontSize="11"/>
           </Border>
+          <Border x:Name="TseCertificateWarningBadge" IsVisible="False" Background="#5A3A10" BorderBrush="#E3A62F" BorderThickness="1" CornerRadius="8" Padding="10,8">
+            <TextBlock x:Name="TseCertificateWarningText" Text="TSE-ZERTIFIKAT" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
+          </Border>
           <Border x:Name="FiscalModeBadge" Background="#493A12" CornerRadius="8" Padding="12,8">
             <TextBlock x:Name="FiscalModeText" Text="TESTBETRIEB · FISKAL GESPERRT" Foreground="#FFD166" FontWeight="Bold"/>
           </Border>

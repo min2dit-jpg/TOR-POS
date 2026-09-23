@@ -71,6 +71,28 @@ public sealed class TseFailSafeService
             var result =
                 await _provider.ProbeAsync(ct);
 
+            var certificate =
+                TseCertificatePolicy.Evaluate(
+                    result.Device?.CertificateValidUntil,
+                    DateOnly.FromDateTime(DateTime.Now));
+
+            if (certificate.State == TseCertificateState.Expired)
+            {
+                result = result with
+                {
+                    State = TseConnectionState.Error,
+                    Message = certificate.Message
+                };
+
+                await _audit.WriteAsync(
+                    actor,
+                    "TSE_CERTIFICATE_EXPIRED",
+                    "TSE",
+                    result.Device?.SerialNumber ?? "",
+                    certificate.Message,
+                    ct);
+            }
+
             if (result.State == TseConnectionState.Ready)
             {
                 await _outages.CloseOpenAsync(actor, ct);

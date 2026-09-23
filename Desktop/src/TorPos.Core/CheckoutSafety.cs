@@ -1,41 +1,194 @@
 namespace TorPos.Core;
 
+public enum PhysicalTseGeneration
+{
+    Unknown,
+    Generation1,
+    Generation1_1,
+    Generation2
+}
+
 // A build-level gate. A software license never grants fiscal readiness.
 // Every flag is acceptance EVIDENCE, not merely "code exists". Production
-// opens only when the complete qualification set has been reviewed.
+// opens only when the qualification set for the ACTUALLY USED TSE path has
+// been reviewed. Evidence for one hardware generation must never unlock
+// another generation.
 public static class FiscalRelease
 {
     public const bool DsfinvkValidated = false;
     public const bool KassenSichVReceiptValidated = false;
     public const bool ParkedOrderTseValidated = false;
     public const bool PfandTaxValidated = false;
-    public const bool PhysicalTseE2EValidated = false;
+
+    public const bool PhysicalTseGeneration1E2EValidated = false;
+    public const bool PhysicalTseGeneration11E2EValidated = false;
+    public const bool PhysicalTseGeneration2E2EValidated = false;
+
     public const bool IndependentFiscalReviewValidated = false;
 
-    // Cloud TSE has its own acceptance evidence. It is intentionally NOT part
-    // of Enabled: validating or not validating a cloud provider must never
-    // silently unlock or block an otherwise independent physical-USB TSE path.
-    // Every cloud signing adapter must call RequireCloudTse() before touching
-    // configuration, availability, credentials or any fiscal endpoint.
+    // Direct Cloud TSE has independent acceptance evidence. A cloud approval
+    // can never substitute for a physical Swissbit generation and vice versa.
     public const bool CloudTseValidated = false;
 
-    public static bool Enabled =>
+    private static bool CommonQualificationsValidated =>
         DsfinvkValidated &&
         KassenSichVReceiptValidated &&
         ParkedOrderTseValidated &&
         PfandTaxValidated &&
-        PhysicalTseE2EValidated &&
         IndependentFiscalReviewValidated;
+
+    // Compatibility/overview only: all supported physical generations have
+    // evidence. Runtime production code uses EnabledForProvider(), which binds
+    // the release to the device that is actually connected.
+    public static bool PhysicalTseE2EValidated =>
+        PhysicalTseGeneration1E2EValidated &&
+        PhysicalTseGeneration11E2EValidated &&
+        PhysicalTseGeneration2E2EValidated;
+
+    // Deliberately stricter than the runtime selector so legacy callers can
+    // never become fail-open after the split.
+    public static bool Enabled =>
+        CommonQualificationsValidated &&
+        PhysicalTseE2EValidated;
+
+    public static PhysicalTseGeneration DetectPhysicalTseGeneration(
+        TseDeviceInfo? device)
+    {
+        if (device is null ||
+            !string.Equals(
+                device.Manufacturer?.Trim(),
+                "Swissbit",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return PhysicalTseGeneration.Unknown;
+        }
+
+        var candidates = new[]
+            {
+                ParsePhysicalGeneration(device.Generation),
+                ParsePhysicalGeneration(device.HardwareVersion),
+                ParsePhysicalGeneration(device.ProductFamily)
+            }
+            .Where(x => x != PhysicalTseGeneration.Unknown)
+            .Distinct()
+            .ToArray();
+
+        // Conflicting or missing metadata is evidence of ambiguity, not
+        // permission to borrow another generation's qualification.
+        return candidates.Length == 1
+            ? candidates[0]
+            : PhysicalTseGeneration.Unknown;
+    }
+
+    public static bool SelectPhysicalTseEvidence(
+        PhysicalTseGeneration generation,
+        bool generation1Validated,
+        bool generation11Validated,
+        bool generation2Validated) =>
+        generation switch
+        {
+            PhysicalTseGeneration.Generation1 =>
+                generation1Validated,
+            PhysicalTseGeneration.Generation1_1 =>
+                generation11Validated,
+            PhysicalTseGeneration.Generation2 =>
+                generation2Validated,
+            _ => false
+        };
+
+    public static bool IsPhysicalTseValidated(TseDeviceInfo? device) =>
+        SelectPhysicalTseEvidence(
+            DetectPhysicalTseGeneration(device),
+            PhysicalTseGeneration1E2EValidated,
+            PhysicalTseGeneration11E2EValidated,
+            PhysicalTseGeneration2E2EValidated);
+
+    public static bool EnabledForProvider(
+        string providerId,
+        TseDeviceInfo? device)
+    {
+        TseProviderDescriptor provider;
+        try
+        {
+            provider = TseProviderCatalog.Get(providerId);
+        }
+        catch
+        {
+            return false;
+        }
+
+        var providerValidated = provider.Transport switch
+        {
+            TseProviderTransport.DirectCloudApi =>
+                CloudTseValidated,
+
+            // Local middleware is not automatically "cloud". It may pass the
+            // physical gate only if the probed device unambiguously identifies
+            // a qualified Swissbit generation.
+            TseProviderTransport.HardwareSdk or
+            TseProviderTransport.LocalMiddleware =>
+                IsPhysicalTseValidated(device),
+
+            _ => false
+        };
+
+        return CommonQualificationsValidated &&
+               providerValidated;
+    }
 
     public static IReadOnlyList<string> MissingQualifications()
     {
-        var missing = new List<string>();
-        if (!DsfinvkValidated) missing.Add("DSFinV-K-Prüfdatensatz");
-        if (!KassenSichVReceiptValidated) missing.Add("§6-Beleg/QR");
-        if (!ParkedOrderTseValidated) missing.Add("Bestellung/Parken-TSE");
-        if (!PfandTaxValidated) missing.Add("Pfand-Steuerlogik");
-        if (!PhysicalTseE2EValidated) missing.Add("physische TSE-E2E-Abnahme");
-        if (!IndependentFiscalReviewValidated) missing.Add("unabhängige Fiskalprüfung");
+        var missing = CommonMissingQualifications();
+        if (!PhysicalTseGeneration1E2EValidated) missing.Add("physische TSE Gen 1 E2E-Abnahme");
+        if (!PhysicalTseGeneration11E2EValidated) missing.Add("physische TSE Gen 1.1 E2E-Abnahme");
+        if (!PhysicalTseGeneration2E2EValidated) missing.Add("physische TSE Gen 2 E2E-Abnahme");
+        return missing;
+    }
+
+    public static IReadOnlyList<string> MissingQualificationsForProvider(
+        string providerId,
+        TseDeviceInfo? device)
+    {
+        var missing = CommonMissingQualifications();
+
+        TseProviderDescriptor provider;
+        try
+        {
+            provider = TseProviderCatalog.Get(providerId);
+        }
+        catch
+        {
+            missing.Add("unbekannter TSE-Provider");
+            return missing;
+        }
+
+        if (provider.Transport == TseProviderTransport.DirectCloudApi)
+        {
+            if (!CloudTseValidated)
+                missing.Add("Cloud-TSE-E2E-Abnahme");
+            return missing;
+        }
+
+        var generation = DetectPhysicalTseGeneration(device);
+        switch (generation)
+        {
+            case PhysicalTseGeneration.Generation1:
+                if (!PhysicalTseGeneration1E2EValidated)
+                    missing.Add("physische TSE Gen 1 E2E-Abnahme");
+                break;
+            case PhysicalTseGeneration.Generation1_1:
+                if (!PhysicalTseGeneration11E2EValidated)
+                    missing.Add("physische TSE Gen 1.1 E2E-Abnahme");
+                break;
+            case PhysicalTseGeneration.Generation2:
+                if (!PhysicalTseGeneration2E2EValidated)
+                    missing.Add("physische TSE Gen 2 E2E-Abnahme");
+                break;
+            default:
+                missing.Add("TSE-Generation nicht eindeutig erkannt/qualifiziert");
+                break;
+        }
+
         return missing;
     }
 
@@ -55,6 +208,59 @@ public static class FiscalRelease
             throw new InvalidOperationException(
                 "Cloud-TSE-Signierung ist in diesem Build nicht validiert und bleibt gesperrt.");
         }
+    }
+
+    private static List<string> CommonMissingQualifications()
+    {
+        var missing = new List<string>();
+        if (!DsfinvkValidated) missing.Add("DSFinV-K-Prüfdatensatz");
+        if (!KassenSichVReceiptValidated) missing.Add("§6-Beleg/QR");
+        if (!ParkedOrderTseValidated) missing.Add("Bestellung/Parken-TSE");
+        if (!PfandTaxValidated) missing.Add("Pfand-Steuerlogik");
+        if (!IndependentFiscalReviewValidated) missing.Add("unabhängige Fiskalprüfung");
+        return missing;
+    }
+
+    private static PhysicalTseGeneration ParsePhysicalGeneration(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return PhysicalTseGeneration.Unknown;
+
+        var text = value
+            .Trim()
+            .ToUpperInvariant()
+            .Replace('_', ' ')
+            .Replace('-', ' ');
+
+        // Check 1.1 before 1 so "TSE 1.1" can never be downgraded to Gen 1.
+        if (text == "1.1" ||
+            text.StartsWith("1.1.", StringComparison.Ordinal) ||
+            text.Contains("TSE 1.1", StringComparison.Ordinal) ||
+            text.Contains("GEN 1.1", StringComparison.Ordinal) ||
+            text.Contains("GENERATION 1.1", StringComparison.Ordinal))
+        {
+            return PhysicalTseGeneration.Generation1_1;
+        }
+
+        if (text == "2" ||
+            text.StartsWith("2.", StringComparison.Ordinal) ||
+            text.Contains("TSE 2", StringComparison.Ordinal) ||
+            text.Contains("GEN 2", StringComparison.Ordinal) ||
+            text.Contains("GENERATION 2", StringComparison.Ordinal))
+        {
+            return PhysicalTseGeneration.Generation2;
+        }
+
+        if (text == "1" ||
+            text.StartsWith("1.0", StringComparison.Ordinal) ||
+            text.Contains("TSE 1", StringComparison.Ordinal) ||
+            text.Contains("GEN 1", StringComparison.Ordinal) ||
+            text.Contains("GENERATION 1", StringComparison.Ordinal))
+        {
+            return PhysicalTseGeneration.Generation1;
+        }
+
+        return PhysicalTseGeneration.Unknown;
     }
 }
 

@@ -89,6 +89,8 @@ public partial class MainWindow:Window
     private readonly SaleFiscalSigningService _fiscalSigning;
     private readonly OrderFiscalSigningService _orderFiscalSigning;
     private readonly TseFailSafeService _tseFailSafe;
+    private TseDeviceInfo? _lastTseDevice;
+    private static bool _tseCertificateDialogShownForProcess;
     private readonly ControlledPosActionService _controlledActions;
     private readonly PromotionCampaignService _promotions;
     private readonly IAppWindowFactory _windowFactory;
@@ -5552,6 +5554,48 @@ public partial class MainWindow:Window
         }
     }
 
+    private async Task ApplyTseCertificateWarningAsync(TseDeviceInfo? device)
+    {
+        var assessment = TseCertificatePolicy.Evaluate(
+            device?.CertificateValidUntil,
+            DateOnly.FromDateTime(DateTime.Now));
+
+        if (!assessment.ShowBadge)
+        {
+            TseCertificateWarningBadge.IsVisible = false;
+            ToolTip.SetTip(TseCertificateWarningBadge, null);
+            return;
+        }
+
+        var remaining = assessment.RemainingDays ?? 0;
+        TseCertificateWarningText.Text =
+            assessment.State == TseCertificateState.Expired
+                ? "TSE-ZERTIFIKAT ABGELAUFEN"
+                : remaining == 0
+                    ? "TSE-ZERTIFIKAT HEUTE"
+                    : $"TSE-ZERTIFIKAT {remaining} TAGE";
+
+        ToolTip.SetTip(
+            TseCertificateWarningBadge,
+            assessment.Message);
+
+        TseCertificateWarningBadge.IsVisible = true;
+        ScannerStatus.Text = assessment.Message;
+
+        if (assessment.ShowDialog &&
+            !_tseCertificateDialogShownForProcess)
+        {
+            _tseCertificateDialogShownForProcess = true;
+
+            await ShowMenuInfoAsync(
+                assessment.State == TseCertificateState.Expired
+                    ? "TSE-ZERTIFIKAT ABGELAUFEN"
+                    : "TSE-ZERTIFIKAT LÄUFT BALD AB",
+                assessment.Message +
+                "\n\nBitte rechtzeitig eine Ersatz-TSE beschaffen und den Austausch planen.");
+        }
+    }
+
     private async Task AutoProbeTseAsync()
     {
         try
@@ -5559,10 +5603,7 @@ public partial class MainWindow:Window
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             // R113: goes through TseFailSafeService, not the raw provider, so
             // an unreachable/failed TSE actually opens a documented outage and
-            // a later success closes it again. TseFailSafeService.ProbeAsync
-            // existed from the start but had no caller anywhere - every probe
-            // site used the raw ITseProvider, so the operational probe could
-            // see a dead TSE and record nothing at all.
+            // a later success closes it again.
             var probe = _tseFailSafe.ProbeAsync(_currentUser.Username, timeout.Token);
             var completed = await Task.WhenAny(
                 probe,
@@ -5570,13 +5611,17 @@ public partial class MainWindow:Window
 
             if (completed != probe)
             {
+                _lastTseDevice = null;
+                TseCertificateWarningBadge.IsVisible = false;
                 ScannerStatus.Text =
                     "TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar";
                 ReportOperationalError("TSE","TSE-Geräteprüfung: Timeout nach 10 Sekunden.");
+                await RefreshTseOutageBadgeAsync();
                 return;
             }
 
             var result = await probe;
+            _lastTseDevice = result.Device;
 
             if (result.State == TseConnectionState.Ready)
             {
@@ -5588,11 +5633,22 @@ public partial class MainWindow:Window
                 ScannerStatus.Text =
                     "Swissbit TSE erkannt · Einrichtung/Status prüfen";
             }
+            else
+            {
+                ScannerStatus.Text = result.Message;
+            }
+
+            await ApplyTseCertificateWarningAsync(result.Device);
+            await RefreshTseOutageBadgeAsync();
+            await RefreshFiscalStatusAsync();
         }
         catch(Exception ex)
         {
+            _lastTseDevice = null;
+            TseCertificateWarningBadge.IsVisible = false;
             CrashLog.WriteException("MainWindow operation", ex);
             ReportOperationalError("TSE","TSE-Geräteprüfung fehlgeschlagen.",ex);
+            await RefreshTseOutageBadgeAsync();
         }
     }
 
@@ -6129,7 +6185,7 @@ public partial class MainWindow:Window
         return SaleModePolicy.RecordsTrainingFiscally(
             _currentUser.IsTraining,
             _commercialLicense.Check(edition).IsActive,
-            FiscalRelease.Enabled,
+            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice),
             _fiscalReadiness?.ProductionAllowed == true);
     }
 
@@ -6141,7 +6197,7 @@ public partial class MainWindow:Window
         return SaleModePolicy.CanCommitProductionSale(
             _currentUser.IsTraining,
             _commercialLicense.Check(edition).IsActive,
-            FiscalRelease.Enabled,
+            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice),
             _fiscalReadiness?.ProductionAllowed == true);
     }
 

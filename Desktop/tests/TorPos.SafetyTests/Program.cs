@@ -568,6 +568,7 @@ await R177ReviewTests.Run(root, Assert);
 await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
+await TseLifecycleReleaseGateTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await RestaurantFoundationTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -635,6 +636,8 @@ await BarTestBonPreparationTests.Run(Assert);
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
+// TSE lifecycle/release gate: 13 checks lock 90/30-day certificate warnings,
+// expired-certificate fail-safe behavior and generation-specific E2E evidence.
 // Split-product foundation checks keep Einzelhandel/Gastro process, storage,
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
@@ -642,7 +645,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant foundation: 63 checks lock signed Standard/Plus entitlement,
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1223;
+const int ExpectedSafetyChecks = 1236;
 
 if (checks != ExpectedSafetyChecks)
 {
