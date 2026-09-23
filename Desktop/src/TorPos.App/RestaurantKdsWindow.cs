@@ -193,7 +193,10 @@ public sealed class RestaurantKdsWindow : Window
             Text =
                 $"Kellner: {item.Waiter} · " +
                 $"Station: {KitchenStations.DisplayName(item.Station)} · " +
-                $"Wartezeit: {ageText}",
+                $"Wartezeit: {ageText}" +
+                (string.IsNullOrWhiteSpace(item.Note)
+                    ? ""
+                    : $"\nHINWEIS: {item.Note}"),
             Opacity = 0.72,
             TextWrapping = TextWrapping.Wrap
         };
