@@ -537,6 +537,35 @@ internal static class UiTranslations
         ["TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt."] =
             "TimeAdmin-PIN kaydedildi. TSE saati artık otomatik olarak güncellenecek.",
         ["Gespeicherte TimeAdmin-PIN gelöscht."] = "Kayıtlı TimeAdmin-PIN silindi.",
+        // Cloud TSE. "TSE", "Cloud-TSE", "Queue", "API" and the vendor names
+        // stay as they are: a technician and the vendor's contract use them.
+        ["Art der TSE"] = "TSE türü",
+        ["Auswahl"] = "Seçim",
+        ["SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."] =
+            "SWISSBIT_USB = TSE bu kasaya USB bellek olarak takılıdır. CLOUD = bir sağlayıcının HTTPS üzerinden sunulan sertifikalı TSE'si. Değişiklik ancak yeniden başlatmadan sonra etkili olur.",
+        ["Ein unbekannter Wert fällt auf SWISSBIT_USB zurück. Eine Kasse wird nie stillschweigend auf ein anderes Fiskalgerät umgestellt."] =
+            "Bilinmeyen bir değer SWISSBIT_USB'ye düşer. Bir kasa asla sessizce başka bir fiskal cihaza geçirilmez.",
+        ["Cloud-TSE"] = "Cloud-TSE",
+        ["Freigabe"] = "Onay",
+        ["Cloud-TSE ist freigegeben."] = "Cloud-TSE onaylıdır.",
+        ["Cloud-TSE ist in diesem Build NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."] =
+            "Cloud-TSE bu sürümde ONAYLI DEĞİLDİR. Ayarlar girilebilir ve uç nokta test edilebilir; hiçbir şey imzalanmaz.",
+        ["Mandant / Queue"] = "Müşteri hesabı / Queue",
+        ["Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."] =
+            "Hesap ve Queue birbirine aittir ve bu kasayla eşleşmelidir. Cloud-TSE'de en tehlikeli karışıklık, başka bir hesabın Queue'suna imza atan bir kasadır: fişler geçerli görünür ve başkasının defterine yazılır.",
+        ["Anbieter"] = "Sağlayıcı",
+        ["Endpunkt"] = "Uç nokta",
+        ["Mandant"] = "Hesap",
+        ["Queue"] = "Queue",
+        ["API-Schlüssel"] = "API anahtarı",
+        ["Name des zertifizierten Cloud-TSE-Anbieters laut Vertrag."] = "Sözleşmeye göre sertifikalı Cloud-TSE sağlayıcısının adı.",
+        ["Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt."] = "Tam HTTPS adresi. Diğer protokoller reddedilir.",
+        ["Muss die Kassen-Seriennummer sein - dieselbe Nummer wie auf dem Bon und im DSFinV-K-Export."] =
+            "Kasa seri numarası olmalıdır - fişteki ve DSFinV-K dışa aktarımındaki numaranın aynısı.",
+        ["Wird DPAPI-geschützt gespeichert und nie im Klartext abgelegt oder protokolliert."] =
+            "DPAPI ile korunarak saklanır; asla düz metin olarak kaydedilmez veya loglanmaz.",
+        ["CLOUD-TSE VERBINDUNG PRÜFEN"] = "CLOUD-TSE BAĞLANTISINI TEST ET",
+        ["Cloud-TSE Endpunkt wird geprüft ..."] = "Cloud-TSE uç noktası kontrol ediliyor ...",
         ["läuft noch"] = "hâlâ sürüyor",
         ["Tag"] = "gün",
         ["Tage"] = "gün",
@@ -2161,6 +2190,35 @@ internal static class UiTranslations
         ["TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt."] =
             "TimeAdmin PIN stored. The TSE clock is now kept up to date automatically.",
         ["Gespeicherte TimeAdmin-PIN gelöscht."] = "Stored TimeAdmin PIN deleted.",
+        // Cloud TSE. "TSE", "Cloud-TSE", "Queue", "API" and the vendor names
+        // stay as they are: a technician and the vendor's contract use them.
+        ["Art der TSE"] = "Type of TSE",
+        ["Auswahl"] = "Choice",
+        ["SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."] =
+            "SWISSBIT_USB = the TSE is plugged into this till as a USB stick. CLOUD = a vendor's certified TSE over HTTPS. The change takes effect after a restart.",
+        ["Ein unbekannter Wert fällt auf SWISSBIT_USB zurück. Eine Kasse wird nie stillschweigend auf ein anderes Fiskalgerät umgestellt."] =
+            "An unknown value falls back to SWISSBIT_USB. A till is never moved onto a different fiscal device silently.",
+        ["Cloud-TSE"] = "Cloud TSE",
+        ["Freigabe"] = "Release",
+        ["Cloud-TSE ist freigegeben."] = "Cloud TSE is released.",
+        ["Cloud-TSE ist in diesem Build NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."] =
+            "Cloud TSE is NOT released in this build. Settings can be entered and the endpoint tested; nothing is signed.",
+        ["Mandant / Queue"] = "Tenant / queue",
+        ["Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."] =
+            "Tenant and queue belong together and must match this till. The most dangerous mix-up with a cloud TSE is a till signing into another tenant's queue: the receipts look valid and belong in somebody else's books.",
+        ["Anbieter"] = "Vendor",
+        ["Endpunkt"] = "Endpoint",
+        ["Mandant"] = "Tenant",
+        ["Queue"] = "Queue",
+        ["API-Schlüssel"] = "API key",
+        ["Name des zertifizierten Cloud-TSE-Anbieters laut Vertrag."] = "Name of the certified cloud TSE vendor as per contract.",
+        ["Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt."] = "Full HTTPS address. Other protocols are rejected.",
+        ["Muss die Kassen-Seriennummer sein - dieselbe Nummer wie auf dem Bon und im DSFinV-K-Export."] =
+            "Must be the till serial number - the same number as on the receipt and in the DSFinV-K export.",
+        ["Wird DPAPI-geschützt gespeichert und nie im Klartext abgelegt oder protokolliert."] =
+            "Stored DPAPI-protected and never written or logged in clear text.",
+        ["CLOUD-TSE VERBINDUNG PRÜFEN"] = "TEST CLOUD TSE CONNECTION",
+        ["Cloud-TSE Endpunkt wird geprüft ..."] = "Checking the cloud TSE endpoint ...",
         ["läuft noch"] = "still open",
         ["Tag"] = "day",
         ["Tage"] = "days",

@@ -448,6 +448,7 @@ await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
 await TseStartupWarningTests.Run(Assert);
 await TseOutageHistoryTests.Run(Assert);
+await CloudTseFoundationTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await MultiLanguageTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -528,11 +529,17 @@ await BarTestBonPreparationTests.Run(Assert);
 // read-only, still undeletable, shown on the technician page, and the recorded
 // reason reaching the screen unchanged because it is evidence, not interface
 // text.
+// Cloud TSE foundation: 7 checks lock the provider seam and the refusal - the
+// device is chosen once and an unknown value falls back to the USB TSE, the
+// cloud qualification stands on its own, every fiscal call refuses without
+// fabricating a transaction number or a signature, the reachability check is
+// bounded and keyless, tenant/queue are part of the configuration, and the API
+// key is only ever stored DPAPI-protected.
 // Split-product foundation checks keep Einzelhandel/Gastro process, storage,
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1202;
+const int ExpectedSafetyChecks = 1209;
 
 if (checks != ExpectedSafetyChecks)
 {

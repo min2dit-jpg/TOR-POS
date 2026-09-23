@@ -30,6 +30,7 @@ public partial class SettingsWindow : Window
     private readonly ITseProvider _tseProvider;
     private readonly ITseOutageRepository _tseOutages;
     private readonly TseTimeAdminPinStore _tseTimeAdminPin;
+    private readonly CloudTseSettings _cloudTse;
     private readonly IReceiptPrinterService _receiptPrinter;
     private readonly IPaymentTerminalService _paymentTerminal;
     private readonly IFiscalComplianceService _compliance;
@@ -120,6 +121,7 @@ public partial class SettingsWindow : Window
         ITseProvider tseProvider,
         ITseOutageRepository tseOutages,
         TseTimeAdminPinStore tseTimeAdminPin,
+        CloudTseSettings cloudTse,
         IReceiptPrinterService receiptPrinter,
         IPaymentTerminalService paymentTerminal,
         IFiscalComplianceService compliance,
@@ -140,6 +142,7 @@ public partial class SettingsWindow : Window
         _tseProvider = tseProvider;
         _tseOutages = tseOutages;
         _tseTimeAdminPin = tseTimeAdminPin;
+        _cloudTse = cloudTse;
         _receiptPrinter = receiptPrinter;
         _paymentTerminal = paymentTerminal;
         _compliance = compliance;
@@ -2199,6 +2202,97 @@ private Control TsePage()
     // through the full activation form to get it puts a PUK box in front of
     // somebody who only has to fix a date. A wrong PUK entered twice can block
     // a production TSE for good.
+    // The device choice. Everything above ITseProvider is written against the
+    // interface, so this is the only place in the operator interface where a
+    // cloud TSE and a USB stick look different at all.
+    var kind = Section("Art der TSE");
+    kind.Children.Add(ReadOnlyRow(
+        "Auswahl",
+        "SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."));
+    Form(
+        kind,
+        "Art der TSE",
+        Combo(TseProviderKind.Setting, TseProviderKind.SwissbitUsb, TseProviderKind.Cloud),
+        "Ein unbekannter Wert fällt auf SWISSBIT_USB zurück. Eine Kasse wird nie stillschweigend auf ein anderes Fiskalgerät umgestellt.");
+    page.Children.Add(kind);
+
+    var cloud = Section("Cloud-TSE");
+    cloud.Children.Add(ReadOnlyRow(
+        "Freigabe",
+        FiscalRelease.CloudTseValidated
+            ? "Cloud-TSE ist freigegeben."
+            : "Cloud-TSE ist in diesem Build NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."));
+    cloud.Children.Add(ReadOnlyRow(
+        "Mandant / Queue",
+        "Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."));
+
+    var cloudVendor = Text(CloudTseSettings.VendorSetting);
+    var cloudUrl = Text(CloudTseSettings.BaseUrlSetting);
+    var cloudTenant = Text(CloudTseSettings.TenantSetting);
+    var cloudQueue = Text(CloudTseSettings.QueueSetting);
+    var cloudClient = Text(CloudTseSettings.ClientSetting);
+
+    Form(cloud, "Anbieter", cloudVendor, "Name des zertifizierten Cloud-TSE-Anbieters laut Vertrag.");
+    Form(cloud, "Endpunkt", cloudUrl, "Vollständige HTTPS-Adresse. Andere Protokolle werden abgelehnt.");
+    Form(cloud, "Mandant", cloudTenant);
+    Form(cloud, "Queue", cloudQueue);
+    Form(cloud, "Client-ID", cloudClient, "Muss die Kassen-Seriennummer sein - dieselbe Nummer wie auf dem Bon und im DSFinV-K-Export.");
+
+    var cloudKey = new TextBox
+    {
+        MinHeight = 38,
+        PasswordChar = '*',
+        PlaceholderText = "leer lassen = gespeicherten Schlüssel behalten"
+    };
+    Form(cloud, "API-Schlüssel", cloudKey, "Wird DPAPI-geschützt gespeichert und nie im Klartext abgelegt oder protokolliert.");
+
+    var cloudResult = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.85 };
+    var cloudTest = new Button { Content = "CLOUD-TSE VERBINDUNG PRÜFEN", MinHeight = 44 };
+
+    cloudTest.Click += async (_, _) =>
+    {
+        if (!cloudTest.IsEnabled)
+            return;
+
+        cloudTest.IsEnabled = false;
+        try
+        {
+            await _cloudTse.SaveAsync(
+                new CloudTseConfiguration(
+                    cloudVendor.Text ?? "",
+                    cloudUrl.Text ?? "",
+                    cloudTenant.Text ?? "",
+                    cloudQueue.Text ?? "",
+                    cloudClient.Text ?? "",
+                    _cloudTse.Current.ProtectedApiKey),
+                cloudKey.Text);
+
+            cloudKey.Text = "";
+
+            SettingsStatus = "Cloud-TSE Endpunkt wird geprüft ...";
+
+            // Reachability only: no fiscal data is sent and the key is not
+            // used. A till must never freeze on a network call, so this is
+            // bounded and runs off the UI thread like every other probe.
+            var provider = new CloudTseProvider(() => _cloudTse.Current);
+            var health = await provider.CheckHealthAsync(_cloudTse.Current);
+
+            cloudResult.Text = health.Reachable
+                ? $"Erreichbar · {health.Message} · {health.RoundTripMs} ms"
+                : $"Nicht erreichbar · {health.Message}";
+
+            SettingsStatus = cloudResult.Text;
+        }
+        finally
+        {
+            cloudTest.IsEnabled = true;
+        }
+    };
+
+    cloud.Children.Add(cloudTest);
+    cloud.Children.Add(cloudResult);
+    page.Children.Add(cloud);
+
     var clock = Section("TSE-Uhrzeit");
     clock.Children.Add(ReadOnlyRow(
         "Warum",

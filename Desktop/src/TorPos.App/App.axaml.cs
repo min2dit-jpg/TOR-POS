@@ -137,8 +137,21 @@ public partial class App : Avalonia.Application
             // database read to learn whether it may refresh the TSE clock.
             var tseTimeAdminPin = new TseTimeAdminPinStore(settings);
             await tseTimeAdminPin.RefreshAsync();
-            var tseProvider = new SwissbitHardwareTseProvider(
-                timeAdminPin: () => tseTimeAdminPin.Current);
+            // The choice of fiscal device is made once, here, and nowhere else.
+            // Everything above ITseProvider - outage handling, DSFinV-K, the
+            // receipt fields, the signature counter - is written against the
+            // interface, so a till on a cloud TSE and a till on a USB stick run
+            // the same code everywhere but this line.
+            var cloudTse = new CloudTseSettings(settings);
+            await cloudTse.RefreshAsync();
+
+            var tseKind = TseProviderKind.Normalize(
+                await settings.GetAsync(TseProviderKind.Setting, TseProviderKind.SwissbitUsb));
+
+            ITseProvider tseProvider = tseKind == TseProviderKind.Cloud
+                ? new CloudTseProvider(() => cloudTse.Current)
+                : new SwissbitHardwareTseProvider(
+                    timeAdminPin: () => tseTimeAdminPin.Current);
             var tseOutages = new TseOutageRepository(db, audit);
             var tseFailSafe = new TseFailSafeService(
                 tseProvider,
@@ -226,6 +239,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<ITseProvider>(tseProvider);
             appServices.AddSingleton<ITseOutageRepository>(tseOutages);
             appServices.AddSingleton(tseTimeAdminPin);
+            appServices.AddSingleton(cloudTse);
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);
