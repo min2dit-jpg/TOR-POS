@@ -80,6 +80,9 @@ Weiter gemeldet und per Foto belegt (TOR Einzelhandel, Admin-Sitzung):
 - nach dem Hinweis ist **Anmeldung und Verkauf möglich**
 - der Hinweis erscheint **nur einmal** pro Programmlauf
 - die Schaltfläche **TSE-EINSTELLUNGEN ÖFFNEN** ist in der Admin-Sitzung vorhanden
+- in der **Kassenkraft-Sitzung** fehlt diese Schaltfläche; stattdessen steht dort
+  „Bitte die Betreiberin oder den Betreiber informieren. Der Verkauf kann
+  weiterlaufen.“ – es bleibt die einzelne Schaltfläche **WEITER OHNE TSE**
 - **nach dem Schließen** des Fensters bleibt das Badge **TSE-AUSFALL** in der
   Kopfzeile stehen, und die Statuszeile trägt den vollen Satz
   „Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht
@@ -95,10 +98,11 @@ Hardware bestehen.
 Damit sind die entsprechenden Zeilen der Tabelle als gemeldet zu lesen. Sie ist hier
 festgehalten, damit sie nicht verloren geht, und ersetzt das Protokoll **nicht**:
 keine Zeile ist gekreuzt, kein Tester ist unterschrieben, und das Gesamtergebnis
-bleibt offen. Offen sind insbesondere noch: die **Kassenkraft-Sitzung** (keine
-Schaltfläche, stattdessen der Hinweis auf die Betreiberin oder den Betreiber),
-das Badge-Tooltip mit Beginn und Grund, der Eintrag in `tse_outage_log` und das
-Verschwinden des Hinweises nach dem Anstecken einer betriebsbereiten TSE.
+bleibt offen. Offen sind damit nur noch drei Zeilen: das Badge-Tooltip mit
+Beginn und Grund (braucht eine Maus, am Touchscreen schwer zu prüfen), der
+Eintrag in `tse_outage_log` (nachweisbar über den DSFinV-K-Export) und das
+Verschwinden des Hinweises nach dem Anstecken einer betriebsbereiten TSE - das
+letzte ist bis zur Einrichtung des Swissbit SDK ohnehin nicht prüfbar.
 
 ### Startprüfung ohne TSE
 
