@@ -7,6 +7,24 @@ wird weiterhin über `verification/HARDWARE-E2E-TEMPLATE.md` geführt.
 Die Setups sind **Testfreigaben**. Sie werden nicht als Produktivrelease an
 Endkunden gegeben.
 
+## Gemeldete Teilergebnisse (Betreiber, 22.09.2026)
+
+Der Betreiber hat nach eigener Angabe auf einem echten Windows-PC geprüft und
+als bestanden gemeldet:
+
+- Installation von **TOR Einzelhandel** aus dem echten Setup
+- Installation von **TOR Gastro** aus dem echten Setup
+- beide Produkte **parallel** auf demselben PC lauffähig
+- die Produkte **sehen die Daten des jeweils anderen nicht**
+- Deinstallation des einen **beschädigt das andere nicht**
+
+Diese Meldung ist hier festgehalten, damit sie nicht verloren geht. Sie ersetzt
+das Protokoll **nicht**: die einzelnen Zeilen unten bleiben ungekreuzt, weil sie
+nicht einzeln bestätigt wurden, und das Gesamtergebnis bleibt offen, bis das
+Protokoll durchlaufen und unterschrieben ist. Insbesondere sind die
+Editionsbindung gegen Manipulation (3), die Legacy-Übernahme aus R181 (4/4b),
+das Demo-Recht (5) und die Gegenproben der Deinstallation (6) noch offen.
+
 ## Prüfstand
 
 - Commit SHA:
