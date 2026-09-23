@@ -490,11 +490,11 @@ public sealed class RestaurantTablePlanWindow : Window
             _split.IsEnabled = false;
             _checkoutSelected.IsEnabled = false;
             _cancelItem.IsEnabled = false;
-            _guestCount.IsEnabled = false;
-            _tableNote.IsEnabled = false;
+            _guestCount.IsEnabled = true;
+            _tableNote.IsEnabled = true;
             _saveDetails.IsEnabled = false;
-            _guestCount.Value = 1;
-            _tableNote.Text = "";
+            if (_guestCount.Value is null || _guestCount.Value < 1)
+                _guestCount.Value = 1;
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
             return;
         }
@@ -543,6 +543,8 @@ public sealed class RestaurantTablePlanWindow : Window
                 1,
                 999);
 
+            var oldNote = _selectedSession.Note;
+
             _selectedSession = await _restaurant.UpdateSessionDetailsAsync(
                 _selectedSession.Id,
                 _selectedSession.Version,
@@ -550,6 +552,21 @@ public sealed class RestaurantTablePlanWindow : Window
                 _tableNote.Text ?? "",
                 _user.Username,
                 Environment.MachineName);
+
+            if (!string.Equals(
+                    oldNote,
+                    _selectedSession.Note,
+                    StringComparison.Ordinal) &&
+                (await _restaurant.ListActiveItemsAsync(
+                    _selectedSession.Id)).Count > 0)
+            {
+                await _kitchen.EnqueueNoteAsync(
+                    _selectedSession,
+                    _selectedTable?.DisplayName ?? "Tisch",
+                    _user.Username);
+
+                _kitchenDispatcher.Notify();
+            }
 
             await ReloadAsync();
         }
@@ -567,10 +584,16 @@ public sealed class RestaurantTablePlanWindow : Window
 
         try
         {
+            var guests = Math.Clamp(
+                Convert.ToInt32(_guestCount.Value ?? 1m),
+                1,
+                999);
+
             _selectedSession = await _restaurant.OpenTableAsync(
                 _selectedTable.Id,
                 _user.Username,
-                guestCount: 1,
+                guestCount: guests,
+                note: _tableNote.Text ?? "",
                 deviceId: Environment.MachineName);
 
             await ReloadAsync();
