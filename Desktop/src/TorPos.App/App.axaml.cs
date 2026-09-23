@@ -342,14 +342,17 @@ public partial class App : Avalonia.Application
                 var permanent = InstallationEdition.ReadPermanent();
                 var kiosk = commercialLicense.Check("KIOSK");
                 var imbiss = commercialLicense.Check("IMBISS");
+                var restaurant = commercialLicense.Check("RESTAURANT");
                 var licensed = kiosk.IsActive
                     ? "KIOSK"
                     : imbiss.IsActive
                         ? "IMBISS"
-                        : null;
+                        : restaurant.IsActive
+                            ? "RESTAURANT"
+                            : null;
 
-                // R182 foundation: a dedicated TOR Einzelhandel / TOR Gastro build is
-                // authoritative. The opposite edition is never offered even in
+                // Dedicated TOR Einzelhandel / TOR Gastro / TOR Restaurant builds are
+                // authoritative. Another product edition is never offered even in
                 // licence-free validation mode.
                 if (builtEdition is not null)
                 {
