@@ -512,6 +512,18 @@ internal static class UiTranslations
         ["ORDER kann jetzt auch mit dem TRAINING-Benutzer getestet werden. Trainingsbestellungen und Trainings-Abholnummern bleiben getrennt von echten offenen Bestellungen."] = "ORDER artık TRAINING kullanıcısıyla da test edilebilir. Eğitim siparişleri ve teslim numaraları gerçek açık siparişlerden ayrı kalır.",
         ["Wichtig"] = "Önemli",
         ["Abholnummer ist nur eine Betriebs-/Wartenummer und ersetzt niemals die Bonnummer."] = "Teslim numarası yalnızca işletme/bekleme numarasıdır ve hiçbir zaman fiş numarasının yerine geçmez.",
+        // The TSE outage list. The recorded reason itself is never translated -
+        // it is the documented cause of a fiscal outage and reaches a Pruefer
+        // exactly as the till wrote it.
+        ["TSE-Ausfälle"] = "TSE arızaları",
+        ["Jeder Ausfall wird mit Beginn, Ende und Grund protokolliert und kann nicht gelöscht werden. Dieselben Daten gehen in den DSFinV-K-Export."] =
+            "Her arıza başlangıcı, bitişi ve sebebiyle kaydedilir ve silinemez. Aynı veriler DSFinV-K dışa aktarımına da gider.",
+        ["AUSFALLLISTE AKTUALISIEREN"] = "ARIZA LİSTESİNİ YENİLE",
+        ["Ausfallliste wird gelesen ..."] = "Arıza listesi okunuyor ...",
+        ["Kein TSE-Ausfall protokolliert."] = "Kayıtlı TSE arızası yok.",
+        ["Ausfallliste konnte nicht gelesen werden."] = "Arıza listesi okunamadı.",
+        ["läuft noch"] = "hâlâ sürüyor",
+        ["Minuten"] = "dakika",
         ["Tagesabschluss"] = "Gün sonu",
         ["Z-Bericht automatisch drucken"] = "Z-Bericht'i otomatik yazdır",
         ["Z-Abschluss bleibt bei offenen geparkten Bons gesperrt."] = "Açık bekletilmiş fişler varken Z-Abschluss kilitli kalır.",
@@ -2106,6 +2118,18 @@ internal static class UiTranslations
         ["ORDER kann jetzt auch mit dem TRAINING-Benutzer getestet werden. Trainingsbestellungen und Trainings-Abholnummern bleiben getrennt von echten offenen Bestellungen."] = "ORDER can also be tested with the TRAINING user. Training orders and pickup numbers stay separate from real open orders.",
         ["Wichtig"] = "Important",
         ["Abholnummer ist nur eine Betriebs-/Wartenummer und ersetzt niemals die Bonnummer."] = "The pickup number is only an operational/queue number and never replaces the receipt number.",
+        // The TSE outage list. The recorded reason itself is never translated -
+        // it is the documented cause of a fiscal outage and reaches a Pruefer
+        // exactly as the till wrote it.
+        ["TSE-Ausfälle"] = "TSE outages",
+        ["Jeder Ausfall wird mit Beginn, Ende und Grund protokolliert und kann nicht gelöscht werden. Dieselben Daten gehen in den DSFinV-K-Export."] =
+            "Every outage is logged with start, end and reason and cannot be deleted. The same data goes into the DSFinV-K export.",
+        ["AUSFALLLISTE AKTUALISIEREN"] = "REFRESH OUTAGE LIST",
+        ["Ausfallliste wird gelesen ..."] = "Reading the outage list ...",
+        ["Kein TSE-Ausfall protokolliert."] = "No TSE outage logged.",
+        ["Ausfallliste konnte nicht gelesen werden."] = "The outage list could not be read.",
+        ["läuft noch"] = "still open",
+        ["Minuten"] = "minutes",
         ["Tagesabschluss"] = "Day close",
         ["Z-Bericht automatisch drucken"] = "Print Z-Bericht automatically",
         ["Z-Abschluss bleibt bei offenen geparkten Bons gesperrt."] = "Z-Abschluss remains locked while parked receipts are open.",

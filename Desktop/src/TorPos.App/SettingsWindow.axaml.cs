@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
     private readonly DatabaseBackupService _backup;
     private readonly PerformanceCounters _performance;
     private readonly ITseProvider _tseProvider;
+    private readonly ITseOutageRepository _tseOutages;
     private readonly IReceiptPrinterService _receiptPrinter;
     private readonly IPaymentTerminalService _paymentTerminal;
     private readonly IFiscalComplianceService _compliance;
@@ -116,6 +117,7 @@ public partial class SettingsWindow : Window
         DatabaseBackupService backup,
         PerformanceCounters performance,
         ITseProvider tseProvider,
+        ITseOutageRepository tseOutages,
         IReceiptPrinterService receiptPrinter,
         IPaymentTerminalService paymentTerminal,
         IFiscalComplianceService compliance,
@@ -134,6 +136,7 @@ public partial class SettingsWindow : Window
         _backup = backup;
         _performance = performance;
         _tseProvider = tseProvider;
+        _tseOutages = tseOutages;
         _receiptPrinter = receiptPrinter;
         _paymentTerminal = paymentTerminal;
         _compliance = compliance;
@@ -2153,6 +2156,41 @@ private Control TsePage()
 
     page.Children.Add(status);
 
+    // § 146a AO treats a TSE failure as a documented outage. The record has
+    // existed from the start in tse_outage_log - protected against DELETE by a
+    // trigger - and travels into the DSFinV-K export. What was missing is a way
+    // to read it: asked "when was the TSE down and why", the operator had to
+    // produce an export or open the database. Now it is on the screen where the
+    // TSE is administered.
+    var outages = Section("TSE-Ausfälle");
+    outages.Children.Add(ReadOnlyRow(
+        "Nachweis",
+        "Jeder Ausfall wird mit Beginn, Ende und Grund protokolliert und kann nicht gelöscht werden. Dieselben Daten gehen in den DSFinV-K-Export."));
+
+    // A read-only TextBox, not a TextBlock, and deliberately so: UiLanguage
+    // translates TextBlock.Text but never TextBox.Text, because that is where
+    // operator data lives. An outage reason is the recorded cause of a fiscal
+    // outage - it must reach a Pruefer exactly as the till wrote it, in every
+    // interface language.
+    var outageList = new TextBox
+    {
+        Text = UiLanguage.T("Ausfallliste wird gelesen ..."),
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MinHeight = 120,
+        MaxHeight = 320,
+        FontSize = 13
+    };
+    outages.Children.Add(ToggleRow(outageList));
+
+    var reloadOutages = new Button { Content = "AUSFALLLISTE AKTUALISIEREN", MinHeight = 44 };
+    reloadOutages.Click += async (_, _) => await LoadTseOutagesAsync(outageList);
+    outages.Children.Add(reloadOutages);
+    _ = LoadTseOutagesAsync(outageList);
+
+    page.Children.Add(outages);
+
     var identity = Section("Automatisch aus der TSE lesen");
 
     var serial = Text("tse.serial");
@@ -4093,6 +4131,48 @@ private Control TsePage()
 
         container.Child = grid;
         section.Children.Add(container);
+    }
+
+    // The reason is reproduced exactly as it was recorded. It is the
+    // documented cause of a fiscal outage, not interface text, so it is never
+    // translated and never reworded - a Pruefer has to read what the till
+    // wrote at the time.
+    private async Task LoadTseOutagesAsync(TextBox target)
+    {
+        try
+        {
+            var rows = await _tseOutages.ListRecentAsync(50);
+
+            if (rows.Count == 0)
+            {
+                target.Text = UiLanguage.T("Kein TSE-Ausfall protokolliert.");
+                return;
+            }
+
+            var now = DateTimeOffset.Now;
+            var lines = rows.Select(outage =>
+            {
+                var minutes = (long)Math.Max(
+                    0,
+                    Math.Round(((outage.EndedAt ?? now) - outage.StartedAt).TotalMinutes));
+
+                var ended = outage.EndedAt is null
+                    ? UiLanguage.T("läuft noch")
+                    : outage.EndedAt.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm");
+
+                return outage.StartedAt.LocalDateTime.ToString("dd.MM.yyyy HH:mm")
+                    + " – " + ended
+                    + " · " + minutes + " " + UiLanguage.T("Minuten")
+                    + " · " + outage.Reason;
+            });
+
+            target.Text = string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("TSE outage list", ex);
+            target.Text = UiLanguage.T("Ausfallliste konnte nicht gelesen werden.");
+        }
     }
 
     private Control ReadOnlyRow(string label, string value)

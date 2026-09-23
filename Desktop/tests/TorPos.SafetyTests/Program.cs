@@ -447,6 +447,7 @@ await R179ReviewTests.Run(root, Assert);
 await R180ReviewTests.Run(Assert);
 await R181ReviewTests.Run(root, Assert);
 await TseStartupWarningTests.Run(Assert);
+await TseOutageHistoryTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await MultiLanguageTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -523,11 +524,15 @@ await BarTestBonPreparationTests.Run(Assert);
 // stays silent, training is exempt, the warning never locks the till, only an
 // admin is offered the settings route, and the message is translated with the
 // device name TSE left intact.
+// TSE outage history: 5 checks lock the readable outage log - bounded and
+// read-only, still undeletable, shown on the technician page, and the recorded
+// reason reaching the screen unchanged because it is evidence, not interface
+// text.
 // Split-product foundation checks keep Einzelhandel/Gastro process, storage,
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1192;
+const int ExpectedSafetyChecks = 1197;
 
 if (checks != ExpectedSafetyChecks)
 {

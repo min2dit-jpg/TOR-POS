@@ -219,6 +219,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<IPaymentTerminalService>(paymentTerminal);
             appServices.AddSingleton<ISettingsRepository>(settings);
             appServices.AddSingleton<ITseProvider>(tseProvider);
+            appServices.AddSingleton<ITseOutageRepository>(tseOutages);
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);
