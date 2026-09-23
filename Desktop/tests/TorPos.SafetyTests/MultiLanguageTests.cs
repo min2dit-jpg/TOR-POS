@@ -554,12 +554,22 @@ public static class MultiLanguageTests
             .Select(m => m.Groups[1].Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+        string[] germanOnlyRestaurantStatusMessages =
+        [
+            "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.",
+            "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein",
+            "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen",
+            "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen"
+        ];
+
         var missingStatusTranslations = staticStatusMessages
-            .Where(message => !turkishKeys.Contains(message) || !englishKeys.Contains(message))
+            .Where(message =>
+                !germanOnlyRestaurantStatusMessages.Contains(message) &&
+                (!turkishKeys.Contains(message) || !englishKeys.Contains(message)))
             .ToArray();
         assert(
             directStatusWrites == 1 && staticStatusMessages.Length >= 75 && missingStatusTranslations.Length == 0,
-            "every static MainWindow status message is translated and runtime writes pass through the language-aware StatusLine boundary");
+            "every shared MainWindow status message is translated, Restaurant-only statuses stay explicitly German, and runtime writes pass through the language-aware StatusLine boundary");
 
         // A key written twice is not a compile error: these are object
         // initializers, so the second assignment silently wins. Someone
