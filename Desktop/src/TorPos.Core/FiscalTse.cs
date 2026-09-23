@@ -55,7 +55,8 @@ public sealed record TseTransactionStartRequest(
     string ClientId,
     byte[] ProcessData,
     string ProcessType,
-    string TimeAdminPin = "");
+    string TimeAdminPin = "",
+    string StableTransactionId = "");
 
 public sealed record TseTransactionUpdateRequest(
     string ClientId,
