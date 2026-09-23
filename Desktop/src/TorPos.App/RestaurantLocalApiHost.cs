@@ -334,8 +334,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         {
             try
             {
+                using var stopTimeout =
+                    new CancellationTokenSource(
+                        TimeSpan.FromSeconds(3));
                 await _app.StopAsync(
-                    TimeSpan.FromSeconds(3));
+                    stopTimeout.Token);
             }
             finally
             {
