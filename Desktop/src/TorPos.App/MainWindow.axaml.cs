@@ -5525,25 +5525,48 @@ public partial class MainWindow:Window
                 return;
             }
 
-            if (_fiscalReadiness.ProductionAllowed)
-                SetFiscalModeLabel("PRODUKTIV · FISKAL FREIGEGEBEN", "PRODUKTIV", "PRODUKTIV");
+            var tseReleaseEnabled =
+                FiscalRelease.EnabledForProvider(
+                    _tseProvider.ProviderId,
+                    _lastTseDevice);
+
+            var productionReady =
+                _fiscalReadiness.ProductionAllowed &&
+                tseReleaseEnabled;
+
+            if (productionReady)
+            {
+                SetFiscalModeLabel(
+                    "PRODUKTIV · FISKAL FREIGEGEBEN",
+                    "PRODUKTIV",
+                    "PRODUKTIV");
+            }
+            else if (!tseReleaseEnabled)
+            {
+                SetFiscalModeLabel(
+                    "TESTBETRIEB · TSE-FREIGABE OFFEN",
+                    "TEST · TSE-FREIGABE",
+                    "TEST");
+            }
             else
+            {
                 SetFiscalModeLabel(
                     $"TESTBETRIEB · {_fiscalReadiness.BlockingCount} FISKAL-SPERREN",
                     $"TEST · {_fiscalReadiness.BlockingCount} SPERREN",
                     "TEST");
+            }
 
             FiscalModeText.Foreground =
-                _fiscalReadiness.ProductionAllowed ? AppTheme.AccentTeal : AppTheme.WarningAmber;
+                productionReady ? AppTheme.AccentTeal : AppTheme.WarningAmber;
 
             var cashLabel=_settingsCache.GetText("pay.cash.label","Bar").ToUpperInvariant();
             var cardLabel=_settingsCache.GetText("pay.card.label","Karte").ToUpperInvariant();
 
-            CashButtonText.Text = _fiscalReadiness.ProductionAllowed
+            CashButtonText.Text = productionReady
                 ? cashLabel
                 : cashLabel + " · TEST";
 
-            CardButtonText.Text = _fiscalReadiness.ProductionAllowed
+            CardButtonText.Text = productionReady
                 ? cardLabel
                 : cardLabel + " · TEST";
         }

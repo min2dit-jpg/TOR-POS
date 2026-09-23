@@ -139,6 +139,42 @@ public sealed class TseFailSafeService
     {
         try
         {
+            if (FiscalRelease.CommonQualificationsValidated)
+            {
+                var releaseProbe = await _provider.ProbeAsync(ct);
+                var releaseAllowed =
+                    releaseProbe.State == TseConnectionState.Ready &&
+                    FiscalRelease.EnabledForProvider(
+                        _provider.ProviderId,
+                        releaseProbe.Device);
+
+                if (!releaseAllowed)
+                {
+                    var missing = FiscalRelease.MissingQualificationsForProvider(
+                        _provider.ProviderId,
+                        releaseProbe.Device);
+
+                    var reason =
+                        "TSE-Produktionsfreigabe gesperrt: " +
+                        string.Join(", ", missing);
+
+                    await _outages.OpenAsync(reason, actor, ct);
+                    await _audit.WriteAsync(
+                        actor,
+                        "TSE_RELEASE_GATE_BLOCKED",
+                        "TSE",
+                        releaseProbe.Device?.SerialNumber ?? "",
+                        reason,
+                        ct);
+
+                    return (
+                        new TseTransactionResult(
+                            false,
+                            reason),
+                        true);
+                }
+            }
+
             var result =
                 await _provider.StartTransactionAsync(
                     request,

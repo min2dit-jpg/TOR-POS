@@ -30,7 +30,7 @@ public static class FiscalRelease
     // can never substitute for a physical Swissbit generation and vice versa.
     public const bool CloudTseValidated = false;
 
-    private static bool CommonQualificationsValidated =>
+    public static bool CommonQualificationsValidated =>
         DsfinvkValidated &&
         KassenSichVReceiptValidated &&
         ParkedOrderTseValidated &&

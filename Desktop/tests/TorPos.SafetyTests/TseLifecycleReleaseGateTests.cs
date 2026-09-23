@@ -112,9 +112,13 @@ internal static class TseLifecycleReleaseGateTests
         assert(
             failSafe.Contains("TseCertificateState.Expired", StringComparison.Ordinal) &&
             failSafe.Contains("TSE_CERTIFICATE_EXPIRED", StringComparison.Ordinal) &&
+            failSafe.Contains("FiscalRelease.CommonQualificationsValidated", StringComparison.Ordinal) &&
+            failSafe.Contains("FiscalRelease.EnabledForProvider(", StringComparison.Ordinal) &&
+            failSafe.Contains("releaseProbe.Device", StringComparison.Ordinal) &&
             main.Contains("static bool _tseCertificateDialogShownForProcess", StringComparison.Ordinal) &&
+            main.Contains("TSE-FREIGABE OFFEN", StringComparison.Ordinal) &&
             xaml.Contains("TseCertificateWarningBadge", StringComparison.Ordinal),
-            "Expired certificates become a TSE outage while 90/30-day warnings stay visible and modal only once per process");
+            "Expired certificates become a TSE outage; production re-probes the current device generation; 90/30-day warnings remain visible and modal only once per process");
 
         return Task.CompletedTask;
     }
