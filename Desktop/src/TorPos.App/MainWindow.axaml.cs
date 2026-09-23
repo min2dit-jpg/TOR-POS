@@ -45,6 +45,7 @@ public partial class MainWindow:Window
     private readonly BusinessManagementService _management;
     private readonly RestaurantRepository _restaurant;
     private readonly RestaurantFiscalOrderService _restaurantFiscal;
+    private readonly RestaurantEntitlementService _restaurantEntitlements;
     private readonly AuthenticatedUser _currentUser;
     private IReadOnlyDictionary<string,string> _settingsCache=
         new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -174,6 +175,7 @@ public partial class MainWindow:Window
         BusinessManagementService management,
         RestaurantRepository restaurant,
         RestaurantFiscalOrderService restaurantFiscal,
+        RestaurantEntitlementService restaurantEntitlements,
         AuthenticatedUser currentUser,
         ICheckoutJournal checkoutJournal,
         CheckoutApplicationService checkoutApplication,
@@ -210,7 +212,7 @@ public partial class MainWindow:Window
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
         _digitalReceipts=digitalReceipts;
         _cardRefundLocks=cardRefundLocks;
-        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_restaurant=restaurant;_restaurantFiscal=restaurantFiscal;_currentUser=currentUser;
+        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_restaurant=restaurant;_restaurantFiscal=restaurantFiscal;_restaurantEntitlements=restaurantEntitlements;_currentUser=currentUser;
 
         BuildCategories();
         ShowCategoryOverview();
@@ -221,6 +223,11 @@ public partial class MainWindow:Window
                 ProductBuild.FixedEdition,
                 "RESTAURANT",
                 StringComparison.Ordinal);
+
+        RestaurantKdsButton.IsVisible =
+            RestaurantTablesButton.IsVisible &&
+            _restaurantEntitlements.IsEnabled(
+                RestaurantFeature.KitchenDisplaySystem);
 
         // Scanner events are captured at Window tunnel level. Therefore the cashier
         // never needs to click or focus an EAN input field before scanning.
@@ -326,6 +333,33 @@ public partial class MainWindow:Window
 
             FocusScannerCaptureSoon();
         };
+    }
+
+    private async void OnRestaurantKdsClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            _restaurantEntitlements.Require(
+                RestaurantFeature.KitchenDisplaySystem);
+
+            var window =
+                _windowFactory.CreateRestaurantKdsWindow(
+                    _currentUser);
+
+            await window.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            ScannerStatus.Text = ex.Message;
+        }
     }
 
     private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e)
