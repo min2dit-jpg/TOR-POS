@@ -31,6 +31,7 @@ public sealed class RestaurantKitchenOutbox
         RestaurantSessionItem item,
         string tableName,
         string actor,
+        string station = "",
         CancellationToken ct = default)
     {
         var payload = JsonSerializer.Serialize(new
@@ -47,14 +48,15 @@ public sealed class RestaurantKitchenOutbox
             item.VariantName,
             item.QuantityMilli,
             item.UnitPriceCents,
-            actor
+            actor,
+            station = KitchenStations.Normalize(station)
         });
 
         return await EnqueueAsync(
             session.Id,
             item.Id,
             "NEW",
-            station: "",
+            station: KitchenStations.Normalize(station),
             printerName: "",
             payload,
             ct);
@@ -65,6 +67,7 @@ public sealed class RestaurantKitchenOutbox
         RestaurantSessionItem item,
         string tableName,
         string actor,
+        string station = "",
         CancellationToken ct = default)
     {
         var payload = JsonSerializer.Serialize(new
@@ -79,14 +82,15 @@ public sealed class RestaurantKitchenOutbox
             item.ProductName,
             item.VariantName,
             item.QuantityMilli,
-            actor
+            actor,
+            station = KitchenStations.Normalize(station)
         });
 
         return await EnqueueAsync(
             session.Id,
             item.Id,
             "CANCEL",
-            station: "",
+            station: KitchenStations.Normalize(station),
             printerName: "",
             payload,
             ct);
