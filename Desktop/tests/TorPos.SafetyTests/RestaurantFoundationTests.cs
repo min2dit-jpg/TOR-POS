@@ -647,7 +647,7 @@ internal static class RestaurantFoundationTests
                     "Idempotency session missing.");
 
             const string idempotentKitchenJob =
-                "KITCHEN-IDEMPOTENCY-0001";
+                "11111111111111111111111111111111";
 
             await idempotentKitchen.EnqueueNewItemIdempotentAsync(
                 idempotentSessionAfterAdd,
@@ -1165,7 +1165,7 @@ internal static class RestaurantFoundationTests
                 ?? throw new InvalidOperationException("Cancelled session missing.");
 
             const string cancelKitchenJobId =
-                "KITCHEN-CANCEL-IDEMPOTENCY-0001";
+                "22222222222222222222222222222222";
 
             await kitchen.EnqueueCancellationIdempotentAsync(
                 cancelledSessionForKitchen,
