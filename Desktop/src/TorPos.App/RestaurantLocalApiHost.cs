@@ -32,6 +32,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     private readonly RestaurantHandheldPairingService _pairing;
     private readonly IRestaurantHandheldService _handheld;
     private readonly RestaurantTerminalRegistry _terminals;
+    private readonly RestaurantSyncService _sync;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
 #if TOR_RESTAURANT_PRODUCT
@@ -47,13 +48,15 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         RestaurantEntitlementService entitlements,
         RestaurantHandheldPairingService pairing,
         IRestaurantHandheldService handheld,
-        RestaurantTerminalRegistry terminals)
+        RestaurantTerminalRegistry terminals,
+        RestaurantSyncService sync)
     {
         _settings = settings;
         _entitlements = entitlements;
         _pairing = pairing;
         _handheld = handheld;
         _terminals = terminals;
+        _sync = sync;
     }
 
     public async Task StartOrRestartAsync(
@@ -295,6 +298,57 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         catch (UnauthorizedAccessException)
                         {
                             return Results.Unauthorized();
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
+            app.MapGet(
+                    "/api/v1/sync",
+                    async (
+                        HttpContext context,
+                        long afterEventId,
+                        int? limit,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            await _pairing.RequireAuthenticatedAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
+                            var batch = await _sync.GetEventsAfterAsync(
+                                afterEventId,
+                                limit ?? 200,
+                                token);
+
+                            return Results.Ok(batch);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentOutOfRangeException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
                         }
                         catch (InvalidOperationException ex)
                         {
