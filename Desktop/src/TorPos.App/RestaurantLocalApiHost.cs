@@ -321,6 +321,59 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     })
                 .RequireRateLimiting("device");
 
+            app.MapPut(
+                    "/api/v1/sessions/{sessionId}",
+                    async (
+                        HttpContext context,
+                        string sessionId,
+                        UpdateTableRequest request,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            var result =
+                                await _handheld.UpdateTableAsync(
+                                    new RestaurantHandheldUpdateTableRequest(
+                                        sessionId,
+                                        request.ExpectedSessionVersion,
+                                        request.GuestCount,
+                                        request.Note,
+                                        request.OperatorName,
+                                        deviceId,
+                                        deviceToken),
+                                    token);
+
+                            return Results.Ok(result);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
             app.MapGet(
                     "/api/v1/sessions/{sessionId}/items",
                     async (
@@ -656,6 +709,12 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
     private sealed record OpenTableRequest(
         long TableId,
+        int GuestCount,
+        string Note,
+        string OperatorName);
+
+    private sealed record UpdateTableRequest(
+        long ExpectedSessionVersion,
         int GuestCount,
         string Note,
         string OperatorName);
