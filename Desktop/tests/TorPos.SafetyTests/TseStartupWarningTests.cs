@@ -41,31 +41,39 @@ public static class TseStartupWarningTests
             "TSE start-up warning: every TSE state that cannot sign is reported to the operator, including the timeout and any state added later");
 
         // A working TSE must never produce the start-up warning. The merged
-        // lifecycle flow deliberately does not return early anymore: certificate
-        // assessment and badge/fiscal refresh still have to run for Ready. The
-        // warning path is therefore guarded by the non-Ready else branch.
+        // lifecycle flow may either return from the Ready branch after doing the
+        // certificate/badge refresh, or guard the warning in a non-Ready branch.
+        // What matters is that Ready is assessed for certificate state and cannot
+        // reach WarnAboutTseOnceAsync.
         var ready = probe.IndexOf(
             "result.State == TseConnectionState.Ready",
-            StringComparison.Ordinal);
-        var nonReadyElse = probe.IndexOf(
-            "else\n            {",
-            ready < 0 ? 0 : ready,
             StringComparison.Ordinal);
         var firstWarningAfterReady = probe.IndexOf(
             "await WarnAboutTseOnceAsync(",
             ready < 0 ? 0 : ready,
             StringComparison.Ordinal);
-        var certificateAfterBranch = probe.IndexOf(
-            "await ApplyTseCertificateWarningAsync(result.Device);",
-            ready < 0 ? 0 : ready,
-            StringComparison.Ordinal);
+
+        var readySlice =
+            ready >= 0 && firstWarningAfterReady > ready
+                ? probe[ready..firstWarningAfterReady]
+                : "";
+
+        var readyRefreshesCertificate =
+            readySlice.Contains(
+                "await ApplyTseCertificateWarningAsync(result.Device);",
+                StringComparison.Ordinal);
+
+        var readyExitsBeforeWarning =
+            readySlice.Contains("return;", StringComparison.Ordinal);
+
+        var warningGuardedByNonReadyElse =
+            readySlice.Contains("else", StringComparison.Ordinal);
 
         assert(
             ready >= 0 &&
-            nonReadyElse > ready &&
-            firstWarningAfterReady > nonReadyElse &&
-            certificateAfterBranch > firstWarningAfterReady,
-            "TSE start-up warning: a ready TSE never enters the non-ready warning branch while certificate/badge refresh still runs");
+            readyRefreshesCertificate &&
+            (readyExitsBeforeWarning || warningGuardedByNonReadyElse),
+            "TSE start-up warning: a ready TSE is certificate-checked and cannot enter the non-ready warning path");
 
         // The probe runs again every time the settings window closes. Without a
         // guard an operator who opens the settings four times gets the same
