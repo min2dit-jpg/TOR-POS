@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 29;
+    public const int TargetSchemaVersion = 30;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1819,7 +1819,7 @@ public sealed class SchemaMigrationService
                           id TEXT PRIMARY KEY,
                           session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
                           session_item_id INTEGER NULL REFERENCES restaurant_session_items(id),
-                          action TEXT NOT NULL CHECK(action IN ('NEW','CANCEL','MOVE')),
+                          action TEXT NOT NULL CHECK(action IN ('NEW','CANCEL','MOVE','NOTE')),
                           station TEXT NOT NULL DEFAULT '',
                           printer_name TEXT NOT NULL DEFAULT '',
                           payload_json TEXT NOT NULL,
@@ -1879,6 +1879,54 @@ public sealed class SchemaMigrationService
 
                         CREATE INDEX IF NOT EXISTS ix_restaurant_handheld_active
                           ON restaurant_handheld_devices(is_active,last_seen_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                30,
+                "R188_RESTAURANT_KITCHEN_NOTE",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        ALTER TABLE restaurant_kitchen_jobs
+                          RENAME TO restaurant_kitchen_jobs_r187;
+
+                        CREATE TABLE restaurant_kitchen_jobs(
+                          id TEXT PRIMARY KEY,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          session_item_id INTEGER NULL REFERENCES restaurant_session_items(id),
+                          action TEXT NOT NULL CHECK(action IN ('NEW','CANCEL','MOVE','NOTE')),
+                          station TEXT NOT NULL DEFAULT '',
+                          printer_name TEXT NOT NULL DEFAULT '',
+                          payload_json TEXT NOT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('PENDING','HANDED_OVER','FAILED')),
+                          attempts INTEGER NOT NULL DEFAULT 0,
+                          last_error TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          handed_over_at TEXT NULL);
+
+                        INSERT INTO restaurant_kitchen_jobs(
+                          id,session_id,session_item_id,action,station,printer_name,
+                          payload_json,state,attempts,last_error,created_at,handed_over_at)
+                        SELECT
+                          id,session_id,session_item_id,action,station,printer_name,
+                          payload_json,state,attempts,last_error,created_at,handed_over_at
+                        FROM restaurant_kitchen_jobs_r187;
+
+                        DROP TABLE restaurant_kitchen_jobs_r187;
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_state
+                          ON restaurant_kitchen_jobs(state,created_at);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_session
+                          ON restaurant_kitchen_jobs(session_id,created_at);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
