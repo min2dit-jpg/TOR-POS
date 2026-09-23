@@ -64,7 +64,7 @@ public static class CloudTseFoundationTests
             fiscalCalls.All(call => provider.Contains(call, StringComparison.Ordinal)) &&
             provider.Contains("Task.FromResult(Refused())", StringComparison.Ordinal) &&
             Regex.Matches(provider, @"Task\.FromResult\(Refused\(\)\)").Count == 3 &&
-            provider.Contains("new(false, NotReleasedMessage);", StringComparison.Ordinal) &&
+            provider.Contains("new(false, Refusal());", StringComparison.Ordinal) &&
             !Regex.IsMatch(WithoutComments(provider), @"TransactionNumber\s*=|SignatureCounter\s*=|SignatureBase64\s*="),
             "cloud TSE: every fiscal call refuses and none of them fabricates a transaction number, a signature counter or a signature");
 
