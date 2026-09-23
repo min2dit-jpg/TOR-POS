@@ -131,6 +131,7 @@ public static class AppPaths
 public sealed class SqliteDatabase
 {
     private readonly string _connectionString;
+    private readonly string _readConnectionString;
 
     public string DatabasePath { get; }
 
@@ -143,6 +144,14 @@ public sealed class SqliteDatabase
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
+            Cache = SqliteCacheMode.Shared,
+            Pooling = true
+        }.ToString();
+
+        _readConnectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = DatabasePath,
+            Mode = SqliteOpenMode.ReadOnly,
             Cache = SqliteCacheMode.Shared,
             Pooling = true
         }.ToString();
@@ -164,6 +173,21 @@ public sealed class SqliteDatabase
         cmd.ExecuteNonQuery();
         return c;
     }
+    public SqliteConnection OpenReadConnection()
+    {
+        var c = new SqliteConnection(_readConnectionString);
+        c.Open();
+
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            PRAGMA query_only=ON;
+            PRAGMA temp_store=MEMORY;
+            PRAGMA busy_timeout=3000;
+            """;
+        cmd.ExecuteNonQuery();
+        return c;
+    }
+
 public async Task InitializeAsync(CancellationToken ct = default)
 {
     await IoQueue.RunAsync(async () =>
