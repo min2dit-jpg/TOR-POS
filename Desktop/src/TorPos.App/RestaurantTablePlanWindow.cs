@@ -192,7 +192,7 @@ public sealed class RestaurantTablePlanWindow : Window
         _move.Click += async (_, _) => await MoveSelectedSessionAsync();
         _merge.Click += async (_, _) => await MergeSelectedSessionAsync();
         _closeEmpty.Click += async (_, _) => await CloseEmptySelectedSessionAsync();
-        _split.Click += async (_, _) => await ShowSplitPreviewAsync();
+        _split.Click += async (_, _) => await ShowSplitCheckoutAsync();
         _checkoutSelected.Click += async (_, _) => await CheckoutSelectedAsync();
         _cancelItem.Click += async (_, _) => await CancelSelectedItemAsync();
         _items.SelectionChanged += (_, _) =>
@@ -940,94 +940,26 @@ public sealed class RestaurantTablePlanWindow : Window
         }
     }
 
-    private async Task ShowSplitPreviewAsync()
+    private async Task ShowSplitCheckoutAsync()
     {
         if (_selectedSession is null)
             return;
 
-        var items = await _restaurant.ListActiveItemsAsync(_selectedSession.Id);
+        var items = await _restaurant.ListActiveItemsAsync(
+            _selectedSession.Id);
+
         if (items.Count == 0)
             return;
 
-        var total = items.Sum(x => x.LineTotalCents);
-        var persons = new NumericUpDown
-        {
-            Minimum = 2,
-            Maximum = 20,
-            Value = 2,
-            Width = 100,
-            MinHeight = 42
-        };
+        var dialog = new RestaurantSplitCheckoutWindow(
+            _restaurant,
+            _selectedSession,
+            items,
+            _selectedTable?.DisplayName ?? "Tisch");
 
-        var preview = new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 16
-        };
-
-        void RefreshPreview()
-        {
-            var count = Math.Clamp(
-                Convert.ToInt32(persons.Value ?? 2m),
-                2,
-                20);
-
-            var shares = RestaurantSplitCalculator.EqualShares(total, count);
-            preview.Text =
-                $"Gesamtsumme: {Formatting.Money(total)}\n\n" +
-                string.Join(
-                    "\n",
-                    shares.Select((amount, index) =>
-                        $"Person {index + 1}: {Formatting.Money(amount)}"));
-        }
-
-        persons.ValueChanged += (_, _) => RefreshPreview();
-        RefreshPreview();
-
-        var close = new Button
-        {
-            Content = "SCHLIESSEN",
-            MinWidth = 130,
-            MinHeight = 42
-        };
-
-        var dialog = new Window
-        {
-            Title = "TOR Restaurant · Splitrechnung",
-            Width = 520,
-            Height = 480,
-            CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-
-        close.Click += (_, _) => dialog.Close();
-
-        dialog.Content = new StackPanel
-        {
-            Margin = new Thickness(22),
-            Spacing = 14,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "RECHNUNG NACH PERSONEN TEILEN",
-                    FontSize = 20,
-                    FontWeight = FontWeight.Bold
-                },
-                new TextBlock
-                {
-                    Text = "Diese Ansicht berechnet nur die Aufteilung. Es wird noch kein Bon erzeugt und keine TSE-Transaktion abgeschlossen.",
-                    TextWrapping = TextWrapping.Wrap,
-                    Opacity = 0.75
-                },
-                new TextBlock { Text = "Personen" },
-                persons,
-                preview,
-                close
-            }
-        };
-
-        await dialog.ShowDialog(this);
+        var draft = await dialog.ShowDialog<RestaurantCheckoutDraft?>(this);
+        if (draft is not null)
+            Close(draft);
     }
 
     private string ResolveKitchenStation(Product? product)

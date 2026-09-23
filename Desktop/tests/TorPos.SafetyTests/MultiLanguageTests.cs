@@ -164,7 +164,8 @@ public static class MultiLanguageTests
             "RestaurantHandheldSetupWindow",
             "RestaurantKdsWindow",
             "RestaurantReservationsWindow",
-            "RestaurantTablePlanWindow"
+            "RestaurantTablePlanWindow",
+            "RestaurantSplitCheckoutWindow"
         ];
 
         string[] germanOnlyWindowFiles =
@@ -172,7 +173,8 @@ public static class MultiLanguageTests
             "RestaurantHandheldSetupWindow.cs",
             "RestaurantKdsWindow.cs",
             "RestaurantReservationsWindow.cs",
-            "RestaurantTablePlanWindow.cs"
+            "RestaurantTablePlanWindow.cs",
+            "RestaurantSplitCheckoutWindow.cs"
         ];
         var windows = 0;
         var unrendered = new List<string>();
