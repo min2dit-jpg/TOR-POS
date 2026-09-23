@@ -49,6 +49,27 @@ Assert(
     InstallationEdition.DisplayName("IMBISS") == "Gastronomie",
     "customer-facing IMBISS edition is labeled Gastronomie without changing the technical code");
 
+var cloudGateRejected = false;
+try
+{
+    FiscalRelease.RequireCloudTse();
+}
+catch (InvalidOperationException ex)
+{
+    cloudGateRejected = ex.Message.Contains(
+        "Cloud-TSE",
+        StringComparison.OrdinalIgnoreCase);
+}
+
+if (!cloudGateRejected ||
+    FiscalRelease.CloudTseValidated ||
+    FiscalRelease.MissingQualifications().Any(x =>
+        x.Contains("Cloud", StringComparison.OrdinalIgnoreCase)))
+{
+    throw new Exception(
+        "FAIL: Cloud TSE release gate must be independent from the physical/global release qualification set.");
+}
+
 // R72.3: ordinary SafetyTests use SafetyDatabase so each disposable fixture
 // follows the same ordered schema migration path as TOR POS itself.
 // R69ReviewTests is the deliberate exception because it tests migration edges.
