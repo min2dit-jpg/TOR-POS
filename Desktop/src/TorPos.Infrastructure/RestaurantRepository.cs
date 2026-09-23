@@ -7,6 +7,16 @@ public sealed record RestaurantItemMutationResult(
     RestaurantSessionItem Item,
     bool Created);
 
+public sealed record RestaurantTableLiveSummary(
+    long TableId,
+    string TableName,
+    bool IsOpen,
+    string SessionId,
+    long SessionVersion,
+    string Waiter,
+    int GuestCount,
+    long OpenTotalCents);
+
 public sealed class RestaurantRepository
 {
     private readonly SqliteDatabase _db;
@@ -112,6 +122,70 @@ public sealed class RestaurantRepository
                     r.GetInt64(7)));
             }
             return (IReadOnlyList<RestaurantTable>)result;
+        });
+    }
+
+    public async Task<IReadOnlyList<RestaurantTableLiveSummary>> ListLiveTableSummariesAsync(
+        CancellationToken ct = default)
+    {
+        return await IoQueue.RunAsync(async () =>
+        {
+            var result =
+                new List<RestaurantTableLiveSummary>();
+
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT
+                    t.id,
+                    t.display_name,
+                    s.id,
+                    s.version,
+                    s.assigned_waiter,
+                    s.guest_count,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN i.id IS NULL THEN 0
+                                ELSE CAST(
+                                    ROUND(
+                                        (i.quantity_milli * i.unit_price_cents) / 1000.0
+                                    ) AS INTEGER)
+                            END
+                        ),
+                        0
+                    ) AS open_total_cents
+                FROM restaurant_tables t
+                LEFT JOIN restaurant_sessions s
+                  ON s.table_id=t.id
+                 AND s.state IN ('OPEN','CHECK_REQUESTED')
+                LEFT JOIN restaurant_session_items i
+                  ON i.session_id=s.id
+                 AND i.state='ACTIVE'
+                WHERE t.is_active=1
+                GROUP BY
+                    t.id,t.display_name,t.area_id,t.sort_order,
+                    s.id,s.version,s.assigned_waiter,s.guest_count
+                ORDER BY t.area_id,t.sort_order,t.id;
+                """;
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                var isOpen = !r.IsDBNull(2);
+                result.Add(
+                    new RestaurantTableLiveSummary(
+                        r.GetInt64(0),
+                        r.GetString(1),
+                        isOpen,
+                        isOpen ? r.GetString(2) : "",
+                        isOpen ? r.GetInt64(3) : 0,
+                        isOpen ? r.GetString(4) : "",
+                        isOpen ? r.GetInt32(5) : 0,
+                        r.GetInt64(6)));
+            }
+
+            return (IReadOnlyList<RestaurantTableLiveSummary>)result;
         });
     }
 
