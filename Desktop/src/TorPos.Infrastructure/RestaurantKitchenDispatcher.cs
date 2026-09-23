@@ -44,9 +44,7 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
         await _gate.WaitAsync(ct);
         try
         {
-            var blockedPrinters =
-                new HashSet<string>(
-                    StringComparer.OrdinalIgnoreCase);
+            var resolved = new List<ResolvedKitchenJob>();
 
             foreach (var job in await _outbox.PendingAsync(ct))
             {
@@ -60,156 +58,220 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                     continue;
                 }
 
-                var printerName = job.PrinterName;
-
                 try
                 {
-                    var defaultPrinter = await _settings.GetAsync(
-                        "device.kitchen_printer.name",
-                        "",
+                    var route = await ResolvePrinterAsync(
+                        job,
                         ct);
 
-                    var enabled = false;
-
-                    if (!string.IsNullOrWhiteSpace(job.Station))
-                    {
-                        var stationPrefix = KitchenStations.SettingsPrefix(job.Station);
-                        var stationEnabled = bool.TryParse(
-                            await _settings.GetAsync(
-                                stationPrefix + ".enabled",
-                                "false",
-                                ct),
-                            out var stationIsEnabled) && stationIsEnabled;
-
-                        var stationPrinter = await _settings.GetAsync(
-                            stationPrefix + ".name",
-                            "",
-                            ct);
-
-                        if (stationEnabled &&
-                            !string.IsNullOrWhiteSpace(stationPrinter))
-                        {
-                            enabled = true;
-                            printerName = stationPrinter;
-                        }
-                    }
-
-                    if (!enabled)
-                    {
-                        enabled = bool.TryParse(
-                            await _settings.GetAsync(
-                                "device.kitchen_printer.enabled",
-                                "false",
-                                ct),
-                            out var defaultEnabled) && defaultEnabled;
-
-                        if (string.IsNullOrWhiteSpace(printerName))
-                            printerName = defaultPrinter;
-                    }
-
-                    if (!enabled)
-                    {
-                        // This route stays pending, but it must not block
-                        // another station/printer from receiving its jobs.
-                        continue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(printerName))
-                        throw new InvalidOperationException(
-                            "Küchendrucker ist aktiviert, aber kein Drucker ausgewählt.");
-
-                    if (blockedPrinters.Contains(printerName))
-                        continue;
-
-                    var payload = JsonSerializer.Deserialize<KitchenPayload>(
-                        job.PayloadJson)
-                        ?? throw new InvalidDataException(
-                            "Restaurant-Küchenauftrag ist beschädigt.");
-
-                    var prefix = job.Action switch
-                    {
-                        "CANCEL" => "STORNO · NICHT ZUBEREITEN",
-                        "MOVE" => "TISCHWECHSEL",
-                        "NOTE" => "TISCHNOTIZ",
-                        _ => "NEUE BESTELLUNG"
-                    };
-
-                    var noteParts = new[]
-                    {
-                        prefix,
-                        payload.tableName ?? "Tisch",
-                        string.IsNullOrWhiteSpace(payload.note)
-                            ? ""
-                            : "HINWEIS: " + payload.note
-                    };
-
-                    var print = new KitchenPrintJob(
-                        job.CreatedAt,
-                        0,
-                        0,
-                        payload.waiter ?? "",
-                        new[]
-                        {
-                            new KitchenPrintLine(
-                                BuildLineName(payload),
-                                payload.QuantityMilli / 1000m)
-                        },
-                        string.Join(
-                            " · ",
-                            noteParts.Where(x => !string.IsNullOrWhiteSpace(x))));
-
-                    // The Restaurant outbox id is reused as the persistent
-                    // printer journal id. A retry therefore refers to the same
-                    // physical print operation instead of silently creating a
-                    // second logical ticket.
-                    var record = new PrintJobRecord(
-                        job.Id,
-                        "QUEUED",
-                        printerName,
-                        null,
-                        null,
-                        "",
-                        Kitchen: print,
-                        PickupSlip: null);
-
-                    await _printer.SubmitOrderAsync(record);
-
-                    await _outbox.MarkHandedOverAsync(
-                        job.Id,
-                        ct);
+                    if (route is not null)
+                        resolved.Add(route);
                 }
                 catch (Exception ex)
                 {
                     _onError?.Invoke(ex);
 
-                    // The printer may have persisted ownership and then thrown
-                    // (for example timeout/uncertain spooler outcome). In that
-                    // case never resubmit: the journal is authoritative.
-                    if (await _journal.GetAsync(job.Id) is not null)
-                    {
-                        await _outbox.MarkHandedOverAsync(
-                            job.Id,
-                            ct);
-                        continue;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(printerName))
-                        blockedPrinters.Add(printerName);
-
                     await _outbox.MarkFailedAttemptAsync(
                         job.Id,
                         ex.Message,
                         ct);
-
-                    // A broken station/printer must not stop unrelated
-                    // kitchen routes during the same dispatch pass.
-                    continue;
                 }
             }
+
+            // One slow/offline printer must never delay an unrelated kitchen
+            // station. Jobs remain ordered inside each physical printer lane,
+            // while separate printers are dispatched concurrently.
+            var lanes = resolved
+                .GroupBy(
+                    x => x.PrinterName,
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                    DispatchPrinterLaneAsync(
+                        group
+                            .OrderBy(x => x.Job.CreatedAt)
+                            .ThenBy(x => x.Job.Id)
+                            .ToArray(),
+                        ct))
+                .ToArray();
+
+            if (lanes.Length > 0)
+                await Task.WhenAll(lanes);
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    private async Task<ResolvedKitchenJob?> ResolvePrinterAsync(
+        RestaurantKitchenJob job,
+        CancellationToken ct)
+    {
+        var printerName = job.PrinterName;
+
+        var defaultPrinter = await _settings.GetAsync(
+            "device.kitchen_printer.name",
+            "",
+            ct);
+
+        var enabled = false;
+
+        if (!string.IsNullOrWhiteSpace(job.Station))
+        {
+            var stationPrefix =
+                KitchenStations.SettingsPrefix(
+                    job.Station);
+
+            var stationEnabled = bool.TryParse(
+                await _settings.GetAsync(
+                    stationPrefix + ".enabled",
+                    "false",
+                    ct),
+                out var stationIsEnabled) &&
+                stationIsEnabled;
+
+            var stationPrinter = await _settings.GetAsync(
+                stationPrefix + ".name",
+                "",
+                ct);
+
+            if (stationEnabled &&
+                !string.IsNullOrWhiteSpace(stationPrinter))
+            {
+                enabled = true;
+                printerName = stationPrinter;
+            }
+        }
+
+        if (!enabled)
+        {
+            enabled = bool.TryParse(
+                await _settings.GetAsync(
+                    "device.kitchen_printer.enabled",
+                    "false",
+                    ct),
+                out var defaultEnabled) &&
+                defaultEnabled;
+
+            if (string.IsNullOrWhiteSpace(printerName))
+                printerName = defaultPrinter;
+        }
+
+        if (!enabled)
+        {
+            // Keep disabled routes pending. Other enabled printer lanes are
+            // still free to dispatch during the same pass.
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(printerName))
+        {
+            throw new InvalidOperationException(
+                "Küchendrucker ist aktiviert, aber kein Drucker ausgewählt.");
+        }
+
+        var payload = JsonSerializer.Deserialize<KitchenPayload>(
+            job.PayloadJson)
+            ?? throw new InvalidDataException(
+                "Restaurant-Küchenauftrag ist beschädigt.");
+
+        return new ResolvedKitchenJob(
+            job,
+            printerName.Trim(),
+            payload);
+    }
+
+    private async Task DispatchPrinterLaneAsync(
+        IReadOnlyList<ResolvedKitchenJob> lane,
+        CancellationToken ct)
+    {
+        foreach (var resolved in lane)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var job = resolved.Job;
+
+            try
+            {
+                var prefix = job.Action switch
+                {
+                    "CANCEL" => "STORNO · NICHT ZUBEREITEN",
+                    "MOVE" => "TISCHWECHSEL",
+                    "NOTE" => "TISCHNOTIZ",
+                    _ => "NEUE BESTELLUNG"
+                };
+
+                var noteParts = new[]
+                {
+                    prefix,
+                    resolved.Payload.tableName ?? "Tisch",
+                    string.IsNullOrWhiteSpace(
+                        resolved.Payload.note)
+                        ? ""
+                        : "HINWEIS: " +
+                          resolved.Payload.note
+                };
+
+                var print = new KitchenPrintJob(
+                    job.CreatedAt,
+                    0,
+                    0,
+                    resolved.Payload.waiter ?? "",
+                    new[]
+                    {
+                        new KitchenPrintLine(
+                            BuildLineName(
+                                resolved.Payload),
+                            resolved.Payload.QuantityMilli /
+                                1000m)
+                    },
+                    string.Join(
+                        " · ",
+                        noteParts.Where(x =>
+                            !string.IsNullOrWhiteSpace(x))));
+
+                var record = new PrintJobRecord(
+                    job.Id,
+                    "QUEUED",
+                    resolved.PrinterName,
+                    null,
+                    null,
+                    "",
+                    Kitchen: print,
+                    PickupSlip: null);
+
+                await _printer.SubmitOrderAsync(
+                    record);
+
+                await _outbox.MarkHandedOverAsync(
+                    job.Id,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _onError?.Invoke(ex);
+
+                // The persistent print journal is authoritative. If printer
+                // ownership was already recorded, never submit this logical
+                // ticket again.
+                if (await _journal.GetAsync(job.Id) is not null)
+                {
+                    await _outbox.MarkHandedOverAsync(
+                        job.Id,
+                        ct);
+                }
+                else
+                {
+                    await _outbox.MarkFailedAttemptAsync(
+                        job.Id,
+                        ex.Message,
+                        ct);
+                }
+
+                // Preserve strict order inside one physical printer lane after
+                // a failure/timeout. Other printer lanes keep running.
+                break;
+            }
         }
     }
 
@@ -270,6 +332,11 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
         _gate.Dispose();
         _stop.Dispose();
     }
+
+    private sealed record ResolvedKitchenJob(
+        RestaurantKitchenJob Job,
+        string PrinterName,
+        KitchenPayload Payload);
 
     private sealed record KitchenPayload(
         string? action,
