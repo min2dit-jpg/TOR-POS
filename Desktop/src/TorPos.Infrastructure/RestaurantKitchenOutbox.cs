@@ -130,13 +130,55 @@ public sealed class RestaurantKitchenOutbox
             ct);
     }
 
-    public async Task<string> EnqueueCancellationAsync(
+    public Task<string> EnqueueCancellationAsync(
         RestaurantTableSession session,
         RestaurantSessionItem item,
         string tableName,
         string actor,
         string station = "",
+        CancellationToken ct = default) =>
+        EnqueueCancellationCoreAsync(
+            session,
+            item,
+            tableName,
+            actor,
+            station,
+            jobId: null,
+            ct);
+
+    public Task<string> EnqueueCancellationIdempotentAsync(
+        RestaurantTableSession session,
+        RestaurantSessionItem item,
+        string tableName,
+        string actor,
+        string jobId,
+        string station = "",
         CancellationToken ct = default)
+    {
+        jobId = (jobId ?? "").Trim();
+        if (jobId.Length is < 8 or > 160)
+            throw new ArgumentException(
+                "Kitchen-Job-ID ist ungültig.",
+                nameof(jobId));
+
+        return EnqueueCancellationCoreAsync(
+            session,
+            item,
+            tableName,
+            actor,
+            station,
+            jobId,
+            ct);
+    }
+
+    private async Task<string> EnqueueCancellationCoreAsync(
+        RestaurantTableSession session,
+        RestaurantSessionItem item,
+        string tableName,
+        string actor,
+        string station,
+        string? jobId,
+        CancellationToken ct)
     {
         var payload = JsonSerializer.Serialize(new
         {
@@ -162,6 +204,7 @@ public sealed class RestaurantKitchenOutbox
             station: KitchenStations.Normalize(station),
             printerName: "",
             payload,
+            jobId,
             ct);
     }
 
