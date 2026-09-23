@@ -99,7 +99,8 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
     public async Task<TseProbeResult> ProbeAsync(
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(
+            TseProviderCatalog.FiskalyDirectCloud);
 
         try
         {
@@ -216,7 +217,8 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
         TseTransactionStartRequest request,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(
+            TseProviderCatalog.FiskalyDirectCloud);
         var cfg = RequireConfiguration();
 
         if (!string.Equals(
@@ -298,7 +300,8 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
         string targetPath,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(
+            TseProviderCatalog.FiskalyDirectCloud);
 
         throw new InvalidOperationException(
             "fiskaly Cloud-TSE TAR-Export ist noch nicht validiert und bleibt gesperrt.");
@@ -312,7 +315,8 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
         string targetState,
         CancellationToken ct)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(
+            TseProviderCatalog.FiskalyDirectCloud);
         var cfg = RequireConfiguration();
 
         if (transactionNumber == 0)
@@ -591,7 +595,8 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
         object? body,
         CancellationToken ct)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(
+            TseProviderCatalog.FiskalyDirectCloud);
         var cfg = RequireConfiguration();
 
         var token = await GetTokenAsync(
