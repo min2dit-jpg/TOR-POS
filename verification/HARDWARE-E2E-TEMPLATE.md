@@ -65,6 +65,22 @@
 | Drucker End-to-End | ☐ PASS ☐ FAIL | |
 | Kartenterminal End-to-End (falls aktiv) | ☐ PASS ☐ FAIL | |
 
+### Gemeldetes Teilergebnis (Betreiber, 23.09.2026)
+
+Der Betreiber hat auf einem echten Windows-PC **ohne angeschlossene TSE** beide
+Produkte gestartet und gemeldet, dass das Warnfenster in **TOR Einzelhandel und
+TOR Gastro** erschienen ist. Geprüft wurde der Stand aus CI-Run 662
+(Commit `c13d971`).
+
+Damit ist die **erste** Zeile der Tabelle als gemeldet zu lesen. Sie ist hier
+festgehalten, damit sie nicht verloren geht, und ersetzt das Protokoll **nicht**:
+keine Zeile ist gekreuzt, kein Tester ist unterschrieben, und das Gesamtergebnis
+bleibt offen. Offen sind insbesondere noch: ob das Fenster den Zustand korrekt
+benennt, ob nach dem Hinweis wirklich weiterverkauft werden kann, ob der Hinweis
+nur einmal pro Programmlauf erscheint, die Unterscheidung Admin/Kassenkraft, die
+Statuszeile, der Protokolleintrag und das Verschwinden des Hinweises nach dem
+Anstecken einer betriebsbereiten TSE.
+
 ### Startprüfung ohne TSE
 
 Diese acht Zeilen werden **vor** dem Anstecken der TSE geprüft: Programm auf
