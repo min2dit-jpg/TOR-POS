@@ -32,7 +32,8 @@ public sealed record TseDeviceInfo(
     string InitializationState = "",
     bool SelfTestPassed = false,
     bool ValidTime = false,
-    bool CtssActive = false);
+    bool CtssActive = false,
+    DateTimeOffset? CertificateExpiresAtUtc = null);
 
 public enum TseCertificateState
 {
@@ -45,17 +46,15 @@ public enum TseCertificateState
 
 public sealed record TseCertificateAssessment(
     TseCertificateState State,
-    DateOnly? ValidUntil,
+    DateTimeOffset? ExpiresAtUtc,
     int? RemainingDays,
     bool ShowBadge,
     bool ShowDialog,
     string Message);
 
 /// <summary>
-/// Proactive TSE certificate lifecycle policy. The device already exposes its
-/// certificate end date; TOR must surface it before signing suddenly stops.
-/// 90 days gives the operator a procurement window, while 30 days escalates
-/// to one prominent warning per process. Expiry is fail-closed.
+/// Proactive TSE certificate lifecycle policy. Safety decisions use the exact
+/// UTC expiration instant returned by the TSE, never a truncated calendar day.
 /// </summary>
 public static class TseCertificatePolicy
 {
@@ -63,10 +62,10 @@ public static class TseCertificatePolicy
     public const int CriticalDays = 30;
 
     public static TseCertificateAssessment Evaluate(
-        DateOnly? validUntil,
-        DateOnly today)
+        DateTimeOffset? expiresAtUtc,
+        DateTimeOffset now)
     {
-        if (validUntil is null)
+        if (expiresAtUtc is null)
         {
             return new TseCertificateAssessment(
                 TseCertificateState.Unknown,
@@ -77,54 +76,65 @@ public static class TseCertificatePolicy
                 "TSE-Zertifikatsende ist nicht verfügbar.");
         }
 
-        var remaining = validUntil.Value.DayNumber - today.DayNumber;
-        var date = validUntil.Value.ToString("dd.MM.yyyy");
+        var expiry = expiresAtUtc.Value.ToUniversalTime();
+        var current = now.ToUniversalTime();
+        var remaining = expiry - current;
+        var remainingDays = remaining <= TimeSpan.Zero
+            ? 0
+            : (int)Math.Ceiling(remaining.TotalDays);
+        var instant = expiry.ToString("dd.MM.yyyy HH:mm 'UTC'");
 
-        if (remaining < 0)
+        if (current >= expiry)
         {
             return new TseCertificateAssessment(
                 TseCertificateState.Expired,
-                validUntil,
-                remaining,
+                expiry,
+                0,
                 true,
                 true,
-                $"TSE-Zertifikat ist seit {date} abgelaufen · TSE ersetzen.");
+                $"TSE-Zertifikat ist seit {instant} abgelaufen · TSE ersetzen.");
         }
 
-        if (remaining <= CriticalDays)
+        if (remaining <= TimeSpan.FromDays(CriticalDays))
         {
-            var remainingText = remaining == 0
-                ? "läuft heute ab"
-                : $"läuft in {remaining} Tagen ab";
+            var remainingText = remainingDays <= 1
+                ? "läuft in weniger als 24 Stunden ab"
+                : $"läuft in {remainingDays} Tagen ab";
 
             return new TseCertificateAssessment(
                 TseCertificateState.Critical,
-                validUntil,
-                remaining,
+                expiry,
+                remainingDays,
                 true,
                 true,
-                $"TSE-Zertifikat {remainingText} ({date}) · Ersatz-TSE jetzt bestellen.");
+                $"TSE-Zertifikat {remainingText} ({instant}) · Ersatz-TSE jetzt bestellen.");
         }
 
-        if (remaining <= WarningDays)
+        if (remaining <= TimeSpan.FromDays(WarningDays))
         {
             return new TseCertificateAssessment(
                 TseCertificateState.Warning,
-                validUntil,
-                remaining,
+                expiry,
+                remainingDays,
                 true,
                 false,
-                $"TSE-Zertifikat läuft am {date} ab · noch {remaining} Tage · Ersatz-TSE einplanen.");
+                $"TSE-Zertifikat läuft am {instant} ab · noch {remainingDays} Tage · Ersatz-TSE einplanen.");
         }
 
         return new TseCertificateAssessment(
             TseCertificateState.Valid,
-            validUntil,
-            remaining,
+            expiry,
+            remainingDays,
             false,
             false,
-            $"TSE-Zertifikat gültig bis {date}.");
+            $"TSE-Zertifikat gültig bis {instant}.");
     }
+
+    public static bool IsExpired(
+        DateTimeOffset? expiresAtUtc,
+        DateTimeOffset now) =>
+        expiresAtUtc is not null &&
+        now.ToUniversalTime() >= expiresAtUtc.Value.ToUniversalTime();
 }
 
 public sealed record TseProbeResult(

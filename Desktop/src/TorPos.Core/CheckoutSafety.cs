@@ -63,21 +63,10 @@ public static class FiscalRelease
             return PhysicalTseGeneration.Unknown;
         }
 
-        var candidates = new[]
-            {
-                ParsePhysicalGeneration(device.Generation),
-                ParsePhysicalGeneration(device.HardwareVersion),
-                ParsePhysicalGeneration(device.ProductFamily)
-            }
-            .Where(x => x != PhysicalTseGeneration.Unknown)
-            .Distinct()
-            .ToArray();
-
-        // Conflicting or missing metadata is evidence of ambiguity, not
-        // permission to borrow another generation's qualification.
-        return candidates.Length == 1
-            ? candidates[0]
-            : PhysicalTseGeneration.Unknown;
+        // Generation evidence is accepted only from device.Generation.
+        // SwissbitWormApiBridge fills it from worm_info_tseDescription.
+        // Hardware/software version numbers are revisions, not generations.
+        return ParsePhysicalGeneration(device.Generation);
     }
 
     public static bool SelectPhysicalTseEvidence(

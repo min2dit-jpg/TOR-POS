@@ -57,6 +57,7 @@ public partial class MainWindow:Window
     private long _lastScan;
     private long _scanStartedAt;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
+    private readonly DispatcherTimer _tseCertificateTimer = new();
     private readonly Queue<string> _barcodeQueue = new();
     private bool _scanProcessing;
     // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
@@ -290,6 +291,19 @@ public partial class MainWindow:Window
             await ProcessBarcodeSafely(code);
         };
 
+        // The register may stay open for weeks. Re-evaluate the cached exact
+        // certificate instant so 90/30/0 thresholds are crossed without a
+        // restart. Transaction start independently re-probes the real device.
+        _tseCertificateTimer.Interval = TimeSpan.FromMinutes(15);
+        _tseCertificateTimer.Tick += async (_,_) =>
+        {
+            if (_lastTseDevice is null)
+                return;
+
+            await ApplyTseCertificateWarningAsync(_lastTseDevice);
+            await RefreshFiscalStatusAsync();
+        };
+
         Opened += async (_,_) =>
         {
             using (_perf.Measure("startup.settings"))
@@ -343,6 +357,7 @@ public partial class MainWindow:Window
                     "No fiscal sale, receipt number, TSE transaction or terminal payment is allowed.");
             }
 
+            _tseCertificateTimer.Start();
             FocusScannerCaptureSoon();
         };
     }
@@ -5530,9 +5545,15 @@ public partial class MainWindow:Window
                     _tseProvider.ProviderId,
                     _lastTseDevice);
 
+            var certificateAllowsSigning =
+                !TseCertificatePolicy.IsExpired(
+                    _lastTseDevice?.CertificateExpiresAtUtc,
+                    DateTimeOffset.UtcNow);
+
             var productionReady =
                 _fiscalReadiness.ProductionAllowed &&
-                tseReleaseEnabled;
+                tseReleaseEnabled &&
+                certificateAllowsSigning;
 
             if (productionReady)
             {
@@ -5580,8 +5601,8 @@ public partial class MainWindow:Window
     private async Task ApplyTseCertificateWarningAsync(TseDeviceInfo? device)
     {
         var assessment = TseCertificatePolicy.Evaluate(
-            device?.CertificateValidUntil,
-            DateOnly.FromDateTime(DateTime.Now));
+            device?.CertificateExpiresAtUtc,
+            DateTimeOffset.UtcNow);
 
         if (!assessment.ShowBadge)
         {
@@ -6208,7 +6229,10 @@ public partial class MainWindow:Window
         return SaleModePolicy.RecordsTrainingFiscally(
             _currentUser.IsTraining,
             _commercialLicense.Check(edition).IsActive,
-            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice),
+            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice) &&
+            !TseCertificatePolicy.IsExpired(
+                _lastTseDevice?.CertificateExpiresAtUtc,
+                DateTimeOffset.UtcNow),
             _fiscalReadiness?.ProductionAllowed == true);
     }
 
@@ -6220,13 +6244,17 @@ public partial class MainWindow:Window
         return SaleModePolicy.CanCommitProductionSale(
             _currentUser.IsTraining,
             _commercialLicense.Check(edition).IsActive,
-            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice),
+            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice) &&
+            !TseCertificatePolicy.IsExpired(
+                _lastTseDevice?.CertificateExpiresAtUtc,
+                DateTimeOffset.UtcNow),
             _fiscalReadiness?.ProductionAllowed == true);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _scanNoEnterTimer.Stop();
+        _tseCertificateTimer.Stop();
         if (_orderDisplayWindow is not null)
         {
             try { _orderDisplayWindow.Close(); } catch { }

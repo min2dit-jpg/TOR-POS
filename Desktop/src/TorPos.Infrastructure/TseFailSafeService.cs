@@ -73,8 +73,8 @@ public sealed class TseFailSafeService
 
             var certificate =
                 TseCertificatePolicy.Evaluate(
-                    result.Device?.CertificateValidUntil,
-                    DateOnly.FromDateTime(DateTime.Now));
+                    result.Device?.CertificateExpiresAtUtc,
+                    DateTimeOffset.UtcNow);
 
             if (certificate.State == TseCertificateState.Expired)
             {
@@ -139,17 +139,36 @@ public sealed class TseFailSafeService
     {
         try
         {
+            // Certificate safety is independent of acceptance paperwork.
+            // Re-probe the actually connected TSE before every transaction.
+            var releaseProbe = await _provider.ProbeAsync(ct);
+            var releaseCertificate =
+                TseCertificatePolicy.Evaluate(
+                    releaseProbe.Device?.CertificateExpiresAtUtc,
+                    DateTimeOffset.UtcNow);
+
+            if (releaseCertificate.State == TseCertificateState.Expired)
+            {
+                var reason = releaseCertificate.Message;
+
+                await _outages.OpenAsync(reason, actor, ct);
+                await _audit.WriteAsync(
+                    actor,
+                    "TSE_CERTIFICATE_EXPIRED",
+                    "TSE",
+                    releaseProbe.Device?.SerialNumber ?? "",
+                    reason,
+                    ct);
+
+                return (
+                    new TseTransactionResult(false, reason),
+                    true);
+            }
+
             if (FiscalRelease.CommonQualificationsValidated)
             {
-                var releaseProbe = await _provider.ProbeAsync(ct);
-                var releaseCertificate =
-                    TseCertificatePolicy.Evaluate(
-                        releaseProbe.Device?.CertificateValidUntil,
-                        DateOnly.FromDateTime(DateTime.Now));
-
                 var releaseAllowed =
                     releaseProbe.State == TseConnectionState.Ready &&
-                    releaseCertificate.State != TseCertificateState.Expired &&
                     FiscalRelease.EnabledForProvider(
                         _provider.ProviderId,
                         releaseProbe.Device);
@@ -160,9 +179,6 @@ public sealed class TseFailSafeService
                             _provider.ProviderId,
                             releaseProbe.Device)
                         .ToList();
-
-                    if (releaseCertificate.State == TseCertificateState.Expired)
-                        missing.Insert(0, releaseCertificate.Message);
 
                     var reason =
                         "TSE-Produktionsfreigabe gesperrt: " +
@@ -178,9 +194,7 @@ public sealed class TseFailSafeService
                         ct);
 
                     return (
-                        new TseTransactionResult(
-                            false,
-                            reason),
+                        new TseTransactionResult(false, reason),
                         true);
                 }
             }
