@@ -403,6 +403,29 @@ internal static class RestaurantFoundationTests
                 terminalRows.Single(x => x.TerminalId == "KASSE-2").IsActive,
                 "Restaurant Plus terminal heartbeat updates one stable terminal identity without duplicates");
 
+            var terminalBeforeCoalesce =
+                terminalRows.Single(x =>
+                    x.TerminalId == "KASSE-2");
+
+            await terminals.RegisterOrHeartbeatAsync(
+                "KASSE-2",
+                "Kasse 2 Neu",
+                "KASSE",
+                "R190",
+                "SERVER-2");
+
+            var terminalAfterCoalesce =
+                (await terminals.ListAsync())
+                    .Single(x => x.TerminalId == "KASSE-2");
+
+            if (!terminalAfterCoalesce.IsOnline ||
+                terminalAfterCoalesce.LastSeenAt !=
+                    terminalBeforeCoalesce.LastSeenAt)
+            {
+                throw new InvalidOperationException(
+                    "Restaurant terminal heartbeat must stay online while coalescing redundant high-frequency database writes.");
+            }
+
             var reservations = new RestaurantReservationService(
                 db,
                 plusEntitlements);
