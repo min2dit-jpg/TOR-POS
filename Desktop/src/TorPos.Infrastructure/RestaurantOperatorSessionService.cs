@@ -239,7 +239,7 @@ public sealed class RestaurantOperatorSessionService
 
         if (ShouldTouch(
                 deviceId,
-                sessionToken,
+                tokenHash,
                 now))
         {
             await TouchAsync(
