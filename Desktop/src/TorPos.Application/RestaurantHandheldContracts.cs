@@ -28,6 +28,15 @@ public sealed record RestaurantHandheldOpenTableRequest(
     string DeviceId,
     string DeviceToken);
 
+public sealed record RestaurantHandheldItemSummary(
+    long SessionItemId,
+    long ProductId,
+    string ProductName,
+    string VariantName,
+    decimal Quantity,
+    long UnitPriceCents,
+    long LineTotalCents);
+
 public sealed record RestaurantHandheldAddItemRequest(
     string SessionId,
     long ExpectedSessionVersion,
@@ -60,6 +69,12 @@ public interface IRestaurantHandheldService
 
     Task<RestaurantHandheldCommandResult> OpenTableAsync(
         RestaurantHandheldOpenTableRequest request,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<RestaurantHandheldItemSummary>> GetItemsAsync(
+        string sessionId,
+        string deviceId,
+        string deviceToken,
         CancellationToken ct = default);
 
     Task<RestaurantHandheldCommandResult> AddItemAsync(
