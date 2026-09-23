@@ -228,7 +228,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ct);
 
         var operatorUser = await RequireOperatorAsync(
-            operatorUser.Username,
+            request.OperatorName,
             request.OperatorPin,
             ct);
 
@@ -285,7 +285,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ct);
 
         var operatorUser = await RequireOperatorAsync(
-            operatorUser.Username,
+            request.OperatorName,
             request.OperatorPin,
             ct);
 
