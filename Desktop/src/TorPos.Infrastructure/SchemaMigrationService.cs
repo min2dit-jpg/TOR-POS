@@ -1969,7 +1969,8 @@ public sealed class SchemaMigrationService
                           ON restaurant_reservations(table_id,reservation_at,status);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
-,
+                }),
+
             new(
                 32,
                 "R190_RESTAURANT_MULTI_TERMINAL",
@@ -1996,7 +1997,6 @@ public sealed class SchemaMigrationService
                           ON restaurant_terminals(is_active,last_seen_at);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
-                })
                 })
         };
 
