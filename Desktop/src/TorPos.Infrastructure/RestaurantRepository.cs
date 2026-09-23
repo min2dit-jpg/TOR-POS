@@ -3,6 +3,10 @@ using TorPos.Core;
 
 namespace TorPos.Infrastructure;
 
+public sealed record RestaurantItemMutationResult(
+    RestaurantSessionItem Item,
+    bool Created);
+
 public sealed class RestaurantRepository
 {
     private readonly SqliteDatabase _db;
@@ -504,17 +508,54 @@ public sealed class RestaurantRepository
         string deviceId = "",
         CancellationToken ct = default)
     {
+        var mutation = await AddItemWithLineTokenAsync(
+            sessionId,
+            expectedSessionVersion,
+            product,
+            quantity,
+            operatorName,
+            Guid.NewGuid().ToString("N"),
+            deviceId,
+            ct);
+
+        return mutation.Item;
+    }
+
+    public async Task<RestaurantItemMutationResult> AddItemWithLineTokenAsync(
+        string sessionId,
+        long expectedSessionVersion,
+        Product product,
+        decimal quantity,
+        string operatorName,
+        string lineToken,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
         sessionId = (sessionId ?? "").Trim();
         operatorName = (operatorName ?? "").Trim();
-        if (sessionId.Length == 0) throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
-        if (expectedSessionVersion < 1) throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
-        if (product.Id <= 0) throw new ArgumentException("Artikel fehlt.", nameof(product));
+        lineToken = (lineToken ?? "").Trim();
+
+        if (sessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedSessionVersion < 1)
+            throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
+        if (product.Id <= 0)
+            throw new ArgumentException("Artikel fehlt.", nameof(product));
         if (product.IsWeighted || product.IsCombo || product.Variants.Count > 0)
             throw new InvalidOperationException(
                 "Dieser Artikel benötigt einen erweiterten Restaurant-Snapshot und ist in dieser Foundation noch gesperrt.");
-        if (quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(quantity));
+        if (quantity <= 0m)
+            throw new ArgumentOutOfRangeException(nameof(quantity));
+        if (lineToken.Length is < 8 or > 160)
+            throw new ArgumentException(
+                "Restaurant-Zeilenkennung ist ungültig.",
+                nameof(lineToken));
 
-        var quantityMilli = (long)Math.Round(quantity * 1000m, MidpointRounding.AwayFromZero);
+        var quantityMilli =
+            (long)Math.Round(
+                quantity * 1000m,
+                MidpointRounding.AwayFromZero);
+
         if (quantityMilli <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
 
@@ -522,8 +563,60 @@ public sealed class RestaurantRepository
         {
             await using var c = _db.OpenConnection();
             await using var tx = c.BeginTransaction();
+
+            await using (var existing = c.CreateCommand())
+            {
+                existing.Transaction = tx;
+                existing.CommandText = """
+                    SELECT id,session_id,line_token,product_id,product_name,variant_name,
+                           quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                           added_by,added_at,version
+                    FROM restaurant_session_items
+                    WHERE line_token=$token
+                    LIMIT 1;
+                    """;
+                existing.Parameters.AddWithValue("$token", lineToken);
+
+                await using var r = await existing.ExecuteReaderAsync(ct);
+                if (await r.ReadAsync(ct))
+                {
+                    var item = new RestaurantSessionItem(
+                        r.GetInt64(0),
+                        r.GetString(1),
+                        r.GetString(2),
+                        r.GetInt64(3),
+                        r.GetString(4),
+                        r.GetString(5),
+                        r.GetInt64(6),
+                        r.GetInt64(7),
+                        Convert.ToDecimal(r.GetDouble(8)),
+                        r.GetInt64(9),
+                        Enum.Parse<RestaurantSessionItemState>(
+                            r.GetString(10),
+                            ignoreCase: true),
+                        r.GetString(11),
+                        DateTimeOffset.Parse(r.GetString(12)),
+                        r.GetInt64(13));
+
+                    if (!string.Equals(
+                            item.SessionId,
+                            sessionId,
+                            StringComparison.Ordinal) ||
+                        item.ProductId != product.Id ||
+                        item.QuantityMilli != quantityMilli)
+                    {
+                        throw new InvalidOperationException(
+                            "Restaurant-Zeilenkennung wurde bereits für eine andere Position verwendet.");
+                    }
+
+                    await tx.CommitAsync(ct);
+                    return new RestaurantItemMutationResult(
+                        item,
+                        Created: false);
+                }
+            }
+
             var now = DateTimeOffset.UtcNow.ToString("O");
-            var token = Guid.NewGuid().ToString("N");
 
             await using (var touch = c.CreateCommand())
             {
@@ -560,48 +653,59 @@ public sealed class RestaurantRepository
                     RETURNING id;
                     """;
                 insert.Parameters.AddWithValue("$session", sessionId);
-                insert.Parameters.AddWithValue("$token", token);
+                insert.Parameters.AddWithValue("$token", lineToken);
                 insert.Parameters.AddWithValue("$product", product.Id);
                 insert.Parameters.AddWithValue("$name", product.Name);
                 insert.Parameters.AddWithValue("$quantity", quantityMilli);
-                insert.Parameters.AddWithValue("$price", product.BasePriceCents + product.PfandCents);
+                insert.Parameters.AddWithValue(
+                    "$price",
+                    product.BasePriceCents + product.PfandCents);
                 insert.Parameters.AddWithValue("$vat", product.VatRate);
                 insert.Parameters.AddWithValue("$pfand", product.PfandCents);
                 insert.Parameters.AddWithValue("$operator", operatorName);
                 insert.Parameters.AddWithValue("$now", now);
-                itemId = Convert.ToInt64(await insert.ExecuteScalarAsync(ct));
+                itemId = Convert.ToInt64(
+                    await insert.ExecuteScalarAsync(ct));
             }
 
             await AppendEventAsync(
-                c, tx, sessionId, "POSITION_HINZUGEFUEGT",
-                operatorName, deviceId,
+                c,
+                tx,
+                sessionId,
+                "POSITION_HINZUGEFUEGT",
+                operatorName,
+                deviceId,
                 System.Text.Json.JsonSerializer.Serialize(new
                 {
-                    lineToken = token,
+                    lineToken,
                     productId = product.Id,
                     productName = product.Name,
                     quantityMilli,
-                    unitPriceCents = product.BasePriceCents + product.PfandCents
+                    unitPriceCents =
+                        product.BasePriceCents + product.PfandCents
                 }),
-                now, ct);
+                now,
+                ct);
 
             await tx.CommitAsync(ct);
 
-            return new RestaurantSessionItem(
-                itemId,
-                sessionId,
-                token,
-                product.Id,
-                product.Name,
-                "",
-                quantityMilli,
-                product.BasePriceCents + product.PfandCents,
-                product.VatRate,
-                product.PfandCents,
-                RestaurantSessionItemState.Active,
-                operatorName,
-                DateTimeOffset.Parse(now),
-                1);
+            return new RestaurantItemMutationResult(
+                new RestaurantSessionItem(
+                    itemId,
+                    sessionId,
+                    lineToken,
+                    product.Id,
+                    product.Name,
+                    "",
+                    quantityMilli,
+                    product.BasePriceCents + product.PfandCents,
+                    product.VatRate,
+                    product.PfandCents,
+                    RestaurantSessionItemState.Active,
+                    operatorName,
+                    DateTimeOffset.Parse(now),
+                    1),
+                Created: true);
         });
     }
 
