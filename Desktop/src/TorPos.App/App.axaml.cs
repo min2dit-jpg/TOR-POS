@@ -133,11 +133,15 @@ public partial class App : Avalonia.Application
             parkedReceipts.PrintCommitted = orderPrintDispatcher.Notify;
             orderPrintDispatcher.Start();
             var restaurantKitchenOutbox = new RestaurantKitchenOutbox(db);
+            var restaurantPrintJournal = new PrintJobJournal();
+            var restaurantKitchenPrinterRouter =
+                new RestaurantKitchenPrinterRouter(
+                    restaurantPrintJournal);
             var restaurantKitchenDispatcher = new RestaurantKitchenDispatcher(
                 restaurantKitchenOutbox,
                 settings,
-                receiptPrinter,
-                new PrintJobJournal(),
+                restaurantKitchenPrinterRouter,
+                restaurantPrintJournal,
                 ex => CrashLog.WriteException("Restaurant kitchen dispatch", ex));
             restaurantKitchenDispatcher.Start();
             var commercialLicense = new CommercialLicenseService();
@@ -352,6 +356,8 @@ public partial class App : Avalonia.Application
                 catch(Exception ex) { CrashLog.WriteException("Restaurant local API shutdown failed",ex); }
                 try { await restaurantKitchenDispatcher.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
                 catch(Exception ex) { CrashLog.WriteException("Restaurant kitchen dispatcher shutdown failed",ex); }
+                try { await restaurantKitchenPrinterRouter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch(Exception ex) { CrashLog.WriteException("Restaurant kitchen printer lanes shutdown failed",ex); }
                 try { await receiptPrinter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
                 catch(Exception ex) { CrashLog.WriteException("Printer shutdown failed",ex); }
                 exitCleanupDone=true;
