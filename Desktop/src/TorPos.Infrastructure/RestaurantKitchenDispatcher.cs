@@ -125,6 +125,15 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                         _ => "NEUE BESTELLUNG"
                     };
 
+                    var noteParts = new[]
+                    {
+                        prefix,
+                        payload.tableName ?? "Tisch",
+                        string.IsNullOrWhiteSpace(payload.note)
+                            ? ""
+                            : "HINWEIS: " + payload.note
+                    };
+
                     var print = new KitchenPrintJob(
                         job.CreatedAt,
                         0,
@@ -136,7 +145,9 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                                 BuildLineName(payload),
                                 payload.QuantityMilli / 1000m)
                         },
-                        $"{prefix} · {payload.tableName ?? "Tisch"}");
+                        string.Join(
+                            " · ",
+                            noteParts.Where(x => !string.IsNullOrWhiteSpace(x))));
 
                     // The Restaurant outbox id is reused as the persistent
                     // printer journal id. A retry therefore refers to the same
@@ -254,6 +265,7 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
         string? tableName,
         string? waiter,
         int guestCount,
+        string? note,
         long itemId,
         string? ProductName,
         string? VariantName,
