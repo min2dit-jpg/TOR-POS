@@ -25,6 +25,9 @@ public interface IAppWindowFactory
 
     RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user);
+
+    RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
+        AuthenticatedUser user);
 }
 
 internal sealed class AppWindowFactory : IAppWindowFactory
@@ -109,6 +112,12 @@ internal sealed class AppWindowFactory : IAppWindowFactory
         new(
             _services.GetRequiredService<RestaurantEntitlementService>(),
             _services.GetRequiredService<RestaurantKitchenOutbox>(),
+            user);
+
+    public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantHandheldPairingService>(),
             user);
 
     public DiagnosticsWindow CreateDiagnosticsWindow() =>
