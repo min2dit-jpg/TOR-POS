@@ -155,11 +155,23 @@ public sealed class RestaurantOperatorSessionService
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-                SELECT user_id,username,is_admin,permissions,expires_at
-                FROM restaurant_operator_sessions
-                WHERE device_id=$device
-                  AND token_hash=$token
-                  AND revoked_at IS NULL
+                SELECT
+                    s.user_id,
+                    u.username,
+                    u.is_active,
+                    u.must_change_password,
+                    u.is_admin,
+                    COALESCE(p.credentials_configured,0),
+                    COALESCE(p.permissions,0),
+                    s.expires_at
+                FROM restaurant_operator_sessions s
+                JOIN users u
+                  ON u.id=s.user_id
+                LEFT JOIN user_permissions p
+                  ON p.user_id=u.id
+                WHERE s.device_id=$device
+                  AND s.token_hash=$token
+                  AND s.revoked_at IS NULL
                 LIMIT 1;
                 """;
             q.Parameters.AddWithValue("$device", deviceId);
@@ -174,56 +186,21 @@ public sealed class RestaurantOperatorSessionService
 
             userId = r.GetInt64(0);
             username = r.GetString(1);
-            isAdmin = r.GetInt32(2) == 1;
+            var active = r.GetInt32(2) == 1;
+            var mustChange = r.GetInt32(3) == 1;
+            isAdmin = r.GetInt32(4) == 1;
+            var configured = r.GetInt32(5) == 1;
             permissions =
-                (UserPermissions)r.GetInt64(3);
+                (UserPermissions)r.GetInt64(6);
             expiresAt = DateTimeOffset.Parse(
-                r.GetString(4));
-        }
-
-        if (expiresAt <= now)
-        {
-            throw new UnauthorizedAccessException(
-                "Bediener-Sitzung ist abgelaufen.");
-        }
-
-        await using (var c = _db.OpenReadConnection())
-        await using (var q = c.CreateCommand())
-        {
-            q.CommandText = """
-                SELECT u.username,u.is_active,u.must_change_password,
-                       u.is_admin,
-                       COALESCE(p.credentials_configured,0),
-                       COALESCE(p.permissions,0)
-                FROM users u
-                LEFT JOIN user_permissions p
-                  ON p.user_id=u.id
-                WHERE u.id=$id
-                LIMIT 1;
-                """;
-            q.Parameters.AddWithValue("$id", userId);
-
-            await using var r = await q.ExecuteReaderAsync(ct);
-            if (!await r.ReadAsync(ct))
-            {
-                throw new UnauthorizedAccessException(
-                    "Bediener ist nicht mehr vorhanden.");
-            }
-
-            var currentUsername = r.GetString(0);
-            var active = r.GetInt32(1) == 1;
-            var mustChange = r.GetInt32(2) == 1;
-            var currentIsAdmin = r.GetInt32(3) == 1;
-            var configured = r.GetInt32(4) == 1;
-            var currentPermissions =
-                (UserPermissions)r.GetInt64(5);
+                r.GetString(7));
 
             var canSell =
                 active &&
                 !mustChange &&
-                (currentIsAdmin ||
+                (isAdmin ||
                  (configured &&
-                  (currentPermissions & UserPermissions.Sale) ==
+                  (permissions & UserPermissions.Sale) ==
                       UserPermissions.Sale));
 
             if (!canSell)
@@ -231,10 +208,12 @@ public sealed class RestaurantOperatorSessionService
                 throw new UnauthorizedAccessException(
                     "Bediener ist nicht mehr für Verkauf freigegeben.");
             }
+        }
 
-            username = currentUsername;
-            isAdmin = currentIsAdmin;
-            permissions = currentPermissions;
+        if (expiresAt <= now)
+        {
+            throw new UnauthorizedAccessException(
+                "Bediener-Sitzung ist abgelaufen.");
         }
 
         if (ShouldTouch(
