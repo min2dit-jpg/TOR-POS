@@ -12,6 +12,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private readonly RestaurantKitchenOutbox _kitchen;
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
     private readonly RestaurantHandheldPairingService _pairing;
+    private readonly IAuthenticationService _authentication;
     private readonly IProductCatalog _catalog;
 
     public RestaurantHandheldService(
@@ -21,6 +22,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         RestaurantKitchenOutbox kitchen,
         RestaurantKitchenDispatcher kitchenDispatcher,
         RestaurantHandheldPairingService pairing,
+        IAuthenticationService authentication,
         IProductCatalog catalog)
     {
         _entitlements = entitlements;
@@ -29,6 +31,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         _kitchen = kitchen;
         _kitchenDispatcher = kitchenDispatcher;
         _pairing = pairing;
+        _authentication = authentication;
         _catalog = catalog;
     }
 
@@ -141,6 +144,11 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.DeviceToken,
             ct);
 
+        var operatorUser = await RequireOperatorAsync(
+            request.OperatorName,
+            request.OperatorPin,
+            ct);
+
         var table = (await _restaurant.ListTablesAsync(ct))
             .FirstOrDefault(x => x.Id == request.TableId)
             ?? throw new InvalidOperationException(
@@ -156,7 +164,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
         var session = await _restaurant.OpenTableAsync(
             table.Id,
-            request.OperatorName,
+            operatorUser.Username,
             request.GuestCount,
             request.Note,
             request.DeviceId,
@@ -219,6 +227,11 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.DeviceToken,
             ct);
 
+        var operatorUser = await RequireOperatorAsync(
+            operatorUser.Username,
+            request.OperatorPin,
+            ct);
+
         var before = await _restaurant.GetSessionAsync(
                 request.SessionId,
                 ct)
@@ -230,7 +243,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.ExpectedSessionVersion,
             request.GuestCount,
             request.Note,
-            request.OperatorName,
+            operatorUser.Username,
             request.DeviceId,
             ct);
 
@@ -248,7 +261,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             await _kitchen.EnqueueNoteAsync(
                 updated,
                 table?.DisplayName ?? "Tisch",
-                request.OperatorName,
+                operatorUser.Username,
                 ct);
 
             _kitchenDispatcher.Notify();
@@ -269,6 +282,11 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         await _pairing.RequireAuthenticatedAsync(
             request.DeviceId,
             request.DeviceToken,
+            ct);
+
+        var operatorUser = await RequireOperatorAsync(
+            operatorUser.Username,
+            request.OperatorPin,
             ct);
 
         if (request.Quantity <= 0m)
@@ -296,7 +314,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         {
             vorgang = await _fiscal.BeginChangeAsync(
                 request.SessionId,
-                request.OperatorName,
+                operatorUser.Username,
                 ct);
 
             var item = await _restaurant.AddItemAsync(
@@ -304,7 +322,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 request.ExpectedSessionVersion,
                 product,
                 request.Quantity,
-                request.OperatorName,
+                operatorUser.Username,
                 request.DeviceId,
                 ct);
 
@@ -312,7 +330,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 request.SessionId,
                 item,
                 vorgang,
-                request.OperatorName,
+                operatorUser.Username,
                 ct);
 
             vorgang = null;
@@ -333,7 +351,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 session,
                 item,
                 table?.DisplayName ?? "Tisch",
-                request.OperatorName,
+                operatorUser.Username,
                 KitchenStations.Normalize(
                     category?.KitchenStation),
                 ct);
@@ -352,7 +370,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 {
                     await _fiscal.AbortChangeAsync(
                         vorgang,
-                        request.OperatorName,
+                        operatorUser.Username,
                         ct);
                 }
                 catch
@@ -363,4 +381,25 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             throw;
         }
     }
+    private async Task<AuthenticatedUser> RequireOperatorAsync(
+        string operatorName,
+        string operatorPin,
+        CancellationToken ct)
+    {
+        var login = await _authentication.LoginWithPinAsync(
+            (operatorName ?? "").Trim(),
+            (operatorPin ?? "").Trim(),
+            ct);
+
+        if (!login.Success ||
+            login.User is null ||
+            !login.User.Can(UserPermissions.Sale))
+        {
+            throw new UnauthorizedAccessException(
+                "Bediener/PIN ist ungültig oder nicht für Verkauf freigegeben.");
+        }
+
+        return login.User;
+    }
+
 }
