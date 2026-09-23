@@ -122,6 +122,21 @@ internal static class RestaurantFoundationTests
             plusEntitlements.IsEnabled(RestaurantFeature.Tischplan),
             "Signed RESTAURANT_PLUS entitlement unlocks Plus while keeping Standard features");
 
+        var standardKdsRejected = false;
+        try
+        {
+            standardEntitlements.Require(
+                RestaurantFeature.KitchenDisplaySystem);
+        }
+        catch (InvalidOperationException)
+        {
+            standardKdsRejected = true;
+        }
+
+        assert(
+            standardKdsRejected,
+            "Restaurant Standard rejects KDS at the service boundary");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -519,15 +534,17 @@ internal static class RestaurantFoundationTests
                 kitchenSessionAfterItem,
                 kitchenItem,
                 "Tisch 6",
-                "KELLNER-1");
+                "KELLNER-1",
+                KitchenStations.Grill);
 
             var pendingKitchen = await kitchen.PendingAsync();
             assert(
                 pendingKitchen.Any(x =>
                     x.Id == kitchenJobId &&
                     x.Action == "NEW" &&
+                    x.Station == KitchenStations.Grill &&
                     x.State == "PENDING"),
-                "Restaurant kitchen NEW job is durably queued");
+                "Restaurant kitchen NEW job is durably queued with Warengruppe station snapshot");
 
             await kitchen.SetItemStatusAsync(
                 kitchenItem.Id,
