@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -24,6 +25,10 @@ public sealed class RestaurantHandheldPairingService
 {
     private readonly SqliteDatabase _db;
     private readonly RestaurantEntitlementService _entitlements;
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastSeenWrites =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan LastSeenWriteInterval =
+        TimeSpan.FromSeconds(30);
 
     public RestaurantHandheldPairingService(
         SqliteDatabase db,
@@ -222,55 +227,94 @@ public sealed class RestaurantHandheldPairingService
             throw new UnauthorizedAccessException(
                 "Handheld-Gerät ist nicht authentifiziert.");
 
-        var now = DateTimeOffset.UtcNow;
-
-        var ok = await IoQueue.RunAsync(async () =>
+        string? storedHash;
+        await using (var c = _db.OpenReadConnection())
+        await using (var q = c.CreateCommand())
         {
-            await using var c = _db.OpenConnection();
-            await using var tx = c.BeginTransaction();
+            q.CommandText = """
+                SELECT token_hash
+                FROM restaurant_handheld_devices
+                WHERE device_id=$id AND is_active=1;
+                """;
+            q.Parameters.AddWithValue("$id", deviceId);
+            storedHash = (string?)await q.ExecuteScalarAsync(ct);
+        }
 
-            string? storedHash = null;
-            await using (var q = c.CreateCommand())
-            {
-                q.Transaction = tx;
-                q.CommandText = """
-                    SELECT token_hash
-                    FROM restaurant_handheld_devices
-                    WHERE device_id=$id AND is_active=1;
-                    """;
-                q.Parameters.AddWithValue("$id", deviceId);
-                storedHash = (string?)await q.ExecuteScalarAsync(ct);
-            }
+        if (storedHash is null ||
+            !FixedEquals(
+                storedHash,
+                Hash(deviceToken)))
+        {
+            throw new UnauthorizedAccessException(
+                "Handheld-Gerät ist nicht authentifiziert.");
+        }
 
-            if (storedHash is null ||
-                !FixedEquals(
-                    storedHash,
-                    Hash(deviceToken)))
-            {
-                await tx.RollbackAsync(ct);
-                return false;
-            }
+        var now = DateTimeOffset.UtcNow;
+        if (!TryClaimLastSeenWrite(
+                deviceId,
+                now))
+        {
+            return;
+        }
 
-            await using (var touch = c.CreateCommand())
+        try
+        {
+            await IoQueue.RunAsync(async () =>
             {
-                touch.Transaction = tx;
+                await using var c = _db.OpenConnection();
+                await using var touch = c.CreateCommand();
                 touch.CommandText = """
                     UPDATE restaurant_handheld_devices
                     SET last_seen_at=$now
-                    WHERE device_id=$id AND is_active=1;
+                    WHERE device_id=$id
+                      AND is_active=1;
                     """;
-                touch.Parameters.AddWithValue("$now", now.ToString("O"));
-                touch.Parameters.AddWithValue("$id", deviceId);
+                touch.Parameters.AddWithValue(
+                    "$now",
+                    now.ToString("O"));
+                touch.Parameters.AddWithValue(
+                    "$id",
+                    deviceId);
                 await touch.ExecuteNonQueryAsync(ct);
+            });
+        }
+        catch
+        {
+            _lastSeenWrites.TryRemove(
+                deviceId,
+                out _);
+            throw;
+        }
+    }
+
+    private bool TryClaimLastSeenWrite(
+        string deviceId,
+        DateTimeOffset now)
+    {
+        while (true)
+        {
+            if (!_lastSeenWrites.TryGetValue(
+                    deviceId,
+                    out var previous))
+            {
+                if (_lastSeenWrites.TryAdd(
+                        deviceId,
+                        now))
+                    return true;
+
+                continue;
             }
 
-            await tx.CommitAsync(ct);
-            return true;
-        });
+            if (now - previous <
+                LastSeenWriteInterval)
+                return false;
 
-        if (!ok)
-            throw new UnauthorizedAccessException(
-                "Handheld-Gerät ist nicht authentifiziert.");
+            if (_lastSeenWrites.TryUpdate(
+                    deviceId,
+                    now,
+                    previous))
+                return true;
+        }
     }
 
     public Task<IReadOnlyList<RestaurantHandheldDeviceInfo>> ListDevicesAsync(
