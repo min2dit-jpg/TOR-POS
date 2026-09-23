@@ -590,39 +590,128 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.OperatorPin,
             ct);
 
-        var secured = await _fiscal.IsCurrentStateSecuredAsync(
+        var requestHash = CommandHash(
+            "CANCEL_ITEM",
+            request.SessionId,
+            request.ExpectedSessionVersion.ToString(),
+            request.SessionItemId.ToString(),
+            operatorUser.Username);
+
+        var claim = await _commands.BeginAsync(
+            request.DeviceId,
+            request.CommandId,
+            "CANCEL_ITEM",
+            requestHash,
             request.SessionId,
             ct);
 
-        if (!secured)
+        if (claim.State == RestaurantCommandClaimState.Completed)
+        {
+            return new RestaurantHandheldCommandResult(
+                request.SessionId,
+                claim.ResultSessionVersion);
+        }
+
+        if (claim.State == RestaurantCommandClaimState.Failed)
+        {
             throw new InvalidOperationException(
-                "Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+                string.IsNullOrWhiteSpace(claim.ErrorText)
+                    ? "Restaurant-Storno ist bereits fehlgeschlagen. Bitte Ansicht aktualisieren und erneut senden."
+                    : claim.ErrorText);
+        }
+
+        if (claim.State == RestaurantCommandClaimState.InProgress)
+        {
+            throw new InvalidOperationException(
+                "Restaurant-Storno wird bereits verarbeitet. Bitte kurz synchronisieren.");
+        }
+
+        var kitchenJobId = CommandToken(
+            "KITCHEN-CANCEL",
+            request.DeviceId,
+            request.CommandId);
 
         RestaurantFiscalVorgang? vorgang = null;
+        RestaurantSessionItem? cancelled = null;
 
         try
         {
-            vorgang = await _fiscal.BeginChangeAsync(
+            var item = await _restaurant.GetItemAsync(
                 request.SessionId,
-                operatorUser.Username,
-                ct);
-
-            var cancelled = await _restaurant.CancelItemAsync(
-                request.SessionId,
-                request.ExpectedSessionVersion,
                 request.SessionItemId,
-                operatorUser.Username,
-                request.DeviceId,
-                ct);
+                ct)
+                ?? throw new InvalidOperationException(
+                    "Restaurant-Position wurde nicht gefunden.");
 
-            await _fiscal.SecureCancelledItemAsync(
-                request.SessionId,
-                cancelled,
-                vorgang,
-                operatorUser.Username,
-                ct);
+            if (item.State == RestaurantSessionItemState.Cancelled)
+            {
+                if (claim.State != RestaurantCommandClaimState.Recovered)
+                {
+                    throw new InvalidOperationException(
+                        "Restaurant-Position ist bereits storniert.");
+                }
 
-            vorgang = null;
+                cancelled = item;
+
+                if (!await _fiscal.IsCurrentStateSecuredAsync(
+                        request.SessionId,
+                        ct))
+                {
+                    vorgang = await _fiscal.BeginChangeAsync(
+                        request.SessionId,
+                        operatorUser.Username,
+                        ct);
+
+                    await _fiscal.SecureCancelledItemAsync(
+                        request.SessionId,
+                        cancelled,
+                        vorgang,
+                        operatorUser.Username,
+                        ct);
+
+                    vorgang = null;
+                }
+            }
+            else
+            {
+                if (item.State != RestaurantSessionItemState.Active)
+                {
+                    throw new InvalidOperationException(
+                        "Nur eine offene Restaurant-Position kann storniert werden.");
+                }
+
+                var secured = await _fiscal.IsCurrentStateSecuredAsync(
+                    request.SessionId,
+                    ct);
+
+                if (!secured)
+                {
+                    throw new InvalidOperationException(
+                        "Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+                }
+
+                vorgang = await _fiscal.BeginChangeAsync(
+                    request.SessionId,
+                    operatorUser.Username,
+                    ct);
+
+                cancelled = await _restaurant.CancelItemAsync(
+                    request.SessionId,
+                    request.ExpectedSessionVersion,
+                    request.SessionItemId,
+                    operatorUser.Username,
+                    request.DeviceId,
+                    ct);
+
+                await _fiscal.SecureCancelledItemAsync(
+                    request.SessionId,
+                    cancelled,
+                    vorgang,
+                    operatorUser.Username,
+                    ct);
+
+                vorgang = null;
+            }
 
             var session = await _restaurant.GetSessionAsync(
                 request.SessionId,
@@ -630,8 +719,9 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 ?? throw new InvalidOperationException(
                     "Tischvorgang nicht gefunden.");
 
-            var table = (await _restaurant.ListTablesAsync(ct))
-                .FirstOrDefault(x => x.Id == session.TableId);
+            var table = await _restaurant.GetTableAsync(
+                session.TableId,
+                ct);
 
             var product = _catalog.Products
                 .FirstOrDefault(x => x.Id == cancelled.ProductId);
@@ -640,22 +730,29 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 : _catalog.Categories.FirstOrDefault(
                     x => x.Id == product.CategoryId);
 
-            await _kitchen.EnqueueCancellationAsync(
+            await _kitchen.EnqueueCancellationIdempotentAsync(
                 session,
                 cancelled,
                 table?.DisplayName ?? "Tisch",
                 operatorUser.Username,
+                kitchenJobId,
                 KitchenStations.Normalize(
                     category?.KitchenStation),
                 ct);
 
             _kitchenDispatcher.Notify();
 
+            await _commands.CompleteAsync(
+                request.DeviceId,
+                request.CommandId,
+                session.Version,
+                ct);
+
             return new RestaurantHandheldCommandResult(
                 session.Id,
                 session.Version);
         }
-        catch
+        catch (Exception ex)
         {
             if (vorgang is not null)
             {
@@ -664,11 +761,41 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                     await _fiscal.AbortChangeAsync(
                         vorgang,
                         operatorUser.Username,
-                        ct);
+                        CancellationToken.None);
                 }
                 catch
                 {
                 }
+            }
+
+            try
+            {
+                var persistedItem =
+                    cancelled ??
+                    await _restaurant.GetItemAsync(
+                        request.SessionId,
+                        request.SessionItemId,
+                        CancellationToken.None);
+
+                if (persistedItem?.State ==
+                    RestaurantSessionItemState.Cancelled)
+                {
+                    await _commands.ReleaseForRecoveryAsync(
+                        request.DeviceId,
+                        request.CommandId,
+                        CancellationToken.None);
+                }
+                else
+                {
+                    await _commands.FailAsync(
+                        request.DeviceId,
+                        request.CommandId,
+                        ex.Message,
+                        CancellationToken.None);
+                }
+            }
+            catch
+            {
             }
 
             throw;
