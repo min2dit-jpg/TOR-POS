@@ -209,6 +209,23 @@ internal static class RestaurantFoundationTests
             standardTerminalRejected,
             "Restaurant Standard rejects Plus multi-terminal access before any database operation");
 
+        var standardSyncRejected = false;
+        try
+        {
+            var standardSync = new RestaurantSyncService(
+                null!,
+                standardEntitlements);
+            await standardSync.GetEventsAfterAsync(0);
+        }
+        catch (InvalidOperationException)
+        {
+            standardSyncRejected = true;
+        }
+
+        assert(
+            standardSyncRejected,
+            "Restaurant Standard rejects Plus delta sync before any database operation");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -481,6 +498,31 @@ internal static class RestaurantFoundationTests
                 details.Note == "Geburtstagstisch" &&
                 details.Version == 2,
                 "Restaurant guest count and table note update advances concurrency version");
+
+            var sync = new RestaurantSyncService(
+                db,
+                plusEntitlements);
+
+            var initialSync = await sync.GetEventsAfterAsync(
+                0,
+                500);
+
+            assert(
+                initialSync.Events.Count >= 2 &&
+                initialSync.Events.Zip(
+                    initialSync.Events.Skip(1),
+                    (left, right) => left.EventId < right.EventId)
+                    .All(x => x),
+                "Restaurant Plus delta sync returns append-only events in stable event-id order");
+
+            var emptyDelta = await sync.GetEventsAfterAsync(
+                initialSync.LastEventId,
+                500);
+
+            assert(
+                emptyDelta.Events.Count == 0 &&
+                emptyDelta.LastEventId == initialSync.LastEventId,
+                "Restaurant Plus delta sync returns no duplicate events after the acknowledged event id");
 
             var reassigned = await repo.ReassignWaiterAsync(
                 session.Id,
