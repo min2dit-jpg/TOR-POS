@@ -68,16 +68,16 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
 
                     if (!string.IsNullOrWhiteSpace(job.Station))
                     {
-                        var prefix = KitchenStations.SettingsPrefix(job.Station);
+                        var stationPrefix = KitchenStations.SettingsPrefix(job.Station);
                         var stationEnabled = bool.TryParse(
                             await _settings.GetAsync(
-                                prefix + ".enabled",
+                                stationPrefix + ".enabled",
                                 "false",
                                 ct),
                             out var stationIsEnabled) && stationIsEnabled;
 
                         var stationPrinter = await _settings.GetAsync(
-                            prefix + ".name",
+                            stationPrefix + ".name",
                             "",
                             ct);
 
