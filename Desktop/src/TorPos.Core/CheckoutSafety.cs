@@ -26,10 +26,6 @@ public static class FiscalRelease
 
     public const bool IndependentFiscalReviewValidated = false;
 
-    // Direct Cloud TSE has independent acceptance evidence. A cloud approval
-    // can never substitute for a physical Swissbit generation and vice versa.
-    public const bool CloudTseValidated = false;
-
     public static bool CommonQualificationsValidated =>
         DsfinvkValidated &&
         KassenSichVReceiptValidated &&
@@ -110,7 +106,7 @@ public static class FiscalRelease
         var providerValidated = provider.Transport switch
         {
             TseProviderTransport.DirectCloudApi =>
-                CloudTseValidated,
+                TseProviderCatalog.IsProviderReleaseValidated(providerId),
 
             // Local middleware is not automatically "cloud". It may pass the
             // physical gate only if the probed device unambiguously identifies
@@ -154,8 +150,16 @@ public static class FiscalRelease
 
         if (provider.Transport == TseProviderTransport.DirectCloudApi)
         {
-            if (!CloudTseValidated)
-                missing.Add("Cloud-TSE-E2E-Abnahme");
+            if (!TseProviderCatalog.IsProviderReleaseValidated(providerId))
+            {
+                var vendor =
+                    TseProviderCatalog.CloudVendorForProvider(providerId)
+                    ?? provider.ProviderId;
+
+                missing.Add(
+                    $"Cloud-TSE-E2E-Abnahme ({vendor})");
+            }
+
             return missing;
         }
 
@@ -191,14 +195,6 @@ public static class FiscalRelease
                 ". TRAINING verwenden.");
     }
 
-    public static void RequireCloudTse()
-    {
-        if (!CloudTseValidated)
-        {
-            throw new InvalidOperationException(
-                "Cloud-TSE-Signierung ist in diesem Build nicht validiert und bleibt gesperrt.");
-        }
-    }
 
     private static List<string> CommonMissingQualifications()
     {
