@@ -52,7 +52,8 @@ Assert(
 var cloudGateRejected = false;
 try
 {
-    FiscalRelease.RequireCloudTse();
+    TseProviderCatalog.RequireProviderRelease(
+        TseProviderCatalog.FiskalyDirectCloud);
 }
 catch (InvalidOperationException ex)
 {
@@ -62,12 +63,14 @@ catch (InvalidOperationException ex)
 }
 
 if (!cloudGateRejected ||
-    FiscalRelease.CloudTseValidated ||
+    CloudTseRelease.FiskaltrustValidated ||
+    CloudTseRelease.FiskalyValidated ||
+    CloudTseRelease.DeutscheFiskalValidated ||
     FiscalRelease.MissingQualifications().Any(x =>
         x.Contains("Cloud", StringComparison.OrdinalIgnoreCase)))
 {
     throw new Exception(
-        "FAIL: Cloud TSE release gate must be independent from the physical/global release qualification set.");
+        "FAIL: Cloud TSE provider release gates must remain independent from the physical/global release qualification set.");
 }
 
 var localMiddleware =
