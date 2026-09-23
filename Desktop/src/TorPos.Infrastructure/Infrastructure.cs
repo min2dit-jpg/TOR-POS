@@ -2353,15 +2353,51 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
         await q.ExecuteNonQueryAsync(ct);
     });
 }
+    private static async Task<bool> TableExistsForSaleLoadAsync(
+        SqliteConnection c,
+        string tableName,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type='table' AND name=$name;
+            """;
+        q.Parameters.AddWithValue("$name", tableName);
+        return Convert.ToInt32(
+            await q.ExecuteScalarAsync(ct)) == 1;
+    }
+
     private static async Task<Sale?> LoadSaleAsync(
         SqliteConnection c,
         long saleId,
         CancellationToken ct)
     {
+        var hasRestaurantPaymentData =
+            await TableExistsForSaleLoadAsync(
+                c,
+                "restaurant_payment_reservations",
+                ct) &&
+            await TableExistsForSaleLoadAsync(
+                c,
+                "restaurant_bestellungen",
+                ct);
+
+        var restaurantOrderStartSql = hasRestaurantPaymentData
+            ? """
+              (SELECT COALESCE(NULLIF(rb.start_log_time,''), rb.started_at)
+               FROM restaurant_payment_reservations rr
+               JOIN restaurant_bestellungen rb ON rb.session_id=rr.session_id
+               WHERE rr.sale_id=s.id AND rr.state='APPLIED'
+               ORDER BY rb.sequence LIMIT 1)
+              """
+            : "NULL";
+
         Sale? sale = null;
         await using (var q = c.CreateCommand())
         {
-            q.CommandText = """
+            q.CommandText = $"""
                 SELECT s.receipt_number,s.pickup_number,s.created_at,s.payment_method,
                        s.discount_cents,s.total_cents,s.fiscal_status,
                        COALESCE(o.operator_name,''),
@@ -2389,11 +2425,7 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                          (SELECT COALESCE(NULLIF(op.tse_start_log_time,''), op.vorgang_started_at, op.created_at)
                           FROM parked_receipts op
                           WHERE op.cashed_sale_id=s.id AND (op.tse_transaction_number<>'' OR op.tse_outage=1) LIMIT 1),
-                         (SELECT COALESCE(NULLIF(rb.start_log_time,''), rb.started_at)
-                          FROM restaurant_payment_reservations rr
-                          JOIN restaurant_bestellungen rb ON rb.session_id=rr.session_id
-                          WHERE rr.sale_id=s.id AND rr.state='APPLIED'
-                          ORDER BY rb.sequence LIMIT 1))
+                         {restaurantOrderStartSql})
                 FROM sales s
                 LEFT JOIN sale_operators o ON o.sale_id=s.id
                 LEFT JOIN sale_tse_signatures t ON t.sale_id=s.id
