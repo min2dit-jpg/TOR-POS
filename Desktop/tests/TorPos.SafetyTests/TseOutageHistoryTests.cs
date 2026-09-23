@@ -100,7 +100,6 @@ public static class TseOutageHistoryTests
         // construction sites ever filled it - so a TSE that sat on a shelf
         // failed with 0x1002 and the only route back was the activation screen,
         // PUK box and all.
-        var provider = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/SwissbitTseProvider.cs"));
         var store = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/TseTimeAdminPinStore.cs"));
         assert(
             Regex.Matches(provider, @"request with \{ TimeAdminPin = TimeAdminPin\(request\.TimeAdminPin\) \}").Count == 3 &&

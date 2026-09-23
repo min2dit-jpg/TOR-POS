@@ -219,7 +219,13 @@ public sealed class CloudTseProvider : ITseProvider
     /// </summary>
     private static string? Blocker(CloudTseConfiguration config)
     {
-        if (!FiscalRelease.CloudTseValidated)
+        // Read into a local first. CloudTseValidated is a const, so testing it
+        // directly makes the compiler declare everything after it unreachable -
+        // a warning that would then sit on top of the checks below and hide a
+        // real one the day the flag flips.
+        var released = FiscalRelease.CloudTseValidated;
+
+        if (!released)
             return NotReleasedMessage;
 
         if (!config.IsAddressable)
