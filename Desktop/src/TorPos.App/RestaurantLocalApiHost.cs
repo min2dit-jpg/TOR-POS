@@ -234,6 +234,93 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     })
                 .RequireRateLimiting("device");
 
+            app.MapGet(
+                    "/api/v1/catalog",
+                    async (HttpContext context, CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            var catalog =
+                                await _handheld.GetCatalogAsync(
+                                    deviceId,
+                                    deviceToken,
+                                    token);
+
+                            return Results.Ok(catalog);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
+            app.MapPost(
+                    "/api/v1/tables/open",
+                    async (
+                        HttpContext context,
+                        OpenTableRequest request,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            var result =
+                                await _handheld.OpenTableAsync(
+                                    new RestaurantHandheldOpenTableRequest(
+                                        request.TableId,
+                                        request.GuestCount,
+                                        request.Note,
+                                        request.OperatorName,
+                                        deviceId,
+                                        deviceToken),
+                                    token);
+
+                            return Results.Ok(result);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
             app.MapPost(
                     "/api/v1/items",
                     async (
@@ -519,6 +606,12 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         string PairingCode,
         string DeviceId,
         string DisplayName);
+
+    private sealed record OpenTableRequest(
+        long TableId,
+        int GuestCount,
+        string Note,
+        string OperatorName);
 
     private sealed record AddItemRequest(
         string SessionId,
