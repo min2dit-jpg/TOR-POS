@@ -207,6 +207,58 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             .ToArray();
     }
 
+    public async Task<RestaurantHandheldCommandResult> UpdateTableAsync(
+        RestaurantHandheldUpdateTableRequest request,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            request.DeviceId,
+            request.DeviceToken,
+            ct);
+
+        var before = await _restaurant.GetSessionAsync(
+                request.SessionId,
+                ct)
+            ?? throw new InvalidOperationException(
+                "Tischvorgang nicht gefunden.");
+
+        var updated = await _restaurant.UpdateSessionDetailsAsync(
+            request.SessionId,
+            request.ExpectedSessionVersion,
+            request.GuestCount,
+            request.Note,
+            request.OperatorName,
+            request.DeviceId,
+            ct);
+
+        if (!string.Equals(
+                before.Note,
+                updated.Note,
+                StringComparison.Ordinal) &&
+            (await _restaurant.ListActiveItemsAsync(
+                updated.Id,
+                ct)).Count > 0)
+        {
+            var table = (await _restaurant.ListTablesAsync(ct))
+                .FirstOrDefault(x => x.Id == updated.TableId);
+
+            await _kitchen.EnqueueNoteAsync(
+                updated,
+                table?.DisplayName ?? "Tisch",
+                request.OperatorName,
+                ct);
+
+            _kitchenDispatcher.Notify();
+        }
+
+        return new RestaurantHandheldCommandResult(
+            updated.Id,
+            updated.Version);
+    }
+
     public async Task<RestaurantHandheldCommandResult> AddItemAsync(
         RestaurantHandheldAddItemRequest request,
         CancellationToken ct = default)
