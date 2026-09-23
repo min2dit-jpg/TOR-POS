@@ -7,6 +7,7 @@ using TorPos.Core;
 using TorPos.Infrastructure;
 
 #if TOR_RESTAURANT_PRODUCT
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
