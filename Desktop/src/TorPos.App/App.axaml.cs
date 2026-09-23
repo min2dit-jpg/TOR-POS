@@ -300,16 +300,19 @@ public partial class App : Avalonia.Application
 
             await catalog.ReloadAsync();
 
-            try
+            _ = Task.Run(async () =>
             {
-                await restaurantLocalApi.StartOrRestartAsync();
-            }
-            catch (Exception ex)
-            {
-                CrashLog.WriteException(
-                    "Restaurant local API startup failed",
-                    ex);
-            }
+                try
+                {
+                    await restaurantLocalApi.StartOrRestartAsync();
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException(
+                        "Restaurant local API startup failed",
+                        ex);
+                }
+            });
 
             // Shared services live for the complete application process. A simple
             // ABMELDEN must not dispose the printer or create an exit backup.
