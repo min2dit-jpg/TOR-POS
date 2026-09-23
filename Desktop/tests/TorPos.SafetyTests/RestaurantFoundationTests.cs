@@ -251,8 +251,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 32,
-                "Restaurant database reaches schema version 32");
+                result.ToVersion == 33,
+                "Restaurant database reaches schema version 33");
 
             await using (var c = db.OpenConnection())
             {
@@ -265,8 +265,11 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_kitchen_jobs") &&
                     TableExists(c, "restaurant_kitchen_status") &&
                     TableExists(c, "restaurant_pairing_codes") &&
-                    TableExists(c, "restaurant_handheld_devices"),
-                    "Restaurant-only tables including Bestellung, kitchen and handheld pairing records are created for the Restaurant product");
+                    TableExists(c, "restaurant_handheld_devices") &&
+                    TableExists(c, "restaurant_reservations") &&
+                    TableExists(c, "restaurant_terminals") &&
+                    TableExists(c, "restaurant_device_commands"),
+                    "Restaurant-only tables including Bestellung, kitchen, reservations, terminal and device-command records are created for the Restaurant product");
 
                 var immutableBestellung = false;
                 try
@@ -563,6 +566,135 @@ internal static class RestaurantFoundationTests
                 BasePriceCents = 1290,
                 VatRate = 19m
             };
+
+            var idempotentTableId = await repo.SaveTableAsync(
+                areaId,
+                "TIDEM",
+                "Idempotenz Tisch",
+                seats: 2,
+                sortOrder: 90);
+
+            var idempotentSession = await repo.OpenTableAsync(
+                idempotentTableId,
+                "KELLNER-1",
+                guestCount: 1,
+                deviceId: "HANDHELD-IDEM");
+
+            var firstIdempotentAdd =
+                await repo.AddItemWithLineTokenAsync(
+                    idempotentSession.Id,
+                    idempotentSession.Version,
+                    product,
+                    1m,
+                    "KELLNER-1",
+                    "ITEM-IDEMPOTENCY-0001",
+                    "HANDHELD-IDEM");
+
+            var replayedIdempotentAdd =
+                await repo.AddItemWithLineTokenAsync(
+                    idempotentSession.Id,
+                    idempotentSession.Version,
+                    product,
+                    1m,
+                    "KELLNER-1",
+                    "ITEM-IDEMPOTENCY-0001",
+                    "HANDHELD-IDEM");
+
+            var idempotentItems =
+                await repo.ListActiveItemsAsync(
+                    idempotentSession.Id);
+
+            assert(
+                firstIdempotentAdd.Created &&
+                !replayedIdempotentAdd.Created &&
+                firstIdempotentAdd.Item.Id ==
+                    replayedIdempotentAdd.Item.Id &&
+                idempotentItems.Count == 1 &&
+                (await repo.GetSessionAsync(
+                    idempotentSession.Id))?.Version == 2,
+                "Restaurant add-item retry with the same line token creates exactly one position and advances the table once");
+
+            var idempotentKitchen =
+                new RestaurantKitchenOutbox(db);
+            var idempotentSessionAfterAdd =
+                await repo.GetSessionAsync(
+                    idempotentSession.Id)
+                ?? throw new InvalidOperationException(
+                    "Idempotency session missing.");
+
+            const string idempotentKitchenJob =
+                "KITCHEN-IDEMPOTENCY-0001";
+
+            await idempotentKitchen.EnqueueNewItemIdempotentAsync(
+                idempotentSessionAfterAdd,
+                firstIdempotentAdd.Item,
+                "Idempotenz Tisch",
+                "KELLNER-1",
+                idempotentKitchenJob,
+                KitchenStations.Grill);
+
+            await idempotentKitchen.EnqueueNewItemIdempotentAsync(
+                idempotentSessionAfterAdd,
+                firstIdempotentAdd.Item,
+                "Idempotenz Tisch",
+                "KELLNER-1",
+                idempotentKitchenJob,
+                KitchenStations.Grill);
+
+            assert(
+                (await idempotentKitchen.PendingAsync())
+                    .Count(x => x.Id == idempotentKitchenJob) == 1,
+                "Restaurant kitchen retry with the same job id creates exactly one durable printer/KDS job");
+
+            var commandJournal =
+                new RestaurantCommandJournal(db);
+
+            var newCommand = await commandJournal.BeginAsync(
+                "HANDHELD-IDEM",
+                "CMD-0001",
+                "ADD_ITEM",
+                "HASH-0001",
+                idempotentSession.Id);
+
+            await commandJournal.CompleteAsync(
+                "HANDHELD-IDEM",
+                "CMD-0001",
+                2);
+
+            var completedReplay =
+                await commandJournal.BeginAsync(
+                    "HANDHELD-IDEM",
+                    "CMD-0001",
+                    "ADD_ITEM",
+                    "HASH-0001",
+                    idempotentSession.Id);
+
+            assert(
+                newCommand.State ==
+                    RestaurantCommandClaimState.New &&
+                completedReplay.State ==
+                    RestaurantCommandClaimState.Completed &&
+                completedReplay.ResultSessionVersion == 2,
+                "Completed Restaurant device command replay returns the stored result instead of executing again");
+
+            var commandCollisionRejected = false;
+            try
+            {
+                await commandJournal.BeginAsync(
+                    "HANDHELD-IDEM",
+                    "CMD-0001",
+                    "ADD_ITEM",
+                    "DIFFERENT-HASH",
+                    idempotentSession.Id);
+            }
+            catch (InvalidOperationException)
+            {
+                commandCollisionRejected = true;
+            }
+
+            assert(
+                commandCollisionRejected,
+                "Restaurant rejects reuse of one Command-ID for a different request");
 
             var item = await repo.AddItemAsync(
                 session.Id,
@@ -1038,7 +1170,8 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_kitchen_jobs") &&
                     !TableExists(c, "restaurant_handheld_devices") &&
                     !TableExists(c, "restaurant_reservations") &&
-                    !TableExists(c, "restaurant_terminals"),
+                    !TableExists(c, "restaurant_terminals") &&
+                    !TableExists(c, "restaurant_device_commands"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
