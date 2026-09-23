@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TorPos.App;
 using TorPos.Core;
 using TorPos.Infrastructure;
 
