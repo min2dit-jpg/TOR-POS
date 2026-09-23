@@ -780,7 +780,7 @@ internal static class RestaurantFoundationTests
             {
                 await repo.CloseEmptySessionAsync(
                     merged.Id,
-                    merged.Version,
+                    reopenedAfterCancel!.Version,
                     "KELLNER-3");
             }
             catch (InvalidOperationException ex)
