@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 33;
+    public const int TargetSchemaVersion = 34;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2028,6 +2028,40 @@ public sealed class SchemaMigrationService
 
                         CREATE INDEX IF NOT EXISTS ix_restaurant_device_commands_state
                           ON restaurant_device_commands(state,updated_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                34,
+                "R192_RESTAURANT_OPERATOR_SESSIONS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_operator_sessions(
+                          id TEXT PRIMARY KEY,
+                          device_id TEXT NOT NULL,
+                          user_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          token_hash TEXT NOT NULL,
+                          is_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_admin IN (0,1)),
+                          permissions INTEGER NOT NULL DEFAULT 0,
+                          created_at TEXT NOT NULL,
+                          expires_at TEXT NOT NULL,
+                          last_seen_at TEXT NOT NULL,
+                          revoked_at TEXT NULL);
+
+                        CREATE UNIQUE INDEX IF NOT EXISTS ux_restaurant_operator_sessions_token
+                          ON restaurant_operator_sessions(token_hash);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_operator_sessions_device
+                          ON restaurant_operator_sessions(device_id,expires_at,revoked_at);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
