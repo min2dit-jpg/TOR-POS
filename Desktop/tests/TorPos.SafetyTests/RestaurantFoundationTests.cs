@@ -717,12 +717,14 @@ internal static class RestaurantFoundationTests
                     "HASH-CANCEL-0001",
                     idempotentSession.Id);
 
-            assert(
-                recoverableCommand.State ==
-                    RestaurantCommandClaimState.New &&
-                recoveredCommand.State ==
-                    RestaurantCommandClaimState.Recovered,
-                "Interrupted Restaurant device command can be reclaimed for crash-safe retry");
+            if (recoverableCommand.State !=
+                    RestaurantCommandClaimState.New ||
+                recoveredCommand.State !=
+                    RestaurantCommandClaimState.Recovered)
+            {
+                throw new InvalidOperationException(
+                    "Interrupted Restaurant device command must be reclaimable for crash-safe retry.");
+            }
 
             var item = await repo.AddItemAsync(
                 session.Id,
@@ -1107,10 +1109,12 @@ internal static class RestaurantFoundationTests
             var cancellationAlerts = await kitchen.CancellationAlertsAsync(
                 KitchenStations.Grill);
 
-            assert(
-                cancellationAlerts.Count(x =>
-                    x.JobId == cancelKitchenJobId) == 1,
-                "Restaurant cancellation retry creates exactly one durable kitchen CANCEL job");
+            if (cancellationAlerts.Count(x =>
+                    x.JobId == cancelKitchenJobId) != 1)
+            {
+                throw new InvalidOperationException(
+                    "Restaurant cancellation retry must create exactly one durable kitchen CANCEL job.");
+            }
 
             assert(
                 cancellationAlerts.Any(x =>
