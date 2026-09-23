@@ -87,14 +87,17 @@ Die zentralen `FiscalRelease`-Nachweise stehen weiterhin auf **false**:
 - `PhysicalTseGeneration1E2EValidated`
 - `PhysicalTseGeneration11E2EValidated`
 - `PhysicalTseGeneration2E2EValidated`
-- `CloudTseValidated`
+- `CloudTseRelease.FiskaltrustValidated`
+- `CloudTseRelease.FiskalyValidated`
+- `CloudTseRelease.DeutscheFiskalValidated`
 - `IndependentFiscalReviewValidated`
 
 Daher bleibt die produktive fiskalische Buchung gesperrt. Physische TSE-Abnahmen
 sind generationsgebunden: Gen 1, Gen 1.1 und Gen 2 besitzen getrennte
 E2E-Freigaben. Eine Abnahme darf keine andere Generation freigeben; eine
-unbekannte Gerätegeneration bleibt fail-closed. Cloud-TSE besitzt eine davon
-getrennte Freigabe.
+unbekannte Gerätegeneration bleibt fail-closed. Cloud-TSE-Freigaben sind davon
+getrennt und werden pro Anbieter geführt; eine bestandene Anbieter-Abnahme darf
+keinen anderen Cloud-TSE-Anbieter freischalten.
 
 Zusätzlich bleibt der produktive Remote-Updatepfad gesperrt, solange kein TOR/Demirkaan-Code-Signing-Zertifikat als `UpdateSignerThumbprint` fest hinterlegt ist.
 
