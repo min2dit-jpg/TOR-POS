@@ -115,13 +115,16 @@ public sealed class RestaurantRepository
         long tableId,
         string operatorName,
         int guestCount = 1,
+        string note = "",
         string deviceId = "",
         CancellationToken ct = default)
     {
         operatorName = (operatorName ?? "").Trim();
+        note = (note ?? "").Trim();
         if (tableId <= 0) throw new ArgumentOutOfRangeException(nameof(tableId));
         if (operatorName.Length == 0) throw new ArgumentException("Bediener fehlt.", nameof(operatorName));
         if (guestCount is < 1 or > 999) throw new ArgumentOutOfRangeException(nameof(guestCount));
+        if (note.Length > 500) throw new ArgumentException("Tischnotiz ist zu lang.", nameof(note));
 
         return await IoQueue.RunAsync(async () =>
         {
@@ -167,13 +170,14 @@ public sealed class RestaurantRepository
                         opened_by,assigned_waiter,guest_count,note,version)
                     VALUES(
                         $id,$table,$now,$now,NULL,'OPEN',
-                        $operator,$operator,$guests,'',1);
+                        $operator,$operator,$guests,$note,1);
                     """;
                 insert.Parameters.AddWithValue("$id", id);
                 insert.Parameters.AddWithValue("$table", tableId);
                 insert.Parameters.AddWithValue("$now", now);
                 insert.Parameters.AddWithValue("$operator", operatorName);
                 insert.Parameters.AddWithValue("$guests", guestCount);
+                insert.Parameters.AddWithValue("$note", note);
                 await insert.ExecuteNonQueryAsync(ct);
             }
 
@@ -193,7 +197,7 @@ public sealed class RestaurantRepository
                 operatorName,
                 operatorName,
                 guestCount,
-                "",
+                note,
                 1);
         });
     }
