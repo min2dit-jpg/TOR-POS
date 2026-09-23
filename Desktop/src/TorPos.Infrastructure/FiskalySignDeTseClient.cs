@@ -219,6 +219,15 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
         FiscalRelease.RequireCloudTse();
         var cfg = RequireConfiguration();
 
+        if (!string.Equals(
+                request.ClientId?.Trim(),
+                cfg.CashRegisterSerialNumber,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Cloud-TSE Start gehört nicht zur konfigurierten Kassen-Seriennummer.");
+        }
+
         var txIdN =
             DirectCloudTransactionIdentity.RequireUuidV4(
                 request.StableTransactionId);
@@ -855,6 +864,10 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
             throw new InvalidOperationException(
                 "fiskaly SIGN DE Signing darf nur über den offiziellen HTTPS Middleware-Endpunkt /api/v2 erfolgen.");
         }
+
+        _ = CanonicalUuid(
+            cfg.MandantId,
+            "Mandant-ID");
 
         _ = CanonicalUuid(
             cfg.TssId,
