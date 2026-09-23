@@ -420,9 +420,6 @@ public sealed class RestaurantTablePlanWindow : Window
             _split.IsEnabled = false;
             _checkoutSelected.IsEnabled = false;
             _cancelItem.IsEnabled = false;
-        _guestCount.IsEnabled = !paymentLocked;
-        _tableNote.IsEnabled = !paymentLocked;
-        _saveDetails.IsEnabled = !paymentLocked;
             _guestCount.IsEnabled = false;
             _tableNote.IsEnabled = false;
             _saveDetails.IsEnabled = false;
@@ -529,6 +526,9 @@ public sealed class RestaurantTablePlanWindow : Window
         _split.IsEnabled = !paymentLocked && currentItems.Count > 0;
         _checkoutSelected.IsEnabled = !paymentLocked && currentItems.Count > 0;
         _cancelItem.IsEnabled = false;
+        _guestCount.IsEnabled = !paymentLocked;
+        _tableNote.IsEnabled = !paymentLocked;
+        _saveDetails.IsEnabled = !paymentLocked;
     }
 
     private async Task SaveSessionDetailsAsync()
