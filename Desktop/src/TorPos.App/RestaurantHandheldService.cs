@@ -11,6 +11,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private readonly RestaurantFiscalOrderService _fiscal;
     private readonly RestaurantKitchenOutbox _kitchen;
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
+    private readonly RestaurantHandheldPairingService _pairing;
     private readonly IProductCatalog _catalog;
 
     public RestaurantHandheldService(
@@ -19,6 +20,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         RestaurantFiscalOrderService fiscal,
         RestaurantKitchenOutbox kitchen,
         RestaurantKitchenDispatcher kitchenDispatcher,
+        RestaurantHandheldPairingService pairing,
         IProductCatalog catalog)
     {
         _entitlements = entitlements;
@@ -26,14 +28,22 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         _fiscal = fiscal;
         _kitchen = kitchen;
         _kitchenDispatcher = kitchenDispatcher;
+        _pairing = pairing;
         _catalog = catalog;
     }
 
     public async Task<IReadOnlyList<RestaurantHandheldTableSummary>> GetTablesAsync(
+        string deviceId,
+        string deviceToken,
         CancellationToken ct = default)
     {
         _entitlements.Require(
             RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            deviceId,
+            deviceToken,
+            ct);
 
         var result = new List<RestaurantHandheldTableSummary>();
         foreach (var table in await _restaurant.ListTablesAsync(ct))
@@ -80,6 +90,11 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     {
         _entitlements.Require(
             RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            request.DeviceId,
+            request.DeviceToken,
+            ct);
 
         if (request.Quantity <= 0m)
             throw new ArgumentOutOfRangeException(
