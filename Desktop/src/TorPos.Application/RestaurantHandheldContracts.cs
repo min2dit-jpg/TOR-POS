@@ -27,7 +27,8 @@ public sealed record RestaurantHandheldOpenTableRequest(
     string OperatorName,
     string OperatorPin,
     string DeviceId,
-    string DeviceToken);
+    string DeviceToken,
+    string OperatorSessionToken = "");
 
 public sealed record RestaurantHandheldUpdateTableRequest(
     string SessionId,
@@ -37,7 +38,8 @@ public sealed record RestaurantHandheldUpdateTableRequest(
     string OperatorName,
     string OperatorPin,
     string DeviceId,
-    string DeviceToken);
+    string DeviceToken,
+    string OperatorSessionToken = "");
 
 public sealed record RestaurantHandheldItemSummary(
     long SessionItemId,
@@ -57,7 +59,8 @@ public sealed record RestaurantHandheldAddItemRequest(
     string OperatorPin,
     string DeviceId,
     string DeviceToken,
-    string CommandId = "");
+    string CommandId = "",
+    string OperatorSessionToken = "");
 
 public sealed record RestaurantHandheldCancelItemRequest(
     string SessionId,
@@ -67,7 +70,8 @@ public sealed record RestaurantHandheldCancelItemRequest(
     string OperatorPin,
     string DeviceId,
     string DeviceToken,
-    string CommandId = "");
+    string CommandId = "",
+    string OperatorSessionToken = "");
 
 public sealed record RestaurantHandheldCommandResult(
     string SessionId,
