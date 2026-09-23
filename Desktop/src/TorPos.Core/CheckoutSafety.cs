@@ -12,6 +12,13 @@ public static class FiscalRelease
     public const bool PhysicalTseE2EValidated = false;
     public const bool IndependentFiscalReviewValidated = false;
 
+    // Cloud TSE has its own acceptance evidence. It is intentionally NOT part
+    // of Enabled: validating or not validating a cloud provider must never
+    // silently unlock or block an otherwise independent physical-USB TSE path.
+    // Every cloud signing adapter must call RequireCloudTse() before touching
+    // configuration, availability, credentials or any fiscal endpoint.
+    public const bool CloudTseValidated = false;
+
     public static bool Enabled =>
         DsfinvkValidated &&
         KassenSichVReceiptValidated &&
@@ -39,6 +46,15 @@ public static class FiscalRelease
                 "Produktivbuchung gesperrt. Fehlende Freigaben: " +
                 string.Join(", ", MissingQualifications()) +
                 ". TRAINING verwenden.");
+    }
+
+    public static void RequireCloudTse()
+    {
+        if (!CloudTseValidated)
+        {
+            throw new InvalidOperationException(
+                "Cloud-TSE-Signierung ist in diesem Build nicht validiert und bleibt gesperrt.");
+        }
     }
 }
 
