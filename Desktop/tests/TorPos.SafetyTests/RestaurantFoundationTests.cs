@@ -697,6 +697,33 @@ internal static class RestaurantFoundationTests
                 commandCollisionRejected,
                 "Restaurant rejects reuse of one Command-ID for a different request");
 
+            var recoverableCommand =
+                await commandJournal.BeginAsync(
+                    "HANDHELD-IDEM",
+                    "CMD-RECOVER-0001",
+                    "CANCEL_ITEM",
+                    "HASH-CANCEL-0001",
+                    idempotentSession.Id);
+
+            await commandJournal.ReleaseForRecoveryAsync(
+                "HANDHELD-IDEM",
+                "CMD-RECOVER-0001");
+
+            var recoveredCommand =
+                await commandJournal.BeginAsync(
+                    "HANDHELD-IDEM",
+                    "CMD-RECOVER-0001",
+                    "CANCEL_ITEM",
+                    "HASH-CANCEL-0001",
+                    idempotentSession.Id);
+
+            assert(
+                recoverableCommand.State ==
+                    RestaurantCommandClaimState.New &&
+                recoveredCommand.State ==
+                    RestaurantCommandClaimState.Recovered,
+                "Interrupted Restaurant device command can be reclaimed for crash-safe retry");
+
             var item = await repo.AddItemAsync(
                 session.Id,
                 expectedSessionVersion: reassigned.Version,
@@ -1054,16 +1081,36 @@ internal static class RestaurantFoundationTests
                 await fiscalState.IsCurrentStateSecuredAsync(cancelSession.Id),
                 "Negative Bestellung delta reconciles a cancelled Restaurant position to zero");
 
-            var cancelKitchenJobId = await kitchen.EnqueueCancellationAsync(
+            var cancelledSessionForKitchen =
                 await repo.GetSessionAsync(cancelSession.Id)
-                    ?? throw new InvalidOperationException("Cancelled session missing."),
+                ?? throw new InvalidOperationException("Cancelled session missing.");
+
+            const string cancelKitchenJobId =
+                "KITCHEN-CANCEL-IDEMPOTENCY-0001";
+
+            await kitchen.EnqueueCancellationIdempotentAsync(
+                cancelledSessionForKitchen,
                 cancelled,
                 "Tisch 5",
                 "KELLNER-1",
+                cancelKitchenJobId,
+                KitchenStations.Grill);
+
+            await kitchen.EnqueueCancellationIdempotentAsync(
+                cancelledSessionForKitchen,
+                cancelled,
+                "Tisch 5",
+                "KELLNER-1",
+                cancelKitchenJobId,
                 KitchenStations.Grill);
 
             var cancellationAlerts = await kitchen.CancellationAlertsAsync(
                 KitchenStations.Grill);
+
+            assert(
+                cancellationAlerts.Count(x =>
+                    x.JobId == cancelKitchenJobId) == 1,
+                "Restaurant cancellation retry creates exactly one durable kitchen CANCEL job");
 
             assert(
                 cancellationAlerts.Any(x =>
