@@ -29,14 +29,14 @@ internal static class TseLifecycleReleaseGateTests
             critical.RemainingDays == 30,
             "TSE certificate at 30 days escalates to the one-per-process dialog path");
 
-        var todayExpiry = TseCertificatePolicy.Evaluate(today, now);
+        var oneSecondBefore = TseCertificatePolicy.Evaluate(now.AddSeconds(1), now);
         assert(
-            todayExpiry.State == TseCertificateState.Critical &&
-            todayExpiry.RemainingDays == 0 &&
-            todayExpiry.ShowDialog,
-            "TSE certificate remains critical on its stated end date");
+            oneSecondBefore.State == TseCertificateState.Critical &&
+            oneSecondBefore.RemainingDays == 1 &&
+            oneSecondBefore.ShowDialog,
+            "TSE certificate remains usable immediately before its exact UTC expiration instant");
 
-        var expired = TseCertificatePolicy.Evaluate(now.AddDays(-1), now);
+        var expired = TseCertificatePolicy.Evaluate(now, now);
         assert(
             expired.State == TseCertificateState.Expired &&
             expired.ShowBadge &&
