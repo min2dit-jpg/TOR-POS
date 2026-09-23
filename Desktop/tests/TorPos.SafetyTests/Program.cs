@@ -578,7 +578,6 @@ await RestaurantFoundationTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
-await BarTestBonPreparationTests.Run(Assert);
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -637,15 +636,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // R179: 10 reviewed checks lock cumulative partial-return tender allocation,
 // visible HID scanner capture/timing, the unified drawer switch and Cloud
 // reversal/weighted-promotion payload contracts.
+// R180: 4 reviewed checks lock cashier-only unknown-EAN behavior,
 // KeyDown/TextInput de-duplication and the non-blinking scanner capture.
 // R181: 10 reviewed checks lock the 140 ms suffix-less path, bounded FIFO,
 // edition-isolated business profiles and permanent licence-bound edition UI.
-// Operator-interface language DE/TR/EN checks keep German as source text,
-// keep missing translations harmless and preserve the stored language choice.
-// TSE start-up/outage checks keep every non-signable state visible without
-// blocking the till, while recorded outage reasons remain unchanged evidence.
-// Cloud TSE foundation checks keep provider selection and refusal fail-closed
-// without fabricating transaction numbers, counters or signatures.
 // TSE lifecycle/release gate: 13 checks lock 90/30-day certificate warnings,
 // expired-certificate fail-safe behavior and generation-specific E2E evidence.
 // Split-product foundation checks keep Einzelhandel/Gastro process, storage,
@@ -656,11 +650,6 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
 const int ExpectedSafetyChecks = 1237;
-
-if (checks != ExpectedSafetyChecks)
-{
-// separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1160;
 
 if (checks != ExpectedSafetyChecks)
 {
