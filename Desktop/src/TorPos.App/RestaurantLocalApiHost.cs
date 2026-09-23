@@ -295,6 +295,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.GuestCount,
                                         request.Note,
                                         request.OperatorName,
+                                        request.OperatorPin,
                                         deviceId,
                                         deviceToken),
                                     token);
@@ -348,6 +349,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.GuestCount,
                                         request.Note,
                                         request.OperatorName,
+                                        request.OperatorPin,
                                         deviceId,
                                         deviceToken),
                                     token);
@@ -447,6 +449,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.ProductId,
                                         request.Quantity,
                                         request.OperatorName,
+                                        request.OperatorPin,
                                         deviceId,
                                         deviceToken),
                                     token);
@@ -712,19 +715,22 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         long TableId,
         int GuestCount,
         string Note,
-        string OperatorName);
+        string OperatorName,
+        string OperatorPin);
 
     private sealed record UpdateTableRequest(
         long ExpectedSessionVersion,
         int GuestCount,
         string Note,
-        string OperatorName);
+        string OperatorName,
+        string OperatorPin);
 
     private sealed record AddItemRequest(
         string SessionId,
         long ExpectedSessionVersion,
         long ProductId,
         decimal Quantity,
-        string OperatorName);
+        string OperatorName,
+        string OperatorPin);
 #endif
 }
