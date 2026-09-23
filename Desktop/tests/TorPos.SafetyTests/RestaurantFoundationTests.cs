@@ -137,6 +137,28 @@ internal static class RestaurantFoundationTests
             standardKdsRejected,
             "Restaurant Standard rejects KDS at the service boundary");
 
+        var standardHandheld = new RestaurantHandheldService(
+            standardEntitlements,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
+
+        var standardHandheldRejected = false;
+        try
+        {
+            await standardHandheld.GetTablesAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            standardHandheldRejected = true;
+        }
+
+        assert(
+            standardHandheldRejected,
+            "Restaurant Standard rejects handheld access before any database operation");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
