@@ -135,6 +135,42 @@ if (!cloudProviderRejectedBeforeClient ||
         "FAIL: Unvalidated direct Cloud TSE provider must be rejected before any provider client call.");
 }
 
+var cloudVorgangEngine =
+    new SaleEngine();
+cloudVorgangEngine.Add(
+    new Product
+    {
+        Id = 9_900_001,
+        Name = "Cloud TSE Identity Test",
+        BasePriceCents = 100
+    });
+
+var cloudVorgangTracker =
+    new TseVorgangCartTracker();
+
+var cloudVorgangStart =
+    cloudVorgangTracker.OnCartChanged(
+        cloudVorgangEngine.Cart,
+        0,
+        imHaus: false,
+        fiscal: true,
+        DateTimeOffset.UtcNow);
+
+var canonicalCloudTransactionId =
+    DirectCloudTransactionIdentity.RequireUuidV4(
+        cloudVorgangStart.VorgangId);
+
+if (cloudVorgangStart.Kind !=
+        TseVorgangActionKind.Start ||
+    canonicalCloudTransactionId !=
+        cloudVorgangStart.VorgangId ||
+    cloudVorgangTracker.VorgangId !=
+        canonicalCloudTransactionId)
+{
+    throw new Exception(
+        "FAIL: TOR Vorgang identity must be a stable UUIDv4 suitable for direct Cloud TSE retry idempotency.");
+}
+
 // R72.3: ordinary SafetyTests use SafetyDatabase so each disposable fixture
 // follows the same ordered schema migration path as TOR POS itself.
 // R69ReviewTests is the deliberate exception because it tests migration edges.
