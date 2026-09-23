@@ -4,6 +4,7 @@ using TorPos.Infrastructure;
 internal sealed class CountingDirectCloudTseClient : IDirectCloudTseClient
 {
     public bool IsConfigured => true;
+    public bool ExportAvailable => false;
     public int Calls { get; private set; }
 
     public Task<TseProbeResult> ProbeAsync(
