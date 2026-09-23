@@ -381,6 +381,108 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             throw;
         }
     }
+    public async Task<RestaurantHandheldCommandResult> CancelItemAsync(
+        RestaurantHandheldCancelItemRequest request,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            RestaurantFeature.HandheldBestellung);
+
+        await _pairing.RequireAuthenticatedAsync(
+            request.DeviceId,
+            request.DeviceToken,
+            ct);
+
+        var operatorUser = await RequireOperatorAsync(
+            request.OperatorName,
+            request.OperatorPin,
+            ct);
+
+        var secured = await _fiscal.IsCurrentStateSecuredAsync(
+            request.SessionId,
+            ct);
+
+        if (!secured)
+            throw new InvalidOperationException(
+                "Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+
+        RestaurantFiscalVorgang? vorgang = null;
+
+        try
+        {
+            vorgang = await _fiscal.BeginChangeAsync(
+                request.SessionId,
+                operatorUser.Username,
+                ct);
+
+            var cancelled = await _restaurant.CancelItemAsync(
+                request.SessionId,
+                request.ExpectedSessionVersion,
+                request.SessionItemId,
+                operatorUser.Username,
+                request.DeviceId,
+                ct);
+
+            await _fiscal.SecureCancelledItemAsync(
+                request.SessionId,
+                cancelled,
+                vorgang,
+                operatorUser.Username,
+                ct);
+
+            vorgang = null;
+
+            var session = await _restaurant.GetSessionAsync(
+                request.SessionId,
+                ct)
+                ?? throw new InvalidOperationException(
+                    "Tischvorgang nicht gefunden.");
+
+            var table = (await _restaurant.ListTablesAsync(ct))
+                .FirstOrDefault(x => x.Id == session.TableId);
+
+            var product = _catalog.Products
+                .FirstOrDefault(x => x.Id == cancelled.ProductId);
+            var category = product is null
+                ? null
+                : _catalog.Categories.FirstOrDefault(
+                    x => x.Id == product.CategoryId);
+
+            await _kitchen.EnqueueCancellationAsync(
+                session,
+                cancelled,
+                table?.DisplayName ?? "Tisch",
+                operatorUser.Username,
+                KitchenStations.Normalize(
+                    category?.KitchenStation),
+                ct);
+
+            _kitchenDispatcher.Notify();
+
+            return new RestaurantHandheldCommandResult(
+                session.Id,
+                session.Version);
+        }
+        catch
+        {
+            if (vorgang is not null)
+            {
+                try
+                {
+                    await _fiscal.AbortChangeAsync(
+                        vorgang,
+                        operatorUser.Username,
+                        ct);
+                }
+                catch
+                {
+                }
+            }
+
+            throw;
+        }
+    }
+
     private async Task<AuthenticatedUser> RequireOperatorAsync(
         string operatorName,
         string operatorPin,
