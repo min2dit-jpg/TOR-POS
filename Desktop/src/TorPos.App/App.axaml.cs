@@ -256,6 +256,10 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(orderPrintOutbox);
             appServices.AddSingleton(new ProductImageStore());
             appServices.AddSingleton(new RestaurantRepository(db));
+            appServices.AddSingleton(
+                new RestaurantReservationService(
+                    db,
+                    restaurantEntitlements));
             appServices.AddSingleton(new RestaurantFiscalOrderService(db, tseVorgaenge));
             appServices.AddSingleton(restaurantKitchenOutbox);
             appServices.AddSingleton(restaurantKitchenDispatcher);
