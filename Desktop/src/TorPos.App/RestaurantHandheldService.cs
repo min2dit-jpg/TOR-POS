@@ -335,7 +335,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.DeviceId,
             request.CommandId);
 
-        var kitchenJobId = CommandToken(
+        var kitchenJobId = CommandGuid(
             "KITCHEN",
             request.DeviceId,
             request.CommandId);
@@ -605,7 +605,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 "Restaurant-Storno wird bereits verarbeitet. Bitte kurz synchronisieren.");
         }
 
-        var kitchenJobId = CommandToken(
+        var kitchenJobId = CommandGuid(
             "KITCHEN-CANCEL",
             request.DeviceId,
             request.CommandId);
@@ -804,6 +804,23 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             commandId);
 
         return prefix + "-" + hash;
+    }
+
+    private static string CommandGuid(
+        string prefix,
+        string deviceId,
+        string commandId)
+    {
+        var raw = string.Join(
+            "\u001f",
+            new[] { prefix, deviceId, commandId });
+
+        var hash = SHA256.HashData(
+            Encoding.UTF8.GetBytes(raw));
+
+        return new Guid(
+            hash.AsSpan(0, 16))
+            .ToString("N");
     }
 
     private async Task<AuthenticatedUser> RequireOperatorAsync(
