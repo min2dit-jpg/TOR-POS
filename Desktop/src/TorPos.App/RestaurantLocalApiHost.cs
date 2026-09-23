@@ -612,7 +612,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.OperatorName,
                                         request.OperatorPin,
                                         deviceId,
-                                        deviceToken),
+                                        deviceToken,
+                                        request.CommandId),
                                     token);
 
                             return Results.Ok(result);
@@ -967,7 +968,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         long ProductId,
         decimal Quantity,
         string OperatorName,
-        string OperatorPin);
+        string OperatorPin,
+        string CommandId = "");
 
     private sealed record CancelItemRequest(
         string SessionId,
