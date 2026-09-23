@@ -251,6 +251,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(new RestaurantFiscalOrderService(db, tseVorgaenge));
             appServices.AddSingleton(restaurantKitchenOutbox);
             appServices.AddSingleton(restaurantKitchenDispatcher);
+            appServices.AddSingleton<TorPos.Application.IRestaurantHandheldService, RestaurantHandheldService>();
             appServices.AddSingleton<IAppWindowFactory, AppWindowFactory>();
 
             var serviceProvider = appServices.BuildServiceProvider(
