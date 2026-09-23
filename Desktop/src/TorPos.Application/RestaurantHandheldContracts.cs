@@ -28,6 +28,15 @@ public sealed record RestaurantHandheldOpenTableRequest(
     string DeviceId,
     string DeviceToken);
 
+public sealed record RestaurantHandheldUpdateTableRequest(
+    string SessionId,
+    long ExpectedSessionVersion,
+    int GuestCount,
+    string Note,
+    string OperatorName,
+    string DeviceId,
+    string DeviceToken);
+
 public sealed record RestaurantHandheldItemSummary(
     long SessionItemId,
     long ProductId,
@@ -75,6 +84,10 @@ public interface IRestaurantHandheldService
         string sessionId,
         string deviceId,
         string deviceToken,
+        CancellationToken ct = default);
+
+    Task<RestaurantHandheldCommandResult> UpdateTableAsync(
+        RestaurantHandheldUpdateTableRequest request,
         CancellationToken ct = default);
 
     Task<RestaurantHandheldCommandResult> AddItemAsync(
