@@ -71,6 +71,20 @@ public sealed class RestaurantOperatorSessionService
             await using var c = _db.OpenConnection();
             await using var tx = c.BeginTransaction();
 
+            await using (var cleanup = c.CreateCommand())
+            {
+                cleanup.Transaction = tx;
+                cleanup.CommandText = """
+                    DELETE FROM restaurant_operator_sessions
+                    WHERE expires_at < $cutoff
+                       OR (revoked_at IS NOT NULL AND revoked_at < $cutoff);
+                    """;
+                cleanup.Parameters.AddWithValue(
+                    "$cutoff",
+                    now.AddDays(-7).ToString("O"));
+                await cleanup.ExecuteNonQueryAsync(ct);
+            }
+
             // Keep one current shift session per operator/device. Old sessions
             // are explicitly revoked instead of silently remaining usable.
             await using (var revoke = c.CreateCommand())
@@ -238,7 +252,7 @@ public sealed class RestaurantOperatorSessionService
             IsTraining: false);
     }
 
-    public Task LogoutAsync(
+    public async Task LogoutAsync(
         string deviceId,
         string sessionToken,
         CancellationToken ct = default)
@@ -253,7 +267,7 @@ public sealed class RestaurantOperatorSessionService
             nameof(sessionToken));
         var tokenHash = Hash(sessionToken);
 
-        return IoQueue.RunAsync(async () =>
+        await IoQueue.RunAsync(async () =>
         {
             await using var c = _db.OpenConnection();
             await using var q = c.CreateCommand();
@@ -269,6 +283,12 @@ public sealed class RestaurantOperatorSessionService
             q.Parameters.AddWithValue("$token", tokenHash);
             await q.ExecuteNonQueryAsync(ct);
         });
+
+        lock (_lastSeenGate)
+        {
+            _lastSeenWrites.Remove(
+                deviceId + "\u001f" + tokenHash);
+        }
     }
 
     private bool ShouldTouch(
