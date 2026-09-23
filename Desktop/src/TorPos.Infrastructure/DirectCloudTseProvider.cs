@@ -2,6 +2,27 @@ using TorPos.Core;
 
 namespace TorPos.Infrastructure;
 
+public static class DirectCloudTransactionIdentity
+{
+    public static string RequireUuidV4(string? stableTransactionId)
+    {
+        var value = (stableTransactionId ?? "").Trim();
+
+        if (!Guid.TryParseExact(
+                value,
+                "N",
+                out var parsed) ||
+            value.Length != 32 ||
+            char.ToUpperInvariant(value[12]) != '4')
+        {
+            throw new InvalidOperationException(
+                "Direkte Cloud-TSE benötigt eine stabile UUIDv4-Transaktions-ID für sichere Retries.");
+        }
+
+        return parsed.ToString("N");
+    }
+}
+
 /// <summary>
 /// Provider-specific direct-cloud HTTP clients implement this boundary.
 /// Credentials are intentionally absent from this abstraction and must remain
@@ -140,8 +161,17 @@ public sealed class DirectCloudTseProvider : ITseProvider
         CancellationToken ct = default)
     {
         FiscalRelease.RequireCloudTse();
+
+        var stableTransactionId =
+            DirectCloudTransactionIdentity.RequireUuidV4(
+                request.StableTransactionId);
+
         return await _client.StartTransactionAsync(
-            request,
+            request with
+            {
+                StableTransactionId =
+                    stableTransactionId
+            },
             ct);
     }
 
