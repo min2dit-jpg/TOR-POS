@@ -229,6 +229,11 @@ public partial class MainWindow:Window
             _restaurantEntitlements.IsEnabled(
                 RestaurantFeature.KitchenDisplaySystem);
 
+        RestaurantHandheldButton.IsVisible =
+            RestaurantTablesButton.IsVisible &&
+            _restaurantEntitlements.IsEnabled(
+                RestaurantFeature.HandheldBestellung);
+
         // Scanner events are captured at Window tunnel level. Therefore the cashier
         // never needs to click or focus an EAN input field before scanning.
         AddHandler(
@@ -333,6 +338,33 @@ public partial class MainWindow:Window
 
             FocusScannerCaptureSoon();
         };
+    }
+
+    private async void OnRestaurantHandheldClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            _restaurantEntitlements.Require(
+                RestaurantFeature.HandheldBestellung);
+
+            var window =
+                _windowFactory.CreateRestaurantHandheldSetupWindow(
+                    _currentUser);
+
+            await window.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            ScannerStatus.Text = ex.Message;
+        }
     }
 
     private async void OnRestaurantKdsClick(object? sender, RoutedEventArgs e)
