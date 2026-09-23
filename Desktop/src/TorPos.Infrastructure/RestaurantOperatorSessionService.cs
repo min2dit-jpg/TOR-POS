@@ -187,24 +187,54 @@ public sealed class RestaurantOperatorSessionService
                 "Bediener-Sitzung ist abgelaufen.");
         }
 
-        if (!isAdmin)
+        await using (var c = _db.OpenReadConnection())
+        await using (var q = c.CreateCommand())
         {
-            var staff =
-                (await _authentication.GetStaffUsersAsync(ct))
-                .FirstOrDefault(x => x.Id == userId);
+            q.CommandText = """
+                SELECT u.username,u.is_active,u.must_change_password,
+                       u.is_admin,
+                       COALESCE(p.credentials_configured,0),
+                       COALESCE(p.permissions,0)
+                FROM users u
+                LEFT JOIN user_permissions p
+                  ON p.user_id=u.id
+                WHERE u.id=$id
+                LIMIT 1;
+                """;
+            q.Parameters.AddWithValue("$id", userId);
 
-            if (staff is null ||
-                !staff.IsActive ||
-                !staff.CredentialsConfigured ||
-                (staff.Permissions & UserPermissions.Sale) !=
-                    UserPermissions.Sale)
+            await using var r = await q.ExecuteReaderAsync(ct);
+            if (!await r.ReadAsync(ct))
+            {
+                throw new UnauthorizedAccessException(
+                    "Bediener ist nicht mehr vorhanden.");
+            }
+
+            var currentUsername = r.GetString(0);
+            var active = r.GetInt32(1) == 1;
+            var mustChange = r.GetInt32(2) == 1;
+            var currentIsAdmin = r.GetInt32(3) == 1;
+            var configured = r.GetInt32(4) == 1;
+            var currentPermissions =
+                (UserPermissions)r.GetInt64(5);
+
+            var canSell =
+                active &&
+                !mustChange &&
+                (currentIsAdmin ||
+                 (configured &&
+                  (currentPermissions & UserPermissions.Sale) ==
+                      UserPermissions.Sale));
+
+            if (!canSell)
             {
                 throw new UnauthorizedAccessException(
                     "Bediener ist nicht mehr für Verkauf freigegeben.");
             }
 
-            username = staff.Username;
-            permissions = staff.Permissions;
+            username = currentUsername;
+            isAdmin = currentIsAdmin;
+            permissions = currentPermissions;
         }
 
         if (ShouldTouch(
