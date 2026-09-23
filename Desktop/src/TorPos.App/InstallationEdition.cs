@@ -5,7 +5,7 @@ namespace TorPos.App;
 
 public static class InstallationEdition
 {
-    public static readonly string[] Allowed = ["KIOSK", "IMBISS"];
+    public static readonly string[] Allowed = ["KIOSK", "IMBISS", "RESTAURANT"];
 
     private static readonly string[] ProfileKeys =
     [
@@ -33,7 +33,9 @@ public static class InstallationEdition
             ? "Einzelhandel"
             : string.Equals(edition?.Trim(), "IMBISS", StringComparison.OrdinalIgnoreCase)
                 ? "Gastronomie"
-                : "Nicht festgelegt";
+                : string.Equals(edition?.Trim(), "RESTAURANT", StringComparison.OrdinalIgnoreCase)
+                    ? "Restaurant"
+                    : "Nicht festgelegt";
 
     public static string DisplayNameWithCode(string? edition)
     {
@@ -95,7 +97,7 @@ public static class InstallationEdition
         var edition = Normalize(requested);
         if (edition is null)
             throw new InvalidOperationException(
-                "Vor der Anmeldung muss Einzelhandel oder Gastronomie gewählt werden.");
+                "Vor der Anmeldung muss eine gültige TOR-Produktart gewählt werden.");
 
         if (productEditionValue is { } productEdition &&
             !string.Equals(edition, productEdition, StringComparison.Ordinal))

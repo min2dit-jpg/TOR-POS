@@ -29,6 +29,22 @@ public sealed class PrintJobJournal
         }
         File.Move(tmp,path,true);
     });
+    public async Task<IReadOnlyList<PrintJobRecord>> GetUncertainForPrinterAsync(
+        string printer)
+    {
+        printer = (printer ?? "").Trim();
+        if (printer.Length == 0)
+            return Array.Empty<PrintJobRecord>();
+
+        return (await GetUncertainAsync())
+            .Where(x =>
+                string.Equals(
+                    x.Printer,
+                    printer,
+                    StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
     public Task<IReadOnlyList<PrintJobRecord>> GetUncertainAsync() => IoQueue.RunAsync<IReadOnlyList<PrintJobRecord>>(async () =>
     {
         Directory.CreateDirectory(DirectoryPath);

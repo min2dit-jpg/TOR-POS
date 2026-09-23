@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 24;
+    public const int TargetSchemaVersion = 34;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1590,6 +1590,480 @@ public sealed class SchemaMigrationService
                     // companion builds may still write only the REAL column.
                     // Readers therefore prefer *_milli when present and fall
                     // back to a one-time REAL->milli conversion for such rows.
+                }),
+
+            new(
+                25,
+                "R183_RESTAURANT_FOUNDATION",
+                static async (c, tx, ct) =>
+                {
+                    // TOR Restaurant has its own application data root. Keep the
+                    // restaurant-only schema out of Einzelhandel/Gastro databases
+                    // even though all products share the ordered migration ledger.
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_areas(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                          sort_order INTEGER NOT NULL DEFAULT 0,
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_tables(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          area_id INTEGER NOT NULL REFERENCES restaurant_areas(id),
+                          code TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                          display_name TEXT NOT NULL,
+                          seats INTEGER NOT NULL DEFAULT 2 CHECK(seats BETWEEN 1 AND 99),
+                          sort_order INTEGER NOT NULL DEFAULT 0,
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_tables_area_sort
+                          ON restaurant_tables(area_id,is_active,sort_order,id);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_sessions(
+                          id TEXT PRIMARY KEY,
+                          table_id INTEGER NOT NULL REFERENCES restaurant_tables(id),
+                          opened_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          closed_at TEXT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('OPEN','CHECK_REQUESTED','CLOSED','CANCELLED')),
+                          opened_by TEXT NOT NULL,
+                          assigned_waiter TEXT NOT NULL,
+                          guest_count INTEGER NOT NULL DEFAULT 1 CHECK(guest_count BETWEEN 1 AND 999),
+                          note TEXT NOT NULL DEFAULT '',
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE UNIQUE INDEX IF NOT EXISTS ux_restaurant_one_live_session_per_table
+                          ON restaurant_sessions(table_id)
+                          WHERE state IN ('OPEN','CHECK_REQUESTED');
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_sessions_state
+                          ON restaurant_sessions(state,updated_at);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_session_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          line_token TEXT NOT NULL UNIQUE,
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          variant_name TEXT NOT NULL DEFAULT '',
+                          quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                          unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents>=0),
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL DEFAULT 0 CHECK(pfand_cents>=0),
+                          state TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(state IN ('ACTIVE','PAID','CANCELLED')),
+                          added_by TEXT NOT NULL,
+                          added_at TEXT NOT NULL,
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_session_items_session
+                          ON restaurant_session_items(session_id,state,id);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_session_events(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          event_type TEXT NOT NULL,
+                          actor TEXT NOT NULL,
+                          device_id TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          payload_json TEXT NOT NULL DEFAULT '');
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_session_events_session
+                          ON restaurant_session_events(session_id,id);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_events_no_update
+                        BEFORE UPDATE ON restaurant_session_events
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant session events are append-only');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_events_no_delete
+                        BEFORE DELETE ON restaurant_session_events
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant session events cannot be deleted');
+                        END;
+                        """;
+
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                26,
+                "R184_RESTAURANT_PAYMENT_RESERVATIONS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_payment_reservations(
+                          operation_id TEXT PRIMARY KEY,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          expected_session_version INTEGER NOT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('PREPARED','CANCELLED','APPLIED')),
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          sale_id INTEGER NULL UNIQUE REFERENCES sales(id));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_payment_reservation_items(
+                          operation_id TEXT NOT NULL REFERENCES restaurant_payment_reservations(operation_id),
+                          session_item_id INTEGER NOT NULL REFERENCES restaurant_session_items(id),
+                          quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                          amount_cents INTEGER NOT NULL CHECK(amount_cents>=0),
+                          PRIMARY KEY(operation_id,session_item_id));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_payment_session
+                          ON restaurant_payment_reservations(session_id,state,created_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                27,
+                "R185_RESTAURANT_BESTELLUNG_TSE",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_bestellungen(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          sequence INTEGER NOT NULL,
+                          kind TEXT NOT NULL CHECK(kind IN ('ANNAHME','AENDERUNG','STORNO')),
+                          started_at TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          created_at_utc TEXT GENERATED ALWAYS AS (strftime('%Y-%m-%dT%H:%M:%fZ', created_at)) VIRTUAL,
+                          operator_name TEXT NOT NULL,
+                          total_cents INTEGER NOT NULL,
+                          client_id TEXT NOT NULL DEFAULT '',
+                          transaction_number TEXT NOT NULL DEFAULT '',
+                          signature_counter TEXT NOT NULL DEFAULT '',
+                          serial_number TEXT NOT NULL DEFAULT '',
+                          signature TEXT NOT NULL DEFAULT '',
+                          start_log_time TEXT NOT NULL DEFAULT '',
+                          log_time TEXT NOT NULL DEFAULT '',
+                          outage INTEGER NOT NULL DEFAULT 0,
+                          outage_reason TEXT NOT NULL DEFAULT '',
+                          UNIQUE(session_id,sequence));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_bestellung_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          bestellung_id INTEGER NOT NULL REFERENCES restaurant_bestellungen(id),
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          quantity_milli INTEGER NOT NULL,
+                          unit_price_cents INTEGER NOT NULL,
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL DEFAULT 0);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_bestellungen_session
+                          ON restaurant_bestellungen(session_id,sequence);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_bestellungen_created
+                          ON restaurant_bestellungen(created_at_utc);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellungen_no_update
+                        BEFORE UPDATE ON restaurant_bestellungen
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order records are immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellungen_no_delete
+                        BEFORE DELETE ON restaurant_bestellungen
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order records cannot be deleted');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellung_items_no_update
+                        BEFORE UPDATE ON restaurant_bestellung_items
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order items are immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_restaurant_bestellung_items_no_delete
+                        BEFORE DELETE ON restaurant_bestellung_items
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant order items cannot be deleted');
+                        END;
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                28,
+                "R186_RESTAURANT_KITCHEN_OUTBOX",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_kitchen_jobs(
+                          id TEXT PRIMARY KEY,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          session_item_id INTEGER NULL REFERENCES restaurant_session_items(id),
+                          action TEXT NOT NULL CHECK(action IN ('NEW','CANCEL','MOVE','NOTE')),
+                          station TEXT NOT NULL DEFAULT '',
+                          printer_name TEXT NOT NULL DEFAULT '',
+                          payload_json TEXT NOT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('PENDING','HANDED_OVER','FAILED')),
+                          attempts INTEGER NOT NULL DEFAULT 0,
+                          last_error TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          handed_over_at TEXT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_state
+                          ON restaurant_kitchen_jobs(state,created_at);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_session
+                          ON restaurant_kitchen_jobs(session_id,created_at);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_kitchen_status(
+                          session_item_id INTEGER PRIMARY KEY REFERENCES restaurant_session_items(id),
+                          status TEXT NOT NULL CHECK(status IN ('OFFEN','IN_ARBEIT','FERTIG')),
+                          updated_at TEXT NOT NULL,
+                          updated_by TEXT NOT NULL DEFAULT '');
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                29,
+                "R187_RESTAURANT_HANDHELD_PAIRING",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_pairing_codes(
+                          id TEXT PRIMARY KEY,
+                          code_hash TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          expires_at TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          consumed_at TEXT NULL,
+                          consumed_by_device TEXT NOT NULL DEFAULT '');
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_pairing_expires
+                          ON restaurant_pairing_codes(expires_at,consumed_at);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_handheld_devices(
+                          device_id TEXT PRIMARY KEY,
+                          display_name TEXT NOT NULL,
+                          token_hash TEXT NOT NULL UNIQUE,
+                          paired_at TEXT NOT NULL,
+                          paired_by TEXT NOT NULL,
+                          last_seen_at TEXT NOT NULL,
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_handheld_active
+                          ON restaurant_handheld_devices(is_active,last_seen_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                30,
+                "R188_RESTAURANT_KITCHEN_NOTE",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        ALTER TABLE restaurant_kitchen_jobs
+                          RENAME TO restaurant_kitchen_jobs_r187;
+
+                        CREATE TABLE restaurant_kitchen_jobs(
+                          id TEXT PRIMARY KEY,
+                          session_id TEXT NOT NULL REFERENCES restaurant_sessions(id),
+                          session_item_id INTEGER NULL REFERENCES restaurant_session_items(id),
+                          action TEXT NOT NULL CHECK(action IN ('NEW','CANCEL','MOVE','NOTE')),
+                          station TEXT NOT NULL DEFAULT '',
+                          printer_name TEXT NOT NULL DEFAULT '',
+                          payload_json TEXT NOT NULL,
+                          state TEXT NOT NULL CHECK(state IN ('PENDING','HANDED_OVER','FAILED')),
+                          attempts INTEGER NOT NULL DEFAULT 0,
+                          last_error TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          handed_over_at TEXT NULL);
+
+                        INSERT INTO restaurant_kitchen_jobs(
+                          id,session_id,session_item_id,action,station,printer_name,
+                          payload_json,state,attempts,last_error,created_at,handed_over_at)
+                        SELECT
+                          id,session_id,session_item_id,action,station,printer_name,
+                          payload_json,state,attempts,last_error,created_at,handed_over_at
+                        FROM restaurant_kitchen_jobs_r187;
+
+                        DROP TABLE restaurant_kitchen_jobs_r187;
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_state
+                          ON restaurant_kitchen_jobs(state,created_at);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_session
+                          ON restaurant_kitchen_jobs(session_id,created_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                31,
+                "R189_RESTAURANT_RESERVATIONS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_reservations(
+                          id TEXT PRIMARY KEY,
+                          reservation_at TEXT NOT NULL,
+                          duration_minutes INTEGER NOT NULL DEFAULT 120
+                            CHECK(duration_minutes BETWEEN 15 AND 1440),
+                          guest_count INTEGER NOT NULL
+                            CHECK(guest_count BETWEEN 1 AND 999),
+                          customer_name TEXT NOT NULL,
+                          phone TEXT NOT NULL DEFAULT '',
+                          note TEXT NOT NULL DEFAULT '',
+                          table_id INTEGER NULL REFERENCES restaurant_tables(id),
+                          status TEXT NOT NULL DEFAULT 'BOOKED'
+                            CHECK(status IN ('BOOKED','SEATED','CANCELLED','NO_SHOW','COMPLETED')),
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          updated_by TEXT NOT NULL,
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_reservations_time
+                          ON restaurant_reservations(reservation_at,status);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_reservations_table
+                          ON restaurant_reservations(table_id,reservation_at,status);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                32,
+                "R190_RESTAURANT_MULTI_TERMINAL",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_terminals(
+                          terminal_id TEXT PRIMARY KEY,
+                          display_name TEXT NOT NULL,
+                          terminal_type TEXT NOT NULL
+                            CHECK(terminal_type IN ('KASSE','HANDHELD','KDS')),
+                          last_seen_at TEXT NOT NULL,
+                          app_version TEXT NOT NULL DEFAULT '',
+                          machine_name TEXT NOT NULL DEFAULT '',
+                          is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_terminals_active
+                          ON restaurant_terminals(is_active,last_seen_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                33,
+                "R191_RESTAURANT_DEVICE_COMMANDS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_device_commands(
+                          device_id TEXT NOT NULL,
+                          command_id TEXT NOT NULL,
+                          command_type TEXT NOT NULL,
+                          request_hash TEXT NOT NULL,
+                          session_id TEXT NOT NULL DEFAULT '',
+                          state TEXT NOT NULL
+                            CHECK(state IN ('IN_PROGRESS','COMPLETED','FAILED')),
+                          owner_id TEXT NOT NULL,
+                          result_session_version INTEGER NOT NULL DEFAULT 0,
+                          error_text TEXT NOT NULL DEFAULT '',
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          PRIMARY KEY(device_id,command_id));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_device_commands_state
+                          ON restaurant_device_commands(state,updated_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                34,
+                "R192_RESTAURANT_OPERATOR_SESSIONS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_operator_sessions(
+                          id TEXT PRIMARY KEY,
+                          device_id TEXT NOT NULL,
+                          user_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          token_hash TEXT NOT NULL,
+                          is_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_admin IN (0,1)),
+                          permissions INTEGER NOT NULL DEFAULT 0,
+                          created_at TEXT NOT NULL,
+                          expires_at TEXT NOT NULL,
+                          last_seen_at TEXT NOT NULL,
+                          revoked_at TEXT NULL);
+
+                        CREATE UNIQUE INDEX IF NOT EXISTS ux_restaurant_operator_sessions_token
+                          ON restaurant_operator_sessions(token_hash);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_operator_sessions_device
+                          ON restaurant_operator_sessions(device_id,expires_at,revoked_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
                 })
         };
 

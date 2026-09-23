@@ -19,6 +19,18 @@ public interface IAppWindowFactory
         string initialPage = "Allgemein");
 
     DiagnosticsWindow CreateDiagnosticsWindow();
+
+    RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user);
+
+    RestaurantKdsWindow CreateRestaurantKdsWindow(
+        AuthenticatedUser user);
+
+    RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
+        AuthenticatedUser user);
+
+    RestaurantReservationsWindow CreateRestaurantReservationsWindow(
+        AuthenticatedUser user);
 }
 
 internal sealed class AppWindowFactory : IAppWindowFactory
@@ -54,6 +66,9 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<ICommercialLicenseService>(),
             _services.GetRequiredService<IAuthenticationService>(),
             _services.GetRequiredService<BusinessManagementService>(),
+            _services.GetRequiredService<RestaurantRepository>(),
+            _services.GetRequiredService<RestaurantFiscalOrderService>(),
+            _services.GetRequiredService<RestaurantEntitlementService>(),
             user,
             _services.GetRequiredService<ICheckoutJournal>(),
             _services.GetRequiredService<CheckoutApplicationService>(),
@@ -87,6 +102,36 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             user,
             this,
             initialPage);
+
+    public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantRepository>(),
+            _services.GetRequiredService<RestaurantFiscalOrderService>(),
+            _services.GetRequiredService<RestaurantKitchenOutbox>(),
+            _services.GetRequiredService<RestaurantKitchenDispatcher>(),
+            _services.GetRequiredService<IProductCatalog>(),
+            user);
+
+    public RestaurantKdsWindow CreateRestaurantKdsWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantEntitlementService>(),
+            _services.GetRequiredService<RestaurantKitchenOutbox>(),
+            user);
+
+    public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantHandheldPairingService>(),
+            user);
+
+    public RestaurantReservationsWindow CreateRestaurantReservationsWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantReservationService>(),
+            _services.GetRequiredService<RestaurantRepository>(),
+            user);
 
     public DiagnosticsWindow CreateDiagnosticsWindow() =>
         new(

@@ -32,7 +32,110 @@ public sealed record TseDeviceInfo(
     string InitializationState = "",
     bool SelfTestPassed = false,
     bool ValidTime = false,
-    bool CtssActive = false);
+    bool CtssActive = false,
+    DateTimeOffset? CertificateExpiresAtUtc = null);
+
+public enum TseCertificateState
+{
+    Unknown,
+    Valid,
+    Warning,
+    Critical,
+    Expired
+}
+
+public sealed record TseCertificateAssessment(
+    TseCertificateState State,
+    DateTimeOffset? ExpiresAtUtc,
+    int? RemainingDays,
+    bool ShowBadge,
+    bool ShowDialog,
+    string Message);
+
+/// <summary>
+/// Proactive TSE certificate lifecycle policy. Safety decisions use the exact
+/// UTC expiration instant returned by the TSE, never a truncated calendar day.
+/// </summary>
+public static class TseCertificatePolicy
+{
+    public const int WarningDays = 90;
+    public const int CriticalDays = 30;
+
+    public static TseCertificateAssessment Evaluate(
+        DateTimeOffset? expiresAtUtc,
+        DateTimeOffset now)
+    {
+        if (expiresAtUtc is null)
+        {
+            return new TseCertificateAssessment(
+                TseCertificateState.Unknown,
+                null,
+                null,
+                false,
+                false,
+                "TSE-Zertifikatsende ist nicht verfügbar.");
+        }
+
+        var expiry = expiresAtUtc.Value.ToUniversalTime();
+        var current = now.ToUniversalTime();
+        var remaining = expiry - current;
+        var remainingDays = remaining <= TimeSpan.Zero
+            ? 0
+            : (int)Math.Ceiling(remaining.TotalDays);
+        var instant = expiry.ToString("dd.MM.yyyy HH:mm 'UTC'");
+
+        if (current >= expiry)
+        {
+            return new TseCertificateAssessment(
+                TseCertificateState.Expired,
+                expiry,
+                0,
+                true,
+                true,
+                $"TSE-Zertifikat ist seit {instant} abgelaufen · TSE ersetzen.");
+        }
+
+        if (remaining <= TimeSpan.FromDays(CriticalDays))
+        {
+            var remainingText = remainingDays <= 1
+                ? "läuft in weniger als 24 Stunden ab"
+                : $"läuft in {remainingDays} Tagen ab";
+
+            return new TseCertificateAssessment(
+                TseCertificateState.Critical,
+                expiry,
+                remainingDays,
+                true,
+                true,
+                $"TSE-Zertifikat {remainingText} ({instant}) · Ersatz-TSE jetzt bestellen.");
+        }
+
+        if (remaining <= TimeSpan.FromDays(WarningDays))
+        {
+            return new TseCertificateAssessment(
+                TseCertificateState.Warning,
+                expiry,
+                remainingDays,
+                true,
+                false,
+                $"TSE-Zertifikat läuft am {instant} ab · noch {remainingDays} Tage · Ersatz-TSE einplanen.");
+        }
+
+        return new TseCertificateAssessment(
+            TseCertificateState.Valid,
+            expiry,
+            remainingDays,
+            false,
+            false,
+            $"TSE-Zertifikat gültig bis {instant}.");
+    }
+
+    public static bool IsExpired(
+        DateTimeOffset? expiresAtUtc,
+        DateTimeOffset now) =>
+        expiresAtUtc is not null &&
+        now.ToUniversalTime() >= expiresAtUtc.Value.ToUniversalTime();
+}
 
 public sealed record TseProbeResult(
     TseConnectionState State,
@@ -55,7 +158,8 @@ public sealed record TseTransactionStartRequest(
     string ClientId,
     byte[] ProcessData,
     string ProcessType,
-    string TimeAdminPin = "");
+    string TimeAdminPin = "",
+    string StableTransactionId = "");
 
 public sealed record TseTransactionUpdateRequest(
     string ClientId,

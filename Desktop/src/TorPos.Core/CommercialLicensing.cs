@@ -54,7 +54,8 @@ public sealed record CommercialLicenseStatus(
     string CustomerNumber = "",
     string CustomerName = "",
     string LicenseId = "",
-    DateTimeOffset? ValidUntilUtc = null)
+    DateTimeOffset? ValidUntilUtc = null,
+    IReadOnlyList<string>? Features = null)
 {
     public bool IsActive => State == CommercialLicenseState.Active;
     public TimeSpan? Remaining => ValidUntilUtc is null ? null : ValidUntilUtc.Value - DateTimeOffset.UtcNow;

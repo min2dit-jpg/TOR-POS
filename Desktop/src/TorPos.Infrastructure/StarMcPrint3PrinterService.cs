@@ -19,6 +19,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
     private readonly TimeSpan PrintTimeout;
     private readonly PrintJobJournal _printJournal;
     private readonly Func<Task>? _printOverride;
+    private readonly string? _isolatedPrinter;
     private volatile bool _spoolerStateUncertain;
     private Task? _activePrint;
     private volatile bool _processing;
@@ -36,14 +37,33 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _worker;
 
-    public StarMcPrint3PrinterService() : this(new PrintJobJournal(),TimeSpan.FromSeconds(15),null) { }
-    internal StarMcPrint3PrinterService(PrintJobJournal journal,TimeSpan timeout,Func<Task>? printOverride)
+    public StarMcPrint3PrinterService() : this(new PrintJobJournal(),TimeSpan.FromSeconds(15),null,null) { }
+    internal StarMcPrint3PrinterService(
+        PrintJobJournal journal,
+        TimeSpan timeout,
+        Func<Task>? printOverride,
+        string? isolatedPrinter = null)
     {
-        _printJournal=journal; PrintTimeout=timeout; _printOverride=printOverride;
+        _printJournal=journal;
+        PrintTimeout=timeout;
+        _printOverride=printOverride;
+        _isolatedPrinter = string.IsNullOrWhiteSpace(isolatedPrinter)
+            ? null
+            : isolatedPrinter.Trim();
         _initialize=Task.Run(async () =>
         {
-            try { _spoolerStateUncertain=(await _printJournal.GetUncertainAsync()).Count>0; }
-            catch { _spoolerStateUncertain=true; }
+            try
+            {
+                var uncertain = _isolatedPrinter is null
+                    ? await _printJournal.GetUncertainAsync()
+                    : await _printJournal.GetUncertainForPrinterAsync(
+                        _isolatedPrinter);
+                _spoolerStateUncertain = uncertain.Count > 0;
+            }
+            catch
+            {
+                _spoolerStateUncertain = true;
+            }
         });
         _worker = Task.Run(ProcessQueueAsync);
     }
@@ -491,6 +511,18 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         if (_disposed) throw new ObjectDisposedException(nameof(StarMcPrint3PrinterService));
         if (string.IsNullOrWhiteSpace(printerName))
             throw new InvalidOperationException("Drucker wurde noch nicht ausgewählt.");
+
+        printerName = printerName.Trim();
+
+        if (_isolatedPrinter is not null &&
+            !string.Equals(
+                _isolatedPrinter,
+                printerName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Isolierte Druckwarteschlange wurde für einen anderen Drucker aufgerufen.");
+        }
 
         if (_spoolerStateUncertain)
             throw new InvalidOperationException(
@@ -1395,15 +1427,26 @@ private sealed record TaxSummary(
         if (_worker.IsCompleted) _shutdown.Dispose();
     }
 
-    public Task<IReadOnlyList<PrintJobRecord>> GetUncertainJobsAsync() => _printJournal.GetUncertainAsync();
+    public Task<IReadOnlyList<PrintJobRecord>> GetUncertainJobsAsync() =>
+        _isolatedPrinter is null
+            ? _printJournal.GetUncertainAsync()
+            : _printJournal.GetUncertainForPrinterAsync(
+                _isolatedPrinter);
 
     public async Task ResolveQueueAsync(string evidence)
     {
         await _initialize.ConfigureAwait(false);
         if (_processing || _queue.Reader.Count>0 || _activePrint is {IsCompleted:false}) throw new InvalidOperationException("Treiberaufruf läuft noch. Windows-Druckwarteschlange prüfen und TOR neu starten.");
         if (string.IsNullOrWhiteSpace(evidence) || evidence.Trim().Length<8) throw new InvalidOperationException("Prüfnachweis fehlt.");
-        foreach(var job in await _printJournal.GetUncertainAsync())
+
+        var uncertain = _isolatedPrinter is null
+            ? await _printJournal.GetUncertainAsync()
+            : await _printJournal.GetUncertainForPrinterAsync(
+                _isolatedPrinter);
+
+        foreach(var job in uncertain)
             await _printJournal.SaveAsync(job with {State="REVIEWED",Note=evidence});
+
         _spoolerStateUncertain=false;
     }
 

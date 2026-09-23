@@ -26,10 +26,7 @@ using TorPos.Infrastructure;
 
 var check = args.Contains("--check");
 
-// The layout is only as safe as the language it was measured in. Turkish and
-// English words are not German words, and a button that fits "KASSIEREN" can be
-// cut in half by "ÖDEME AL". --language renders and measures in that language;
-// the files carry it so a second run does not overwrite the German pictures.
+// Layout safety is language-dependent: translated labels can be wider than DE.
 var languageIndex = Array.IndexOf(args, "--language");
 var language = languageIndex >= 0 && languageIndex + 1 < args.Length
     ? args[languageIndex + 1].Trim().ToUpperInvariant()
@@ -39,7 +36,10 @@ if (!UiLanguage.IsSupported(language))
 var languageSuffix = language == "DE" ? "" : "-" + language.ToLowerInvariant();
 
 var positional = args
-    .Where((a, i) => a != "--check" && (languageIndex < 0 || (i != languageIndex && i != languageIndex + 1)))
+    .Where((a, i) =>
+        a != "--check" &&
+        (languageIndex < 0 ||
+         (i != languageIndex && i != languageIndex + 1)))
     .ToList();
 // Default output outside the repository, so a local run never leaves files to commit.
 var output = Path.GetFullPath(positional.Count > 0 ? positional[0] : Path.Combine(Path.GetTempPath(), "tor-ui-snapshots"));
@@ -106,8 +106,18 @@ async Task RunAsync()
     var tseProvider = new SwissbitHardwareTseProvider();
     var tseOutages = new TseOutageRepository(db, audit);
     var tseFailSafe = new TseFailSafeService(tseProvider, tseOutages, audit);
-    var fiscalSigning = new SaleFiscalSigningService(tseFailSafe, settings, sales);
-    var orderFiscalSigning = new OrderFiscalSigningService(tseFailSafe, settings, parkedReceipts);
+    var tseVorgaenge = new TseVorgangService(db, tseFailSafe, settings);
+    var fiscalSigning = new SaleFiscalSigningService(tseFailSafe, settings, sales)
+    {
+        Vorgaenge = tseVorgaenge
+    };
+    var orderFiscalSigning = new OrderFiscalSigningService(tseFailSafe, settings, parkedReceipts)
+    {
+        Vorgaenge = tseVorgaenge
+    };
+    var restaurantRepository = new RestaurantRepository(db);
+    var restaurantFiscal = new RestaurantFiscalOrderService(db, tseVorgaenge);
+    var restaurantEntitlements = new RestaurantEntitlementService(commercialLicense);
     var cashMovements = new CashMovementRepository(db, audit);
     var digitalReceipts = new CloudDigitalReceiptService(settings, null);
     var checkoutJournal = new CheckoutJournal(db);
@@ -128,9 +138,6 @@ async Task RunAsync()
     // EnforceAsync refuses any other, so the snapshot follows the build it was
     // compiled for. The shared build keeps IMBISS, the wider of the two headers.
     var snapshotEdition = ProductBuild.FixedEdition ?? "IMBISS";
-    // Stored rather than set directly: MainWindow reads ui.language on every
-    // settings reload, so anything set behind its back would be overwritten
-    // during start-up. This is the path a real till takes.
     await settings.SaveManyAsync(new Dictionary<string, string>
     {
         ["company.name"] = "Imbiss Beispiel GmbH",
@@ -151,7 +158,7 @@ async Task RunAsync()
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
             compliance, dsfinvkExport, datevAscii, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
             tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
-            auth, management, admin, checkoutJournal, checkoutApplication,
+            auth, management, restaurantRepository, restaurantFiscal, restaurantEntitlements, admin, checkoutJournal, checkoutApplication,
             new ControlledPosActionService(db), new PromotionCampaignService(db),
             fiscalSigning, orderFiscalSigning, tseFailSafe, new NoWindows());
 
@@ -385,5 +392,13 @@ sealed class NoWindows : IAppWindowFactory
 {
     public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
     public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
+    public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantKdsWindow CreateRestaurantKdsWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantReservationsWindow CreateRestaurantReservationsWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
     public DiagnosticsWindow CreateDiagnosticsWindow() => throw new NotSupportedException();
 }

@@ -38,8 +38,8 @@ Vor einer fiskalischen Produktivfreigabe mit realer Hardware müssen mindestens
 folgende Punkte mit der vorgesehenen Hardware-/SDK-Kombination dokumentiert
 werden:
 
-1. Swissbit WORM API laden und reale Hardware-TSE erkennen.
-2. TSE-Identität, Seriennummer, Client-ID und Status plausibilisieren.
+1. Swissbit WORM API laden und reale Hardware-TSE samt Generation 1 / 1.1 / 2 eindeutig erkennen.
+2. TSE-Identität, Seriennummer, Client-ID, exakten Zertifikatsablauf und Status plausibilisieren.
 3. Reale TSE-Transaktion Start/Finish mit dem von TOR erzeugten
    `Kassenbeleg-V1` durchführen.
 4. Kontrollierten BAR-Testbon für 19 % und 7 % prüfen.
@@ -66,7 +66,7 @@ Ein Abnahmenachweis soll mindestens enthalten:
 - TOR Revision und numerische Version,
 - Datum und Testperson,
 - Windows-/Kassenhardware,
-- TSE-Hersteller, Produkt und Seriennummer in geeigneter gekürzter bzw.
+- TSE-Hersteller, Produkt, Generation, Seriennummer und Zertifikatsablauf in geeigneter gekürzter bzw.
   intern zulässiger Form,
 - WORM-API-/SDK-Version,
 - Druckermodell und Terminalmodell, soweit beteiligt,

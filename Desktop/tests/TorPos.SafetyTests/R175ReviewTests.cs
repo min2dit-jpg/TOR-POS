@@ -58,9 +58,11 @@ public static class R175ReviewTests
             "R175 manifest records fiskaltrust Swissbit as a non-released alternative while hardware E2E remains false");
 
         assert(
-            fiscalGate.Contains("PhysicalTseE2EValidated = false", StringComparison.Ordinal) &&
+            fiscalGate.Contains("PhysicalTseGeneration1E2EValidated = false", StringComparison.Ordinal) &&
+            fiscalGate.Contains("PhysicalTseGeneration11E2EValidated = false", StringComparison.Ordinal) &&
+            fiscalGate.Contains("PhysicalTseGeneration2E2EValidated = false", StringComparison.Ordinal) &&
             fiscalGate.Contains("IndependentFiscalReviewValidated = false", StringComparison.Ordinal),
-            "R175 manual middleware detection does not silently open the fiscal production release gate");
+            "R175 manual middleware detection does not silently open any physical-TSE generation release gate");
 
         return Task.CompletedTask;
     }

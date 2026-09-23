@@ -40,15 +40,40 @@ public static class TseStartupWarningTests
             Regex.Matches(probe, @"await WarnAboutTseOnceAsync\(").Count == 2,
             "TSE start-up warning: every TSE state that cannot sign is reported to the operator, including the timeout and any state added later");
 
-        // A working TSE must never produce the warning. Ready leaves the method
-        // before the warning is reached.
-        var ready = probe.IndexOf("result.State == TseConnectionState.Ready", StringComparison.Ordinal);
-        var firstWarningAfterReady = probe.IndexOf("await WarnAboutTseOnceAsync(", ready < 0 ? 0 : ready, StringComparison.Ordinal);
-        var earlyReturn = ready >= 0 && firstWarningAfterReady > ready &&
-            probe[ready..firstWarningAfterReady].Contains("return;", StringComparison.Ordinal);
+        // A working TSE must never produce the start-up warning. The merged
+        // lifecycle flow may either return from the Ready branch after doing the
+        // certificate/badge refresh, or guard the warning in a non-Ready branch.
+        // What matters is that Ready is assessed for certificate state and cannot
+        // reach WarnAboutTseOnceAsync.
+        var ready = probe.IndexOf(
+            "result.State == TseConnectionState.Ready",
+            StringComparison.Ordinal);
+        var firstWarningAfterReady = probe.IndexOf(
+            "await WarnAboutTseOnceAsync(",
+            ready < 0 ? 0 : ready,
+            StringComparison.Ordinal);
+
+        var readySlice =
+            ready >= 0 && firstWarningAfterReady > ready
+                ? probe[ready..firstWarningAfterReady]
+                : "";
+
+        var readyRefreshesCertificate =
+            readySlice.Contains(
+                "await ApplyTseCertificateWarningAsync(result.Device);",
+                StringComparison.Ordinal);
+
+        var readyExitsBeforeWarning =
+            readySlice.Contains("return;", StringComparison.Ordinal);
+
+        var warningGuardedByNonReadyElse =
+            readySlice.Contains("else", StringComparison.Ordinal);
+
         assert(
-            ready >= 0 && earlyReturn,
-            "TSE start-up warning: a TSE that is ready writes its serial number and never warns");
+            ready >= 0 &&
+            readyRefreshesCertificate &&
+            (readyExitsBeforeWarning || warningGuardedByNonReadyElse),
+            "TSE start-up warning: a ready TSE is certificate-checked and cannot enter the non-ready warning path");
 
         // The probe runs again every time the settings window closes. Without a
         // guard an operator who opens the settings four times gets the same
@@ -141,9 +166,40 @@ public static class TseStartupWarningTests
         // badge is only repainted when something asks. Without this the till
         // kept showing an outage that had ended - at the exact moment the
         // operator plugged a working TSE in.
+        var fiscalStatus = Block(
+            main,
+            "private async Task RefreshFiscalStatusAsync()",
+            "private async Task ApplyTseCertificateWarningAsync");
+
+        var timeoutBranch = Block(
+            probe,
+            "if (completed != probe)",
+            "var result = await probe;");
+
+        var readyBranch = Block(
+            probe,
+            "if (result.State == TseConnectionState.Ready)",
+            "var (headline, status) = result.State switch");
+
+        var nonReadyBranch = Block(
+            probe,
+            "var (headline, status) = result.State switch",
+            "catch(Exception ex)");
+
         assert(
-            Regex.Matches(probe, @"await RefreshTseOutageBadgeAsync\(\);").Count == 2,
-            "TSE start-up warning: the outage badge is repainted after every probe, so a working TSE clears it and a failing one raises it");
+            timeoutBranch.Contains(
+                "await RefreshTseOutageBadgeAsync();",
+                StringComparison.Ordinal) &&
+            readyBranch.Contains(
+                "await RefreshTseOutageBadgeAsync();",
+                StringComparison.Ordinal) &&
+            nonReadyBranch.Contains(
+                "await RefreshFiscalStatusAsync();",
+                StringComparison.Ordinal) &&
+            fiscalStatus.Contains(
+                "await RefreshTseOutageBadgeAsync();",
+                StringComparison.Ordinal),
+            "TSE start-up warning: timeout/ready repaint directly and non-ready repaint through fiscal refresh, so the outage badge never stays stale");
 
         return Task.CompletedTask;
     }

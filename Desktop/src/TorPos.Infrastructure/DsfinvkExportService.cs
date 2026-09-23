@@ -174,6 +174,8 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
             var outages = await LoadOutagesAsync(c, ct);
             var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
+            foreach (var pair in await RestaurantBestellungExportLoader.LoadSaleAllocationGroupsAsync(c, ct))
+                allocationBySale[pair.Key] = pair.Value;
             var allocationByTraining = await TrainingReceiptRepository.LoadAllocationGroupsAsync(c, ct);
             var sales = new SaleRepository(_db);
 
@@ -228,6 +230,12 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 }
 
                 var orderRecords = await OrderBestellungRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                orderRecords.AddRange(
+                    await RestaurantBestellungExportLoader.LoadInPeriodAsync(
+                        c,
+                        closing.FromUtc,
+                        closing.ToUtc,
+                        ct));
                 foreach (var record in orderRecords)
                 {
                     CheckVat(record.Lines, $"Bestellung P{record.ParkNumber:000000} ({record.Sequence})", issues);
@@ -285,9 +293,14 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             }
 
             var lastClosing = closings.Count == 0 ? null : closings[^1];
+            var openFrom = lastClosing?.ToUtc ?? "";
             var open = await ScalarLongAsync(c,
                 "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME') AND fiscal_mode <> 'TEST_ONLY') + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from) + (SELECT COUNT(*) FROM order_bestellungen WHERE created_at_utc > $from);",
-                lastClosing?.ToUtc ?? "", ct);
+                openFrom, ct);
+            open += await RestaurantBestellungExportLoader.CountAfterAsync(
+                c,
+                openFrom,
+                ct);
             if (open > 0)
                 issues.Add(new("OPEN_PERIOD", open == 1
                     ? "1 Vorgang nach dem letzten Kassenabschluss gehört noch zu keinem Z-Bericht und ist nicht enthalten."

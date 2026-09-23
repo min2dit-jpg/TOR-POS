@@ -363,9 +363,11 @@ public static class R176ReviewTests
             FindRepoFile("Desktop/src/TorPos.Core/CheckoutSafety.cs"));
 
         assert(
-            fiscalGate.Contains("PhysicalTseE2EValidated = false", StringComparison.Ordinal) &&
+            fiscalGate.Contains("PhysicalTseGeneration1E2EValidated = false", StringComparison.Ordinal) &&
+            fiscalGate.Contains("PhysicalTseGeneration11E2EValidated = false", StringComparison.Ordinal) &&
+            fiscalGate.Contains("PhysicalTseGeneration2E2EValidated = false", StringComparison.Ordinal) &&
             fiscalGate.Contains("IndependentFiscalReviewValidated = false", StringComparison.Ordinal),
-            "R176 fiskaltrust transaction foundation does not open the fiscal production gate");
+            "R176 fiskaltrust transaction foundation does not open any physical-TSE generation production gate");
 
         var manifest = File.ReadAllText(
             FindRepoFile("Desktop/manifest.json"));

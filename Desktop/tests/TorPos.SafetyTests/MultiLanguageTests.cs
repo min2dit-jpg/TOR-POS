@@ -144,8 +144,9 @@ public static class MultiLanguageTests
 
         // A window that never calls Apply() looks exactly like a missing
         // translation and is not one: the strings are in the table and simply
-        // never reach the screen. Every window renders itself, except these six,
-        // and each of them has a reason.
+        // never reach the screen. Every shared Einzelhandel/Gastro window renders
+        // itself. The explicitly named windows below stay German for a reviewed
+        // product or document reason.
         //
         //   TextReportWindow, ZArchiveWindow  - they show a Z-Bericht or X-Bericht
         //                                       verbatim; that is the fiscal record.
@@ -153,11 +154,25 @@ public static class MultiLanguageTests
         //   OrderCustomerDisplayWindow          served in German.
         //   StartupLoadingWindow,             - they run before the stored language
         //   StartupErrorWindow                  has been read.
+        //   Restaurant*Window                  - TOR Restaurant / Restaurant Plus
+        //                                       are intentionally German-only products.
         string[] germanOnlyWindows =
         [
             "TextReportWindow", "ZArchiveWindow",
             "CustomerDisplayWindow", "OrderCustomerDisplayWindow",
-            "StartupLoadingWindow", "StartupErrorWindow"
+            "StartupLoadingWindow", "StartupErrorWindow",
+            "RestaurantHandheldSetupWindow",
+            "RestaurantKdsWindow",
+            "RestaurantReservationsWindow",
+            "RestaurantTablePlanWindow"
+        ];
+
+        string[] germanOnlyWindowFiles =
+        [
+            "RestaurantHandheldSetupWindow.cs",
+            "RestaurantKdsWindow.cs",
+            "RestaurantReservationsWindow.cs",
+            "RestaurantTablePlanWindow.cs"
         ];
         var windows = 0;
         var unrendered = new List<string>();
@@ -198,11 +213,15 @@ public static class MultiLanguageTests
             {
                 assignedWindows++;
                 var name = declaration.Groups[1].Value;
+                var fileName = Path.GetFileName(file);
+                if (germanOnlyWindowFiles.Contains(fileName))
+                    continue;
+
                 var rest = source[declaration.Index..];
                 var shown = Regex.Match(rest, $"\\b{Regex.Escape(name)}\\.(ShowDialog|Show)\\s*[<(]");
                 var built = shown.Success ? rest[..shown.Index] : rest;
                 if (!built.Contains("UiLanguage.Apply", StringComparison.Ordinal))
-                    unrenderedDialogs.Add($"{Path.GetFileName(file)}:{name}");
+                    unrenderedDialogs.Add($"{fileName}:{name}");
             }
         }
         assert(
@@ -535,12 +554,22 @@ public static class MultiLanguageTests
             .Select(m => m.Groups[1].Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+        string[] germanOnlyRestaurantStatusMessages =
+        [
+            "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.",
+            "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein",
+            "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen",
+            "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen"
+        ];
+
         var missingStatusTranslations = staticStatusMessages
-            .Where(message => !turkishKeys.Contains(message) || !englishKeys.Contains(message))
+            .Where(message =>
+                !germanOnlyRestaurantStatusMessages.Contains(message) &&
+                (!turkishKeys.Contains(message) || !englishKeys.Contains(message)))
             .ToArray();
         assert(
             directStatusWrites == 1 && staticStatusMessages.Length >= 75 && missingStatusTranslations.Length == 0,
-            "every static MainWindow status message is translated and runtime writes pass through the language-aware StatusLine boundary");
+            "every shared MainWindow status message is translated, Restaurant-only statuses stay explicitly German, and runtime writes pass through the language-aware StatusLine boundary");
 
         // A key written twice is not a compile error: these are object
         // initializers, so the second assignment silently wins. Someone

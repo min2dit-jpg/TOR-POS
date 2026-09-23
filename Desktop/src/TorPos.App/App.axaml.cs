@@ -132,22 +132,28 @@ public partial class App : Avalonia.Application
             var orderPrintDispatcher = new OrderPrintDispatcher(orderPrintOutbox,new PrintJobJournal(),receiptPrinter.SubmitOrderAsync,ex=>CrashLog.WriteException("Order print dispatch",ex));
             parkedReceipts.PrintCommitted = orderPrintDispatcher.Notify;
             orderPrintDispatcher.Start();
+            var restaurantKitchenOutbox = new RestaurantKitchenOutbox(db);
+            var restaurantPrintJournal = new PrintJobJournal();
+            var restaurantKitchenPrinterRouter =
+                new RestaurantKitchenPrinterRouter(
+                    restaurantPrintJournal);
+            var restaurantKitchenDispatcher = new RestaurantKitchenDispatcher(
+                restaurantKitchenOutbox,
+                settings,
+                restaurantKitchenPrinterRouter,
+                restaurantPrintJournal,
+                ex => CrashLog.WriteException("Restaurant kitchen dispatch", ex));
+            restaurantKitchenDispatcher.Start();
             var commercialLicense = new CommercialLicenseService();
-            // Read once at start-up so the checkout path never waits on a
-            // database read to learn whether it may refresh the TSE clock.
+            // Read once at start-up so checkout never waits on a settings read.
             var tseTimeAdminPin = new TseTimeAdminPinStore(settings);
             await tseTimeAdminPin.RefreshAsync();
-            // The choice of fiscal device is made once, here, and nowhere else.
-            // Everything above ITseProvider - outage handling, DSFinV-K, the
-            // receipt fields, the signature counter - is written against the
-            // interface, so a till on a cloud TSE and a till on a USB stick run
-            // the same code everywhere but this line.
             var cloudTse = new CloudTseSettings(settings);
             await cloudTse.RefreshAsync();
-
             var tseKind = TseProviderKind.Normalize(
-                await settings.GetAsync(TseProviderKind.Setting, TseProviderKind.SwissbitUsb));
-
+                await settings.GetAsync(
+                    TseProviderKind.Setting,
+                    TseProviderKind.SwissbitUsb));
             ITseProvider tseProvider = tseKind == TseProviderKind.Cloud
                 ? new CloudTseProvider(() => cloudTse.Current)
                 : new SwissbitHardwareTseProvider(
@@ -243,6 +249,13 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);
+            var restaurantEntitlements =
+                new RestaurantEntitlementService(commercialLicense);
+            appServices.AddSingleton(restaurantEntitlements);
+            appServices.AddSingleton(
+                new RestaurantHandheldPairingService(
+                    db,
+                    restaurantEntitlements));
             appServices.AddSingleton(auth);
             appServices.AddSingleton<IAuthenticationService>(auth);
 
@@ -261,6 +274,31 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(tseFailSafe);
             appServices.AddSingleton(orderPrintOutbox);
             appServices.AddSingleton(new ProductImageStore());
+            appServices.AddSingleton(new RestaurantRepository(db));
+            appServices.AddSingleton(
+                new RestaurantReservationService(
+                    db,
+                    restaurantEntitlements));
+            appServices.AddSingleton(
+                new RestaurantTerminalRegistry(
+                    db,
+                    restaurantEntitlements));
+            appServices.AddSingleton(
+                new RestaurantSyncService(
+                    db,
+                    restaurantEntitlements));
+            appServices.AddSingleton(
+                new RestaurantCommandJournal(db));
+            appServices.AddSingleton(
+                new RestaurantOperatorSessionService(
+                    db,
+                    restaurantEntitlements,
+                    auth));
+            appServices.AddSingleton(new RestaurantFiscalOrderService(db, tseVorgaenge));
+            appServices.AddSingleton(restaurantKitchenOutbox);
+            appServices.AddSingleton(restaurantKitchenDispatcher);
+            appServices.AddSingleton<TorPos.Application.IRestaurantHandheldService, RestaurantHandheldService>();
+            appServices.AddSingleton<RestaurantLocalApiHost>();
             appServices.AddSingleton<IAppWindowFactory, AppWindowFactory>();
 
             var serviceProvider = appServices.BuildServiceProvider(
@@ -272,6 +310,8 @@ public partial class App : Avalonia.Application
 
             var windowFactory =
                 serviceProvider.GetRequiredService<IAppWindowFactory>();
+            var restaurantLocalApi =
+                serviceProvider.GetRequiredService<RestaurantLocalApiHost>();
 
             await settings.SaveManyAsync(new Dictionary<string,string>
             {
@@ -283,6 +323,20 @@ public partial class App : Avalonia.Application
             TouchKeyboard.Install(uiSettings.GetValueOrDefault("ui.keyboard.auto", "true") != "false");
 
             await catalog.ReloadAsync();
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await restaurantLocalApi.StartOrRestartAsync();
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException(
+                        "Restaurant local API startup failed",
+                        ex);
+                }
+            });
 
             // Shared services live for the complete application process. A simple
             // ABMELDEN must not dispose the printer or create an exit backup.
@@ -319,6 +373,12 @@ public partial class App : Avalonia.Application
                 }
                 catch(Exception ex) { CrashLog.WriteException("Exit backup failed or timed out",ex); }
                 await orderPrintDispatcher.DisposeAsync();
+                try { await restaurantLocalApi.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch(Exception ex) { CrashLog.WriteException("Restaurant local API shutdown failed",ex); }
+                try { await restaurantKitchenDispatcher.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch(Exception ex) { CrashLog.WriteException("Restaurant kitchen dispatcher shutdown failed",ex); }
+                try { await restaurantKitchenPrinterRouter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch(Exception ex) { CrashLog.WriteException("Restaurant kitchen printer lanes shutdown failed",ex); }
                 try { await receiptPrinter.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
                 catch(Exception ex) { CrashLog.WriteException("Printer shutdown failed",ex); }
                 exitCleanupDone=true;
@@ -342,14 +402,17 @@ public partial class App : Avalonia.Application
                 var permanent = InstallationEdition.ReadPermanent();
                 var kiosk = commercialLicense.Check("KIOSK");
                 var imbiss = commercialLicense.Check("IMBISS");
+                var restaurant = commercialLicense.Check("RESTAURANT");
                 var licensed = kiosk.IsActive
                     ? "KIOSK"
                     : imbiss.IsActive
                         ? "IMBISS"
-                        : null;
+                        : restaurant.IsActive
+                            ? "RESTAURANT"
+                            : null;
 
-                // R182 foundation: a dedicated TOR Einzelhandel / TOR Gastro build is
-                // authoritative. The opposite edition is never offered even in
+                // Dedicated TOR Einzelhandel / TOR Gastro / TOR Restaurant builds are
+                // authoritative. Another product edition is never offered even in
                 // licence-free validation mode.
                 if (builtEdition is not null)
                 {

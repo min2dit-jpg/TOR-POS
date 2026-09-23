@@ -57,6 +57,9 @@ public partial class MainWindow:Window
     private readonly ICommercialLicenseService _commercialLicense;
     private readonly IAuthenticationService _authentication;
     private readonly BusinessManagementService _management;
+    private readonly RestaurantRepository _restaurant;
+    private readonly RestaurantFiscalOrderService _restaurantFiscal;
+    private readonly RestaurantEntitlementService _restaurantEntitlements;
     private readonly AuthenticatedUser _currentUser;
     private IReadOnlyDictionary<string,string> _settingsCache=
         new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -68,6 +71,7 @@ public partial class MainWindow:Window
     private long _lastScan;
     private long _scanStartedAt;
     private readonly DispatcherTimer _scanNoEnterTimer = new();
+    private readonly DispatcherTimer _tseCertificateTimer = new();
     private readonly Queue<string> _barcodeQueue = new();
     private bool _scanProcessing;
     // R176: some HID keyboard-wedge scanners emit KeyDown reliably on the
@@ -100,6 +104,8 @@ public partial class MainWindow:Window
     private readonly SaleFiscalSigningService _fiscalSigning;
     private readonly OrderFiscalSigningService _orderFiscalSigning;
     private readonly TseFailSafeService _tseFailSafe;
+    private TseDeviceInfo? _lastTseDevice;
+    private static bool _tseCertificateDialogShownForProcess;
     private readonly ControlledPosActionService _controlledActions;
     private readonly PromotionCampaignService _promotions;
     private readonly IAppWindowFactory _windowFactory;
@@ -109,6 +115,7 @@ public partial class MainWindow:Window
     private Task _recoveryWrite = Task.CompletedTask;
     private TorUpdateManifest? _availableUpdate;
     private long _quickItemSequence = -9_100_000;
+    private RestaurantCheckoutDraft? _restaurantCheckoutDraft;
     private OrderCustomerDisplayWindow? _orderDisplayWindow;
     private string _orderDisplaySignature = "";
     // R104: genuine customer-facing display (e.g. HP L7010t) - distinct
@@ -183,6 +190,9 @@ public partial class MainWindow:Window
         ICommercialLicenseService commercialLicense,
         IAuthenticationService authentication,
         BusinessManagementService management,
+        RestaurantRepository restaurant,
+        RestaurantFiscalOrderService restaurantFiscal,
+        RestaurantEntitlementService restaurantEntitlements,
         AuthenticatedUser currentUser,
         ICheckoutJournal checkoutJournal,
         CheckoutApplicationService checkoutApplication,
@@ -219,11 +229,32 @@ public partial class MainWindow:Window
         _settings=settings;_backup=backup;_tseProvider=tseProvider;_receiptPrinter=receiptPrinter;
         _digitalReceipts=digitalReceipts;
         _cardRefundLocks=cardRefundLocks;
-        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_currentUser=currentUser;
+        _commercialLicense=commercialLicense;_authentication=authentication;_management=management;_restaurant=restaurant;_restaurantFiscal=restaurantFiscal;_restaurantEntitlements=restaurantEntitlements;_currentUser=currentUser;
 
         BuildCategories();
         ShowCategoryOverview();
         UpdateCart();
+
+        RestaurantTablesButton.IsVisible =
+            string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal);
+
+        RestaurantKdsButton.IsVisible =
+            RestaurantTablesButton.IsVisible &&
+            _restaurantEntitlements.IsEnabled(
+                RestaurantFeature.KitchenDisplaySystem);
+
+        RestaurantHandheldButton.IsVisible =
+            RestaurantTablesButton.IsVisible &&
+            _restaurantEntitlements.IsEnabled(
+                RestaurantFeature.HandheldBestellung);
+
+        RestaurantReservationsButton.IsVisible =
+            RestaurantTablesButton.IsVisible &&
+            _restaurantEntitlements.IsEnabled(
+                RestaurantFeature.Reservierungen);
 
         // Scanner events are captured at Window tunnel level. Therefore the cashier
         // never needs to click or focus an EAN input field before scanning.
@@ -272,6 +303,19 @@ public partial class MainWindow:Window
             StatusLine = $"SCAN ERKANNT · {code}";
             ScannerStatus.Foreground = AppTheme.AccentBlue;
             await ProcessBarcodeSafely(code);
+        };
+
+        // The register may stay open for weeks. Re-evaluate the cached exact
+        // certificate instant so 90/30/0 thresholds are crossed without a
+        // restart. Transaction start independently re-probes the real device.
+        _tseCertificateTimer.Interval = TimeSpan.FromMinutes(15);
+        _tseCertificateTimer.Tick += async (_,_) =>
+        {
+            if (_lastTseDevice is null)
+                return;
+
+            await ApplyTseCertificateWarningAsync(_lastTseDevice);
+            await RefreshFiscalStatusAsync();
         };
 
         Opened += async (_,_) =>
@@ -327,6 +371,7 @@ public partial class MainWindow:Window
                     "No fiscal sale, receipt number, TSE transaction or terminal payment is allowed.");
             }
 
+            _tseCertificateTimer.Start();
             StartTseWatch();
             FocusScannerCaptureSoon();
         };
@@ -336,6 +381,114 @@ public partial class MainWindow:Window
             _tseWatch?.Stop();
             _tseWatch = null;
         };
+    }
+
+    private async void OnRestaurantHandheldClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            _restaurantEntitlements.Require(
+                RestaurantFeature.HandheldBestellung);
+
+            var window =
+                _windowFactory.CreateRestaurantHandheldSetupWindow(
+                    _currentUser);
+
+            await window.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            StatusLine = ex.Message;
+        }
+    }
+
+    private async void OnRestaurantKdsClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            _restaurantEntitlements.Require(
+                RestaurantFeature.KitchenDisplaySystem);
+
+            var window =
+                _windowFactory.CreateRestaurantKdsWindow(
+                    _currentUser);
+
+            await window.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            StatusLine = ex.Message;
+        }
+    }
+
+    private async void OnRestaurantReservationsClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            _restaurantEntitlements.Require(
+                RestaurantFeature.Reservierungen);
+
+            var window =
+                _windowFactory.CreateRestaurantReservationsWindow(
+                    _currentUser);
+
+            await window.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            StatusLine = ex.Message;
+        }
+    }
+
+    private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(
+                ProductBuild.FixedEdition,
+                "RESTAURANT",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
+        {
+            StatusLine = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
+            return;
+        }
+
+        var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
+        var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
+        if (draft is null)
+            return;
+
+        _restaurantCheckoutDraft = draft;
+        _operationId = draft.OperationId;
+        _imHaus = true;
+        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
     }
 
     private string CurrentBusinessMode()
@@ -2963,11 +3116,13 @@ public partial class MainWindow:Window
 
     private async Task OpenPaymentWindowAsync(bool invokedByQuickCheckout)
     {
-        if (CartLocked || _engine.Cart.Count == 0 || !CanCompleteSale())
+        var restaurantDraft = _restaurantCheckoutDraft;
+        var hasCheckoutLines = restaurantDraft is not null || _engine.Cart.Count > 0;
+        if (CartLocked || !hasCheckoutLines || !CanCompleteSale())
             return;
 
-        var allowImHaus = IsImbissBusiness();
-        var paymentTotal = _engine.TotalCents;
+        var allowImHaus = restaurantDraft is null && IsImbissBusiness();
+        var paymentTotal = restaurantDraft?.TotalCents ?? _engine.TotalCents;
         var choice = await new PaymentChoiceWindow(
                 _cashEnabledBySettings,
                 _cardEnabledBySettings,
@@ -2980,7 +3135,25 @@ public partial class MainWindow:Window
         if (choice is null)
             return;
 
-        _imHaus = allowImHaus && choice.ImHaus;
+        if (restaurantDraft is not null && !IsSimulation)
+        {
+            var secured =
+                await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                    restaurantDraft.SessionId);
+
+            if (!secured)
+            {
+                StatusLine =
+                    "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein";
+                _restaurantCheckoutDraft = null;
+                _operationId = Guid.NewGuid().ToString("N");
+                return;
+            }
+        }
+
+        _imHaus = restaurantDraft is not null
+            ? true
+            : allowImHaus && choice.ImHaus;
 
         // R168: Verkaufsart, BAR/KARTE/GEMISCHT and BAR/GEMISCHT amount entry
         // all live in this one payment page. No second cash/mixed/test-card page.
@@ -3008,20 +3181,39 @@ public partial class MainWindow:Window
             cardConfirmedOnPaymentPage: true);
     }
 
-    private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0) => new(
-        _operationId,
-        CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
-        _engine.DiscountCents,
-        method,
-        _currentUser.Username,
-        _activeParkedReceiptId,
-        _imHaus,
-        cashPortionCents,
-        _tseVorgang.VorgangId ?? "",
-        _tseVorgang.StartedAt,
-        _tseVorgang.CancelledLines.Count == 0
-            ? null
-            : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
+    private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0)
+    {
+        if (_restaurantCheckoutDraft is { } restaurant)
+        {
+            return new CheckoutSnapshot(
+                restaurant.OperationId,
+                CheckoutSnapshot.CopyLines(restaurant.Lines, true),
+                0,
+                method,
+                _currentUser.Username,
+                null,
+                true,
+                cashPortionCents,
+                "",
+                null,
+                null);
+        }
+
+        return new CheckoutSnapshot(
+            _operationId,
+            CheckoutSnapshot.CopyLines(_engine.Cart, _imHaus),
+            _engine.DiscountCents,
+            method,
+            _currentUser.Username,
+            _activeParkedReceiptId,
+            _imHaus,
+            cashPortionCents,
+            _tseVorgang.VorgangId ?? "",
+            _tseVorgang.StartedAt,
+            _tseVorgang.CancelledLines.Count == 0
+                ? null
+                : CheckoutSnapshot.CopyLines(_tseVorgang.CancelledLines, _imHaus));
+    }
 
     private void SetCheckoutBusy(bool busy)
     {
@@ -3041,7 +3233,9 @@ public partial class MainWindow:Window
         CashPaymentResult? paymentPageCash = null,
         bool cardConfirmedOnPaymentPage = false)
     {
-        if (CartLocked || _engine.Cart.Count==0 || !CanCompleteSale()) return;
+        var restaurantDraft = _restaurantCheckoutDraft;
+        var hasCheckoutLines = restaurantDraft is not null || _engine.Cart.Count > 0;
+        if (CartLocked || !hasCheckoutLines || !CanCompleteSale()) return;
         var snapshot=CaptureCheckout(method, cashPortionCents);
         // R149: returned deposit exceeding the purchase is paid out - in cash only.
         if (snapshot.TotalCents < 0 && method != PaymentMethod.Cash)
@@ -3209,8 +3403,26 @@ public partial class MainWindow:Window
                 }
                 else
                     _ = PrintSimulationAsync(testJob);
+
+                if (restaurantDraft is not null)
+                {
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                    StatusLine =
+                        "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen";
+                }
+
                 return;
             }
+            if (restaurantDraft is not null)
+            {
+                // Restaurant selection becomes durable only immediately before
+                // the production checkout can create an external payment effect.
+                // The reservation locks this Tischvorgang against concurrent
+                // handheld/till edits until payment is applied or explicitly cancelled.
+                await _restaurant.PreparePaymentReservationAsync(restaurantDraft);
+            }
+
             var prepared =
                 await _checkoutApplication.PrepareProductionAsync(
                     snapshot);
@@ -3226,7 +3438,15 @@ public partial class MainWindow:Window
 
             if(prepared.Disposition==CheckoutApplicationDisposition.FiscalBlocked)
             {
-                StatusLine=
+                if (restaurantDraft is not null)
+                {
+                    await _restaurant.CancelPaymentReservationAsync(
+                        restaurantDraft.OperationId);
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                }
+
+                StatusLine =
                     $"FISKAL-FREIGABE FEHLT · keine Zahlung gestartet · " +
                     $"{prepared.FiscalReadiness.BlockingCount} Blocker";
                 return;
@@ -3241,6 +3461,13 @@ public partial class MainWindow:Window
 
             if(prepared.Disposition==CheckoutApplicationDisposition.NotCharged)
             {
+                if (restaurantDraft is not null)
+                {
+                    await _restaurant.CancelPaymentReservationAsync(
+                        restaurantDraft.OperationId);
+                    _restaurantCheckoutDraft = null;
+                }
+
                 _pendingCheckout=null;
                 _operationId=Guid.NewGuid().ToString("N");
                 PersistOpenCartRecovery();
@@ -3281,6 +3508,12 @@ public partial class MainWindow:Window
             }
 
             await CommitCheckoutAsync(operation.Snapshot,cash);
+
+            if (restaurantDraft is not null)
+            {
+                _restaurantCheckoutDraft = null;
+                _operationId = Guid.NewGuid().ToString("N");
+            }
         }
         catch(Exception ex)
         {
@@ -5329,25 +5562,54 @@ public partial class MainWindow:Window
                 return;
             }
 
-            if (_fiscalReadiness.ProductionAllowed)
-                SetFiscalModeLabel("PRODUKTIV · FISKAL FREIGEGEBEN", "PRODUKTIV", "PRODUKTIV");
+            var tseReleaseEnabled =
+                FiscalRelease.EnabledForProvider(
+                    _tseProvider.ProviderId,
+                    _lastTseDevice);
+
+            var certificateAllowsSigning =
+                !TseCertificatePolicy.IsExpired(
+                    _lastTseDevice?.CertificateExpiresAtUtc,
+                    DateTimeOffset.UtcNow);
+
+            var productionReady =
+                _fiscalReadiness.ProductionAllowed &&
+                tseReleaseEnabled &&
+                certificateAllowsSigning;
+
+            if (productionReady)
+            {
+                SetFiscalModeLabel(
+                    "PRODUKTIV · FISKAL FREIGEGEBEN",
+                    "PRODUKTIV",
+                    "PRODUKTIV");
+            }
+            else if (!tseReleaseEnabled)
+            {
+                SetFiscalModeLabel(
+                    "TESTBETRIEB · TSE-FREIGABE OFFEN",
+                    "TEST · TSE-FREIGABE",
+                    "TEST");
+            }
             else
+            {
                 SetFiscalModeLabel(
                     $"TESTBETRIEB · {_fiscalReadiness.BlockingCount} FISKAL-SPERREN",
                     $"TEST · {_fiscalReadiness.BlockingCount} SPERREN",
                     "TEST");
+            }
 
             FiscalModeText.Foreground =
-                _fiscalReadiness.ProductionAllowed ? AppTheme.AccentTeal : AppTheme.WarningAmber;
+                productionReady ? AppTheme.AccentTeal : AppTheme.WarningAmber;
 
             var cashLabel=_settingsCache.GetText("pay.cash.label","Bar").ToUpperInvariant();
             var cardLabel=_settingsCache.GetText("pay.card.label","Karte").ToUpperInvariant();
 
-            CashButtonText.Text = _fiscalReadiness.ProductionAllowed
+            CashButtonText.Text = productionReady
                 ? cashLabel
                 : cashLabel + " · TEST";
 
-            CardButtonText.Text = _fiscalReadiness.ProductionAllowed
+            CardButtonText.Text = productionReady
                 ? cardLabel
                 : cardLabel + " · TEST";
         }
@@ -5358,42 +5620,71 @@ public partial class MainWindow:Window
         }
     }
 
-    // The probe runs at start and again after the settings window closes. The
-    // warning is a start-up warning, so it is shown once per program run; the
-    // header badge and the status line carry the state after that.
+    private async Task ApplyTseCertificateWarningAsync(TseDeviceInfo? device)
+    {
+        var assessment = TseCertificatePolicy.Evaluate(
+            device?.CertificateExpiresAtUtc,
+            DateTimeOffset.UtcNow);
+
+        if (!assessment.ShowBadge)
+        {
+            TseCertificateWarningBadge.IsVisible = false;
+            ToolTip.SetTip(TseCertificateWarningBadge, null);
+            return;
+        }
+
+        var remaining = assessment.RemainingDays ?? 0;
+        TseCertificateWarningText.Text =
+            assessment.State == TseCertificateState.Expired
+                ? "TSE-ZERTIFIKAT ABGELAUFEN"
+                : remaining == 0
+                    ? "TSE-ZERTIFIKAT HEUTE"
+                    : $"TSE-ZERTIFIKAT {remaining} TAGE";
+
+        ToolTip.SetTip(
+            TseCertificateWarningBadge,
+            assessment.Message);
+
+        TseCertificateWarningBadge.IsVisible = true;
+        StatusLine = assessment.Message;
+
+        if (assessment.ShowDialog &&
+            !_tseCertificateDialogShownForProcess)
+        {
+            _tseCertificateDialogShownForProcess = true;
+
+            await ShowMenuInfoAsync(
+                assessment.State == TseCertificateState.Expired
+                    ? "TSE-ZERTIFIKAT ABGELAUFEN"
+                    : "TSE-ZERTIFIKAT LÄUFT BALD AB",
+                assessment.Message +
+                "\n\nBitte rechtzeitig eine Ersatz-TSE beschaffen und den Austausch planen.");
+        }
+    }
+
+    // Start-up warning is shown once; badge/status continue to reflect state.
     private bool _tseStartupWarningShown;
 
     private async Task WarnAboutTseOnceAsync(string headline, string deviceMessage)
     {
-        // A training session is never signed anyway, so the warning would be
-        // noise on a screen that already says TRAININGSMODUS.
         if (_tseStartupWarningShown || _currentUser.IsTraining) return;
 
         _tseStartupWarningShown = true;
         await ShowTseUnavailableAsync(headline, deviceMessage);
     }
 
-    // Until now the probe ran at start-up and after the settings window closed.
-    // Someone who plugged the TSE in while the till was running got nothing at
-    // all: the device was sitting in the USB port, the program still said it was
-    // missing, and the only way forward was to restart. A TSE announces itself
-    // as a USB volume, so its arrival can be seen without the SDK and cheaply
-    // enough to watch for.
     private DispatcherTimer? _tseWatch;
     private string _tseMountSignature = "";
 
     private void StartTseWatch()
     {
-        if (_tseWatch is not null)
+        if (_tseWatch is not null ||
+            !_settingsCache.GetBool("tse.auto_connect", true))
+        {
             return;
-
-        // Same switch as the start-up probe: an operator who turned the
-        // automatic check off is not watched either.
-        if (!_settingsCache.GetBool("tse.auto_connect", true))
-            return;
+        }
 
         _tseMountSignature = MountSignature();
-
         _tseWatch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
         _tseWatch.Tick += async (_, _) =>
         {
@@ -5401,8 +5692,6 @@ public partial class MainWindow:Window
             if (signature == _tseMountSignature)
                 return;
 
-            // Plugged in or pulled out. Either way the answer the till is
-            // showing is now stale, so ask the device again.
             _tseMountSignature = signature;
             await AutoProbeTseAsync();
         };
@@ -5417,8 +5706,6 @@ public partial class MainWindow:Window
         }
         catch (Exception ex)
         {
-            // A drive scan must never take the till down, and a failed scan is
-            // not evidence that the TSE went away.
             CrashLog.WriteException("TSE mount scan", ex);
             return "";
         }
@@ -5428,52 +5715,52 @@ public partial class MainWindow:Window
     {
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            // R113: goes through TseFailSafeService, not the raw provider, so
-            // an unreachable/failed TSE actually opens a documented outage and
-            // a later success closes it again. TseFailSafeService.ProbeAsync
-            // existed from the start but had no caller anywhere - every probe
-            // site used the raw ITseProvider, so the operational probe could
-            // see a dead TSE and record nothing at all.
-            var probe = _tseFailSafe.ProbeAsync(_currentUser.Username, timeout.Token);
+            using var timeout =
+                new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+            var probe =
+                _tseFailSafe.ProbeAsync(
+                    _currentUser.Username,
+                    timeout.Token);
+
             var completed = await Task.WhenAny(
                 probe,
                 Task.Delay(TimeSpan.FromSeconds(10)));
 
             if (completed != probe)
             {
+                _lastTseDevice = null;
+                TseCertificateWarningBadge.IsVisible = false;
                 StatusLine =
                     "TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar";
-                ReportOperationalError("TSE","TSE-Geräteprüfung: Timeout nach 10 Sekunden.");
+                ReportOperationalError(
+                    "TSE",
+                    "TSE-Geräteprüfung: Timeout nach 10 Sekunden.");
+
+                await RefreshTseOutageBadgeAsync();
                 await WarnAboutTseOnceAsync(
                     "TSE antwortet nicht",
                     "Die TSE hat innerhalb von 10 Sekunden nicht geantwortet.");
+                await RefreshFiscalStatusAsync();
                 return;
             }
 
             var result = await probe;
+            _lastTseDevice = result.Device;
 
             if (result.State == TseConnectionState.Ready)
             {
                 StatusLine =
                     $"TSE bereit · {result.Device?.SerialNumber}";
 
-                // TseFailSafeService has just closed the outage, but the red
-                // TSE-AUSFALL badge is only ever repainted when something asks
-                // it to. Without this the till went on showing an outage that
-                // had ended - which is exactly what an operator sees the moment
-                // they plug a working TSE in.
+                // A ready device must never fall through to the start-up warning.
+                // Certificate and fiscal-state refresh still run before returning.
+                await ApplyTseCertificateWarningAsync(result.Device);
                 await RefreshTseOutageBadgeAsync();
+                await RefreshFiscalStatusAsync();
                 return;
             }
 
-            // Every other state means nothing can be signed. Until now only
-            // Connected said anything at all, so the most likely case of all -
-            // no TSE plugged in - left the operator with an empty status line
-            // and a badge they had never been told to look for.
-            // The status line carries the whole sentence as one key, like every
-            // other status write in this file, so the boundary in StatusLine
-            // translates it in one lookup instead of stitching fragments.
             var (headline, status) = result.State switch
             {
                 TseConnectionState.Connected => (
@@ -5494,13 +5781,25 @@ public partial class MainWindow:Window
             };
 
             StatusLine = status;
-            await RefreshTseOutageBadgeAsync();
-            await WarnAboutTseOnceAsync(headline, result.Message);
+            await WarnAboutTseOnceAsync(
+                headline,
+                result.Message);
+
+            // Non-ready probes refresh the fiscal status; that method repaints
+            // the outage badge as its first operation.
+            await ApplyTseCertificateWarningAsync(result.Device);
+            await RefreshFiscalStatusAsync();
         }
         catch(Exception ex)
         {
+            _lastTseDevice = null;
+            TseCertificateWarningBadge.IsVisible = false;
             CrashLog.WriteException("MainWindow operation", ex);
-            ReportOperationalError("TSE","TSE-Geräteprüfung fehlgeschlagen.",ex);
+            ReportOperationalError(
+                "TSE",
+                "TSE-Geräteprüfung fehlgeschlagen.",
+                ex);
+            await RefreshTseOutageBadgeAsync();
         }
     }
 
@@ -6037,7 +6336,10 @@ public partial class MainWindow:Window
         return SaleModePolicy.RecordsTrainingFiscally(
             _currentUser.IsTraining,
             _commercialLicense.Check(edition).IsActive,
-            FiscalRelease.Enabled,
+            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice) &&
+            !TseCertificatePolicy.IsExpired(
+                _lastTseDevice?.CertificateExpiresAtUtc,
+                DateTimeOffset.UtcNow),
             _fiscalReadiness?.ProductionAllowed == true);
     }
 
@@ -6049,13 +6351,17 @@ public partial class MainWindow:Window
         return SaleModePolicy.CanCommitProductionSale(
             _currentUser.IsTraining,
             _commercialLicense.Check(edition).IsActive,
-            FiscalRelease.Enabled,
+            FiscalRelease.EnabledForProvider(_tseProvider.ProviderId, _lastTseDevice) &&
+            !TseCertificatePolicy.IsExpired(
+                _lastTseDevice?.CertificateExpiresAtUtc,
+                DateTimeOffset.UtcNow),
             _fiscalReadiness?.ProductionAllowed == true);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _scanNoEnterTimer.Stop();
+        _tseCertificateTimer.Stop();
         if (_orderDisplayWindow is not null)
         {
             try { _orderDisplayWindow.Close(); } catch { }

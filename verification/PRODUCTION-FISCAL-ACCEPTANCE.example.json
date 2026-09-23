@@ -1,0 +1,40 @@
+{
+  "approved_for_production": false,
+  "reviewer": "",
+  "dsfinvk_validated": false,
+  "dsfinvk_evidence": "",
+  "receipt_validated": false,
+  "receipt_evidence": "",
+  "parked_order_tse_validated": false,
+  "pfand_tax_validated": false,
+  "independent_review": false,
+  "physical_tse_acceptances": [
+    {
+      "generation": "1.1",
+      "validated": false,
+      "tse_serial": "",
+      "hardware_test_date": "",
+      "evidence": ""
+    }
+  ],
+  "cloud_tse_acceptances": [
+    {
+      "provider": "FISKALY",
+      "validated": false,
+      "test_date": "",
+      "evidence": ""
+    },
+    {
+      "provider": "DEUTSCHE_FISKAL",
+      "validated": false,
+      "test_date": "",
+      "evidence": ""
+    },
+    {
+      "provider": "FISKALTRUST",
+      "validated": false,
+      "test_date": "",
+      "evidence": ""
+    }
+  ]
+}

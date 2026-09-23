@@ -33,26 +33,17 @@
 | Gültig bis | **20.04.2034** |
 
 Diese ID gehört in `tse.bsi_id` (Erweitert / Techniker). Die Swissbit WORM API
-liefert sie nicht, sie wird aus diesem Zertifikat übernommen - genau der Fall,
-den die Feldbeschreibung mit „aus zertifizierter Produkt-/Zertifikatszuordnung
-ergänzt“ meint. Das Zertifikat gilt nur zusammen mit dem vollständigen
-Konformitätsreport gleicher Nummer und nur für die dort genannte Version und
-Konfiguration.
-
-Mitgelieferte Zertifikatskette (Dokumentation, von TOR nicht verwendet - das
-Gerät liefert seine eigenen Zertifikatsdaten über die WORM API):
-
-- `TSE Root CA 1`, T-Systems International GmbH / Telekom Security, selbst
-  signiert, gültig bis 29.10.2049,
-  SHA-256 `44:1C:B2:1C:03:85:1F:17:93:AE:D4:17:CB:25:4A:F5:55:B5:3B:0B:2B:B6:87:60:22:02:BE:86:6E:9B:F4:C8`
-- `TSE CA 1`, ausgestellt von `TSE Root CA 1`, gültig bis 29.10.2034,
-  SHA-256 `3A:E8:EE:72:90:2F:61:45:6A:59:7F:ED:CD:18:34:52:7A:C6:1C:55:F3:7E:A6:91:F0:1E:E1:06:57:F1:07:B5`
+liefert sie nicht; sie wird aus der zertifizierten Produktzuordnung übernommen.
+Der vollständige Konformitätsreport und die dort genannte Version/Konfiguration
+bleiben maßgeblich.
 
 ### Gerät
 
 - Hersteller: Swissbit
 - Produkt:
+- TSE-Generation: 1 / 1.1 / 2
 - TSE-Seriennummer:
+- Zertifikat gültig bis (UTC):
 - Client-ID:
 - WORM-API-/SDK-Version:
 - TSE-Status vor Test:
@@ -76,6 +67,8 @@ Gerät liefert seine eigenen Zertifikatsdaten über die WORM API):
 | Nach Anstecken einer betriebsbereiten TSE: kein Warnfenster mehr | ☐ PASS ☐ FAIL | |
 | SDK lädt | ☐ PASS ☐ FAIL | |
 | TSE wird erkannt | ☐ PASS ☐ FAIL | |
+| TSE-Generation eindeutig erkannt | ☐ PASS ☐ FAIL | |
+| Exakter Zertifikatsablauf wird gelesen | ☐ PASS ☐ FAIL | |
 | TSE-Identität / Client-ID plausibel | ☐ PASS ☐ FAIL | |
 | BAR Testbon 19 % | ☐ PASS ☐ FAIL | |
 | BAR Testbon 7 % | ☐ PASS ☐ FAIL | |
@@ -201,6 +194,11 @@ Sprache erscheinen und der Gerätename **TSE** unverändert enthalten bleiben.
 -
 
 ## Abnahmeentscheidung
+
+Diese physische Abnahme gilt ausschließlich für TSE-Generation: **_____**
+
+> Eine bestandene Gen-1-, Gen-1.1- oder Gen-2-Abnahme darf keine andere
+> Generation freigeben.
 
 ☐ BESTANDEN  
 ☐ NICHT BESTANDEN  

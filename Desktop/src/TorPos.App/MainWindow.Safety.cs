@@ -449,20 +449,36 @@ public partial class MainWindow
                 _pendingCheckout=null;
                 _engine.IsReadOnly=false;
 
-                _engine.Restore(
-                    operation.Snapshot.Lines,
-                    operation.Snapshot.DiscountCents);
+                var restaurantPayment =
+                    await _restaurant.HasPreparedPaymentReservationAsync(
+                        operation.Snapshot.OperationId);
 
-                _activeParkedReceiptId=
-                    operation.Snapshot.ParkedReceiptId;
+                if (restaurantPayment)
+                {
+                    await _restaurant.CancelPaymentReservationAsync(
+                        operation.Snapshot.OperationId);
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                    StatusLine =
+                        "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen";
+                }
+                else
+                {
+                    _engine.Restore(
+                        operation.Snapshot.Lines,
+                        operation.Snapshot.DiscountCents);
 
-                _operationId=
-                    Guid.NewGuid().ToString("N");
+                    _activeParkedReceiptId=
+                        operation.Snapshot.ParkedReceiptId;
 
-                UpdateCart();
+                    _operationId=
+                        Guid.NewGuid().ToString("N");
 
-                StatusLine=
-                    "KEINE BELASTUNG MANUELL BESTÄTIGT · Bon wieder offen";
+                    UpdateCart();
+
+                    StatusLine=
+                        "KEINE BELASTUNG MANUELL BESTÄTIGT · Bon wieder offen";
+                }
             }
         }
         catch(Exception ex)

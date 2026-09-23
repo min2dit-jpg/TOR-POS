@@ -714,15 +714,19 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             "worm_info_certificateExpirationDate");
 
         DateOnly? expiry = null;
+        DateTimeOffset? expiryInstant = null;
 
         if (expiryRaw > 0)
         {
             try
             {
+                expiryInstant =
+                    DateTimeOffset.FromUnixTimeSeconds(
+                        checked((long)expiryRaw));
+
+                // Compatibility/display only. Safety uses expiryInstant.
                 expiry = DateOnly.FromDateTime(
-                    DateTimeOffset
-                        .FromUnixTimeSeconds(checked((long)expiryRaw))
-                        .UtcDateTime);
+                    expiryInstant.Value.UtcDateTime);
             }
             catch
             {
@@ -746,9 +750,11 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             string.IsNullOrWhiteSpace(description)
                 ? "Hardware-TSE"
                 : description,
-            string.IsNullOrWhiteSpace(hardwareVersion)
-                ? "Swissbit Hardware"
-                : hardwareVersion,
+            // The WORM metadata available here does not provide a validated
+            // generation discriminator. Do not repurpose the description or
+            // hardware/software revision as generation evidence. A documented
+            // adapter mapping can populate this field after real-device capture.
+            "",
             string.IsNullOrWhiteSpace(formFactor)
                 ? "USB/Storage"
                 : formFactor,
@@ -765,7 +771,8 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             OptionalInfoBoolAny(
                 info,
                 "worm_info_isCtssInterfaceActive",
-                "worm_info_isErsInterfaceActive"));
+                "worm_info_isErsInterfaceActive"),
+            CertificateExpiresAtUtc: expiryInstant);
     }
 
     private int PrepareForTransaction(

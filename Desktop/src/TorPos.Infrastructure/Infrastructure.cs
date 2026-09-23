@@ -111,6 +111,7 @@ public static class AppPaths
             var raw = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
             if (string.Equals(raw, "KIOSK", StringComparison.OrdinalIgnoreCase)) return "KIOSK";
             if (string.Equals(raw, "IMBISS", StringComparison.OrdinalIgnoreCase)) return "IMBISS";
+            if (string.Equals(raw, "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return "RESTAURANT";
             return null;
         }
     }
@@ -120,6 +121,7 @@ public static class AppPaths
         {
             "KIOSK" => "TOR-Einzelhandel",
             "IMBISS" => "TOR-Gastro",
+            "RESTAURANT" => "TOR-Restaurant",
             _ => "TOR-POS-Pro"
         };
     public static string TrialIdentityPath =>
@@ -129,6 +131,7 @@ public static class AppPaths
 public sealed class SqliteDatabase
 {
     private readonly string _connectionString;
+    private readonly string _readConnectionString;
 
     public string DatabasePath { get; }
 
@@ -142,6 +145,14 @@ public sealed class SqliteDatabase
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
+            Pooling = true
+        }.ToString();
+
+        _readConnectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = DatabasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Cache = SqliteCacheMode.Private,
             Pooling = true
         }.ToString();
     }
@@ -162,6 +173,21 @@ public sealed class SqliteDatabase
         cmd.ExecuteNonQuery();
         return c;
     }
+    public SqliteConnection OpenReadConnection()
+    {
+        var c = new SqliteConnection(_readConnectionString);
+        c.Open();
+
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            PRAGMA query_only=ON;
+            PRAGMA temp_store=MEMORY;
+            PRAGMA busy_timeout=3000;
+            """;
+        cmd.ExecuteNonQuery();
+        return c;
+    }
+
 public async Task InitializeAsync(CancellationToken ct = default)
 {
     await IoQueue.RunAsync(async () =>
@@ -788,11 +814,8 @@ public async Task InitializeAsync(CancellationToken ct = default)
         await EnsureColumnAsync(c,"sales","cash_portion_cents","INTEGER NOT NULL DEFAULT 0",ct);
         await EnsureColumnAsync(c,"sales","card_portion_cents","INTEGER NOT NULL DEFAULT 0",ct);
         // R54 dropped the interface language to German-only and purged the stored
-        // preference here. That DELETE sat in InitializeAsync without a schema
-        // guard, so it ran on every single start: any language an operator chose
-        // was wiped again at the next launch. With DE/TR/EN restored the
-        // preference has to survive, so the purge is gone. An unknown or legacy
-        // value is harmless - the interface falls back to German.
+        // preference here. With DE/TR/EN restored, the operator's language choice
+        // must survive restarts; unknown values already fall back safely to German.
 
         await EnsureColumnAsync(c, "users", "locked_until", "TEXT NOT NULL DEFAULT ''", ct);
         // R103: maps an unguessable digital-receipt token to a sale, for
@@ -2226,6 +2249,14 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                 throw new InvalidOperationException("Geparkter Bon wurde bereits abgeschlossen.");
         }
 
+        var restaurantOrderStartedAt =
+            await RestaurantPaymentStore.ApplyCommittedSaleAsync(
+                c,
+                (SqliteTransaction)tx,
+                snapshot,
+                saleId,
+                ct);
+
         await using (var done = c.CreateCommand())
         {
             done.Transaction = (SqliteTransaction)tx;
@@ -2256,7 +2287,8 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             TotalCents = total,
             TransactionType = "SALE",
             Lines = lines.ToArray(),
-            OperatorName = operatorName
+            OperatorName = operatorName,
+            OrderStartedAt = restaurantOrderStartedAt
         };
     });
 }public async Task<Sale?> GetLastAsync(CancellationToken ct = default)
@@ -2344,15 +2376,51 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
         await q.ExecuteNonQueryAsync(ct);
     });
 }
+    private static async Task<bool> TableExistsForSaleLoadAsync(
+        SqliteConnection c,
+        string tableName,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type='table' AND name=$name;
+            """;
+        q.Parameters.AddWithValue("$name", tableName);
+        return Convert.ToInt32(
+            await q.ExecuteScalarAsync(ct)) == 1;
+    }
+
     private static async Task<Sale?> LoadSaleAsync(
         SqliteConnection c,
         long saleId,
         CancellationToken ct)
     {
+        var hasRestaurantPaymentData =
+            await TableExistsForSaleLoadAsync(
+                c,
+                "restaurant_payment_reservations",
+                ct) &&
+            await TableExistsForSaleLoadAsync(
+                c,
+                "restaurant_bestellungen",
+                ct);
+
+        var restaurantOrderStartSql = hasRestaurantPaymentData
+            ? """
+              (SELECT COALESCE(NULLIF(rb.start_log_time,''), rb.started_at)
+               FROM restaurant_payment_reservations rr
+               JOIN restaurant_bestellungen rb ON rb.session_id=rr.session_id
+               WHERE rr.sale_id=s.id AND rr.state='APPLIED'
+               ORDER BY rb.sequence LIMIT 1)
+              """
+            : "NULL";
+
         Sale? sale = null;
         await using (var q = c.CreateCommand())
         {
-            q.CommandText = """
+            q.CommandText = $"""
                 SELECT s.receipt_number,s.pickup_number,s.created_at,s.payment_method,
                        s.discount_cents,s.total_cents,s.fiscal_status,
                        COALESCE(o.operator_name,''),
@@ -2379,7 +2447,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                           WHERE op.cashed_sale_id=s.id ORDER BY b.sequence LIMIT 1),
                          (SELECT COALESCE(NULLIF(op.tse_start_log_time,''), op.vorgang_started_at, op.created_at)
                           FROM parked_receipts op
-                          WHERE op.cashed_sale_id=s.id AND (op.tse_transaction_number<>'' OR op.tse_outage=1) LIMIT 1))
+                          WHERE op.cashed_sale_id=s.id AND (op.tse_transaction_number<>'' OR op.tse_outage=1) LIMIT 1),
+                         {restaurantOrderStartSql})
                 FROM sales s
                 LEFT JOIN sale_operators o ON o.sale_id=s.id
                 LEFT JOIN sale_tse_signatures t ON t.sale_id=s.id

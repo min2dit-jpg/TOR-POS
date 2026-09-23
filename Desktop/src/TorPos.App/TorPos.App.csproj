@@ -8,8 +8,10 @@
     <TorProductEdition Condition="'$(TorProductEdition)' == ''">SHARED</TorProductEdition>
     <AssemblyName Condition="'$(TorProductEdition)' == 'KIOSK'">TOR-Einzelhandel</AssemblyName>
     <AssemblyName Condition="'$(TorProductEdition)' == 'IMBISS'">TOR-Gastro</AssemblyName>
+    <AssemblyName Condition="'$(TorProductEdition)' == 'RESTAURANT'">TOR-Restaurant</AssemblyName>
     <DefineConstants Condition="'$(TorProductEdition)' == 'KIOSK'">$(DefineConstants);TOR_EINZELHANDEL_PRODUCT</DefineConstants>
     <DefineConstants Condition="'$(TorProductEdition)' == 'IMBISS'">$(DefineConstants);TOR_GASTRO_PRODUCT</DefineConstants>
+    <DefineConstants Condition="'$(TorProductEdition)' == 'RESTAURANT'">$(DefineConstants);TOR_RESTAURANT_PRODUCT</DefineConstants>
     <!-- R126: had drifted to 0.7.33.751 / "R75.1-Application-Namespace-Hotfix"
          - the version Windows shows in the exe's file properties. Keep in step
          with TorPos.Core.TorRelease, TOR-POS-Pro-Setup.iss and manifest.json. -->
@@ -32,6 +34,11 @@
          Do not add dummy constructors only to satisfy the runtime-loader warning. -->
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);AVLN3001</MSBuildWarningsAsMessages>
   </PropertyGroup>
+  <ItemGroup Condition="'$(TorProductEdition)' == 'RESTAURANT'">
+    <!-- Restaurant Plus handheld API only. KIOSK/IMBISS builds do not carry
+         the ASP.NET Core shared framework dependency. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />

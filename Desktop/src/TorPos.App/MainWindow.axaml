@@ -418,6 +418,10 @@
             <Button x:Name="ProductsButton" Classes="headernav" Content="WAREN" Click="OnGoodsHubClick"/>
             <Button x:Name="SettingsButton" Classes="headernav" Content="EINSTELLUNGEN" Click="OnSettingsHubClick"/>
             <Button x:Name="CashMenuButton" Classes="headernav" Content="KASSE" Click="OnCashHubClick"/>
+            <Button x:Name="RestaurantTablesButton" Classes="headernav" Content="TISCHPLAN" Click="OnRestaurantTablesClick" IsVisible="False"/>
+            <Button x:Name="RestaurantKdsButton" Classes="headernav" Content="KDS" Click="OnRestaurantKdsClick" IsVisible="False"/>
+            <Button x:Name="RestaurantHandheldButton" Classes="headernav" Content="HANDHELD" Click="OnRestaurantHandheldClick" IsVisible="False"/>
+            <Button x:Name="RestaurantReservationsButton" Classes="headernav" Content="RESERVIERUNGEN" Click="OnRestaurantReservationsClick" IsVisible="False"/>
             <Button x:Name="ReportsMenu" Classes="headernav" Content="BERICHTE" Click="OnReportsHubClick"/>
           </StackPanel>
           <!-- R126: ordered by importance, because if anything is clipped it is
@@ -431,6 +435,9 @@
                situation stayed completely invisible at the register. -->
           <Border x:Name="TseOutageBadge" IsVisible="False" Background="#5A1A1A" BorderBrush="#FF8A80" BorderThickness="1" CornerRadius="8" Padding="12,8">
             <TextBlock x:Name="TseOutageText" Text="TSE-AUSFALL" Foreground="#FF8A80" FontWeight="Bold" FontSize="11"/>
+          </Border>
+          <Border x:Name="TseCertificateWarningBadge" IsVisible="False" Background="#5A3A10" BorderBrush="#E3A62F" BorderThickness="1" CornerRadius="8" Padding="10,8">
+            <TextBlock x:Name="TseCertificateWarningText" Text="TSE-ZERTIFIKAT" Foreground="#FFD166" FontWeight="Bold" FontSize="11"/>
           </Border>
           <Border x:Name="FiscalModeBadge" Background="#493A12" CornerRadius="8" Padding="12,8">
             <TextBlock x:Name="FiscalModeText" Text="TESTBETRIEB · FISKAL GESPERRT" Foreground="#FFD166" FontWeight="Bold"/>

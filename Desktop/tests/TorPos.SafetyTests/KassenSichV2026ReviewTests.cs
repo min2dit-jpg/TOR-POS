@@ -138,9 +138,14 @@ public static class KassenSichV2026ReviewTests
 
         assert(
             !FiscalRelease.Enabled &&
-            FiscalRelease.MissingQualifications().Count == 6 &&
-            FiscalRelease.MissingQualifications().Contains("physische TSE-E2E-Abnahme"),
-            "KassenSichV 2026 production release stays locked until all six evidence qualifications are complete");
+            !CloudTseRelease.FiskaltrustValidated &&
+            !CloudTseRelease.FiskalyValidated &&
+            !CloudTseRelease.DeutscheFiskalValidated &&
+            FiscalRelease.MissingQualifications().Count == 8 &&
+            FiscalRelease.MissingQualifications().Contains("physische TSE Gen 1 E2E-Abnahme") &&
+            FiscalRelease.MissingQualifications().Contains("physische TSE Gen 1.1 E2E-Abnahme") &&
+            FiscalRelease.MissingQualifications().Contains("physische TSE Gen 2 E2E-Abnahme"),
+            "KassenSichV 2026 production release stays locked until common evidence and every physical TSE generation qualification are complete; Cloud vendors remain independently locked");
 
         return Task.CompletedTask;
     }

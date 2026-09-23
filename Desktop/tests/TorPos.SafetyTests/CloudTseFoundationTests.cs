@@ -45,12 +45,16 @@ public static class CloudTseFoundationTests
         // sandbox opening production for vendors nobody ever ran a transaction
         // against. And a name TOR does not know is never a released one.
         var validated = Block(core, "public static bool IsValidated(string? vendor)", "public static string NotReleasedMessage");
+        var globalEnabled = Block(
+            checkout,
+            "public static bool Enabled =>",
+            "public static PhysicalTseGeneration DetectPhysicalTseGeneration");
+
         assert(
             Regex.IsMatch(validated, @"_\s*=>\s*false") &&
             !checkout.Contains("CloudTseValidated", StringComparison.Ordinal) &&
-            !Block(checkout, "public static bool Enabled =>", "public static IReadOnlyList<string> MissingQualifications()")
-                .Contains("Cloud", StringComparison.Ordinal),
-            "cloud TSE: an unknown vendor is never validated, and cloud qualification neither rides on nor blocks the six existing fiscal release flags");
+            !globalEnabled.Contains("Cloud", StringComparison.Ordinal),
+            "cloud TSE: an unknown vendor is never validated, and cloud qualification neither rides on nor blocks the existing global physical/common fiscal release gate");
 
         // The refusal itself. Every call that would produce fiscal data returns
         // failure, and none of them invents a transaction number, a counter or
