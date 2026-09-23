@@ -1929,7 +1929,8 @@ public sealed class SchemaMigrationService
                           ON restaurant_kitchen_jobs(session_id,created_at);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
-,
+                }),
+
             new(
                 31,
                 "R189_RESTAURANT_RESERVATIONS",
@@ -1968,7 +1969,6 @@ public sealed class SchemaMigrationService
                           ON restaurant_reservations(table_id,reservation_at,status);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
-                })
                 })
         };
 
