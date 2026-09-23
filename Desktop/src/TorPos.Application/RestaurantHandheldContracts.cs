@@ -18,7 +18,8 @@ public sealed record RestaurantHandheldAddItemRequest(
     long ProductId,
     decimal Quantity,
     string OperatorName,
-    string DeviceId);
+    string DeviceId,
+    string DeviceToken);
 
 public sealed record RestaurantHandheldCommandResult(
     string SessionId,
@@ -32,6 +33,8 @@ public sealed record RestaurantHandheldCommandResult(
 public interface IRestaurantHandheldService
 {
     Task<IReadOnlyList<RestaurantHandheldTableSummary>> GetTablesAsync(
+        string deviceId,
+        string deviceToken,
         CancellationToken ct = default);
 
     Task<RestaurantHandheldCommandResult> AddItemAsync(
