@@ -5351,6 +5351,21 @@ public partial class MainWindow:Window
         }
     }
 
+    // The probe runs at start and again after the settings window closes. The
+    // warning is a start-up warning, so it is shown once per program run; the
+    // header badge and the status line carry the state after that.
+    private bool _tseStartupWarningShown;
+
+    private async Task WarnAboutTseOnceAsync(string headline, string deviceMessage)
+    {
+        // A training session is never signed anyway, so the warning would be
+        // noise on a screen that already says TRAININGSMODUS.
+        if (_tseStartupWarningShown || _currentUser.IsTraining) return;
+
+        _tseStartupWarningShown = true;
+        await ShowTseUnavailableAsync(headline, deviceMessage);
+    }
+
     private async Task AutoProbeTseAsync()
     {
         try
@@ -5372,6 +5387,9 @@ public partial class MainWindow:Window
                 StatusLine =
                     "TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar";
                 ReportOperationalError("TSE","TSE-Geräteprüfung: Timeout nach 10 Sekunden.");
+                await WarnAboutTseOnceAsync(
+                    "TSE antwortet nicht",
+                    "Die TSE hat innerhalb von 10 Sekunden nicht geantwortet.");
                 return;
             }
 
@@ -5381,12 +5399,37 @@ public partial class MainWindow:Window
             {
                 StatusLine =
                     $"TSE bereit · {result.Device?.SerialNumber}";
+                return;
             }
-            else if (result.State == TseConnectionState.Connected)
+
+            // Every other state means nothing can be signed. Until now only
+            // Connected said anything at all, so the most likely case of all -
+            // no TSE plugged in - left the operator with an empty status line
+            // and a badge they had never been told to look for.
+            // The status line carries the whole sentence as one key, like every
+            // other status write in this file, so the boundary in StatusLine
+            // translates it in one lookup instead of stitching fragments.
+            var (headline, status) = result.State switch
             {
-                StatusLine =
-                    "Swissbit TSE erkannt · Einrichtung/Status prüfen";
-            }
+                TseConnectionState.Connected => (
+                    "TSE erkannt, aber noch nicht betriebsbereit",
+                    "Swissbit TSE erkannt · Einrichtung/Status prüfen"),
+                TseConnectionState.NotFound => (
+                    "Keine TSE gefunden",
+                    "Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                TseConnectionState.SdkMissing => (
+                    "Swissbit SDK nicht gefunden",
+                    "Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                TseConnectionState.NotConfigured => (
+                    "TSE ist noch nicht eingerichtet",
+                    "TSE ist noch nicht eingerichtet · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                _ => (
+                    "TSE meldet einen Fehler",
+                    "TSE meldet einen Fehler · Kasse bleibt bedienbar · Vorgänge werden nicht signiert")
+            };
+
+            StatusLine = status;
+            await WarnAboutTseOnceAsync(headline, result.Message);
         }
         catch(Exception ex)
         {

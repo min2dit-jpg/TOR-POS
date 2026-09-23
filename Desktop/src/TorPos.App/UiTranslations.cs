@@ -327,6 +327,36 @@ internal static class UiTranslations
         ["TSE Export nicht verfügbar - Swissbit SDK / TSE prüfen."] = "TSE dışa aktarımı kullanılamıyor - Swissbit SDK / TSE'yi kontrol edin.",
         ["TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar"] = "TSE yanıt vermiyor · USB/SDK'yı kontrol edin · kasa kullanılabilir durumda",
         ["Swissbit TSE erkannt · Einrichtung/Status prüfen"] = "Swissbit TSE algılandı · kurulum/durumu kontrol edin",
+        // The TSE start-up warning. "TSE", "Swissbit" and "SDK" are the
+        // names of the device and its driver and stay as they are in every
+        // language; only the sentence around them is translated.
+        ["TSE-Prüfung beim Start"] = "Açılışta TSE kontrolü",
+        ["TSE-EINSTELLUNGEN ÖFFNEN"] = "TSE AYARLARINI AÇ",
+        ["WEITER OHNE TSE"] = "TSE OLMADAN DEVAM ET",
+        ["TSE antwortet nicht"] = "TSE yanıt vermiyor",
+        ["TSE erkannt, aber noch nicht betriebsbereit"] = "TSE algılandı ancak henüz hazır değil",
+        ["Keine TSE gefunden"] = "TSE bulunamadı",
+        ["Swissbit SDK nicht gefunden"] = "Swissbit SDK bulunamadı",
+        ["TSE ist noch nicht eingerichtet"] = "TSE henüz kurulmadı",
+        ["TSE meldet einen Fehler"] = "TSE bir hata bildiriyor",
+        ["Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "TSE bulunamadı · kasa kullanılabilir durumda · işlemler imzalanmaz",
+        ["Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "Swissbit SDK bulunamadı · kasa kullanılabilir durumda · işlemler imzalanmaz",
+        ["TSE ist noch nicht eingerichtet · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "TSE henüz kurulmadı · kasa kullanılabilir durumda · işlemler imzalanmaz",
+        ["TSE meldet einen Fehler · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "TSE bir hata bildiriyor · kasa kullanılabilir durumda · işlemler imzalanmaz",
+        ["Die TSE hat innerhalb von 10 Sekunden nicht geantwortet."] =
+            "TSE 10 saniye içinde yanıt vermedi.",
+        ["Bis eine betriebsbereite TSE erkannt wird, wird kein Vorgang signiert. Die Kasse bleibt bedienbar und der Ausfall wird dokumentiert; die Vorgänge sind dann aber nicht fiskal abgesichert."] =
+            "Çalışır durumda bir TSE algılanana kadar hiçbir işlem imzalanmaz. Kasa kullanılabilir kalır ve arıza belgelenir; ancak işlemler mali olarak güvenceye alınmaz.",
+        ["Prüfen: steckt die TSE im USB-Anschluss, wird sie im Explorer als Laufwerk angezeigt, ist der Techniker-Bereich eingerichtet?"] =
+            "Kontrol edin: TSE USB bağlantısında takılı mı, Explorer'da sürücü olarak görünüyor mu, Teknisyen bölümü kuruldu mu?",
+        ["Bitte die Betreiberin oder den Betreiber informieren. Der Verkauf kann weiterlaufen."] =
+            "Lütfen işletme sahibini bilgilendirin. Satış devam edebilir.",
+        ["Swissbit SDK ist geladen, aber keine unterstützte Hardware-TSE wurde gefunden."] =
+            "Swissbit SDK yüklendi ancak desteklenen bir donanım TSE bulunamadı.",
         ["EINZELHANDEL · SCANNER BEREIT · Barcode scannen"] = "PERAKENDE · TARAYICI HAZIR · barkodu okutun",
         ["GASTRONOMIE · TOUCH-SCHNELLWAHL BEREIT"] = "GASTRONOMİ · DOKUNMATİK HIZLI SEÇİM HAZIR",
         ["KUNDENDISPLAY: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen."] = "MÜŞTERİ EKRANI: İkinci ekran algılanmadı. Ayarlardan bir ekran seçin veya ikinci monitörü bağlayın.",
@@ -1891,6 +1921,36 @@ internal static class UiTranslations
         ["TSE Export nicht verfügbar - Swissbit SDK / TSE prüfen."] = "TSE export unavailable - check Swissbit SDK / TSE.",
         ["TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar"] = "TSE is not responding · check USB/SDK · till remains usable",
         ["Swissbit TSE erkannt · Einrichtung/Status prüfen"] = "Swissbit TSE detected · check setup/status",
+        // The TSE start-up warning. "TSE", "Swissbit" and "SDK" are the
+        // names of the device and its driver and stay as they are in every
+        // language; only the sentence around them is translated.
+        ["TSE-Prüfung beim Start"] = "TSE check at start-up",
+        ["TSE-EINSTELLUNGEN ÖFFNEN"] = "OPEN TSE SETTINGS",
+        ["WEITER OHNE TSE"] = "CONTINUE WITHOUT TSE",
+        ["TSE antwortet nicht"] = "TSE is not responding",
+        ["TSE erkannt, aber noch nicht betriebsbereit"] = "TSE detected but not ready for use yet",
+        ["Keine TSE gefunden"] = "No TSE found",
+        ["Swissbit SDK nicht gefunden"] = "Swissbit SDK not found",
+        ["TSE ist noch nicht eingerichtet"] = "TSE is not set up yet",
+        ["TSE meldet einen Fehler"] = "TSE reports an error",
+        ["Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "No TSE found · till remains usable · transactions are not signed",
+        ["Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "Swissbit SDK not found · till remains usable · transactions are not signed",
+        ["TSE ist noch nicht eingerichtet · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "TSE is not set up yet · till remains usable · transactions are not signed",
+        ["TSE meldet einen Fehler · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"] =
+            "TSE reports an error · till remains usable · transactions are not signed",
+        ["Die TSE hat innerhalb von 10 Sekunden nicht geantwortet."] =
+            "The TSE did not respond within 10 seconds.",
+        ["Bis eine betriebsbereite TSE erkannt wird, wird kein Vorgang signiert. Die Kasse bleibt bedienbar und der Ausfall wird dokumentiert; die Vorgänge sind dann aber nicht fiskal abgesichert."] =
+            "Until a working TSE is detected, no transaction is signed. The till remains usable and the outage is documented, but the transactions are not fiscally secured.",
+        ["Prüfen: steckt die TSE im USB-Anschluss, wird sie im Explorer als Laufwerk angezeigt, ist der Techniker-Bereich eingerichtet?"] =
+            "Check: is the TSE plugged into the USB port, does it appear as a drive in Explorer, is the technician area set up?",
+        ["Bitte die Betreiberin oder den Betreiber informieren. Der Verkauf kann weiterlaufen."] =
+            "Please inform the owner. Selling can continue.",
+        ["Swissbit SDK ist geladen, aber keine unterstützte Hardware-TSE wurde gefunden."] =
+            "Swissbit SDK is loaded but no supported hardware TSE was found.",
         ["EINZELHANDEL · SCANNER BEREIT · Barcode scannen"] = "RETAIL · SCANNER READY · scan barcode",
         ["GASTRONOMIE · TOUCH-SCHNELLWAHL BEREIT"] = "HOSPITALITY · TOUCH QUICK SELECT READY",
         ["KUNDENDISPLAY: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen."] = "CUSTOMER DISPLAY: No second screen detected. Choose a screen in Settings or connect a second monitor.",

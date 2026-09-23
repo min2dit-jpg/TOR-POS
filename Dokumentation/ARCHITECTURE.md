@@ -167,6 +167,35 @@ Der TSE-Vorgang beginnt mit dem fachlichen Vorgang und wird mit dem passenden Pr
 
 Storno und Retoure werden fiskalisch als eigener `Beleg` mit `Kassenbeleg-V1` geführt. Die Gegenbuchungsbeträge werden mit umgekehrtem Vorzeichen abgebildet; die Referenz zum Ursprungsbeleg wird im DSFinV-K-Datensatz über `Bon_Referenzen` geführt und ist nicht Teil der TSE-processData.
 
+### Startprüfung: TSE nicht angeschlossen
+
+Beim Start und nach jedem Schließen der Einstellungen prüft
+`AutoProbeTseAsync` das Gerät über `TseFailSafeService`, das einen Ausfall
+dokumentiert und bei späterem Erfolg wieder schließt.
+
+Bis R182 wurde dieses Ergebnis nur bei `Ready` und `Connected` angezeigt. Der
+häufigste Fall überhaupt - keine TSE angeschlossen (`NotFound`), fehlendes SDK
+(`SdkMissing`) oder ein Gerätefehler (`Error`) - erzeugte keinerlei sichtbaren
+Hinweis: der Ausfall stand nur im Protokoll, und an der Kasse wurde einen ganzen
+Tag lang normal weiterverkauft.
+
+Jetzt gilt:
+
+- Jeder Zustand, der nicht signieren kann, erzeugt eine Statuszeile **und**
+  einmal pro Programmlauf ein Hinweisfenster.
+- `Ready` bleibt still; der Trainingsmodus ebenfalls, da dort ohnehin nicht
+  signiert wird.
+- Der Hinweis **sperrt die Kasse nicht**. Nach § 146a AO ist ein TSE-Ausfall
+  ein dokumentierter Ausfall, kein Grund, den Betrieb anzuhalten. Das Fenster
+  sagt ausdrücklich, dass weiterverkauft werden kann und dass die Vorgänge in
+  dieser Zeit nicht fiskal abgesichert sind.
+- Eine Administratorin oder ein Administrator bekommt zusätzlich den Weg in
+  `Erweitert / Techniker`; einer Kassenkraft wird gesagt, wen sie informieren
+  soll.
+- Der Gerätename **TSE** bleibt in allen drei Sprachen stehen, damit der
+  Hinweis am Telefon gegenüber der Technikerin oder dem Techniker wiederholbar
+  ist.
+
 ## Datenintegrität
 
 Abgeschlossene Verkäufe, Positionen, Bedienerzuordnungen, Tagesabschlüsse, Z-Archive und Audit-Ereignisse besitzen Datenbankseitige Schutzmechanismen gegen nachträgliches UPDATE/DELETE. Korrekturen erfolgen als neue Gegenbuchung, nicht als Überschreiben des Ursprungs.

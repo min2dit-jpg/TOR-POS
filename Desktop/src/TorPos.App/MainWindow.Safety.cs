@@ -21,6 +21,98 @@ public partial class MainWindow
         await window.ShowDialog(this);
     }
 
+    // Shown once per program start when the TSE is not ready. A missing TSE is
+    // not a crash and must not stop the till - § 146a expects the outage to be
+    // documented and the shop to keep working, which TseFailSafeService already
+    // does. What was missing is that anyone notices: the status line under the
+    // scanner is overwritten by the next scan, and the header badge is easy to
+    // work past for a whole day. So the operator is told once, plainly, with the
+    // way to fix it if they are allowed to.
+    private async Task ShowTseUnavailableAsync(string headline, string deviceMessage)
+    {
+        var window = new Window
+        {
+            Title = "TSE-Prüfung beim Start",
+            Width = 700,
+            Height = 430,
+            MinWidth = 620,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        var openSettings = false;
+        var settings = new Button
+        {
+            Content = "TSE-EINSTELLUNGEN ÖFFNEN",
+            MinHeight = 48,
+            MinWidth = 220,
+            IsVisible = _currentUser.IsAdmin
+        };
+        var close = new Button { Content = "WEITER OHNE TSE", MinHeight = 48, MinWidth = 180 };
+        settings.Click += (_, _) => { openSettings = true; window.Close(); };
+        close.Click += (_, _) => window.Close();
+
+        // Scrolls rather than clips. This window is built inline, so the
+        // headless layout gate - which constructs window classes - never
+        // measures it, and the Turkish and English sentences are longer than
+        // the German ones they are keyed by.
+        window.Content = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Avalonia.Thickness(24),
+                Spacing = 16,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = headline,
+                        FontSize = 23,
+                        FontWeight = Avalonia.Media.FontWeight.Bold,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        Foreground = AppTheme.WarningAmber
+                    },
+                    new TextBlock
+                    {
+                        Text = deviceMessage,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        FontSize = 15,
+                        Opacity = 0.85
+                    },
+                    // One literal, not a concatenation: the translation table is
+                    // keyed by the exact German sentence, and a key that only
+                    // exists once the compiler has glued three pieces together
+                    // cannot be found by grep or by a coverage check.
+                    new TextBlock
+                    {
+                        Text = "Bis eine betriebsbereite TSE erkannt wird, wird kein Vorgang signiert. Die Kasse bleibt bedienbar und der Ausfall wird dokumentiert; die Vorgänge sind dann aber nicht fiskal abgesichert.",
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        FontSize = 15
+                    },
+                    new TextBlock
+                    {
+                        Text = _currentUser.IsAdmin
+                            ? "Prüfen: steckt die TSE im USB-Anschluss, wird sie im Explorer als Laufwerk angezeigt, ist der Techniker-Bereich eingerichtet?"
+                            : "Bitte die Betreiberin oder den Betreiber informieren. Der Verkauf kann weiterlaufen.",
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                        FontSize = 15,
+                        Foreground = AppTheme.AccentBlue
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 10,
+                        Children = { settings, close }
+                    }
+                }
+            }
+        };
+
+        UiLanguage.Apply(window);
+        await window.ShowDialog(this);
+        if (openSettings)
+            await OpenSettingsPageAsync("Erweitert / Techniker 🔒");
+    }
+
     private async Task ShowPrinterIssueAsync(string title, string message, bool uncertainQueue)
     {
         StatusLine = message;
