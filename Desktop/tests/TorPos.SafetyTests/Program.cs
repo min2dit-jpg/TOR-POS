@@ -107,6 +107,34 @@ if (!cloudGateRunsBeforeConfiguration)
         "FAIL: Direct Cloud TSE release gate must run before configuration or endpoint validation.");
 }
 
+var countingCloudClient =
+    new CountingDirectCloudTseClient();
+var blockedCloudProvider =
+    new DirectCloudTseProvider(
+        TseProviderCatalog.FiskalyDirectCloud,
+        countingCloudClient);
+
+var cloudProviderRejectedBeforeClient = false;
+try
+{
+    await blockedCloudProvider.ProbeAsync();
+}
+catch (InvalidOperationException ex)
+{
+    cloudProviderRejectedBeforeClient =
+        ex.Message.Contains(
+            "Cloud-TSE",
+            StringComparison.OrdinalIgnoreCase);
+}
+
+if (!cloudProviderRejectedBeforeClient ||
+    countingCloudClient.Calls != 0 ||
+    blockedCloudProvider.TransactionAvailable)
+{
+    throw new Exception(
+        "FAIL: Unvalidated direct Cloud TSE provider must be rejected before any provider client call.");
+}
+
 // R72.3: ordinary SafetyTests use SafetyDatabase so each disposable fixture
 // follows the same ordered schema migration path as TOR POS itself.
 // R69ReviewTests is the deliberate exception because it tests migration edges.
