@@ -1,0 +1,306 @@
+using System.Security.Cryptography;
+using System.Text;
+
+namespace TorPos.Infrastructure;
+
+public sealed record RestaurantPairingCode(
+    string Code,
+    DateTimeOffset ExpiresAt);
+
+public sealed record RestaurantPairedDevice(
+    string DeviceId,
+    string DisplayName,
+    string DeviceToken,
+    DateTimeOffset PairedAt);
+
+public sealed class RestaurantHandheldPairingService
+{
+    private readonly SqliteDatabase _db;
+    private readonly RestaurantEntitlementService _entitlements;
+
+    public RestaurantHandheldPairingService(
+        SqliteDatabase db,
+        RestaurantEntitlementService entitlements)
+    {
+        _db = db;
+        _entitlements = entitlements;
+    }
+
+    public async Task<RestaurantPairingCode> CreatePairingCodeAsync(
+        string actor,
+        TimeSpan? lifetime = null,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            TorPos.Core.RestaurantFeature.HandheldBestellung);
+
+        actor = (actor ?? "").Trim();
+        if (actor.Length == 0)
+            throw new ArgumentException("Bediener fehlt.", nameof(actor));
+
+        var ttl = lifetime ?? TimeSpan.FromMinutes(10);
+        if (ttl <= TimeSpan.Zero || ttl > TimeSpan.FromHours(1))
+            throw new ArgumentOutOfRangeException(nameof(lifetime));
+
+        var code = RandomNumberGenerator.GetInt32(100000, 1000000)
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var id = Guid.NewGuid().ToString("N");
+        var now = DateTimeOffset.UtcNow;
+        var expires = now.Add(ttl);
+
+        await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+
+            await using (var purge = c.CreateCommand())
+            {
+                purge.Transaction = tx;
+                purge.CommandText = """
+                    DELETE FROM restaurant_pairing_codes
+                    WHERE expires_at < $now
+                       OR consumed_at IS NOT NULL;
+                    """;
+                purge.Parameters.AddWithValue("$now", now.ToString("O"));
+                await purge.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var q = c.CreateCommand())
+            {
+                q.Transaction = tx;
+                q.CommandText = """
+                    INSERT INTO restaurant_pairing_codes(
+                        id,code_hash,created_at,expires_at,created_by,
+                        consumed_at,consumed_by_device)
+                    VALUES($id,$hash,$created,$expires,$actor,NULL,'');
+                    """;
+                q.Parameters.AddWithValue("$id", id);
+                q.Parameters.AddWithValue("$hash", Hash(code));
+                q.Parameters.AddWithValue("$created", now.ToString("O"));
+                q.Parameters.AddWithValue("$expires", expires.ToString("O"));
+                q.Parameters.AddWithValue("$actor", actor);
+                await q.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+        });
+
+        return new RestaurantPairingCode(code, expires);
+    }
+
+    public async Task<RestaurantPairedDevice> PairAsync(
+        string pairingCode,
+        string deviceId,
+        string displayName,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            TorPos.Core.RestaurantFeature.HandheldBestellung);
+
+        pairingCode = (pairingCode ?? "").Trim();
+        deviceId = (deviceId ?? "").Trim();
+        displayName = (displayName ?? "").Trim();
+
+        if (pairingCode.Length != 6 || !pairingCode.All(char.IsDigit))
+            throw new InvalidOperationException("Pairing-Code ist ungültig.");
+        if (deviceId.Length is < 4 or > 128)
+            throw new ArgumentException("Geräte-ID ist ungültig.", nameof(deviceId));
+        if (displayName.Length == 0 || displayName.Length > 120)
+            throw new ArgumentException("Gerätename ist ungültig.", nameof(displayName));
+
+        var now = DateTimeOffset.UtcNow;
+        var token = Convert.ToBase64String(
+            RandomNumberGenerator.GetBytes(32));
+        var tokenHash = Hash(token);
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+
+            string? pairingId = null;
+            string? pairedBy = null;
+
+            await using (var find = c.CreateCommand())
+            {
+                find.Transaction = tx;
+                find.CommandText = """
+                    SELECT id,created_by
+                    FROM restaurant_pairing_codes
+                    WHERE code_hash=$hash
+                      AND consumed_at IS NULL
+                      AND expires_at >= $now
+                    LIMIT 1;
+                    """;
+                find.Parameters.AddWithValue("$hash", Hash(pairingCode));
+                find.Parameters.AddWithValue("$now", now.ToString("O"));
+
+                await using var r = await find.ExecuteReaderAsync(ct);
+                if (await r.ReadAsync(ct))
+                {
+                    pairingId = r.GetString(0);
+                    pairedBy = r.GetString(1);
+                }
+            }
+
+            if (pairingId is null)
+                throw new InvalidOperationException(
+                    "Pairing-Code ist abgelaufen, bereits verwendet oder ungültig.");
+
+            await using (var consume = c.CreateCommand())
+            {
+                consume.Transaction = tx;
+                consume.CommandText = """
+                    UPDATE restaurant_pairing_codes
+                    SET consumed_at=$now,
+                        consumed_by_device=$device
+                    WHERE id=$id
+                      AND consumed_at IS NULL;
+                    """;
+                consume.Parameters.AddWithValue("$now", now.ToString("O"));
+                consume.Parameters.AddWithValue("$device", deviceId);
+                consume.Parameters.AddWithValue("$id", pairingId);
+
+                if (await consume.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Pairing-Code wurde bereits verwendet.");
+            }
+
+            await using (var device = c.CreateCommand())
+            {
+                device.Transaction = tx;
+                device.CommandText = """
+                    INSERT INTO restaurant_handheld_devices(
+                        device_id,display_name,token_hash,paired_at,paired_by,
+                        last_seen_at,is_active)
+                    VALUES($id,$name,$token,$now,$actor,$now,1)
+                    ON CONFLICT(device_id) DO UPDATE SET
+                        display_name=excluded.display_name,
+                        token_hash=excluded.token_hash,
+                        paired_at=excluded.paired_at,
+                        paired_by=excluded.paired_by,
+                        last_seen_at=excluded.last_seen_at,
+                        is_active=1;
+                    """;
+                device.Parameters.AddWithValue("$id", deviceId);
+                device.Parameters.AddWithValue("$name", displayName);
+                device.Parameters.AddWithValue("$token", tokenHash);
+                device.Parameters.AddWithValue("$now", now.ToString("O"));
+                device.Parameters.AddWithValue("$actor", pairedBy ?? "");
+                await device.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+
+            return new RestaurantPairedDevice(
+                deviceId,
+                displayName,
+                token,
+                now);
+        });
+    }
+
+    public async Task RequireAuthenticatedAsync(
+        string deviceId,
+        string deviceToken,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(
+            TorPos.Core.RestaurantFeature.HandheldBestellung);
+
+        deviceId = (deviceId ?? "").Trim();
+        deviceToken = (deviceToken ?? "").Trim();
+
+        if (deviceId.Length == 0 || deviceToken.Length == 0)
+            throw new UnauthorizedAccessException(
+                "Handheld-Gerät ist nicht authentifiziert.");
+
+        var now = DateTimeOffset.UtcNow;
+
+        var ok = await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+
+            string? storedHash = null;
+            await using (var q = c.CreateCommand())
+            {
+                q.Transaction = tx;
+                q.CommandText = """
+                    SELECT token_hash
+                    FROM restaurant_handheld_devices
+                    WHERE device_id=$id AND is_active=1;
+                    """;
+                q.Parameters.AddWithValue("$id", deviceId);
+                storedHash = (string?)await q.ExecuteScalarAsync(ct);
+            }
+
+            if (storedHash is null ||
+                !FixedEquals(
+                    storedHash,
+                    Hash(deviceToken)))
+            {
+                await tx.RollbackAsync(ct);
+                return false;
+            }
+
+            await using (var touch = c.CreateCommand())
+            {
+                touch.Transaction = tx;
+                touch.CommandText = """
+                    UPDATE restaurant_handheld_devices
+                    SET last_seen_at=$now
+                    WHERE device_id=$id AND is_active=1;
+                    """;
+                touch.Parameters.AddWithValue("$now", now.ToString("O"));
+                touch.Parameters.AddWithValue("$id", deviceId);
+                await touch.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+            return true;
+        });
+
+        if (!ok)
+            throw new UnauthorizedAccessException(
+                "Handheld-Gerät ist nicht authentifiziert.");
+    }
+
+    public Task DeactivateAsync(
+        string deviceId,
+        CancellationToken ct = default) =>
+        IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE restaurant_handheld_devices
+                SET is_active=0
+                WHERE device_id=$id;
+                """;
+            q.Parameters.AddWithValue("$id", (deviceId ?? "").Trim());
+            await q.ExecuteNonQueryAsync(ct);
+        });
+
+    private static string Hash(string value) =>
+        Convert.ToHexString(
+            SHA256.HashData(
+                Encoding.UTF8.GetBytes(value)));
+
+    private static bool FixedEquals(
+        string left,
+        string right)
+    {
+        try
+        {
+            var a = Convert.FromHexString(left);
+            var b = Convert.FromHexString(right);
+            return a.Length == b.Length &&
+                   CryptographicOperations.FixedTimeEquals(a, b);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
