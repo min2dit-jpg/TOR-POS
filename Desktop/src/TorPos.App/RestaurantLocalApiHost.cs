@@ -33,6 +33,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     private readonly IRestaurantHandheldService _handheld;
     private readonly RestaurantTerminalRegistry _terminals;
     private readonly RestaurantSyncService _sync;
+    private readonly RestaurantRepository _restaurant;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
 #if TOR_RESTAURANT_PRODUCT
@@ -49,7 +50,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         RestaurantHandheldPairingService pairing,
         IRestaurantHandheldService handheld,
         RestaurantTerminalRegistry terminals,
-        RestaurantSyncService sync)
+        RestaurantSyncService sync,
+        RestaurantRepository restaurant)
     {
         _settings = settings;
         _entitlements = entitlements;
@@ -57,6 +59,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         _handheld = handheld;
         _terminals = terminals;
         _sync = sync;
+        _restaurant = restaurant;
     }
 
     public async Task StartOrRestartAsync(
@@ -551,10 +554,10 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         }
                         catch (InvalidOperationException ex)
                         {
-                            return Results.Conflict(new
-                            {
-                                error = ex.Message
-                            });
+                            return await SessionConflictAsync(
+                                sessionId,
+                                ex,
+                                token);
                         }
                     })
                 .RequireRateLimiting("device");
@@ -652,10 +655,10 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         }
                         catch (InvalidOperationException ex)
                         {
-                            return Results.Conflict(new
-                            {
-                                error = ex.Message
-                            });
+                            return await SessionConflictAsync(
+                                request.SessionId,
+                                ex,
+                                token);
                         }
                     })
                 .RequireRateLimiting("device");
@@ -705,10 +708,10 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         }
                         catch (InvalidOperationException ex)
                         {
-                            return Results.Conflict(new
-                            {
-                                error = ex.Message
-                            });
+                            return await SessionConflictAsync(
+                                request.SessionId,
+                                ex,
+                                token);
                         }
                     })
                 .RequireRateLimiting("device");
@@ -906,6 +909,24 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         X509Certificate2 certificate) =>
         certificate.GetCertHashString(
             HashAlgorithmName.SHA256);
+
+    private async Task<IResult> SessionConflictAsync(
+        string sessionId,
+        InvalidOperationException error,
+        CancellationToken ct)
+    {
+        var session = await _restaurant.GetSessionAsync(
+            sessionId,
+            ct);
+
+        return Results.Conflict(new
+        {
+            error = error.Message,
+            sessionId,
+            currentSessionVersion = session?.Version,
+            sessionState = session?.State.ToString().ToUpperInvariant()
+        });
+    }
 
     private static string NormalizeTerminalType(
         string? terminalType)
