@@ -677,7 +677,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         request.OperatorName,
                                         request.OperatorPin,
                                         deviceId,
-                                        deviceToken),
+                                        deviceToken,
+                                        request.CommandId),
                                     token);
 
                             return Results.Ok(result);
@@ -686,7 +687,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         {
                             return Results.Unauthorized();
                         }
-                        catch (ArgumentOutOfRangeException ex)
+                        catch (ArgumentException ex)
                         {
                             return Results.BadRequest(new
                             {
@@ -988,6 +989,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         long ExpectedSessionVersion,
         long SessionItemId,
         string OperatorName,
-        string OperatorPin);
+        string OperatorPin,
+        string CommandId = "");
 #endif
 }
