@@ -122,6 +122,7 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                     {
                         "CANCEL" => "STORNO · NICHT ZUBEREITEN",
                         "MOVE" => "TISCHWECHSEL",
+                        "NOTE" => "TISCHNOTIZ",
                         _ => "NEUE BESTELLUNG"
                     };
 
