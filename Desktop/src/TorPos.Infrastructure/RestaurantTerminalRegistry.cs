@@ -9,10 +9,15 @@ public sealed record RestaurantTerminalStatus(
     DateTimeOffset LastSeenAt,
     string AppVersion,
     string MachineName,
-    bool IsActive);
+    bool IsActive,
+    bool IsOnline);
 
 public sealed class RestaurantTerminalRegistry
 {
+    public const int RecommendedHeartbeatSeconds = 10;
+    public const int OnlineGraceSeconds = 35;
+    private const int PersistHeartbeatSeconds = 5;
+
     private readonly SqliteDatabase _db;
     private readonly RestaurantEntitlementService _entitlements;
 
@@ -58,12 +63,22 @@ public sealed class RestaurantTerminalRegistry
                     last_seen_at=excluded.last_seen_at,
                     app_version=excluded.app_version,
                     machine_name=excluded.machine_name,
-                    is_active=1;
+                    is_active=1
+                WHERE restaurant_terminals.last_seen_at <= $cutoff
+                   OR restaurant_terminals.display_name <> excluded.display_name
+                   OR restaurant_terminals.terminal_type <> excluded.terminal_type
+                   OR restaurant_terminals.app_version <> excluded.app_version
+                   OR restaurant_terminals.machine_name <> excluded.machine_name
+                   OR restaurant_terminals.is_active <> 1;
                 """;
             q.Parameters.AddWithValue("$id", terminalId);
             q.Parameters.AddWithValue("$name", displayName);
             q.Parameters.AddWithValue("$type", terminalType);
-            q.Parameters.AddWithValue("$seen", DateTimeOffset.UtcNow.ToString("O"));
+            var now = DateTimeOffset.UtcNow;
+            q.Parameters.AddWithValue("$seen", now.ToString("O"));
+            q.Parameters.AddWithValue(
+                "$cutoff",
+                now.AddSeconds(-PersistHeartbeatSeconds).ToString("O"));
             q.Parameters.AddWithValue("$version", appVersion);
             q.Parameters.AddWithValue("$machine", machineName);
             await q.ExecuteNonQueryAsync(ct);
@@ -88,14 +103,21 @@ public sealed class RestaurantTerminalRegistry
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
         {
+            var lastSeen =
+                DateTimeOffset.Parse(r.GetString(3));
+            var active = r.GetInt32(6) == 1;
+
             result.Add(new RestaurantTerminalStatus(
                 r.GetString(0),
                 r.GetString(1),
                 r.GetString(2),
-                DateTimeOffset.Parse(r.GetString(3)),
+                lastSeen,
                 r.GetString(4),
                 r.GetString(5),
-                r.GetInt32(6) == 1));
+                active,
+                active &&
+                DateTimeOffset.UtcNow - lastSeen <=
+                    TimeSpan.FromSeconds(OnlineGraceSeconds)));
         }
 
         return result;
