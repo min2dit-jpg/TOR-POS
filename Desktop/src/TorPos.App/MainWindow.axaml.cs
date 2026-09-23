@@ -5667,8 +5667,7 @@ public partial class MainWindow:Window
 
     private async Task WarnAboutTseOnceAsync(string headline, string deviceMessage)
     {
-        if (_tseStartupWarningShown || _currentUser.IsTraining)
-            return;
+        if (_tseStartupWarningShown || _currentUser.IsTraining) return;
 
         _tseStartupWarningShown = true;
         await ShowTseUnavailableAsync(headline, deviceMessage);
