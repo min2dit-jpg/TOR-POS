@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using TorPos.Application;
 using TorPos.Core;
 using TorPos.Infrastructure;
@@ -13,6 +15,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
     private readonly RestaurantHandheldPairingService _pairing;
     private readonly IAuthenticationService _authentication;
+    private readonly RestaurantCommandJournal _commands;
     private readonly IProductCatalog _catalog;
 
     public RestaurantHandheldService(
@@ -23,6 +26,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         RestaurantKitchenDispatcher kitchenDispatcher,
         RestaurantHandheldPairingService pairing,
         IAuthenticationService authentication,
+        RestaurantCommandJournal commands,
         IProductCatalog catalog)
     {
         _entitlements = entitlements;
@@ -32,6 +36,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         _kitchenDispatcher = kitchenDispatcher;
         _pairing = pairing;
         _authentication = authentication;
+        _commands = commands;
         _catalog = catalog;
     }
 
@@ -300,40 +305,184 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ?? throw new InvalidOperationException(
                 "Artikel ist nicht vorhanden oder deaktiviert.");
 
-        var secured = await _fiscal.IsCurrentStateSecuredAsync(
+        var quantityMilli =
+            (long)Math.Round(
+                request.Quantity * 1000m,
+                MidpointRounding.AwayFromZero);
+
+        if (quantityMilli <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(request.Quantity));
+
+        var requestHash = CommandHash(
+            "ADD_ITEM",
+            request.SessionId,
+            request.ExpectedSessionVersion.ToString(),
+            request.ProductId.ToString(),
+            quantityMilli.ToString(),
+            operatorUser.Username);
+
+        var claim = await _commands.BeginAsync(
+            request.DeviceId,
+            request.CommandId,
+            "ADD_ITEM",
+            requestHash,
             request.SessionId,
             ct);
 
-        if (!secured)
+        if (claim.State == RestaurantCommandClaimState.Completed)
+        {
+            return new RestaurantHandheldCommandResult(
+                request.SessionId,
+                claim.ResultSessionVersion);
+        }
+
+        if (claim.State == RestaurantCommandClaimState.Failed)
+        {
             throw new InvalidOperationException(
-                "Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+                string.IsNullOrWhiteSpace(claim.ErrorText)
+                    ? "Restaurant-Befehl ist bereits fehlgeschlagen. Bitte Ansicht aktualisieren und erneut senden."
+                    : claim.ErrorText);
+        }
+
+        if (claim.State == RestaurantCommandClaimState.InProgress)
+        {
+            throw new InvalidOperationException(
+                "Restaurant-Befehl wird bereits verarbeitet. Bitte kurz synchronisieren.");
+        }
+
+        var lineToken = CommandToken(
+            "ITEM",
+            request.DeviceId,
+            request.CommandId);
+
+        var kitchenJobId = CommandToken(
+            "KITCHEN",
+            request.DeviceId,
+            request.CommandId);
 
         RestaurantFiscalVorgang? vorgang = null;
+        RestaurantSessionItem? item = null;
 
         try
         {
-            vorgang = await _fiscal.BeginChangeAsync(
-                request.SessionId,
-                operatorUser.Username,
+            item = await _restaurant.GetItemByLineTokenAsync(
+                lineToken,
                 ct);
 
-            var item = await _restaurant.AddItemAsync(
-                request.SessionId,
-                request.ExpectedSessionVersion,
-                product,
-                request.Quantity,
-                operatorUser.Username,
-                request.DeviceId,
-                ct);
+            if (item is not null)
+            {
+                if (!string.Equals(
+                        item.SessionId,
+                        request.SessionId,
+                        StringComparison.Ordinal) ||
+                    item.ProductId != request.ProductId ||
+                    item.QuantityMilli != quantityMilli)
+                {
+                    throw new InvalidOperationException(
+                        "Command-ID gehört bereits zu einer anderen Restaurant-Position.");
+                }
 
-            await _fiscal.SecureAddedItemAsync(
-                request.SessionId,
-                item,
-                vorgang,
-                operatorUser.Username,
-                ct);
+                if (item.State != RestaurantSessionItemState.Active)
+                {
+                    throw new InvalidOperationException(
+                        "Die über diesen Command erzeugte Restaurant-Position ist nicht mehr offen.");
+                }
 
-            vorgang = null;
+                if (!await _fiscal.IsCurrentStateSecuredAsync(
+                        request.SessionId,
+                        ct))
+                {
+                    vorgang = await _fiscal.BeginChangeAsync(
+                        request.SessionId,
+                        operatorUser.Username,
+                        ct);
+
+                    await _fiscal.SecureAddedItemAsync(
+                        request.SessionId,
+                        item,
+                        vorgang,
+                        operatorUser.Username,
+                        ct);
+
+                    vorgang = null;
+                }
+            }
+            else
+            {
+                var sessionBefore =
+                    await _restaurant.GetSessionAsync(
+                        request.SessionId,
+                        ct)
+                    ?? throw new InvalidOperationException(
+                        "Tischvorgang nicht gefunden.");
+
+                if (sessionBefore.State !=
+                        RestaurantTableSessionState.Open ||
+                    sessionBefore.Version !=
+                        request.ExpectedSessionVersion)
+                {
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+                }
+
+                var secured =
+                    await _fiscal.IsCurrentStateSecuredAsync(
+                        request.SessionId,
+                        ct);
+
+                if (!secured)
+                {
+                    throw new InvalidOperationException(
+                        "Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+                }
+
+                vorgang = await _fiscal.BeginChangeAsync(
+                    request.SessionId,
+                    operatorUser.Username,
+                    ct);
+
+                var mutation =
+                    await _restaurant.AddItemWithLineTokenAsync(
+                        request.SessionId,
+                        request.ExpectedSessionVersion,
+                        product,
+                        request.Quantity,
+                        operatorUser.Username,
+                        lineToken,
+                        request.DeviceId,
+                        ct);
+
+                item = mutation.Item;
+
+                if (!mutation.Created)
+                {
+                    await _fiscal.AbortChangeAsync(
+                        vorgang,
+                        operatorUser.Username,
+                        ct);
+                    vorgang = null;
+
+                    if (!await _fiscal.IsCurrentStateSecuredAsync(
+                            request.SessionId,
+                            ct))
+                    {
+                        throw new InvalidOperationException(
+                            "Restaurant-Befehl wird bereits verarbeitet. Bitte kurz synchronisieren.");
+                    }
+                }
+                else
+                {
+                    await _fiscal.SecureAddedItemAsync(
+                        request.SessionId,
+                        item,
+                        vorgang,
+                        operatorUser.Username,
+                        ct);
+
+                    vorgang = null;
+                }
+            }
 
             var session = await _restaurant.GetSessionAsync(
                 request.SessionId,
@@ -347,22 +496,29 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             var category = _catalog.Categories
                 .FirstOrDefault(x => x.Id == product.CategoryId);
 
-            await _kitchen.EnqueueNewItemAsync(
+            await _kitchen.EnqueueNewItemIdempotentAsync(
                 session,
                 item,
                 table?.DisplayName ?? "Tisch",
                 operatorUser.Username,
+                kitchenJobId,
                 KitchenStations.Normalize(
                     category?.KitchenStation),
                 ct);
 
             _kitchenDispatcher.Notify();
 
+            await _commands.CompleteAsync(
+                request.DeviceId,
+                request.CommandId,
+                session.Version,
+                ct);
+
             return new RestaurantHandheldCommandResult(
                 session.Id,
                 session.Version);
         }
-        catch
+        catch (Exception ex)
         {
             if (vorgang is not null)
             {
@@ -371,16 +527,45 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                     await _fiscal.AbortChangeAsync(
                         vorgang,
                         operatorUser.Username,
-                        ct);
+                        CancellationToken.None);
                 }
                 catch
                 {
                 }
             }
 
+            try
+            {
+                var persistedItem =
+                    item ??
+                    await _restaurant.GetItemByLineTokenAsync(
+                        lineToken,
+                        CancellationToken.None);
+
+                if (persistedItem is not null)
+                {
+                    await _commands.ReleaseForRecoveryAsync(
+                        request.DeviceId,
+                        request.CommandId,
+                        CancellationToken.None);
+                }
+                else
+                {
+                    await _commands.FailAsync(
+                        request.DeviceId,
+                        request.CommandId,
+                        ex.Message,
+                        CancellationToken.None);
+                }
+            }
+            catch
+            {
+            }
+
             throw;
         }
     }
+
     public async Task<RestaurantHandheldCommandResult> CancelItemAsync(
         RestaurantHandheldCancelItemRequest request,
         CancellationToken ct = default)
@@ -481,6 +666,31 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
             throw;
         }
+    }
+
+    private static string CommandHash(
+        params string[] values)
+    {
+        var raw = string.Join(
+            "\u001f",
+            values.Select(x => x ?? ""));
+
+        return Convert.ToHexString(
+            SHA256.HashData(
+                Encoding.UTF8.GetBytes(raw)));
+    }
+
+    private static string CommandToken(
+        string prefix,
+        string deviceId,
+        string commandId)
+    {
+        var hash = CommandHash(
+            prefix,
+            deviceId,
+            commandId);
+
+        return prefix + "-" + hash;
     }
 
     private async Task<AuthenticatedUser> RequireOperatorAsync(
