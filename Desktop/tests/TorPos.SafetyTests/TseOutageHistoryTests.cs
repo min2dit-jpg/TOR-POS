@@ -64,7 +64,10 @@ public static class TseOutageHistoryTests
             "Kein TSE-Ausfall protokolliert.",
             "Ausfallliste konnte nicht gelesen werden.",
             "läuft noch",
-            "Minuten"
+            "Tag",
+            "Tage",
+            "Std.",
+            "Min."
         };
         var turkish = Between(translations, "Turkish = new(StringComparer.Ordinal)", "private static readonly Dictionary<string, string> English");
         var english = Between(translations, "English = new(StringComparer.Ordinal)", null);

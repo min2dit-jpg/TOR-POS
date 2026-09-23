@@ -4152,17 +4152,13 @@ private Control TsePage()
             var now = DateTimeOffset.Now;
             var lines = rows.Select(outage =>
             {
-                var minutes = (long)Math.Max(
-                    0,
-                    Math.Round(((outage.EndedAt ?? now) - outage.StartedAt).TotalMinutes));
-
                 var ended = outage.EndedAt is null
                     ? UiLanguage.T("läuft noch")
                     : outage.EndedAt.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm");
 
                 return outage.StartedAt.LocalDateTime.ToString("dd.MM.yyyy HH:mm")
                     + " – " + ended
-                    + " · " + minutes + " " + UiLanguage.T("Minuten")
+                    + " · " + Duration((outage.EndedAt ?? now) - outage.StartedAt)
                     + " · " + outage.Reason;
             });
 
@@ -4173,6 +4169,37 @@ private Control TsePage()
             CrashLog.WriteException("TSE outage list", ex);
             target.Text = UiLanguage.T("Ausfallliste konnte nicht gelesen werden.");
         }
+    }
+
+    // An outage that ran overnight came out as "1461 Minuten", which nobody can
+    // read without dividing. The exact times are on the same line, so the
+    // duration only has to be graspable: the two largest units that are not
+    // zero, and no more.
+    private static string Duration(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero)
+            span = TimeSpan.Zero;
+
+        var days = (int)span.TotalDays;
+        var hours = span.Hours;
+        var minutes = span.Minutes;
+        var dayWord = UiLanguage.T(days == 1 ? "Tag" : "Tage");
+
+        if (days > 0)
+        {
+            return hours > 0
+                ? days + " " + dayWord + " " + hours + " " + UiLanguage.T("Std.")
+                : days + " " + dayWord;
+        }
+
+        if (hours > 0)
+        {
+            return minutes > 0
+                ? hours + " " + UiLanguage.T("Std.") + " " + minutes + " " + UiLanguage.T("Min.")
+                : hours + " " + UiLanguage.T("Std.");
+        }
+
+        return minutes + " " + UiLanguage.T("Min.");
     }
 
     private Control ReadOnlyRow(string label, string value)
