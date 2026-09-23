@@ -187,6 +187,28 @@ internal static class RestaurantFoundationTests
             standardReservationRejected,
             "Restaurant Standard rejects Plus reservations before any database operation");
 
+        var standardTerminalRejected = false;
+        try
+        {
+            var standardTerminals = new RestaurantTerminalRegistry(
+                null!,
+                standardEntitlements);
+            await standardTerminals.RegisterOrHeartbeatAsync(
+                "KASSE-2",
+                "Kasse 2",
+                "KASSE",
+                "TEST",
+                "TEST-PC");
+        }
+        catch (InvalidOperationException)
+        {
+            standardTerminalRejected = true;
+        }
+
+        assert(
+            standardTerminalRejected,
+            "Restaurant Standard rejects Plus multi-terminal access before any database operation");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -212,8 +234,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 31,
-                "Restaurant database reaches schema version 31");
+                result.ToVersion == 32,
+                "Restaurant database reaches schema version 32");
 
             await using (var c = db.OpenConnection())
             {
@@ -333,6 +355,32 @@ internal static class RestaurantFoundationTests
                 "T01",
                 "Tisch 1",
                 seats: 4);
+
+            var terminals = new RestaurantTerminalRegistry(
+                db,
+                plusEntitlements);
+
+            await terminals.RegisterOrHeartbeatAsync(
+                "KASSE-2",
+                "Kasse 2",
+                "KASSE",
+                "R190",
+                "SERVER-2");
+
+            await terminals.RegisterOrHeartbeatAsync(
+                "KASSE-2",
+                "Kasse 2 Neu",
+                "KASSE",
+                "R190",
+                "SERVER-2");
+
+            var terminalRows = await terminals.ListAsync();
+
+            assert(
+                terminalRows.Count(x => x.TerminalId == "KASSE-2") == 1 &&
+                terminalRows.Single(x => x.TerminalId == "KASSE-2").DisplayName == "Kasse 2 Neu" &&
+                terminalRows.Single(x => x.TerminalId == "KASSE-2").IsActive,
+                "Restaurant Plus terminal heartbeat updates one stable terminal identity without duplicates");
 
             var reservations = new RestaurantReservationService(
                 db,
@@ -947,7 +995,8 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_bestellungen") &&
                     !TableExists(c, "restaurant_kitchen_jobs") &&
                     !TableExists(c, "restaurant_handheld_devices") &&
-                    !TableExists(c, "restaurant_reservations"),
+                    !TableExists(c, "restaurant_reservations") &&
+                    !TableExists(c, "restaurant_terminals"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
