@@ -92,30 +92,34 @@ public sealed class DirectCloudTseProvider : ITseProvider
         _descriptor.DisplayName;
 
     public bool SdkAvailable =>
-        FiscalRelease.CloudTseValidated &&
+        TseProviderCatalog.IsProviderReleaseValidated(ProviderId) &&
         _client.IsConfigured;
 
     public bool ActivationAvailable => false;
 
     public bool TransactionAvailable =>
-        FiscalRelease.CloudTseValidated &&
+        TseProviderCatalog.IsProviderReleaseValidated(ProviderId) &&
         _client.IsConfigured;
 
     public bool ExportAvailable =>
-        FiscalRelease.CloudTseValidated &&
+        TseProviderCatalog.IsProviderReleaseValidated(ProviderId) &&
         _client.IsConfigured &&
         _client.ExportAvailable;
 
     public TseRuntimeStatus GetRuntimeStatus()
     {
-        if (!FiscalRelease.CloudTseValidated)
+        if (!TseProviderCatalog.IsProviderReleaseValidated(ProviderId))
         {
+            var vendor =
+                TseProviderCatalog.CloudVendorForProvider(ProviderId)
+                ?? ProviderId;
+
             return new TseRuntimeStatus(
                 false,
                 false,
                 "",
                 "",
-                "Cloud-TSE ist in diesem Build nicht validiert und bleibt gesperrt.");
+                CloudTseRelease.NotReleasedMessage(vendor));
         }
 
         return new TseRuntimeStatus(
@@ -140,7 +144,7 @@ public sealed class DirectCloudTseProvider : ITseProvider
     public async Task<TseProbeResult> ProbeAsync(
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(ProviderId);
         return await _client.ProbeAsync(ct);
     }
 
@@ -148,7 +152,7 @@ public sealed class DirectCloudTseProvider : ITseProvider
         TseActivationRequest request,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(ProviderId);
 
         return Task.FromResult(
             new TseActivationResult(
@@ -160,7 +164,7 @@ public sealed class DirectCloudTseProvider : ITseProvider
         TseTransactionStartRequest request,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(ProviderId);
 
         var stableTransactionId =
             DirectCloudTransactionIdentity.RequireUuidV4(
@@ -179,7 +183,7 @@ public sealed class DirectCloudTseProvider : ITseProvider
         TseTransactionUpdateRequest request,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(ProviderId);
         return await _client.UpdateTransactionAsync(
             request,
             ct);
@@ -189,7 +193,7 @@ public sealed class DirectCloudTseProvider : ITseProvider
         TseTransactionFinishRequest request,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(ProviderId);
         return await _client.FinishTransactionAsync(
             request,
             ct);
@@ -199,7 +203,7 @@ public sealed class DirectCloudTseProvider : ITseProvider
         string targetPath,
         CancellationToken ct = default)
     {
-        FiscalRelease.RequireCloudTse();
+        TseProviderCatalog.RequireProviderRelease(ProviderId);
         return await _client.ExportAsync(
             targetPath,
             ct);
