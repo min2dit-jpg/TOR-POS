@@ -26,10 +26,7 @@ using TorPos.Infrastructure;
 
 var check = args.Contains("--check");
 
-// The layout is only as safe as the language it was measured in. Turkish and
-// English words are not German words, and a button that fits "KASSIEREN" can be
-// cut in half by "ÖDEME AL". --language renders and measures in that language;
-// the files carry it so a second run does not overwrite the German pictures.
+// Layout safety is language-dependent: translated labels can be wider than DE.
 var languageIndex = Array.IndexOf(args, "--language");
 var language = languageIndex >= 0 && languageIndex + 1 < args.Length
     ? args[languageIndex + 1].Trim().ToUpperInvariant()
@@ -39,7 +36,10 @@ if (!UiLanguage.IsSupported(language))
 var languageSuffix = language == "DE" ? "" : "-" + language.ToLowerInvariant();
 
 var positional = args
-    .Where((a, i) => a != "--check" && (languageIndex < 0 || (i != languageIndex && i != languageIndex + 1)))
+    .Where((a, i) =>
+        a != "--check" &&
+        (languageIndex < 0 ||
+         (i != languageIndex && i != languageIndex + 1)))
     .ToList();
 // Default output outside the repository, so a local run never leaves files to commit.
 var output = Path.GetFullPath(positional.Count > 0 ? positional[0] : Path.Combine(Path.GetTempPath(), "tor-ui-snapshots"));
@@ -150,20 +150,15 @@ async Task RunAsync()
     await catalog.ReloadAsync();
     await tseOutages.OpenAsync("UI-Snapshot: TSE nicht erreichbar", "snapshot");
 
-    await InstallationEdition.EnforceAsync(settings, snapshotEdition);
-    await new ImbissStarterCatalogService(db).EnsureAsync(snapshotEdition);
-    await catalog.ReloadAsync();
-    await tseOutages.OpenAsync("UI-Snapshot: TSE nicht erreichbar", "snapshot");
+    var admin = new AuthenticatedUser(1, "admin", "ADMIN", IsAdmin: true, MustChangePassword: false);
 
+    foreach (var (width, height) in sizes)
+    {
+        var window = new MainWindow(
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
             compliance, dsfinvkExport, datevAscii, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
             tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
             auth, management, restaurantRepository, restaurantFiscal, restaurantEntitlements, admin, checkoutJournal, checkoutApplication,
-            new ControlledPosActionService(db), new PromotionCampaignService(db),
-            fiscalSigning, orderFiscalSigning, tseFailSafe, new NoWindows());
-
-            tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
-            auth, management, admin, checkoutJournal, checkoutApplication,
             new ControlledPosActionService(db), new PromotionCampaignService(db),
             fiscalSigning, orderFiscalSigning, tseFailSafe, new NoWindows());
 
@@ -215,17 +210,12 @@ async Task RunAsync()
                 Console.WriteLine($"saved {hubFile}");
             }
         }
-    // regression set so the old TOR placeholder/magnifier cannot return.
-    await SnapshotDialogAsync(new StartupLoadingWindow(), "startup-loading", check, failures, output);
-    await SnapshotDialogAsync(new LoginWindow(auth, settings), "login", check, failures, output);
-    // R182: a dedicated TOR Einzelhandel / TOR Gastro build shows one fixed
-    // Kassenart centred across the row. That is the screen a customer actually
-    // sees, and the till it runs on has a small display, so it belongs in the
-    // layout gate rather than only in a source-level check.
-    await SnapshotDialogAsync(new LoginWindow(auth, settings, snapshotEdition), "login-locked", check, failures, output);
 
-    // R164: the real employee-management window is opened and then reloaded
-    // once more, exactly matching the refresh path after a successful save.
+        window.Close();
+    }
+
+    // R161: brand-critical startup and login screens are part of the visual
+    // regression set so the old TOR placeholder/magnifier cannot return.
     await SnapshotDialogAsync(new StartupLoadingWindow(), "startup-loading", check, failures, output);
     await SnapshotDialogAsync(new LoginWindow(auth, settings), "login", check, failures, output);
     // R182: a dedicated TOR Einzelhandel / TOR Gastro build shows one fixed
@@ -389,6 +379,16 @@ static void CheckLayout(Window window, int width, int height, List<string> failu
             break;
         }
     }
+}
+
+static (int, int) ParseSize(string text)
+{
+    var parts = text.ToLowerInvariant().Split('x');
+    return (int.Parse(parts[0]), int.Parse(parts[1]));
+}
+
+// The snapshot never opens secondary windows; any attempt is a bug in the run.
+sealed class NoWindows : IAppWindowFactory
 {
     public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
     public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
@@ -400,15 +400,5 @@ static void CheckLayout(Window window, int width, int height, List<string> failu
         AuthenticatedUser user) => throw new NotSupportedException();
     public RestaurantReservationsWindow CreateRestaurantReservationsWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
-    public DiagnosticsWindow CreateDiagnosticsWindow() => throw new NotSupportedException();
-}
-    return (int.Parse(parts[0]), int.Parse(parts[1]));
-}
-
-// The snapshot never opens secondary windows; any attempt is a bug in the run.
-sealed class NoWindows : IAppWindowFactory
-{
-    public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
-    public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
     public DiagnosticsWindow CreateDiagnosticsWindow() => throw new NotSupportedException();
 }
