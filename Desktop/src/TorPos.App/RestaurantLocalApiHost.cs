@@ -477,6 +477,58 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     })
                 .RequireRateLimiting("device");
 
+            app.MapPost(
+                    "/api/v1/items/cancel",
+                    async (
+                        HttpContext context,
+                        CancelItemRequest request,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            var result =
+                                await _handheld.CancelItemAsync(
+                                    new RestaurantHandheldCancelItemRequest(
+                                        request.SessionId,
+                                        request.ExpectedSessionVersion,
+                                        request.SessionItemId,
+                                        request.OperatorName,
+                                        request.OperatorPin,
+                                        deviceId,
+                                        deviceToken),
+                                    token);
+
+                            return Results.Ok(result);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentOutOfRangeException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
             await app.StartAsync(ct);
 
             _app = app;
@@ -730,6 +782,13 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         long ExpectedSessionVersion,
         long ProductId,
         decimal Quantity,
+        string OperatorName,
+        string OperatorPin);
+
+    private sealed record CancelItemRequest(
+        string SessionId,
+        long ExpectedSessionVersion,
+        long SessionItemId,
         string OperatorName,
         string OperatorPin);
 #endif
