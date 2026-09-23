@@ -53,43 +53,22 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             deviceToken,
             ct);
 
-        var result = new List<RestaurantHandheldTableSummary>();
-        foreach (var table in await _restaurant.ListTablesAsync(ct))
-        {
-            var session = await _restaurant.GetLiveSessionForTableAsync(
-                table.Id,
+        var rows =
+            await _restaurant.ListLiveTableSummariesAsync(
                 ct);
 
-            if (session is null)
-            {
-                result.Add(new RestaurantHandheldTableSummary(
-                    table.Id,
-                    table.DisplayName,
-                    false,
-                    "",
-                    0,
-                    "",
-                    0,
-                    0));
-                continue;
-            }
-
-            var items = await _restaurant.ListActiveItemsAsync(
-                session.Id,
-                ct);
-
-            result.Add(new RestaurantHandheldTableSummary(
-                table.Id,
-                table.DisplayName,
-                true,
-                session.Id,
-                session.Version,
-                session.AssignedWaiter,
-                session.GuestCount,
-                items.Sum(x => x.LineTotalCents)));
-        }
-
-        return result;
+        return rows
+            .Select(x =>
+                new RestaurantHandheldTableSummary(
+                    x.TableId,
+                    x.TableName,
+                    x.IsOpen,
+                    x.SessionId,
+                    x.SessionVersion,
+                    x.Waiter,
+                    x.GuestCount,
+                    x.OpenTotalCents))
+            .ToArray();
     }
 
     public async Task<IReadOnlyList<RestaurantHandheldCatalogProduct>> GetCatalogAsync(
