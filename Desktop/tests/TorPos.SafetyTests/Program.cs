@@ -517,10 +517,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-// Restaurant foundation: 40 checks lock signed Standard/Plus entitlement,
-// Restaurant-only schema isolation, pairing/token revocation, immutable orders,
-// kitchen routing/outbox durability, KDS/handheld gates and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1200;
+// Restaurant foundation: 43 checks lock signed Standard/Plus entitlement,
+// Restaurant-only schema isolation, pairing/token hashing and revocation,
+// guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
+const int ExpectedSafetyChecks = 1203;
 
 if (checks != ExpectedSafetyChecks)
 {
