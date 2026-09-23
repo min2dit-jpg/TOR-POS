@@ -110,6 +110,41 @@ public sealed class RestaurantKitchenOutbox
             ct);
     }
 
+    public async Task<string> EnqueueNoteAsync(
+        RestaurantTableSession session,
+        string tableName,
+        string actor,
+        CancellationToken ct = default)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            type = "RESTAURANT_KITCHEN",
+            action = "NOTE",
+            sessionId = session.Id,
+            tableId = session.TableId,
+            tableName,
+            waiter = session.AssignedWaiter,
+            guestCount = session.GuestCount,
+            note = session.Note,
+            itemId = 0L,
+            ProductName = "TISCHNOTIZ AKTUALISIERT",
+            VariantName = "",
+            QuantityMilli = 1000L,
+            UnitPriceCents = 0L,
+            actor,
+            station = KitchenStations.None
+        });
+
+        return await EnqueueAsync(
+            session.Id,
+            null,
+            "NOTE",
+            station: KitchenStations.None,
+            printerName: "",
+            payload,
+            ct);
+    }
+
     public Task<IReadOnlyList<RestaurantKitchenJob>> PendingAsync(
         CancellationToken ct = default) =>
         IoQueue.RunAsync<IReadOnlyList<RestaurantKitchenJob>>(async () =>
