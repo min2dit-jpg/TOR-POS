@@ -1448,6 +1448,20 @@ public static class MultiLanguageTests
             setupWindowVocabulary.All(key => turkishKeys.Contains(key) && englishKeys.Contains(key)),
             "the setup, diagnostics and order windows read in the chosen language as well");
 
+        // A translation can break a layout. Turkish and English words are not
+        // German words, and a button sized for KASSIEREN can be cut in half by
+        // ÖDEME AL - which the layout gate would never see while it only ever
+        // renders German. The snapshot tool takes the language from the stored
+        // setting, the way a real till does, and CI measures all three.
+        var snapshotTool = File.ReadAllText(FindRepoFile("Desktop/tools/TorPos.UiSnapshot/Program.cs"));
+        var workflow = File.ReadAllText(FindRepoFile(".github/workflows/tor-pos-ci.yml"));
+        assert(
+            snapshotTool.Contains("[\"ui.language\"] = language", StringComparison.Ordinal) &&
+            snapshotTool.Contains("UiLanguage.IsSupported(language)", StringComparison.Ordinal) &&
+            workflow.Contains("--check --language TR", StringComparison.Ordinal) &&
+            workflow.Contains("--check --language EN", StringComparison.Ordinal),
+            "the layout gate measures the till in Turkish and English too, so a longer translation cannot quietly cut a button in half");
+
         // R54 deleted ui.language from app_settings inside InitializeAsync, with no
         // schema guard - it ran at every start and wiped the operator's choice.
         var infrastructure = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/Infrastructure.cs"));

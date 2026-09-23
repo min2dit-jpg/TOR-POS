@@ -15,7 +15,7 @@ using TorPos.Infrastructure;
 // numpad digits cut in half) were only ever found from photos of real screens;
 // this lets a layout change be looked at before it ships.
 //
-//   dotnet run --project tools/TorPos.UiSnapshot -- <output folder> [WIDTHxHEIGHT ...] [--check]
+//   dotnet run --project tools/TorPos.UiSnapshot -- <output folder> [WIDTHxHEIGHT ...] [--check] [--language DE|TR|EN]
 //
 // --check additionally fails (exit code 1) when, at any size, a control a
 // cashier cannot work without is off-screen or clipped. CI runs it that way.
@@ -25,7 +25,22 @@ using TorPos.Infrastructure;
 // redirected through the environment and a developer PC may also be a till.
 
 var check = args.Contains("--check");
-var positional = args.Where(a => a != "--check").ToList();
+
+// The layout is only as safe as the language it was measured in. Turkish and
+// English words are not German words, and a button that fits "KASSIEREN" can be
+// cut in half by "ÖDEME AL". --language renders and measures in that language;
+// the files carry it so a second run does not overwrite the German pictures.
+var languageIndex = Array.IndexOf(args, "--language");
+var language = languageIndex >= 0 && languageIndex + 1 < args.Length
+    ? args[languageIndex + 1].Trim().ToUpperInvariant()
+    : "DE";
+if (!UiLanguage.IsSupported(language))
+    throw new ArgumentException($"Unknown interface language '{language}'. Use DE, TR or EN.");
+var languageSuffix = language == "DE" ? "" : "-" + language.ToLowerInvariant();
+
+var positional = args
+    .Where((a, i) => a != "--check" && (languageIndex < 0 || (i != languageIndex && i != languageIndex + 1)))
+    .ToList();
 // Default output outside the repository, so a local run never leaves files to commit.
 var output = Path.GetFullPath(positional.Count > 0 ? positional[0] : Path.Combine(Path.GetTempPath(), "tor-ui-snapshots"));
 var sizes = positional.Skip(1).Select(ParseSize).ToList();
@@ -55,7 +70,7 @@ try
     await work;
     foreach (var failure in failures) Console.Error.WriteLine("LAYOUT FAIL: " + failure);
     if (check && failures.Count > 0) exitCode = 1;
-    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 10 dialogs)");
+    if (check && failures.Count == 0) Console.WriteLine($"LAYOUT CHECK PASSED ({sizes.Count} sizes, 10 dialogs, language {language})");
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
 finally
@@ -113,11 +128,16 @@ async Task RunAsync()
     // EnforceAsync refuses any other, so the snapshot follows the build it was
     // compiled for. The shared build keeps IMBISS, the wider of the two headers.
     var snapshotEdition = ProductBuild.FixedEdition ?? "IMBISS";
+    // Stored rather than set directly: MainWindow reads ui.language on every
+    // settings reload, so anything set behind its back would be overwritten
+    // during start-up. This is the path a real till takes.
     await settings.SaveManyAsync(new Dictionary<string, string>
     {
         ["company.name"] = "Imbiss Beispiel GmbH",
-        ["register.name"] = "Kasse 1"
+        ["register.name"] = "Kasse 1",
+        ["ui.language"] = language
     });
+    UiLanguage.Set(language);
     await InstallationEdition.EnforceAsync(settings, snapshotEdition);
     await new ImbissStarterCatalogService(db).EnsureAsync(snapshotEdition);
     await catalog.ReloadAsync();
@@ -153,7 +173,7 @@ async Task RunAsync()
 
         var frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("No frame rendered.");
-        var file = Path.Combine(output, $"main-{width}x{height}.png");
+        var file = Path.Combine(output, $"main{languageSuffix}-{width}x{height}.png");
         frame.Save(file, new PngBitmapEncoderOptions());
         Console.WriteLine($"saved {file}");
 
@@ -178,7 +198,7 @@ async Task RunAsync()
 
                 var hubFrame = window.CaptureRenderedFrame()
                     ?? throw new InvalidOperationException($"No {section} frame rendered.");
-                var hubFile = Path.Combine(output, $"hub-{section.ToLowerInvariant()}-{width}x{height}.png");
+                var hubFile = Path.Combine(output, $"hub-{section.ToLowerInvariant()}{languageSuffix}-{width}x{height}.png");
                 hubFrame.Save(hubFile, new PngBitmapEncoderOptions());
                 Console.WriteLine($"saved {hubFile}");
             }
@@ -226,7 +246,7 @@ async Task RunAsync()
     await SnapshotDialogAsync(new DepositPayoutWindow(50), "deposit-payout", check, failures, output);
 }
 
-static async Task SnapshotUserManagementAsync(
+async Task SnapshotUserManagementAsync(
     IAuthenticationService auth,
     AuthenticatedUser admin,
     bool check,
@@ -273,14 +293,14 @@ static async Task SnapshotUserManagementAsync(
 
     var frame = window.CaptureRenderedFrame()
         ?? throw new InvalidOperationException("No user-management frame rendered.");
-    var file = Path.Combine(output, "user-management.png");
+    var file = Path.Combine(output, $"user-management{languageSuffix}.png");
     frame.Save(file, new PngBitmapEncoderOptions());
     Console.WriteLine($"saved {file}");
     window.Close();
 }
 
 // R145: a dialog at its own fixed size; every visible button must be inside it.
-static async Task SnapshotDialogAsync(Window window, string name, bool check, List<string> failures, string output)
+async Task SnapshotDialogAsync(Window window, string name, bool check, List<string> failures, string output)
 {
     window.Show();
     for (var i = 0; i < 10; i++)
@@ -309,7 +329,7 @@ static async Task SnapshotDialogAsync(Window window, string name, bool check, Li
 
     var frame = window.CaptureRenderedFrame()
         ?? throw new InvalidOperationException("No frame rendered.");
-    var file = Path.Combine(output, $"{name}.png");
+    var file = Path.Combine(output, $"{name}{languageSuffix}.png");
     frame.Save(file, new PngBitmapEncoderOptions());
     Console.WriteLine($"saved {file}");
     window.Close();

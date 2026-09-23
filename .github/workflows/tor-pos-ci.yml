@@ -158,6 +158,20 @@ jobs:
           $uiExit = $LASTEXITCODE
           if ($uiExit -ne 0) { exit $uiExit }
 
+      # Turkish and English words are not German words: a button that fits
+      # KASSIEREN can be cut in half by its translation. The layout gate is
+      # therefore run once per interface language, on the till size.
+      - name: Ekran yerlesimini Turkce ve Ingilizce kontrol et
+        timeout-minutes: 12
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -- ci-results/ui 1366x768 --check --language TR 2>&1 |
+            Tee-Object -FilePath ci-results/ui-layout-tr.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -- ci-results/ui 1366x768 --check --language EN 2>&1 |
+            Tee-Object -FilePath ci-results/ui-layout-en.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # R159: publish as a self-contained single-file app. The package root
       # contains one obvious TOR-POS.exe; documentation stays in its own folder.
       - name: Windows x64 tek EXE test paketini olustur
