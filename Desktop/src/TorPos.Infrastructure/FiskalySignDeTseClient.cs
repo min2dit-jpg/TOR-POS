@@ -23,7 +23,7 @@ public interface IFiskalySignDeCredentialSource
 /// Thin SIGN DE v2 client for fiskaly's remote Middleware API.
 ///
 /// This class is intentionally not registered in the application yet.
-/// Production use remains impossible while FiscalRelease.CloudTseValidated is
+/// Production use remains impossible while CloudTseRelease.FiskalyValidated is
 /// false. Secrets are supplied only through IFiskalySignDeCredentialSource and
 /// are never stored in TOR settings or included in exception text.
 /// </summary>
