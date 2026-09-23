@@ -137,6 +137,7 @@ public partial class App : Avalonia.Application
                 restaurantKitchenOutbox,
                 settings,
                 receiptPrinter,
+                new PrintJobJournal(),
                 ex => CrashLog.WriteException("Restaurant kitchen dispatch", ex));
             restaurantKitchenDispatcher.Start();
             var commercialLicense = new CommercialLicenseService();
