@@ -7,7 +7,7 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
 {
     private readonly RestaurantKitchenOutbox _outbox;
     private readonly SettingsRepository _settings;
-    private readonly StarMcPrint3PrinterService _printer;
+    private readonly RestaurantKitchenPrinterRouter _printer;
     private readonly PrintJobJournal _journal;
     private readonly Action<Exception>? _onError;
     private readonly SemaphoreSlim _wake = new(0, 1);
@@ -18,7 +18,7 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
     public RestaurantKitchenDispatcher(
         RestaurantKitchenOutbox outbox,
         SettingsRepository settings,
-        StarMcPrint3PrinterService printer,
+        RestaurantKitchenPrinterRouter printer,
         PrintJobJournal journal,
         Action<Exception>? onError = null)
     {
