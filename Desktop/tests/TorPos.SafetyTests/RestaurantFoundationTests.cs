@@ -212,8 +212,8 @@ internal static class RestaurantFoundationTests
 
             assert(
                 result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 30,
-                "Restaurant database reaches schema version 30");
+                result.ToVersion == 31,
+                "Restaurant database reaches schema version 31");
 
             await using (var c = db.OpenConnection())
             {
