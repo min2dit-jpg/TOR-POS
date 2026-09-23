@@ -166,9 +166,40 @@ public static class TseStartupWarningTests
         // badge is only repainted when something asks. Without this the till
         // kept showing an outage that had ended - at the exact moment the
         // operator plugged a working TSE in.
+        var fiscalStatus = Block(
+            main,
+            "private async Task RefreshFiscalStatusAsync()",
+            "private async Task ApplyTseCertificateWarningAsync");
+
+        var timeoutBranch = Block(
+            probe,
+            "if (completed != probe)",
+            "var result = await probe;");
+
+        var readyBranch = Block(
+            probe,
+            "if (result.State == TseConnectionState.Ready)",
+            "var (headline, status) = result.State switch");
+
+        var nonReadyBranch = Block(
+            probe,
+            "var (headline, status) = result.State switch",
+            "catch(Exception ex)");
+
         assert(
-            Regex.Matches(probe, @"await RefreshTseOutageBadgeAsync\(\);").Count == 2,
-            "TSE start-up warning: the outage badge is repainted after every probe, so a working TSE clears it and a failing one raises it");
+            timeoutBranch.Contains(
+                "await RefreshTseOutageBadgeAsync();",
+                StringComparison.Ordinal) &&
+            readyBranch.Contains(
+                "await RefreshTseOutageBadgeAsync();",
+                StringComparison.Ordinal) &&
+            nonReadyBranch.Contains(
+                "await RefreshFiscalStatusAsync();",
+                StringComparison.Ordinal) &&
+            fiscalStatus.Contains(
+                "await RefreshTseOutageBadgeAsync();",
+                StringComparison.Ordinal),
+            "TSE start-up warning: timeout/ready repaint directly and non-ready repaint through fiscal refresh, so the outage badge never stays stale");
 
         return Task.CompletedTask;
     }
