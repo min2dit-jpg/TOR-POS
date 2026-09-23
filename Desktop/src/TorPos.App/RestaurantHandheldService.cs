@@ -133,21 +133,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.OperatorPin,
             ct);
 
-        var table = (await _restaurant.ListTablesAsync(ct))
-            .FirstOrDefault(x => x.Id == request.TableId)
-            ?? throw new InvalidOperationException(
-                "Tisch ist nicht vorhanden oder deaktiviert.");
-
-        if (await _restaurant.GetLiveSessionForTableAsync(
-                table.Id,
-                ct) is not null)
-        {
-            throw new InvalidOperationException(
-                "Tisch ist bereits belegt.");
-        }
-
         var session = await _restaurant.OpenTableAsync(
-            table.Id,
+            request.TableId,
             operatorUser.Username,
             request.GuestCount,
             request.Note,
