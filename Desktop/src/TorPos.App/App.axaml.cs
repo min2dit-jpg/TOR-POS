@@ -268,6 +268,8 @@ public partial class App : Avalonia.Application
                 new RestaurantSyncService(
                     db,
                     restaurantEntitlements));
+            appServices.AddSingleton(
+                new RestaurantCommandJournal(db));
             appServices.AddSingleton(new RestaurantFiscalOrderService(db, tseVorgaenge));
             appServices.AddSingleton(restaurantKitchenOutbox);
             appServices.AddSingleton(restaurantKitchenDispatcher);
