@@ -5753,38 +5753,42 @@ public partial class MainWindow:Window
             {
                 StatusLine =
                     $"TSE bereit · {result.Device?.SerialNumber}";
+
+                // A ready device must never fall through to the start-up warning.
+                // Certificate and fiscal-state refresh still run before returning.
+                await ApplyTseCertificateWarningAsync(result.Device);
+                await RefreshTseOutageBadgeAsync();
+                await RefreshFiscalStatusAsync();
+                return;
             }
-            else
+
+            var (headline, status) = result.State switch
             {
-                var (headline, status) = result.State switch
-                {
-                    TseConnectionState.Connected => (
-                        "TSE erkannt, aber noch nicht betriebsbereit",
-                        "Swissbit TSE erkannt · Einrichtung/Status prüfen"),
-                    TseConnectionState.NotFound => (
-                        "Keine TSE gefunden",
-                        "Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
-                    TseConnectionState.SdkMissing => (
-                        "Swissbit SDK nicht gefunden",
-                        "Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
-                    TseConnectionState.NotConfigured => (
-                        "TSE ist noch nicht eingerichtet",
-                        "TSE ist noch nicht eingerichtet · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
-                    _ => (
-                        "TSE meldet einen Fehler",
-                        "TSE meldet einen Fehler · Kasse bleibt bedienbar · Vorgänge werden nicht signiert")
-                };
+                TseConnectionState.Connected => (
+                    "TSE erkannt, aber noch nicht betriebsbereit",
+                    "Swissbit TSE erkannt · Einrichtung/Status prüfen"),
+                TseConnectionState.NotFound => (
+                    "Keine TSE gefunden",
+                    "Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                TseConnectionState.SdkMissing => (
+                    "Swissbit SDK nicht gefunden",
+                    "Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                TseConnectionState.NotConfigured => (
+                    "TSE ist noch nicht eingerichtet",
+                    "TSE ist noch nicht eingerichtet · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
+                _ => (
+                    "TSE meldet einen Fehler",
+                    "TSE meldet einen Fehler · Kasse bleibt bedienbar · Vorgänge werden nicht signiert")
+            };
 
-                StatusLine = status;
-                await WarnAboutTseOnceAsync(
-                    headline,
-                    result.Message);
-            }
+            StatusLine = status;
+            await WarnAboutTseOnceAsync(
+                headline,
+                result.Message);
 
-            // Certificate assessment and outage badge are independent of the
-            // live USB watcher; both paths must remain active.
+            // Non-ready probes refresh the fiscal status; that method repaints
+            // the outage badge as its first operation.
             await ApplyTseCertificateWarningAsync(result.Device);
-            await RefreshTseOutageBadgeAsync();
             await RefreshFiscalStatusAsync();
         }
         catch(Exception ex)
