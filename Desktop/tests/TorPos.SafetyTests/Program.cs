@@ -95,7 +95,13 @@ var cloudGateRunsBeforeConfiguration = false;
 try
 {
     DirectCloudTseConfigurationPolicy.RequireForFiscalUse(
-        null!);
+        new DirectCloudTseConfiguration(
+            TseProviderCatalog.FiskalyDirectCloud,
+            "",
+            "",
+            "",
+            "",
+            ""));
 }
 catch (InvalidOperationException ex)
 {
@@ -107,7 +113,7 @@ catch (InvalidOperationException ex)
 if (!cloudGateRunsBeforeConfiguration)
 {
     throw new Exception(
-        "FAIL: Direct Cloud TSE release gate must run before configuration or endpoint validation.");
+        "FAIL: Direct Cloud TSE provider release gate must run after provider selection but before endpoint/tenant/TSS validation.");
 }
 
 var countingCloudClient =
