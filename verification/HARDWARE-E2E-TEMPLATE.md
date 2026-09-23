@@ -41,8 +41,9 @@
 | Kasse bleibt nach dem Hinweis bedienbar (Verkauf möglich) | ☐ PASS ☐ FAIL | |
 | Hinweis erscheint nur **einmal** pro Programmlauf | ☐ PASS ☐ FAIL | |
 | Admin sieht den Weg in Erweitert / Techniker, Kassenkraft nicht | ☐ PASS ☐ FAIL | |
-| Statuszeile zeigt denselben Zustand dauerhaft an | ☐ PASS ☐ FAIL | |
-| Ausfall ist im Protokoll dokumentiert (nicht nur am Bildschirm) | ☐ PASS ☐ FAIL | |
+| Badge **TSE-AUSFALL** in der Kopfzeile bleibt sichtbar, solange der Ausfall offen ist | ☐ PASS ☐ FAIL | |
+| Tooltip des Badges nennt Beginn und Grund | ☐ PASS ☐ FAIL | |
+| Ausfall ist im `tse_outage_log` dokumentiert (nachweisbar über den DSFinV-K-Export) | ☐ PASS ☐ FAIL | |
 | Nach Anstecken einer betriebsbereiten TSE: kein Warnfenster mehr | ☐ PASS ☐ FAIL | |
 | SDK lädt | ☐ PASS ☐ FAIL | |
 | TSE wird erkannt | ☐ PASS ☐ FAIL | |
@@ -94,6 +95,14 @@ dass die Vorgänge in dieser Zeit nicht fiskal abgesichert sind.
 
 Im Trainingsmodus erscheint der Hinweis bewusst nicht, weil dort ohnehin nicht
 signiert wird.
+
+Die **Statuszeile** unter dem Verkaufsfeld ist absichtlich flüchtig: der nächste
+Scan oder Vorgang überschreibt sie. Dauerhafter Anzeiger ist das Badge
+**TSE-AUSFALL** in der Kopfzeile. Der eigentliche Nachweis liegt in der Tabelle
+`tse_outage_log` (gegen Löschen per Trigger geschützt) und im Audit-Log als
+Ereignis `TSE_UNAVAILABLE`; sichtbar wird er für die Prüfung über den
+DSFinV-K-Export, der Beginn, Ende und Grund jedes Ausfalls mitführt. Eine
+eigene Bildschirmliste der Ausfälle gibt es derzeit nicht.
 
 Läuft die Oberfläche auf Türkisch oder Englisch, muss der Hinweis in dieser
 Sprache erscheinen und der Gerätename **TSE** unverändert enthalten bleiben.
