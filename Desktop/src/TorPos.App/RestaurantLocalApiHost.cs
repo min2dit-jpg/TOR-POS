@@ -174,7 +174,12 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                 {
                     product = "TOR Restaurant Plus",
                     apiVersion = 2,
-                    secure = true
+                    secure = true,
+                    heartbeatSeconds =
+                        RestaurantTerminalRegistry.RecommendedHeartbeatSeconds,
+                    offlineAfterSeconds =
+                        RestaurantTerminalRegistry.OnlineGraceSeconds,
+                    maxSyncBatch = 500
                 }));
 
             app.MapPost(
@@ -209,7 +214,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 paired.PairedAt,
                                 certificateSha256 =
                                     CertificateSha256(cert),
-                                apiVersion = 2
+                                apiVersion = 2,
+                                heartbeatSeconds =
+                                    RestaurantTerminalRegistry.RecommendedHeartbeatSeconds,
+                                offlineAfterSeconds =
+                                    RestaurantTerminalRegistry.OnlineGraceSeconds
                             });
                         }
                         catch (InvalidOperationException ex)
