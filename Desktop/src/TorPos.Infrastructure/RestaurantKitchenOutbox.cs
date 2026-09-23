@@ -30,6 +30,17 @@ public sealed record RestaurantKitchenJob(
     string LastError,
     DateTimeOffset CreatedAt);
 
+public sealed record RestaurantKitchenCancellationAlert(
+    string JobId,
+    long SessionItemId,
+    string SessionId,
+    string TableName,
+    string ProductName,
+    decimal Quantity,
+    string Waiter,
+    string Station,
+    DateTimeOffset CreatedAt);
+
 public sealed class RestaurantKitchenOutbox
 {
     private readonly SqliteDatabase _db;
@@ -248,6 +259,61 @@ public sealed class RestaurantKitchenOutbox
             await tx.CommitAsync(ct);
             return failed;
         });
+
+    public Task<IReadOnlyList<RestaurantKitchenCancellationAlert>> CancellationAlertsAsync(
+        string? station = null,
+        CancellationToken ct = default)
+    {
+        var normalized = KitchenStations.Normalize(station);
+
+        return IoQueue.RunAsync<IReadOnlyList<RestaurantKitchenCancellationAlert>>(async () =>
+        {
+            var result = new List<RestaurantKitchenCancellationAlert>();
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT
+                    j.id,
+                    i.id,
+                    j.session_id,
+                    t.display_name,
+                    i.product_name,
+                    i.quantity_milli,
+                    s.assigned_waiter,
+                    j.station,
+                    j.created_at
+                FROM restaurant_kitchen_jobs j
+                JOIN restaurant_session_items i
+                  ON i.id=j.session_item_id
+                JOIN restaurant_sessions s
+                  ON s.id=j.session_id
+                JOIN restaurant_tables t
+                  ON t.id=s.table_id
+                WHERE j.action='CANCEL'
+                  AND j.state='PENDING'
+                  AND ($station='' OR j.station=$station)
+                ORDER BY j.created_at,j.id;
+                """;
+            q.Parameters.AddWithValue("$station", normalized);
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                result.Add(new RestaurantKitchenCancellationAlert(
+                    r.GetString(0),
+                    r.GetInt64(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.GetString(4),
+                    r.GetInt64(5) / 1000m,
+                    r.GetString(6),
+                    r.GetString(7),
+                    DateTimeOffset.Parse(r.GetString(8))));
+            }
+
+            return result;
+        });
+    }
 
     public Task<IReadOnlyList<RestaurantKitchenBoardItem>> BoardAsync(
         string? station = null,
