@@ -40,8 +40,10 @@ function Test-CloudFlagEnabled([string]$name) {
     return Test-FlagEnabled $cloudCore $name
 }
 
+$coreFlagNames = @($commonFlagNames) + @($physicalFlags.Values)
+
 $enabledFlags = @(
-    @($commonFlagNames) + @($physicalFlags.Values) |
+    $coreFlagNames |
     Where-Object { Test-CoreFlagEnabled $_ }
 )
 
@@ -114,7 +116,7 @@ if (Test-CoreFlagEnabled 'IndependentFiscalReviewValidated') {
 
 $physicalAcceptances = @($acceptance.physical_tse_acceptances)
 foreach ($entry in $physicalFlags.GetEnumerator()) {
-    if (-not (Test-FlagEnabled $entry.Value)) {
+    if (-not (Test-CoreFlagEnabled $entry.Value)) {
         continue
     }
 
