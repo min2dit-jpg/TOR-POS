@@ -70,6 +70,43 @@ if (!cloudGateRejected ||
         "FAIL: Cloud TSE release gate must be independent from the physical/global release qualification set.");
 }
 
+var localMiddleware =
+    TseProviderCatalog.Get(
+        TseProviderCatalog.FiskaltrustLocalMiddleware);
+var directFiskaly =
+    TseProviderCatalog.Get(
+        TseProviderCatalog.FiskalyDirectCloud);
+
+if (localMiddleware.Transport !=
+        TseProviderTransport.LocalMiddleware ||
+    localMiddleware.RequiresCloudReleaseGate ||
+    directFiskaly.Transport !=
+        TseProviderTransport.DirectCloudApi ||
+    !directFiskaly.RequiresCloudReleaseGate)
+{
+    throw new Exception(
+        "FAIL: Local fiskaltrust Middleware and direct Cloud TSE providers must remain distinct transports.");
+}
+
+var cloudGateRunsBeforeConfiguration = false;
+try
+{
+    DirectCloudTseConfigurationPolicy.RequireForFiscalUse(
+        null!);
+}
+catch (InvalidOperationException ex)
+{
+    cloudGateRunsBeforeConfiguration = ex.Message.Contains(
+        "Cloud-TSE",
+        StringComparison.OrdinalIgnoreCase);
+}
+
+if (!cloudGateRunsBeforeConfiguration)
+{
+    throw new Exception(
+        "FAIL: Direct Cloud TSE release gate must run before configuration or endpoint validation.");
+}
+
 // R72.3: ordinary SafetyTests use SafetyDatabase so each disposable fixture
 // follows the same ordered schema migration path as TOR POS itself.
 // R69ReviewTests is the deliberate exception because it tests migration edges.
