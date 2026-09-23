@@ -20,8 +20,6 @@ public static class DirectCloudTseConfigurationPolicy
     public static DirectCloudTseConfiguration RequireForFiscalUse(
         DirectCloudTseConfiguration configuration)
     {
-        FiscalRelease.RequireCloudTse();
-
         ArgumentNullException.ThrowIfNull(configuration);
 
         var provider = TseProviderCatalog.Get(
@@ -39,6 +37,12 @@ public static class DirectCloudTseConfigurationPolicy
             throw new InvalidOperationException(
                 "Direkter Cloud-Provider besitzt keine Cloud-Freigabeklassifizierung.");
         }
+
+        // Provider identity is the minimum information needed to select the
+        // correct release evidence. The provider-specific gate is still checked
+        // before endpoint, tenant/TSS or credential configuration is inspected.
+        TseProviderCatalog.RequireProviderRelease(
+            provider.ProviderId);
 
         var endpoint = (configuration.Endpoint ?? "").Trim();
         var mandantId = (configuration.MandantId ?? "").Trim();
