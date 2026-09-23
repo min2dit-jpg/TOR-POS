@@ -70,38 +70,35 @@ public sealed class RestaurantTerminalRegistry
         });
     }
 
-    public Task<IReadOnlyList<RestaurantTerminalStatus>> ListAsync(
+    public async Task<IReadOnlyList<RestaurantTerminalStatus>> ListAsync(
         CancellationToken ct = default)
     {
         _entitlements.Require(RestaurantFeature.MehrereKassen);
 
-        return IoQueue.RunAsync<IReadOnlyList<RestaurantTerminalStatus>>(async () =>
+        var result = new List<RestaurantTerminalStatus>();
+        await using var c = _db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT terminal_id,display_name,terminal_type,last_seen_at,
+                   app_version,machine_name,is_active
+            FROM restaurant_terminals
+            ORDER BY terminal_type,display_name,terminal_id;
+            """;
+
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
         {
-            var result = new List<RestaurantTerminalStatus>();
-            await using var c = _db.OpenConnection();
-            await using var q = c.CreateCommand();
-            q.CommandText = """
-                SELECT terminal_id,display_name,terminal_type,last_seen_at,
-                       app_version,machine_name,is_active
-                FROM restaurant_terminals
-                ORDER BY terminal_type,display_name,terminal_id;
-                """;
+            result.Add(new RestaurantTerminalStatus(
+                r.GetString(0),
+                r.GetString(1),
+                r.GetString(2),
+                DateTimeOffset.Parse(r.GetString(3)),
+                r.GetString(4),
+                r.GetString(5),
+                r.GetInt32(6) == 1));
+        }
 
-            await using var r = await q.ExecuteReaderAsync(ct);
-            while (await r.ReadAsync(ct))
-            {
-                result.Add(new RestaurantTerminalStatus(
-                    r.GetString(0),
-                    r.GetString(1),
-                    r.GetString(2),
-                    DateTimeOffset.Parse(r.GetString(3)),
-                    r.GetString(4),
-                    r.GetString(5),
-                    r.GetInt32(6) == 1));
-            }
-
-            return result;
-        });
+        return result;
     }
 
     public Task DeactivateAsync(
