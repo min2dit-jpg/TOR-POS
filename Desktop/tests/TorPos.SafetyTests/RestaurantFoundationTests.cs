@@ -162,6 +162,31 @@ internal static class RestaurantFoundationTests
             standardHandheldRejected,
             "Restaurant Standard rejects handheld access before any database operation");
 
+        var standardReservationRejected = false;
+        try
+        {
+            var standardReservations = new RestaurantReservationService(
+                null!,
+                standardEntitlements);
+            await standardReservations.CreateAsync(
+                DateTimeOffset.UtcNow.AddHours(1),
+                120,
+                2,
+                "Testkunde",
+                "",
+                "",
+                null,
+                "ADMIN");
+        }
+        catch (InvalidOperationException)
+        {
+            standardReservationRejected = true;
+        }
+
+        assert(
+            standardReservationRejected,
+            "Restaurant Standard rejects Plus reservations before any database operation");
+
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -308,6 +333,58 @@ internal static class RestaurantFoundationTests
                 "T01",
                 "Tisch 1",
                 seats: 4);
+
+            var reservations = new RestaurantReservationService(
+                db,
+                plusEntitlements);
+
+            var reservationAt = DateTimeOffset.UtcNow.AddHours(2);
+            var reservation = await reservations.CreateAsync(
+                reservationAt,
+                durationMinutes: 120,
+                guestCount: 3,
+                customerName: "Familie Test",
+                phone: "030123456",
+                note: "Fensterplatz",
+                tableId,
+                actor: "ADMIN");
+
+            var listedReservations = await reservations.ListAsync(
+                reservationAt.AddHours(-1),
+                reservationAt.AddHours(3));
+
+            assert(
+                reservation.Status == "BOOKED" &&
+                reservation.TableId == tableId &&
+                reservation.Version == 1 &&
+                listedReservations.Any(x => x.Id == reservation.Id),
+                "Restaurant Plus creates and lists a versioned table reservation");
+
+            var seatedReservation = await reservations.SetStatusAsync(
+                reservation.Id,
+                reservation.Version,
+                "SEATED",
+                "ADMIN");
+
+            var staleReservationRejected = false;
+            try
+            {
+                await reservations.AssignTableAsync(
+                    reservation.Id,
+                    reservation.Version,
+                    tableId,
+                    "ADMIN");
+            }
+            catch (InvalidOperationException)
+            {
+                staleReservationRejected = true;
+            }
+
+            assert(
+                seatedReservation.Status == "SEATED" &&
+                seatedReservation.Version == 2 &&
+                staleReservationRejected,
+                "Restaurant reservation status advances version and rejects stale writes");
 
             var session = await repo.OpenTableAsync(
                 tableId,
@@ -869,7 +946,8 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_sessions") &&
                     !TableExists(c, "restaurant_bestellungen") &&
                     !TableExists(c, "restaurant_kitchen_jobs") &&
-                    !TableExists(c, "restaurant_handheld_devices"),
+                    !TableExists(c, "restaurant_handheld_devices") &&
+                    !TableExists(c, "restaurant_reservations"),
                     "Einzelhandel database does not receive Restaurant-only tables");
             }
         }
