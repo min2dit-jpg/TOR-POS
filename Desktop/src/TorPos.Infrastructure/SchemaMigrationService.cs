@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 30;
+    public const int TargetSchemaVersion = 31;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -1929,6 +1929,46 @@ public sealed class SchemaMigrationService
                           ON restaurant_kitchen_jobs(session_id,created_at);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
+,
+            new(
+                31,
+                "R189_RESTAURANT_RESERVATIONS",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(edition, "RESTAURANT", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_reservations(
+                          id TEXT PRIMARY KEY,
+                          reservation_at TEXT NOT NULL,
+                          duration_minutes INTEGER NOT NULL DEFAULT 120
+                            CHECK(duration_minutes BETWEEN 15 AND 1440),
+                          guest_count INTEGER NOT NULL
+                            CHECK(guest_count BETWEEN 1 AND 999),
+                          customer_name TEXT NOT NULL,
+                          phone TEXT NOT NULL DEFAULT '',
+                          note TEXT NOT NULL DEFAULT '',
+                          table_id INTEGER NULL REFERENCES restaurant_tables(id),
+                          status TEXT NOT NULL DEFAULT 'BOOKED'
+                            CHECK(status IN ('BOOKED','SEATED','CANCELLED','NO_SHOW','COMPLETED')),
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          updated_by TEXT NOT NULL,
+                          version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_reservations_time
+                          ON restaurant_reservations(reservation_at,status);
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_reservations_table
+                          ON restaurant_reservations(table_id,reservation_at,status);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                })
                 })
         };
 
