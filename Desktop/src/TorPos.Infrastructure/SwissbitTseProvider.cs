@@ -59,9 +59,20 @@ public sealed class SwissbitHardwareTseProvider : ITseProvider
         {
             var runtime = _bridge.GetRuntimeStatus();
 
+            // The state stays SdkMissing - without the WORM API nothing can be
+            // signed, and that must not be softened. But the stick is a USB
+            // volume before it is an API, so a TSE that is physically plugged
+            // in can be named even here. Saying only "SDK fehlt" to somebody
+            // holding their new TSE reads as "your device is not there".
+            // It also lands in the outage record, which is where a Pruefer
+            // later reads what the till actually saw.
+            var mounts = SwissbitDeviceScan.FindMountPoints();
+
             return new TseProbeResult(
                 TseConnectionState.SdkMissing,
-                runtime.Message);
+                mounts.Count > 0
+                    ? $"TSE erkannt auf {string.Join(", ", mounts)} · Swissbit SDK fehlt: {runtime.Message}"
+                    : runtime.Message);
         }
 
         try

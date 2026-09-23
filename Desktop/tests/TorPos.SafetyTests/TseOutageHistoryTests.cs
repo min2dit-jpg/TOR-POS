@@ -77,6 +77,23 @@ public static class TseOutageHistoryTests
                 english.Contains($"[\"{key}\"]", StringComparison.Ordinal)),
             "TSE outage history: the words around the record are translated, so a Turkish or English till reads the same evidence");
 
+        // A TSE is a USB volume before it is an API. Recognising the stick must
+        // not depend on the licensed SDK, or the one moment it matters most -
+        // the operator has just plugged in their new TSE - is the moment the
+        // till claims to see nothing.
+        var scan = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/SwissbitDeviceScan.cs"));
+        var provider = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/SwissbitTseProvider.cs"));
+        var sdkMissing = Block(provider, "if (!_bridge.IsAvailable)", "try");
+        assert(
+            !scan.Contains("_bridge", StringComparison.Ordinal) &&
+            !scan.Contains("WormAPI", StringComparison.Ordinal) &&
+            scan.Contains("TSE_COMM.DAT", StringComparison.Ordinal) &&
+            scan.Contains("TSE_INFO.DAT", StringComparison.Ordinal) &&
+            sdkMissing.Contains("SwissbitDeviceScan.FindMountPoints()", StringComparison.Ordinal) &&
+            sdkMissing.Contains("TseConnectionState.SdkMissing", StringComparison.Ordinal) &&
+            sdkMissing.Contains("TSE erkannt auf", StringComparison.Ordinal),
+            "TSE outage history: a plugged-in TSE is recognised and named even while the Swissbit SDK is missing, and the state still fails closed");
+
         return Task.CompletedTask;
     }
 
