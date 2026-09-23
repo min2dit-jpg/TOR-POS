@@ -8,6 +8,7 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
     private readonly RestaurantKitchenOutbox _outbox;
     private readonly SettingsRepository _settings;
     private readonly StarMcPrint3PrinterService _printer;
+    private readonly PrintJobJournal _journal;
     private readonly Action<Exception>? _onError;
     private readonly SemaphoreSlim _wake = new(0, 1);
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -18,11 +19,13 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
         RestaurantKitchenOutbox outbox,
         SettingsRepository settings,
         StarMcPrint3PrinterService printer,
+        PrintJobJournal journal,
         Action<Exception>? onError = null)
     {
         _outbox = outbox;
         _settings = settings;
         _printer = printer;
+        _journal = journal;
         _onError = onError;
     }
 
@@ -44,6 +47,14 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
             foreach (var job in await _outbox.PendingAsync(ct))
             {
                 ct.ThrowIfCancellationRequested();
+
+                if (await _journal.GetAsync(job.Id) is not null)
+                {
+                    await _outbox.MarkHandedOverAsync(
+                        job.Id,
+                        ct);
+                    continue;
+                }
 
                 try
                 {
@@ -150,6 +161,18 @@ public sealed class RestaurantKitchenDispatcher : IAsyncDisposable
                 catch (Exception ex)
                 {
                     _onError?.Invoke(ex);
+
+                    // The printer may have persisted ownership and then thrown
+                    // (for example timeout/uncertain spooler outcome). In that
+                    // case never resubmit: the journal is authoritative.
+                    if (await _journal.GetAsync(job.Id) is not null)
+                    {
+                        await _outbox.MarkHandedOverAsync(
+                            job.Id,
+                            ct);
+                        continue;
+                    }
+
                     var failed = await _outbox.MarkFailedAttemptAsync(
                         job.Id,
                         ex.Message,
