@@ -419,6 +419,7 @@
             <Button x:Name="SettingsButton" Classes="headernav" Content="EINSTELLUNGEN" Click="OnSettingsHubClick"/>
             <Button x:Name="CashMenuButton" Classes="headernav" Content="KASSE" Click="OnCashHubClick"/>
             <Button x:Name="RestaurantTablesButton" Classes="headernav" Content="TISCHPLAN" Click="OnRestaurantTablesClick" IsVisible="False"/>
+            <Button x:Name="RestaurantKdsButton" Classes="headernav" Content="KDS" Click="OnRestaurantKdsClick" IsVisible="False"/>
             <Button x:Name="ReportsMenu" Classes="headernav" Content="BERICHTE" Click="OnReportsHubClick"/>
           </StackPanel>
           <!-- R126: ordered by importance, because if anything is clipped it is
