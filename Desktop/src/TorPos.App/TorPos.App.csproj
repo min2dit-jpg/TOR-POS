@@ -34,6 +34,11 @@
          Do not add dummy constructors only to satisfy the runtime-loader warning. -->
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);AVLN3001</MSBuildWarningsAsMessages>
   </PropertyGroup>
+  <ItemGroup Condition="'$(TorProductEdition)' == 'RESTAURANT'">
+    <!-- Restaurant Plus handheld API only. KIOSK/IMBISS builds do not carry
+         the ASP.NET Core shared framework dependency. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
