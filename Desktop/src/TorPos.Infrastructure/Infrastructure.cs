@@ -152,7 +152,7 @@ public sealed class SqliteDatabase
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadOnly,
-            Cache = SqliteCacheMode.Shared,
+            Cache = SqliteCacheMode.Private,
             Pooling = true
         }.ToString();
     }
