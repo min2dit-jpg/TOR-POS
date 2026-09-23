@@ -2,9 +2,11 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Get-Location)
 $corePath = Join-Path $repoRoot 'Desktop/src/TorPos.Core/CheckoutSafety.cs'
+$cloudPath = Join-Path $repoRoot 'Desktop/src/TorPos.Core/CloudTse.cs'
 $acceptancePath = Join-Path $repoRoot 'verification/PRODUCTION-FISCAL-ACCEPTANCE.json'
 
 $core = Get-Content -LiteralPath $corePath -Raw
+$cloudCore = Get-Content -LiteralPath $cloudPath -Raw
 
 $commonFlagNames = @(
     'DsfinvkValidated',
@@ -20,12 +22,35 @@ $physicalFlags = [ordered]@{
     '2'   = 'PhysicalTseGeneration2E2EValidated'
 }
 
-$cloudFlagName = 'CloudTseValidated'
-$allFlagNames = @($commonFlagNames) + @($physicalFlags.Values) + @($cloudFlagName)
-
-function Test-FlagEnabled([string]$name) {
-    return $core -match ('public\s+const\s+bool\s+' + [regex]::Escape($name) + '\s*=\s*true\s*;')
+$cloudFlags = [ordered]@{
+    'FISKALTRUST'      = 'FiskaltrustValidated'
+    'FISKALY'          = 'FiskalyValidated'
+    'DEUTSCHE_FISKAL'  = 'DeutscheFiskalValidated'
 }
+
+function Test-FlagEnabled([string]$source, [string]$name) {
+    return $source -match ('public\s+const\s+bool\s+' + [regex]::Escape($name) + '\s*=\s*true\s*;')
+}
+
+function Test-CoreFlagEnabled([string]$name) {
+    return Test-FlagEnabled $core $name
+}
+
+function Test-CloudFlagEnabled([string]$name) {
+    return Test-FlagEnabled $cloudCore $name
+}
+
+$enabledFlags = @(
+    @($commonFlagNames) + @($physicalFlags.Values) |
+    Where-Object { Test-CoreFlagEnabled $_ }
+)
+
+$enabledCloudFlags = @(
+    $cloudFlags.Values |
+    Where-Object { Test-CloudFlagEnabled $_ }
+)
+
+$enabledFlags = @($enabledFlags) + @($enabledCloudFlags)
 
 function Require-Text($object, [string]$name, [System.Collections.Generic.List[string]]$missing) {
     $value = $object.$name
@@ -33,8 +58,6 @@ function Require-Text($object, [string]$name, [System.Collections.Generic.List[s
         $missing.Add($name)
     }
 }
-
-$enabledFlags = @($allFlagNames | Where-Object { Test-FlagEnabled $_ })
 
 if (-not (Test-Path -LiteralPath $acceptancePath)) {
     if ($enabledFlags.Count -gt 0) {
@@ -61,29 +84,29 @@ if ($enabledFlags.Count -gt 0) {
     }
 }
 
-if (Test-FlagEnabled 'DsfinvkValidated') {
+if (Test-CoreFlagEnabled 'DsfinvkValidated') {
     if ($acceptance.dsfinvk_validated -ne $true) { $missing.Add('dsfinvk_validated=true') }
     Require-Text $acceptance 'dsfinvk_evidence' $missing
 }
 
-if (Test-FlagEnabled 'KassenSichVReceiptValidated') {
+if (Test-CoreFlagEnabled 'KassenSichVReceiptValidated') {
     if ($acceptance.receipt_validated -ne $true) { $missing.Add('receipt_validated=true') }
     Require-Text $acceptance 'receipt_evidence' $missing
 }
 
-if (Test-FlagEnabled 'ParkedOrderTseValidated') {
+if (Test-CoreFlagEnabled 'ParkedOrderTseValidated') {
     if ($acceptance.parked_order_tse_validated -ne $true) {
         $missing.Add('parked_order_tse_validated=true')
     }
 }
 
-if (Test-FlagEnabled 'PfandTaxValidated') {
+if (Test-CoreFlagEnabled 'PfandTaxValidated') {
     if ($acceptance.pfand_tax_validated -ne $true) {
         $missing.Add('pfand_tax_validated=true')
     }
 }
 
-if (Test-FlagEnabled 'IndependentFiscalReviewValidated') {
+if (Test-CoreFlagEnabled 'IndependentFiscalReviewValidated') {
     if ($acceptance.independent_review -ne $true) {
         $missing.Add('independent_review=true')
     }
@@ -117,17 +140,35 @@ foreach ($entry in $physicalFlags.GetEnumerator()) {
     }
 }
 
-if (Test-FlagEnabled $cloudFlagName) {
-    $cloud = $acceptance.cloud_tse_acceptance
-    if ($null -eq $cloud -or $cloud.validated -ne $true) {
-        $missing.Add('cloud_tse_acceptance.validated=true')
+$cloudAcceptances = @($acceptance.cloud_tse_acceptances)
+if ($cloudAcceptances.Count -eq 0 -and $null -ne $acceptance.cloud_tse_acceptance) {
+    # Backward-compatible read for an older single-entry acceptance file.
+    $cloudAcceptances = @($acceptance.cloud_tse_acceptance)
+}
+
+foreach ($entry in $cloudFlags.GetEnumerator()) {
+    if (-not (Test-CloudFlagEnabled $entry.Value)) {
+        continue
     }
-    else {
-        foreach ($field in @('provider','test_date','evidence')) {
-            $value = $cloud.$field
-            if ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) {
-                $missing.Add("cloud_tse_acceptance.$field")
-            }
+
+    $provider = [string]$entry.Key
+    $match = @(
+        $cloudAcceptances |
+        Where-Object {
+            ([string]$_.provider).Trim().ToUpperInvariant() -eq $provider -and
+            $_.validated -eq $true
+        }
+    ) | Select-Object -First 1
+
+    if ($null -eq $match) {
+        $missing.Add("cloud_tse_acceptances[$provider].validated=true")
+        continue
+    }
+
+    foreach ($field in @('test_date','evidence')) {
+        $value = $match.$field
+        if ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) {
+            $missing.Add("cloud_tse_acceptances[$provider].$field")
         }
     }
 }
