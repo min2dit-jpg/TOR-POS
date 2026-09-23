@@ -547,9 +547,9 @@ internal static class UiTranslations
             "Bilinmeyen bir değer SWISSBIT_USB'ye düşer. Bir kasa asla sessizce başka bir fiskal cihaza geçirilmez.",
         ["Cloud-TSE"] = "Cloud-TSE",
         ["Freigabe"] = "Onay",
-        ["Cloud-TSE ist freigegeben."] = "Cloud-TSE onaylıdır.",
-        ["Cloud-TSE ist in diesem Build NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."] =
-            "Cloud-TSE bu sürümde ONAYLI DEĞİLDİR. Ayarlar girilebilir ve uç nokta test edilebilir; hiçbir şey imzalanmaz.",
+        ["Cloud-TSE ist für diesen Anbieter freigegeben."] = "Cloud-TSE bu sağlayıcı için onaylıdır.",
+        ["Cloud-TSE ist für diesen Anbieter NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."] =
+            "Cloud-TSE bu sağlayıcı için ONAYLI DEĞİLDİR. Ayarlar girilebilir ve uç nokta test edilebilir; hiçbir şey imzalanmaz.",
         ["Mandant / Queue"] = "Müşteri hesabı / Queue",
         ["Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."] =
             "Hesap ve Queue birbirine aittir ve bu kasayla eşleşmelidir. Cloud-TSE'de en tehlikeli karışıklık, başka bir hesabın Queue'suna imza atan bir kasadır: fişler geçerli görünür ve başkasının defterine yazılır.",
@@ -2201,9 +2201,9 @@ internal static class UiTranslations
             "An unknown value falls back to SWISSBIT_USB. A till is never moved onto a different fiscal device silently.",
         ["Cloud-TSE"] = "Cloud TSE",
         ["Freigabe"] = "Release",
-        ["Cloud-TSE ist freigegeben."] = "Cloud TSE is released.",
-        ["Cloud-TSE ist in diesem Build NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."] =
-            "Cloud TSE is NOT released in this build. Settings can be entered and the endpoint tested; nothing is signed.",
+        ["Cloud-TSE ist für diesen Anbieter freigegeben."] = "Cloud TSE is released for this vendor.",
+        ["Cloud-TSE ist für diesen Anbieter NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."] =
+            "Cloud TSE is NOT released for this vendor. Settings can be entered and the endpoint tested; nothing is signed.",
         ["Mandant / Queue"] = "Tenant / queue",
         ["Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."] =
             "Tenant and queue belong together and must match this till. The most dangerous mix-up with a cloud TSE is a till signing into another tenant's queue: the receipts look valid and belong in somebody else's books.",

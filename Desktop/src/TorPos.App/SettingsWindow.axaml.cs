@@ -2219,9 +2219,9 @@ private Control TsePage()
     var cloud = Section("Cloud-TSE");
     cloud.Children.Add(ReadOnlyRow(
         "Freigabe",
-        FiscalRelease.CloudTseValidated
-            ? "Cloud-TSE ist freigegeben."
-            : "Cloud-TSE ist in diesem Build NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."));
+        CloudTseRelease.IsValidated(_cloudTse.Current.Vendor)
+            ? "Cloud-TSE ist für diesen Anbieter freigegeben."
+            : "Cloud-TSE ist für diesen Anbieter NICHT freigegeben. Einstellungen können erfasst und der Endpunkt geprüft werden; es wird nichts signiert."));
     cloud.Children.Add(ReadOnlyRow(
         "Mandant / Queue",
         "Mandant und Queue gehören zusammen und müssen zu dieser Kasse passen. Die gefährlichste Verwechslung bei einer Cloud-TSE ist eine Kasse, die in die Queue eines fremden Mandanten signiert: die Belege sehen gültig aus und gehören in fremde Bücher."));

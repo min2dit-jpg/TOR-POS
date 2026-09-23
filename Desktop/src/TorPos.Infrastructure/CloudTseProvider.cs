@@ -22,8 +22,8 @@ namespace TorPos.Infrastructure;
 /// - a health check with a hard timeout, off the UI thread
 /// - fail-closed behaviour that TseFailSafeService turns into a documented
 ///   TSE-Ausfall, exactly as it does for a hardware TSE
-/// - the release gate: while FiscalRelease.CloudTseValidated is false, nothing
-///   signs, no matter how well the endpoint answers
+/// - the release gate: while the configured vendor's flag in CloudTseRelease
+///   is false, nothing signs, no matter how well the endpoint answers
 ///
 /// The speed rule for a till applies here more than anywhere: a network call
 /// must never be what makes KASSIEREN wait. Every call below is async, bounded
