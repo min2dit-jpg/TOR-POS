@@ -334,7 +334,7 @@ internal static class RestaurantFoundationTests
             }
 
             await Task.WhenAll(
-                Enumerable.Range(0, 12)
+                Enumerable.Range(0, 20)
                     .Select(_ =>
                         pairing.RequireAuthenticatedAsync(
                             paired.DeviceId,
@@ -912,7 +912,7 @@ internal static class RestaurantFoundationTests
 
             var concurrentSummaries =
                 await Task.WhenAll(
-                    Enumerable.Range(0, 12)
+                    Enumerable.Range(0, 20)
                         .Select(_ =>
                             repo.ListLiveTableSummariesAsync()));
 
