@@ -194,6 +194,35 @@ public sealed class RestaurantCommandJournal
             ct);
     }
 
+    public Task ReleaseForRecoveryAsync(
+        string deviceId,
+        string commandId,
+        CancellationToken ct = default)
+    {
+        deviceId = Normalize(deviceId, 100, nameof(deviceId));
+        commandId = Normalize(commandId, 120, nameof(commandId));
+
+        return IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE restaurant_device_commands
+                SET owner_id='',
+                    updated_at=$now
+                WHERE device_id=$device
+                  AND command_id=$command
+                  AND owner_id=$owner
+                  AND state='IN_PROGRESS';
+                """;
+            q.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+            q.Parameters.AddWithValue("$device", deviceId);
+            q.Parameters.AddWithValue("$command", commandId);
+            q.Parameters.AddWithValue("$owner", _ownerId);
+            await q.ExecuteNonQueryAsync(ct);
+        });
+    }
+
     public Task FailAsync(
         string deviceId,
         string commandId,
