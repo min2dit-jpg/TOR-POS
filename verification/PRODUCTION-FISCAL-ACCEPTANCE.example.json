@@ -17,10 +17,24 @@
       "evidence": ""
     }
   ],
-  "cloud_tse_acceptance": {
-    "validated": false,
-    "provider": "",
-    "test_date": "",
-    "evidence": ""
-  }
+  "cloud_tse_acceptances": [
+    {
+      "provider": "FISKALY",
+      "validated": false,
+      "test_date": "",
+      "evidence": ""
+    },
+    {
+      "provider": "DEUTSCHE_FISKAL",
+      "validated": false,
+      "test_date": "",
+      "evidence": ""
+    },
+    {
+      "provider": "FISKALTRUST",
+      "validated": false,
+      "test_date": "",
+      "evidence": ""
+    }
+  ]
 }
