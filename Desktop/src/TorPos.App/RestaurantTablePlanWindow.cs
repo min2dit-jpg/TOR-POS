@@ -58,6 +58,33 @@ public sealed class RestaurantTablePlanWindow : Window
         MinHeight = 44
     };
 
+    private readonly NumericUpDown _guestCount = new()
+    {
+        Minimum = 1,
+        Maximum = 999,
+        Value = 1,
+        Width = 110,
+        MinHeight = 42,
+        IsEnabled = false
+    };
+
+    private readonly TextBox _tableNote = new()
+    {
+        MinHeight = 70,
+        MaxLength = 500,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        Watermark = "z. B. ohne Zwiebeln, Geburtstag, Kinderstuhl …",
+        IsEnabled = false
+    };
+
+    private readonly Button _saveDetails = new()
+    {
+        Content = "TISCHDETAILS SPEICHERN",
+        MinHeight = 44,
+        IsEnabled = false
+    };
+
     private readonly Button _open = new()
     {
         Content = "TISCH ÖFFNEN",
@@ -160,6 +187,7 @@ public sealed class RestaurantTablePlanWindow : Window
         refresh.Click += async (_, _) => await ReloadAsync();
 
         _open.Click += async (_, _) => await OpenSelectedTableAsync();
+        _saveDetails.Click += async (_, _) => await SaveSessionDetailsAsync();
         _add.Click += async (_, _) => await AddSelectedProductAsync();
         _move.Click += async (_, _) => await MoveSelectedSessionAsync();
         _merge.Click += async (_, _) => await MergeSelectedSessionAsync();
@@ -272,6 +300,19 @@ public sealed class RestaurantTablePlanWindow : Window
                 _open,
                 new TextBlock
                 {
+                    Text = "Gäste",
+                    FontWeight = FontWeight.Bold
+                },
+                _guestCount,
+                new TextBlock
+                {
+                    Text = "Tischnotiz / Küchenhinweis",
+                    FontWeight = FontWeight.Bold
+                },
+                _tableNote,
+                _saveDetails,
+                new TextBlock
+                {
                     Text = "Positionen",
                     FontSize = 18,
                     FontWeight = FontWeight.Bold,
@@ -379,6 +420,14 @@ public sealed class RestaurantTablePlanWindow : Window
             _split.IsEnabled = false;
             _checkoutSelected.IsEnabled = false;
             _cancelItem.IsEnabled = false;
+        _guestCount.IsEnabled = !paymentLocked;
+        _tableNote.IsEnabled = !paymentLocked;
+        _saveDetails.IsEnabled = !paymentLocked;
+            _guestCount.IsEnabled = false;
+            _tableNote.IsEnabled = false;
+            _saveDetails.IsEnabled = false;
+            _guestCount.Value = 1;
+            _tableNote.Text = "";
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
         }
     }
@@ -444,6 +493,11 @@ public sealed class RestaurantTablePlanWindow : Window
             _split.IsEnabled = false;
             _checkoutSelected.IsEnabled = false;
             _cancelItem.IsEnabled = false;
+            _guestCount.IsEnabled = false;
+            _tableNote.IsEnabled = false;
+            _saveDetails.IsEnabled = false;
+            _guestCount.Value = 1;
+            _tableNote.Text = "";
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
             return;
         }
@@ -463,6 +517,8 @@ public sealed class RestaurantTablePlanWindow : Window
             $"Version {_selectedSession.Version} · Summe {Formatting.Money(total)}";
 
         _items.ItemsSource = currentItems;
+        _guestCount.Value = _selectedSession.GuestCount;
+        _tableNote.Text = _selectedSession.Note;
 
         _open.IsVisible = false;
         _open.IsEnabled = false;
@@ -473,6 +529,35 @@ public sealed class RestaurantTablePlanWindow : Window
         _split.IsEnabled = !paymentLocked && currentItems.Count > 0;
         _checkoutSelected.IsEnabled = !paymentLocked && currentItems.Count > 0;
         _cancelItem.IsEnabled = false;
+    }
+
+    private async Task SaveSessionDetailsAsync()
+    {
+        if (_selectedSession is null)
+            return;
+
+        try
+        {
+            var guests = Math.Clamp(
+                Convert.ToInt32(_guestCount.Value ?? 1m),
+                1,
+                999);
+
+            _selectedSession = await _restaurant.UpdateSessionDetailsAsync(
+                _selectedSession.Id,
+                _selectedSession.Version,
+                guests,
+                _tableNote.Text ?? "",
+                _user.Username,
+                Environment.MachineName);
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
     }
 
     private async Task OpenSelectedTableAsync()
