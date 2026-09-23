@@ -4,6 +4,18 @@ using TorPos.Core;
 
 namespace TorPos.Infrastructure;
 
+public sealed record RestaurantKitchenBoardItem(
+    long SessionItemId,
+    string SessionId,
+    string TableName,
+    string ProductName,
+    decimal Quantity,
+    string Waiter,
+    string Status,
+    string Station,
+    DateTimeOffset AddedAt,
+    DateTimeOffset UpdatedAt);
+
 public sealed record RestaurantKitchenJob(
     string Id,
     string SessionId,
@@ -198,6 +210,82 @@ public sealed class RestaurantKitchenOutbox
             await tx.CommitAsync(ct);
             return failed;
         });
+
+    public Task<IReadOnlyList<RestaurantKitchenBoardItem>> BoardAsync(
+        string? station = null,
+        CancellationToken ct = default)
+    {
+        var normalized = KitchenStations.Normalize(station);
+
+        return IoQueue.RunAsync<IReadOnlyList<RestaurantKitchenBoardItem>>(async () =>
+        {
+            var result = new List<RestaurantKitchenBoardItem>();
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT
+                    i.id,
+                    i.session_id,
+                    t.display_name,
+                    i.product_name,
+                    i.quantity_milli,
+                    s.assigned_waiter,
+                    COALESCE(k.status,'OFFEN'),
+                    COALESCE(
+                        (SELECT j.station
+                         FROM restaurant_kitchen_jobs j
+                         WHERE j.session_item_id=i.id
+                           AND j.action='NEW'
+                         ORDER BY j.created_at
+                         LIMIT 1),
+                        ''),
+                    i.added_at,
+                    COALESCE(k.updated_at,i.added_at)
+                FROM restaurant_session_items i
+                JOIN restaurant_sessions s ON s.id=i.session_id
+                JOIN restaurant_tables t ON t.id=s.table_id
+                LEFT JOIN restaurant_kitchen_status k
+                  ON k.session_item_id=i.id
+                WHERE i.state='ACTIVE'
+                  AND ($station='' OR
+                       COALESCE(
+                           (SELECT j.station
+                            FROM restaurant_kitchen_jobs j
+                            WHERE j.session_item_id=i.id
+                              AND j.action='NEW'
+                            ORDER BY j.created_at
+                            LIMIT 1),
+                           '')=$station)
+                ORDER BY
+                    CASE COALESCE(k.status,'OFFEN')
+                        WHEN 'OFFEN' THEN 0
+                        WHEN 'IN_ARBEIT' THEN 1
+                        ELSE 2
+                    END,
+                    i.added_at,
+                    i.id;
+                """;
+            q.Parameters.AddWithValue("$station", normalized);
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                result.Add(new RestaurantKitchenBoardItem(
+                    r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    r.GetString(3),
+                    r.GetInt64(4) / 1000m,
+                    r.GetString(5),
+                    r.GetString(6),
+                    r.GetString(7),
+                    DateTimeOffset.Parse(r.GetString(8)),
+                    DateTimeOffset.Parse(r.GetString(9))));
+            }
+
+            return result;
+        });
+    }
 
     public Task SetItemStatusAsync(
         long sessionItemId,
