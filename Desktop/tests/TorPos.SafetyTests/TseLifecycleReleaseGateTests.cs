@@ -115,6 +115,7 @@ internal static class TseLifecycleReleaseGateTests
             failSafe.Contains("FiscalRelease.CommonQualificationsValidated", StringComparison.Ordinal) &&
             failSafe.Contains("FiscalRelease.EnabledForProvider(", StringComparison.Ordinal) &&
             failSafe.Contains("releaseProbe.Device", StringComparison.Ordinal) &&
+            failSafe.Contains("releaseCertificate.State != TseCertificateState.Expired", StringComparison.Ordinal) &&
             main.Contains("static bool _tseCertificateDialogShownForProcess", StringComparison.Ordinal) &&
             main.Contains("TSE-FREIGABE OFFEN", StringComparison.Ordinal) &&
             xaml.Contains("TseCertificateWarningBadge", StringComparison.Ordinal),

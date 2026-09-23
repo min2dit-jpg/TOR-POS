@@ -142,8 +142,14 @@ public sealed class TseFailSafeService
             if (FiscalRelease.CommonQualificationsValidated)
             {
                 var releaseProbe = await _provider.ProbeAsync(ct);
+                var releaseCertificate =
+                    TseCertificatePolicy.Evaluate(
+                        releaseProbe.Device?.CertificateValidUntil,
+                        DateOnly.FromDateTime(DateTime.Now));
+
                 var releaseAllowed =
                     releaseProbe.State == TseConnectionState.Ready &&
+                    releaseCertificate.State != TseCertificateState.Expired &&
                     FiscalRelease.EnabledForProvider(
                         _provider.ProviderId,
                         releaseProbe.Device);
@@ -151,8 +157,12 @@ public sealed class TseFailSafeService
                 if (!releaseAllowed)
                 {
                     var missing = FiscalRelease.MissingQualificationsForProvider(
-                        _provider.ProviderId,
-                        releaseProbe.Device);
+                            _provider.ProviderId,
+                            releaseProbe.Device)
+                        .ToList();
+
+                    if (releaseCertificate.State == TseCertificateState.Expired)
+                        missing.Insert(0, releaseCertificate.Message);
 
                     var reason =
                         "TSE-Produktionsfreigabe gesperrt: " +
