@@ -1024,6 +1024,89 @@ internal static class RestaurantFoundationTests
                 !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
                 "No-charge cancellation reopens the Restaurant table and clears the payment lock");
 
+            var laneJournal = new PrintJobJournal(
+                Path.Combine(root, "restaurant-printer-lanes"));
+
+            await using var slowPrinterLane =
+                new StarMcPrint3PrinterService(
+                    laneJournal,
+                    TimeSpan.FromMilliseconds(80),
+                    async () =>
+                    {
+                        await Task.Delay(300);
+                    },
+                    "TEST-KITCHEN-SLOW");
+
+            await using var fastPrinterLane =
+                new StarMcPrint3PrinterService(
+                    laneJournal,
+                    TimeSpan.FromSeconds(1),
+                    () => Task.CompletedTask,
+                    "TEST-KITCHEN-FAST");
+
+            var lanePrint = new KitchenPrintJob(
+                DateTimeOffset.UtcNow,
+                0,
+                0,
+                "KELLNER-1",
+                new[]
+                {
+                    new KitchenPrintLine(
+                        "Testartikel",
+                        1m)
+                });
+
+            var slowPrintId =
+                Guid.NewGuid().ToString("N");
+            var fastPrintId =
+                Guid.NewGuid().ToString("N");
+
+            var slowPrintTask =
+                slowPrinterLane.SubmitOrderAsync(
+                    new PrintJobRecord(
+                        slowPrintId,
+                        "QUEUED",
+                        "TEST-KITCHEN-SLOW",
+                        null,
+                        null,
+                        "",
+                        Kitchen: lanePrint));
+
+            await Task.Delay(10);
+
+            await fastPrinterLane
+                .SubmitOrderAsync(
+                    new PrintJobRecord(
+                        fastPrintId,
+                        "QUEUED",
+                        "TEST-KITCHEN-FAST",
+                        null,
+                        null,
+                        "",
+                        Kitchen: lanePrint))
+                .WaitAsync(
+                    TimeSpan.FromSeconds(1));
+
+            var slowTimedOut = false;
+            try
+            {
+                await slowPrintTask;
+            }
+            catch (TimeoutException)
+            {
+                slowTimedOut = true;
+            }
+
+            var fastPrintRecord =
+                await laneJournal.GetAsync(fastPrintId);
+
+            if (!slowTimedOut ||
+                fastPrintRecord?.State != "SPOOL_ACCEPTED")
+            {
+                throw new InvalidOperationException(
+                    "A timed-out Restaurant kitchen printer lane must not block another physical printer lane.");
+            }
+
             var kitchen = new RestaurantKitchenOutbox(db);
             var kitchenTableId = await repo.SaveTableAsync(
                 areaId,
