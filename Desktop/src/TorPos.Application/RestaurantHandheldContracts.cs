@@ -56,7 +56,8 @@ public sealed record RestaurantHandheldAddItemRequest(
     string OperatorName,
     string OperatorPin,
     string DeviceId,
-    string DeviceToken);
+    string DeviceToken,
+    string CommandId = "");
 
 public sealed record RestaurantHandheldCancelItemRequest(
     string SessionId,
