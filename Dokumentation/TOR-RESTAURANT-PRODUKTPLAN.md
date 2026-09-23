@@ -181,3 +181,33 @@ Noch nicht implementieren:
 - Mehrsprachigkeit
 - Plus-Funktionen im Standardpaket
 - gemeinsame Datenordner mit TOR Gastro
+
+
+## 11. Performance- und Lastgrenzen
+
+Performance ist eine Produktanforderung und kein späteres Optimierungsprojekt.
+
+Verbindliche Regeln:
+- KASSIEREN, Warenkorb und Hauptkassen-UI dürfen niemals auf Cloud-Sync, KDS, Küchendrucker, Reservierungsabgleich oder Terminal-Heartbeat warten.
+- Keine synchrone Netzwerk- oder Drucker-I/O auf dem UI-Thread.
+- Restaurant-Geräte-API startet parallel und darf den sichtbaren Programmstart nicht blockieren.
+- Handheld/KDS/Multi-Terminal lesen über read-only WAL-Verbindungen; reine Polling-/Sync-Lesevorgänge dürfen die SQLite-Schreibwarteschlange nicht belegen.
+- Tischübersichten werden mit einer aggregierten Abfrage geladen; keine N+1-Abfragen pro Tisch.
+- Delta-Sync überträgt nur Events nach der zuletzt bestätigten Event-ID.
+- Operator-PIN wird pro Schicht/Login teuer verifiziert; Folgekommandos verwenden ein gerätegebundenes, gehasht gespeichertes Operator-Session-Token.
+- Device- und Operator-`last_seen`-Writes werden gedrosselt; Polling darf keinen Write-Storm erzeugen.
+- Mutationen verwenden Command-ID/Idempotency. Netzwerk-Retry darf weder Artikel noch TSE-Änderung noch Küchenbon duplizieren.
+- Verschiedene physische Küchendrucker laufen in getrennten parallelen Lanes. Ein langsamer/offline Drucker darf andere Drucker nicht blockieren.
+- Innerhalb desselben Druckers bleibt die Reihenfolge strikt erhalten.
+- CHECK_REQUESTED/Checkout sperrt den Tisch gegen konkurrierende Änderungen; Zahlung hat Vorrang vor Hintergrund-Sync.
+- Langsame oder ausgefallene externe Komponenten müssen mit festem Timeout/fail-safe enden und dürfen keine unbegrenzten Wartezustände erzeugen.
+
+Lastziel für die Plus-Architektur:
+- mindestens 20 gleichzeitig verbundene Restaurant-Endgeräte,
+- mindestens 100 aktive/konfigurierte Tische,
+- mehrere gleichzeitige Kellner-Schreibvorgänge,
+- mehrere unabhängige Küchenstationen/Drucker,
+- laufendes KDS und Delta-Sync,
+- währenddessen weiterhin reaktionsfähige Hauptkasse und Checkout.
+
+Diese Lastziele sind vor einer Production-Freigabe mit reproduzierbaren Stress-/Regressionsprüfungen zu verifizieren. Ein funktional korrekter Build, der die Kasse unter Last spürbar blockiert, gilt nicht als freigabefähig.
