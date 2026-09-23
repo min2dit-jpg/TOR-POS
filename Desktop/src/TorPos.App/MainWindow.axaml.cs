@@ -327,7 +327,14 @@ public partial class MainWindow:Window
                     "No fiscal sale, receipt number, TSE transaction or terminal payment is allowed.");
             }
 
+            StartTseWatch();
             FocusScannerCaptureSoon();
+        };
+
+        Closed += (_, _) =>
+        {
+            _tseWatch?.Stop();
+            _tseWatch = null;
         };
     }
 
@@ -5366,6 +5373,57 @@ public partial class MainWindow:Window
         await ShowTseUnavailableAsync(headline, deviceMessage);
     }
 
+    // Until now the probe ran at start-up and after the settings window closed.
+    // Someone who plugged the TSE in while the till was running got nothing at
+    // all: the device was sitting in the USB port, the program still said it was
+    // missing, and the only way forward was to restart. A TSE announces itself
+    // as a USB volume, so its arrival can be seen without the SDK and cheaply
+    // enough to watch for.
+    private DispatcherTimer? _tseWatch;
+    private string _tseMountSignature = "";
+
+    private void StartTseWatch()
+    {
+        if (_tseWatch is not null)
+            return;
+
+        // Same switch as the start-up probe: an operator who turned the
+        // automatic check off is not watched either.
+        if (!_settingsCache.GetBool("tse.auto_connect", true))
+            return;
+
+        _tseMountSignature = MountSignature();
+
+        _tseWatch = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _tseWatch.Tick += async (_, _) =>
+        {
+            var signature = MountSignature();
+            if (signature == _tseMountSignature)
+                return;
+
+            // Plugged in or pulled out. Either way the answer the till is
+            // showing is now stale, so ask the device again.
+            _tseMountSignature = signature;
+            await AutoProbeTseAsync();
+        };
+        _tseWatch.Start();
+    }
+
+    private static string MountSignature()
+    {
+        try
+        {
+            return string.Join("|", SwissbitDeviceScan.FindMountPoints());
+        }
+        catch (Exception ex)
+        {
+            // A drive scan must never take the till down, and a failed scan is
+            // not evidence that the TSE went away.
+            CrashLog.WriteException("TSE mount scan", ex);
+            return "";
+        }
+    }
+
     private async Task AutoProbeTseAsync()
     {
         try
@@ -5399,6 +5457,13 @@ public partial class MainWindow:Window
             {
                 StatusLine =
                     $"TSE bereit · {result.Device?.SerialNumber}";
+
+                // TseFailSafeService has just closed the outage, but the red
+                // TSE-AUSFALL badge is only ever repainted when something asks
+                // it to. Without this the till went on showing an outage that
+                // had ended - which is exactly what an operator sees the moment
+                // they plug a working TSE in.
+                await RefreshTseOutageBadgeAsync();
                 return;
             }
 
@@ -5429,6 +5494,7 @@ public partial class MainWindow:Window
             };
 
             StatusLine = status;
+            await RefreshTseOutageBadgeAsync();
             await WarnAboutTseOnceAsync(headline, result.Message);
         }
         catch(Exception ex)

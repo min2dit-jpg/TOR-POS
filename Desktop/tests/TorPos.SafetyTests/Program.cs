@@ -519,7 +519,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // keep an unfinished translation harmless, keep an unknown code from blanking
 // the interface, keep both tables symmetric, keep fiscal documents out of the
 // translation path and keep the stored language choice from being purged.
-// TSE start-up warning: 7 checks lock what the till says when no TSE answers -
+// TSE start-up warning: 9 checks lock what the till says when no TSE answers -
 // every state that cannot sign reaches the operator once per run, a ready TSE
 // stays silent, training is exempt, the warning never locks the till, only an
 // admin is offered the settings route, and the message is translated with the
@@ -532,7 +532,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1198;
+const int ExpectedSafetyChecks = 1200;
 
 if (checks != ExpectedSafetyChecks)
 {

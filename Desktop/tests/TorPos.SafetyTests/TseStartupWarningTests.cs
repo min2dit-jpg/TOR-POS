@@ -123,6 +123,28 @@ public static class TseStartupWarningTests
                     Pair(english, key).Contains("TSE", StringComparison.Ordinal)),
             "TSE start-up warning: the device name TSE survives translation in every language, so the operator can repeat it to a technician");
 
+        // Plugging the TSE in while the till is running used to do nothing: the
+        // probe only ran at start-up and after the settings window closed, so
+        // the answer on screen stayed stale until a restart. The stick is a USB
+        // volume, which is watchable without the SDK.
+        var watch = Block(main, "private void StartTseWatch()", "private static string MountSignature()");
+        assert(
+            main.Contains("private DispatcherTimer? _tseWatch;", StringComparison.Ordinal) &&
+            main.Contains("StartTseWatch();", StringComparison.Ordinal) &&
+            main.Contains("_tseWatch?.Stop();", StringComparison.Ordinal) &&
+            main.Contains("SwissbitDeviceScan.FindMountPoints()", StringComparison.Ordinal) &&
+            watch.Contains("_settingsCache.GetBool(\"tse.auto_connect\", true)", StringComparison.Ordinal) &&
+            watch.Contains("await AutoProbeTseAsync();", StringComparison.Ordinal),
+            "TSE start-up warning: the till notices a TSE plugged in or pulled out while it runs, under the same setting, and stops watching when it closes");
+
+        // TseFailSafeService closes the outage on a good probe, but the red
+        // badge is only repainted when something asks. Without this the till
+        // kept showing an outage that had ended - at the exact moment the
+        // operator plugged a working TSE in.
+        assert(
+            Regex.Matches(probe, @"await RefreshTseOutageBadgeAsync\(\);").Count == 2,
+            "TSE start-up warning: the outage badge is repainted after every probe, so a working TSE clears it and a failing one raises it");
+
         return Task.CompletedTask;
     }
 
