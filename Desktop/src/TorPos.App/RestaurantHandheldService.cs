@@ -15,6 +15,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
     private readonly RestaurantHandheldPairingService _pairing;
     private readonly IAuthenticationService _authentication;
+    private readonly RestaurantOperatorSessionService _operatorSessions;
     private readonly RestaurantCommandJournal _commands;
     private readonly IProductCatalog _catalog;
 
@@ -26,6 +27,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         RestaurantKitchenDispatcher kitchenDispatcher,
         RestaurantHandheldPairingService pairing,
         IAuthenticationService authentication,
+        RestaurantOperatorSessionService operatorSessions,
         RestaurantCommandJournal commands,
         IProductCatalog catalog)
     {
@@ -36,6 +38,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         _kitchenDispatcher = kitchenDispatcher;
         _pairing = pairing;
         _authentication = authentication;
+        _operatorSessions = operatorSessions;
         _commands = commands;
         _catalog = catalog;
     }
@@ -131,6 +134,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         var operatorUser = await RequireOperatorAsync(
             request.OperatorName,
             request.OperatorPin,
+            request.DeviceId,
+            request.OperatorSessionToken,
             ct);
 
         var session = await _restaurant.OpenTableAsync(
@@ -201,6 +206,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         var operatorUser = await RequireOperatorAsync(
             request.OperatorName,
             request.OperatorPin,
+            request.DeviceId,
+            request.OperatorSessionToken,
             ct);
 
         var before = await _restaurant.GetSessionAsync(
@@ -258,6 +265,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         var operatorUser = await RequireOperatorAsync(
             request.OperatorName,
             request.OperatorPin,
+            request.DeviceId,
+            request.OperatorSessionToken,
             ct);
 
         if (request.Quantity <= 0m)
@@ -554,6 +563,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         var operatorUser = await RequireOperatorAsync(
             request.OperatorName,
             request.OperatorPin,
+            request.DeviceId,
+            request.OperatorSessionToken,
             ct);
 
         var requestHash = CommandHash(
@@ -813,8 +824,19 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private async Task<AuthenticatedUser> RequireOperatorAsync(
         string operatorName,
         string operatorPin,
+        string deviceId,
+        string operatorSessionToken,
         CancellationToken ct)
     {
+        if (!string.IsNullOrWhiteSpace(
+                operatorSessionToken))
+        {
+            return await _operatorSessions.RequireAsync(
+                deviceId,
+                operatorSessionToken,
+                ct);
+        }
+
         var login = await _authentication.LoginWithPinAsync(
             (operatorName ?? "").Trim(),
             (operatorPin ?? "").Trim(),
