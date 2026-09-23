@@ -31,6 +31,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     private readonly RestaurantEntitlementService _entitlements;
     private readonly RestaurantHandheldPairingService _pairing;
     private readonly IRestaurantHandheldService _handheld;
+    private readonly RestaurantTerminalRegistry _terminals;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
 #if TOR_RESTAURANT_PRODUCT
@@ -45,12 +46,14 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         ISettingsRepository settings,
         RestaurantEntitlementService entitlements,
         RestaurantHandheldPairingService pairing,
-        IRestaurantHandheldService handheld)
+        IRestaurantHandheldService handheld,
+        RestaurantTerminalRegistry terminals)
     {
         _settings = settings;
         _entitlements = entitlements;
         _pairing = pairing;
         _handheld = handheld;
+        _terminals = terminals;
     }
 
     public async Task StartOrRestartAsync(
@@ -171,6 +174,18 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 request.DisplayName,
                                 token);
 
+                            var terminalType =
+                                NormalizeTerminalType(
+                                    request.TerminalType);
+
+                            await _terminals.RegisterOrHeartbeatAsync(
+                                paired.DeviceId,
+                                paired.DisplayName,
+                                terminalType,
+                                TorRelease.Version,
+                                Environment.MachineName,
+                                token);
+
                             return Results.Ok(new
                             {
                                 paired.DeviceId,
@@ -198,6 +213,98 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         }
                     })
                 .RequireRateLimiting("pairing");
+
+            app.MapPost(
+                    "/api/v1/terminal/heartbeat",
+                    async (
+                        HttpContext context,
+                        TerminalHeartbeatRequest request,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            await _pairing.RequireAuthenticatedAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
+                            await _terminals.RegisterOrHeartbeatAsync(
+                                deviceId,
+                                request.DisplayName,
+                                NormalizeTerminalType(
+                                    request.TerminalType),
+                                request.AppVersion,
+                                request.MachineName,
+                                token);
+
+                            return Results.NoContent();
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
+
+            app.MapGet(
+                    "/api/v1/terminals",
+                    async (
+                        HttpContext context,
+                        CancellationToken token) =>
+                    {
+                        if (!TryDeviceCredentials(
+                                context,
+                                out var deviceId,
+                                out var deviceToken))
+                        {
+                            return Results.Unauthorized();
+                        }
+
+                        try
+                        {
+                            await _pairing.RequireAuthenticatedAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
+                            return Results.Ok(
+                                await _terminals.ListAsync(token));
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            return Results.Unauthorized();
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            return Results.Conflict(new
+                            {
+                                error = ex.Message
+                            });
+                        }
+                    })
+                .RequireRateLimiting("device");
 
             app.MapGet(
                     "/api/v1/tables",
@@ -723,6 +830,22 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         certificate.GetCertHashString(
             HashAlgorithmName.SHA256);
 
+    private static string NormalizeTerminalType(
+        string? terminalType)
+    {
+        var normalized =
+            (terminalType ?? "HANDHELD")
+                .Trim()
+                .ToUpperInvariant();
+
+        if (normalized is not ("KASSE" or "HANDHELD" or "KDS"))
+            throw new ArgumentException(
+                "Terminaltyp muss KASSE, HANDHELD oder KDS sein.",
+                nameof(terminalType));
+
+        return normalized;
+    }
+
     private static bool TryDeviceCredentials(
         HttpContext context,
         out string deviceId,
@@ -761,7 +884,14 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     private sealed record PairRequest(
         string PairingCode,
         string DeviceId,
-        string DisplayName);
+        string DisplayName,
+        string TerminalType = "HANDHELD");
+
+    private sealed record TerminalHeartbeatRequest(
+        string DisplayName,
+        string TerminalType,
+        string AppVersion,
+        string MachineName);
 
     private sealed record OpenTableRequest(
         long TableId,
