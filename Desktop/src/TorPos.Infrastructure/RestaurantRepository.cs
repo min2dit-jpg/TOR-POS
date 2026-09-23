@@ -709,6 +709,52 @@ public sealed class RestaurantRepository
         });
     }
 
+    public async Task<RestaurantSessionItem?> GetItemByLineTokenAsync(
+        string lineToken,
+        CancellationToken ct = default)
+    {
+        lineToken = (lineToken ?? "").Trim();
+        if (lineToken.Length == 0)
+            return null;
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT id,session_id,line_token,product_id,product_name,variant_name,
+                       quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                       added_by,added_at,version
+                FROM restaurant_session_items
+                WHERE line_token=$token
+                LIMIT 1;
+                """;
+            q.Parameters.AddWithValue("$token", lineToken);
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            if (!await r.ReadAsync(ct))
+                return null;
+
+            return new RestaurantSessionItem(
+                r.GetInt64(0),
+                r.GetString(1),
+                r.GetString(2),
+                r.GetInt64(3),
+                r.GetString(4),
+                r.GetString(5),
+                r.GetInt64(6),
+                r.GetInt64(7),
+                Convert.ToDecimal(r.GetDouble(8)),
+                r.GetInt64(9),
+                Enum.Parse<RestaurantSessionItemState>(
+                    r.GetString(10),
+                    ignoreCase: true),
+                r.GetString(11),
+                DateTimeOffset.Parse(r.GetString(12)),
+                r.GetInt64(13));
+        });
+    }
+
     public async Task<IReadOnlyList<RestaurantSessionItem>> ListActiveItemsAsync(
         string sessionId,
         CancellationToken ct = default)
