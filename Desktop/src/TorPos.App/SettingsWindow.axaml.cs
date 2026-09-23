@@ -29,6 +29,7 @@ public partial class SettingsWindow : Window
     private readonly PerformanceCounters _performance;
     private readonly ITseProvider _tseProvider;
     private readonly ITseOutageRepository _tseOutages;
+    private readonly TseTimeAdminPinStore _tseTimeAdminPin;
     private readonly IReceiptPrinterService _receiptPrinter;
     private readonly IPaymentTerminalService _paymentTerminal;
     private readonly IFiscalComplianceService _compliance;
@@ -118,6 +119,7 @@ public partial class SettingsWindow : Window
         PerformanceCounters performance,
         ITseProvider tseProvider,
         ITseOutageRepository tseOutages,
+        TseTimeAdminPinStore tseTimeAdminPin,
         IReceiptPrinterService receiptPrinter,
         IPaymentTerminalService paymentTerminal,
         IFiscalComplianceService compliance,
@@ -137,6 +139,7 @@ public partial class SettingsWindow : Window
         _performance = performance;
         _tseProvider = tseProvider;
         _tseOutages = tseOutages;
+        _tseTimeAdminPin = tseTimeAdminPin;
         _receiptPrinter = receiptPrinter;
         _paymentTerminal = paymentTerminal;
         _compliance = compliance;
@@ -2190,6 +2193,74 @@ private Control TsePage()
     _ = LoadTseOutagesAsync(outageList);
 
     page.Children.Add(outages);
+
+    // Separate from the activation screen on purpose. A TSE whose clock has
+    // expired needs one thing - worm_tse_updateTime - and sending an operator
+    // through the full activation form to get it puts a PUK box in front of
+    // somebody who only has to fix a date. A wrong PUK entered twice can block
+    // a production TSE for good.
+    var clock = Section("TSE-Uhrzeit");
+    clock.Children.Add(ReadOnlyRow(
+        "Warum",
+        "Eine TSE signiert nicht mehr, sobald ihre eigene Uhr ungültig ist. Das passiert nach längerer Lagerung oder wenn die Kasse lange ausgeschaltet war."));
+
+    var timePin = new TextBox
+    {
+        MinHeight = 38,
+        PasswordChar = '*',
+        MaxLength = 8,
+        PlaceholderText = "TimeAdmin-PIN"
+    };
+
+    // A plain CheckBox, not Check(): Check() registers the control in the
+    // generic save list, and this one only reports what the store already
+    // holds. Writing it back from the form would let a stray save decide
+    // whether a PIN exists.
+    var timeStored = new CheckBox
+    {
+        Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert",
+        MinHeight = 30,
+        IsEnabled = false,
+        IsChecked = _tseTimeAdminPin.Enabled
+    };
+    clock.Children.Add(ToggleRow(timeStored));
+
+    Form(
+        clock,
+        "TimeAdmin-PIN",
+        timePin,
+        "Nur die TimeAdmin-PIN. Sie kann ausschließlich die Uhr stellen - keine PIN ändern, keinen Client registrieren, die TSE nicht außer Betrieb setzen. Admin-PIN, PUK und Credential-Seed werden nirgends gespeichert.");
+
+    var saveTimePin = new Button { Content = "PIN SPEICHERN", MinHeight = 44 };
+    var clearTimePin = new Button { Content = "GESPEICHERTE PIN LÖSCHEN", MinHeight = 44 };
+
+    saveTimePin.Click += async (_, _) =>
+    {
+        var entered = timePin.Text ?? "";
+        timePin.Text = "";
+
+        if (string.IsNullOrWhiteSpace(entered))
+        {
+            SettingsStatus = "Keine TimeAdmin-PIN eingegeben.";
+            return;
+        }
+
+        await _tseTimeAdminPin.SaveAsync(entered);
+        timeStored.IsChecked = true;
+        SettingsStatus = "TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt.";
+    };
+
+    clearTimePin.Click += async (_, _) =>
+    {
+        timePin.Text = "";
+        await _tseTimeAdminPin.ClearAsync();
+        timeStored.IsChecked = false;
+        SettingsStatus = "Gespeicherte TimeAdmin-PIN gelöscht.";
+    };
+
+    clock.Children.Add(saveTimePin);
+    clock.Children.Add(clearTimePin);
+    page.Children.Add(clock);
 
     var identity = Section("Automatisch aus der TSE lesen");
 

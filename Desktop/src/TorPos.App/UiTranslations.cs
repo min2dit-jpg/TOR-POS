@@ -522,6 +522,21 @@ internal static class UiTranslations
         ["Ausfallliste wird gelesen ..."] = "Arıza listesi okunuyor ...",
         ["Kein TSE-Ausfall protokolliert."] = "Kayıtlı TSE arızası yok.",
         ["Ausfallliste konnte nicht gelesen werden."] = "Arıza listesi okunamadı.",
+        // The TSE clock. "TimeAdmin" is the name Swissbit gives that PIN and
+        // stays as it is, like TSE itself.
+        ["TSE-Uhrzeit"] = "TSE saati",
+        ["Warum"] = "Neden",
+        ["Eine TSE signiert nicht mehr, sobald ihre eigene Uhr ungültig ist. Das passiert nach längerer Lagerung oder wenn die Kasse lange ausgeschaltet war."] =
+            "Kendi saati geçersiz hale geldiğinde TSE artık imzalamaz. Bu, uzun depolamadan sonra veya kasa uzun süre kapalı kaldığında olur.",
+        ["TimeAdmin-PIN ist auf dieser Kasse gespeichert"] = "TimeAdmin-PIN bu kasada kayıtlı",
+        ["Nur die TimeAdmin-PIN. Sie kann ausschließlich die Uhr stellen - keine PIN ändern, keinen Client registrieren, die TSE nicht außer Betrieb setzen. Admin-PIN, PUK und Credential-Seed werden nirgends gespeichert."] =
+            "Yalnızca TimeAdmin-PIN. Bu PIN sadece saati ayarlayabilir - PIN değiştiremez, client kaydedemez, TSE'yi hizmet dışı bırakamaz. Admin-PIN, PUK ve Credential-Seed hiçbir yere kaydedilmez.",
+        ["PIN SPEICHERN"] = "PIN'İ KAYDET",
+        ["GESPEICHERTE PIN LÖSCHEN"] = "KAYITLI PIN'İ SİL",
+        ["Keine TimeAdmin-PIN eingegeben."] = "TimeAdmin-PIN girilmedi.",
+        ["TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt."] =
+            "TimeAdmin-PIN kaydedildi. TSE saati artık otomatik olarak güncellenecek.",
+        ["Gespeicherte TimeAdmin-PIN gelöscht."] = "Kayıtlı TimeAdmin-PIN silindi.",
         ["läuft noch"] = "hâlâ sürüyor",
         ["Tag"] = "gün",
         ["Tage"] = "gün",
@@ -2131,6 +2146,21 @@ internal static class UiTranslations
         ["Ausfallliste wird gelesen ..."] = "Reading the outage list ...",
         ["Kein TSE-Ausfall protokolliert."] = "No TSE outage logged.",
         ["Ausfallliste konnte nicht gelesen werden."] = "The outage list could not be read.",
+        // The TSE clock. "TimeAdmin" is the name Swissbit gives that PIN and
+        // stays as it is, like TSE itself.
+        ["TSE-Uhrzeit"] = "TSE clock",
+        ["Warum"] = "Why",
+        ["Eine TSE signiert nicht mehr, sobald ihre eigene Uhr ungültig ist. Das passiert nach längerer Lagerung oder wenn die Kasse lange ausgeschaltet war."] =
+            "A TSE stops signing once its own clock is no longer valid. That happens after long storage or when the till was switched off for a long time.",
+        ["TimeAdmin-PIN ist auf dieser Kasse gespeichert"] = "The TimeAdmin PIN is stored on this till",
+        ["Nur die TimeAdmin-PIN. Sie kann ausschließlich die Uhr stellen - keine PIN ändern, keinen Client registrieren, die TSE nicht außer Betrieb setzen. Admin-PIN, PUK und Credential-Seed werden nirgends gespeichert."] =
+            "The TimeAdmin PIN only. It can set the clock and nothing else - it cannot change a PIN, register a client or decommission the TSE. The Admin PIN, the PUK and the credential seed are never stored.",
+        ["PIN SPEICHERN"] = "SAVE PIN",
+        ["GESPEICHERTE PIN LÖSCHEN"] = "DELETE STORED PIN",
+        ["Keine TimeAdmin-PIN eingegeben."] = "No TimeAdmin PIN entered.",
+        ["TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt."] =
+            "TimeAdmin PIN stored. The TSE clock is now kept up to date automatically.",
+        ["Gespeicherte TimeAdmin-PIN gelöscht."] = "Stored TimeAdmin PIN deleted.",
         ["läuft noch"] = "still open",
         ["Tag"] = "day",
         ["Tage"] = "days",

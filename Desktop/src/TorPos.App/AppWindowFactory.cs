@@ -73,6 +73,7 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<PerformanceCounters>(),
             _services.GetRequiredService<ITseProvider>(),
             _services.GetRequiredService<ITseOutageRepository>(),
+            _services.GetRequiredService<TseTimeAdminPinStore>(),
             _services.GetRequiredService<IReceiptPrinterService>(),
             _services.GetRequiredService<IPaymentTerminalService>(),
             _services.GetRequiredService<IFiscalComplianceService>(),

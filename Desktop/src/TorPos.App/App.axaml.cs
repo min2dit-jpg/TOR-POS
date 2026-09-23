@@ -133,7 +133,12 @@ public partial class App : Avalonia.Application
             parkedReceipts.PrintCommitted = orderPrintDispatcher.Notify;
             orderPrintDispatcher.Start();
             var commercialLicense = new CommercialLicenseService();
-            var tseProvider = new SwissbitHardwareTseProvider();
+            // Read once at start-up so the checkout path never waits on a
+            // database read to learn whether it may refresh the TSE clock.
+            var tseTimeAdminPin = new TseTimeAdminPinStore(settings);
+            await tseTimeAdminPin.RefreshAsync();
+            var tseProvider = new SwissbitHardwareTseProvider(
+                timeAdminPin: () => tseTimeAdminPin.Current);
             var tseOutages = new TseOutageRepository(db, audit);
             var tseFailSafe = new TseFailSafeService(
                 tseProvider,
@@ -220,6 +225,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<ISettingsRepository>(settings);
             appServices.AddSingleton<ITseProvider>(tseProvider);
             appServices.AddSingleton<ITseOutageRepository>(tseOutages);
+            appServices.AddSingleton(tseTimeAdminPin);
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);

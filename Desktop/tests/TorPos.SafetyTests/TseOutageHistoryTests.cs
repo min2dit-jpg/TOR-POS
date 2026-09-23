@@ -94,6 +94,28 @@ public static class TseOutageHistoryTests
             sdkMissing.Contains("TSE erkannt auf", StringComparison.Ordinal),
             "TSE outage history: a plugged-in TSE is recognised and named even while the Swissbit SDK is missing, and the state still fails closed");
 
+        // The TSE stops signing once its own clock expires, and updateTime is
+        // the only way back. Every transaction request has carried a
+        // TimeAdminPin field from the start and not one of the six
+        // construction sites ever filled it - so a TSE that sat on a shelf
+        // failed with 0x1002 and the only route back was the activation screen,
+        // PUK box and all.
+        var provider = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/SwissbitTseProvider.cs"));
+        var store = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/TseTimeAdminPinStore.cs"));
+        assert(
+            Regex.Matches(provider, @"request with \{ TimeAdminPin = TimeAdminPin\(request\.TimeAdminPin\) \}").Count == 3 &&
+            provider.Contains("if (!string.IsNullOrWhiteSpace(existing))", StringComparison.Ordinal),
+            "TSE clock: the till can refresh the TSE time on all three transaction calls, and a request that already carries a PIN is left alone");
+
+        // Only the weakest of the three secrets may ever be kept, and only
+        // because the operator turned it on.
+        assert(
+            store.Contains("ProtectedData.Protect", StringComparison.Ordinal) &&
+            store.Contains("DataProtectionScope.CurrentUser", StringComparison.Ordinal) &&
+            !Regex.IsMatch(WithoutComments(store), @"\b(Puk|AdminPin|CredentialSeed)\b") &&
+            store.Contains("_current = \"\";", StringComparison.Ordinal),
+            "TSE clock: only the TimeAdmin PIN is ever stored, protected for the Windows user, and a PIN that cannot be decrypted degrades to none instead of crashing a sale");
+
         return Task.CompletedTask;
     }
 

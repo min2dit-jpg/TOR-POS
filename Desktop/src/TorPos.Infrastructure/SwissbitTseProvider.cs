@@ -12,12 +12,43 @@ namespace TorPos.Infrastructure;
 public sealed class SwissbitHardwareTseProvider : ITseProvider
 {
     private readonly ISwissbitSdkBridge _bridge;
+    private readonly Func<string>? _timeAdminPin;
 
     public SwissbitHardwareTseProvider(
-        ISwissbitSdkBridge? bridge = null)
+        ISwissbitSdkBridge? bridge = null,
+        Func<string>? timeAdminPin = null)
     {
         _bridge = bridge ??
             new SwissbitWatchdogBridge();
+
+        _timeAdminPin = timeAdminPin;
+    }
+
+    // Every transaction request has carried a TimeAdminPin field from the
+    // start, and not one of the six construction sites ever filled it. The
+    // effect only shows on real hardware: when the TSE's own clock is no longer
+    // valid, PrepareForTransaction needs that PIN to call updateTime, and
+    // without it every signature fails with 0x1002 until somebody walks the
+    // full activation screen.
+    //
+    // Filling it here covers all six sites at once and keeps the signing
+    // services unaware of a PIN they have no business holding. A request that
+    // already carries one is left exactly as it is.
+    private string TimeAdminPin(string existing)
+    {
+        if (!string.IsNullOrWhiteSpace(existing))
+            return existing;
+
+        try
+        {
+            return _timeAdminPin?.Invoke() ?? "";
+        }
+        catch
+        {
+            // No stored PIN is a documented outage; a throw here would be a
+            // crash in the middle of a sale.
+            return "";
+        }
     }
 
     public string ProviderId =>
@@ -149,21 +180,21 @@ public sealed class SwissbitHardwareTseProvider : ITseProvider
         TseTransactionStartRequest request,
         CancellationToken ct = default) =>
         _bridge.StartTransactionAsync(
-            request,
+            request with { TimeAdminPin = TimeAdminPin(request.TimeAdminPin) },
             ct);
 
     public Task<TseTransactionResult> UpdateTransactionAsync(
         TseTransactionUpdateRequest request,
         CancellationToken ct = default) =>
         _bridge.UpdateTransactionAsync(
-            request,
+            request with { TimeAdminPin = TimeAdminPin(request.TimeAdminPin) },
             ct);
 
     public Task<TseTransactionResult> FinishTransactionAsync(
         TseTransactionFinishRequest request,
         CancellationToken ct = default) =>
         _bridge.FinishTransactionAsync(
-            request,
+            request with { TimeAdminPin = TimeAdminPin(request.TimeAdminPin) },
             ct);
 
     public Task<TseExportResult> ExportTarAsync(

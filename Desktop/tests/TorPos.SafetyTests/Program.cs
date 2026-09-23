@@ -524,7 +524,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // stays silent, training is exempt, the warning never locks the till, only an
 // admin is offered the settings route, and the message is translated with the
 // device name TSE left intact.
-// TSE outage history: 6 checks lock the readable outage log - bounded and
+// TSE outage history and clock: 8 checks lock the readable outage log - bounded and
 // read-only, still undeletable, shown on the technician page, and the recorded
 // reason reaching the screen unchanged because it is evidence, not interface
 // text.
@@ -532,7 +532,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // compile-time identity, per-product demo identity, side-by-side installers and
 // backup-first legacy migration - including a crash-interrupted WAL source -
 // separated while the shared R181 source remains intact for rollback.
-const int ExpectedSafetyChecks = 1200;
+const int ExpectedSafetyChecks = 1202;
 
 if (checks != ExpectedSafetyChecks)
 {
