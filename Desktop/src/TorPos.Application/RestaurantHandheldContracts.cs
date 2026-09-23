@@ -25,6 +25,7 @@ public sealed record RestaurantHandheldOpenTableRequest(
     int GuestCount,
     string Note,
     string OperatorName,
+    string OperatorPin,
     string DeviceId,
     string DeviceToken);
 
@@ -34,6 +35,7 @@ public sealed record RestaurantHandheldUpdateTableRequest(
     int GuestCount,
     string Note,
     string OperatorName,
+    string OperatorPin,
     string DeviceId,
     string DeviceToken);
 
@@ -52,6 +54,7 @@ public sealed record RestaurantHandheldAddItemRequest(
     long ProductId,
     decimal Quantity,
     string OperatorName,
+    string OperatorPin,
     string DeviceId,
     string DeviceToken);
 
