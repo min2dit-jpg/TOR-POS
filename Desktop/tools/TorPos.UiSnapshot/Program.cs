@@ -102,6 +102,7 @@ async Task RunAsync()
     };
     var restaurantRepository = new RestaurantRepository(db);
     var restaurantFiscal = new RestaurantFiscalOrderService(db, tseVorgaenge);
+    var restaurantEntitlements = new RestaurantEntitlementService(commercialLicense);
     var cashMovements = new CashMovementRepository(db, audit);
     var digitalReceipts = new CloudDigitalReceiptService(settings, null);
     var checkoutJournal = new CheckoutJournal(db);
@@ -140,7 +141,7 @@ async Task RunAsync()
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
             compliance, dsfinvkExport, datevAscii, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
             tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
-            auth, management, restaurantRepository, restaurantFiscal, admin, checkoutJournal, checkoutApplication,
+            auth, management, restaurantRepository, restaurantFiscal, restaurantEntitlements, admin, checkoutJournal, checkoutApplication,
             new ControlledPosActionService(db), new PromotionCampaignService(db),
             fiscalSigning, orderFiscalSigning, tseFailSafe, new NoWindows());
 
@@ -375,6 +376,8 @@ sealed class NoWindows : IAppWindowFactory
     public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
     public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
     public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
     public DiagnosticsWindow CreateDiagnosticsWindow() => throw new NotSupportedException();
 }
