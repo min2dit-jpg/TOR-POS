@@ -754,6 +754,33 @@ internal static class RestaurantFoundationTests
                 await fiscalState.IsCurrentStateSecuredAsync(cancelSession.Id),
                 "Negative Bestellung delta reconciles a cancelled Restaurant position to zero");
 
+            var cancelKitchenJobId = await kitchen.EnqueueCancellationAsync(
+                await repo.GetSessionAsync(cancelSession.Id)
+                    ?? throw new InvalidOperationException("Cancelled session missing."),
+                cancelled,
+                "Tisch 5",
+                "KELLNER-1",
+                KitchenStations.Grill);
+
+            var cancellationAlerts = await kitchen.CancellationAlertsAsync(
+                KitchenStations.Grill);
+
+            assert(
+                cancellationAlerts.Any(x =>
+                    x.JobId == cancelKitchenJobId &&
+                    x.SessionItemId == cancelled.Id &&
+                    x.TableName == "Tisch 5" &&
+                    x.ProductName == product.Name),
+                "Restaurant KDS surfaces a pending cancellation alert for the cancelled kitchen item");
+
+            await kitchen.MarkHandedOverAsync(cancelKitchenJobId);
+
+            assert(
+                !(await kitchen.CancellationAlertsAsync(
+                    KitchenStations.Grill)).Any(x =>
+                        x.JobId == cancelKitchenJobId),
+                "Acknowledged Restaurant KDS cancellation alert leaves the pending board");
+
             var emptyTableId = await repo.SaveTableAsync(
                 areaId,
                 "T04",
