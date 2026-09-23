@@ -538,7 +538,8 @@ public sealed class RestaurantTablePlanWindow : Window
                     _selectedSession,
                     item,
                     _selectedTable?.DisplayName ?? "Tisch",
-                    _user.Username);
+                    _user.Username,
+                    ResolveKitchenStation(product));
                 _kitchenDispatcher.Notify();
             }
 
@@ -764,11 +765,15 @@ public sealed class RestaurantTablePlanWindow : Window
 
             if (_selectedSession is not null)
             {
+                var cancelledProduct = _catalog.Products
+                    .FirstOrDefault(x => x.Id == cancelled.ProductId);
+
                 await _kitchen.EnqueueCancellationAsync(
                     _selectedSession,
                     cancelled,
                     _selectedTable?.DisplayName ?? "Tisch",
-                    _user.Username);
+                    _user.Username,
+                    ResolveKitchenStation(cancelledProduct));
                 _kitchenDispatcher.Notify();
             }
 
@@ -915,6 +920,17 @@ public sealed class RestaurantTablePlanWindow : Window
         };
 
         await dialog.ShowDialog(this);
+    }
+
+    private string ResolveKitchenStation(Product? product)
+    {
+        if (product is null)
+            return KitchenStations.None;
+
+        var category = _catalog.Categories
+            .FirstOrDefault(x => x.Id == product.CategoryId);
+
+        return KitchenStations.Normalize(category?.KitchenStation);
     }
 
     private async Task ShowErrorAsync(string message)
