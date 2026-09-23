@@ -76,9 +76,9 @@ public sealed class RestaurantKitchenOutbox
         CancellationToken ct = default)
     {
         jobId = (jobId ?? "").Trim();
-        if (jobId.Length is < 8 or > 160)
+        if (!Guid.TryParseExact(jobId, "N", out _))
             throw new ArgumentException(
-                "Kitchen-Job-ID ist ungültig.",
+                "Kitchen-Job-ID muss eine persistente GUID(N) sein.",
                 nameof(jobId));
 
         return EnqueueNewItemCoreAsync(
@@ -156,9 +156,9 @@ public sealed class RestaurantKitchenOutbox
         CancellationToken ct = default)
     {
         jobId = (jobId ?? "").Trim();
-        if (jobId.Length is < 8 or > 160)
+        if (!Guid.TryParseExact(jobId, "N", out _))
             throw new ArgumentException(
-                "Kitchen-Job-ID ist ungültig.",
+                "Kitchen-Job-ID muss eine persistente GUID(N) sein.",
                 nameof(jobId));
 
         return EnqueueCancellationCoreAsync(
