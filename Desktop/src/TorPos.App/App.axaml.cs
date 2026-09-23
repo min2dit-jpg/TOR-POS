@@ -230,6 +230,13 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);
             appServices.AddSingleton<ICommercialLicenseService>(commercialLicense);
+            var restaurantEntitlements =
+                new RestaurantEntitlementService(commercialLicense);
+            appServices.AddSingleton(restaurantEntitlements);
+            appServices.AddSingleton(
+                new RestaurantHandheldPairingService(
+                    db,
+                    restaurantEntitlements));
             appServices.AddSingleton(auth);
             appServices.AddSingleton<IAuthenticationService>(auth);
 
