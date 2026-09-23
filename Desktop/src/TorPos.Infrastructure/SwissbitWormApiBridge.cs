@@ -750,9 +750,11 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             string.IsNullOrWhiteSpace(description)
                 ? "Hardware-TSE"
                 : description,
-            // The TSE description is the only generation evidence here.
-            // HardwareVersion remains available separately as a revision.
-            description,
+            // The WORM metadata available here does not provide a validated
+            // generation discriminator. Do not repurpose the description or
+            // hardware/software revision as generation evidence. A documented
+            // adapter mapping can populate this field after real-device capture.
+            "",
             string.IsNullOrWhiteSpace(formFactor)
                 ? "USB/Storage"
                 : formFactor,
