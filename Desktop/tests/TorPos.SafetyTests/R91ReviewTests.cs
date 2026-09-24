@@ -65,23 +65,27 @@ public static class R91ReviewTests
             InsertSale(c, 91002, "STORNO", originalSaleId, 2000, "R91 Testartikel", 2);
         }
 
+        // V-2 supersedes R91's "count only the SALE": the reversal is now
+        // netted out exactly like on the X/Z (Umsatz nach Storno/Retouren),
+        // instead of being ignored. A fully stornoed Bon therefore nets to 0,
+        // and it is still never counted twice.
         var turnover = await management.BuildTurnoverSummaryAsync();
         var turnoverText = string.Join("\n", turnover.Lines);
         assert(
-            turnoverText.Contains("HEUTE: 1 Bons | Umsatz 20,00 EUR"),
-            "R91 UMSATZBERICHTE counts only the SALE, not the SALE plus its own STORNO on top");
+            turnoverText.Contains("HEUTE: 1 Bons | Umsatz 0,00 EUR | Bar 0,00 EUR | Karte 0,00 EUR | Storno/Retoure 20,00 EUR"),
+            "R91/V-2 UMSATZBERICHTE count the SALE once and net its own STORNO out, as the Z does");
 
         var monthly = await management.BuildMonthlyTurnoverAsync();
         var monthlyText = string.Join("\n", monthly.Lines);
         var thisMonth = DateTime.Today.ToString("yyyy-MM");
         assert(
-            monthlyText.Contains($"{thisMonth} | 1 | 20,00 EUR"),
-            "R91 MONATSUMSATZ counts only the SALE for the current month, not doubled by its STORNO");
+            monthlyText.Contains($"{thisMonth} | 1 | 0,00 EUR | 20,00 EUR"),
+            "R91/V-2 MONATSUMSATZ counts the SALE once and nets its STORNO out for the current month");
 
         var stats = await management.BuildSalesStatisticsAsync();
         var statsText = string.Join("\n", stats.Lines);
         assert(
-            statsText.Contains("R91 Testartikel | 2 | 20,00 EUR"),
-            "R91 VERKAUFSSTATISTIK shows the product's real sold quantity/revenue, not doubled by the sale_items row its own STORNO also carries");
+            !statsText.Contains("R91 Testartikel", StringComparison.Ordinal),
+            "R91/V-2 VERKAUFSSTATISTIK nets the STORNO lines out, so a fully stornoed article is not shown as sold");
     }
 }

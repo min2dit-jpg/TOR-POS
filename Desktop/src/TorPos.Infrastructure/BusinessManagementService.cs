@@ -683,20 +683,25 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
             await using var q = c.CreateCommand();
             // R101: same cash/card split + historical-row fallback as
             // GetPeriodSummaryAsync above.
+            // V-2: Umsatz, Bar and Karte are net of BON STORNO/Teilretoure,
+            // exactly like the X/Z ("Umsatz nach Storno/Retouren"), and the
+            // period is filtered on the UTC column, not on local text.
             q.CommandText = """
-                SELECT COUNT(*),COALESCE(SUM(total_cents),0),
-                       COALESCE(SUM(CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
+                SELECT COALESCE(SUM(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1 ELSE 0 END),0),
+                       COALESCE(SUM(SIGN * total_cents),0),
+                       COALESCE(SUM(SIGN * CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
                                          WHEN payment_method='CASH' THEN total_cents ELSE 0 END),0),
-                       COALESCE(SUM(CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN card_portion_cents
-                                         WHEN payment_method='CARD' THEN total_cents ELSE 0 END),0)
+                       COALESCE(SUM(SIGN * CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN card_portion_cents
+                                         WHEN payment_method='CARD' THEN total_cents ELSE 0 END),0),
+                       COALESCE(SUM(CASE WHEN transaction_type IN ('STORNO','RETURN') THEN total_cents ELSE 0 END),0)
                 FROM sales
-                WHERE COALESCE(transaction_type,'SALE')='SALE'
-                  AND created_at >= $from;
-                """;
-            q.Parameters.AddWithValue("$from", new DateTimeOffset(p.Item2, TimeZoneInfo.Local.GetUtcOffset(p.Item2)).ToString("O"));
+                WHERE COALESCE(transaction_type,'SALE') IN ('SALE','STORNO','RETURN')
+                  AND created_at_utc >= $from;
+                """.Replace("SIGN", SaleSignSql, StringComparison.Ordinal);
+            q.Parameters.AddWithValue("$from", ToUtcColumnText(new DateTimeOffset(p.Item2, TimeZoneInfo.Local.GetUtcOffset(p.Item2))));
             await using var r = await q.ExecuteReaderAsync(ct);
             await r.ReadAsync(ct);
-            lines.Add($"{p.Item1}: {r.GetInt64(0)} Bons | Umsatz {Money(r.GetInt64(1))} | Bar {Money(r.GetInt64(2))} | Karte {Money(r.GetInt64(3))}");
+            lines.Add($"{p.Item1}: {r.GetInt64(0)} Bons | Umsatz {Money(r.GetInt64(1))} | Bar {Money(r.GetInt64(2))} | Karte {Money(r.GetInt64(3))} | Storno/Retoure {Money(r.GetInt64(4))}");
         }
 
         return new ReportDocument("UMSATZBERICHTE", lines, DateTimeOffset.Now);
@@ -707,7 +712,7 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
     {
         var lines = new List<string>
         {
-            "Monat | Bons | Umsatz"
+            "Monat | Bons | Umsatz | Storno/Retoure"
         };
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
@@ -715,21 +720,26 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
         // scan to a 25-month-back cutoff (indexed range on created_at) cannot
         // change the output, but skips scanning older history entirely.
         var cutoffMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-25);
+        // V-2: net of STORNO/RETURN like the Z; the month is the local
+        // month the Bon was written in (created_at carries local time).
         q.CommandText = """
-            SELECT substr(created_at,1,7) AS ym,COUNT(*),COALESCE(SUM(total_cents),0)
+            SELECT substr(created_at,1,7) AS ym,
+                   COALESCE(SUM(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(SIGN * total_cents),0),
+                   COALESCE(SUM(CASE WHEN transaction_type IN ('STORNO','RETURN') THEN total_cents ELSE 0 END),0)
             FROM sales
-            WHERE COALESCE(transaction_type,'SALE')='SALE'
+            WHERE COALESCE(transaction_type,'SALE') IN ('SALE','STORNO','RETURN')
               AND created_at_utc >= $cutoff
             GROUP BY ym
             ORDER BY ym DESC
             LIMIT 24;
-            """;
+            """.Replace("SIGN", SaleSignSql, StringComparison.Ordinal);
         q.Parameters.AddWithValue(
             "$cutoff",
             ToUtcColumnText(new DateTimeOffset(cutoffMonth, TimeZoneInfo.Local.GetUtcOffset(cutoffMonth))));
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
-            lines.Add($"{r.GetString(0)} | {r.GetInt64(1)} | {Money(r.GetInt64(2))}");
+            lines.Add($"{r.GetString(0)} | {r.GetInt64(1)} | {Money(r.GetInt64(2))} | {Money(r.GetInt64(3))}");
         return new ReportDocument("MONATSUMSATZ", lines, DateTimeOffset.Now);
     });
 }
@@ -737,6 +747,27 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
 // the reversed lines) - without the join+filter below, a returned
 // product's quantity/revenue was counted a second time on top of its
 // original sale instead of excluded.
+// V-2: +1 for a sale, -1 for a BON STORNO/Teilretoure (their rows carry
+// positive amounts; the sign comes from the transaction type).
+private const string SaleSignSql = "(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1 ELSE -1 END)";
+
+// V-2: product statistics net of reversals. A Storno/Retoure mirrors the
+// returned lines with positive values, so they are subtracted here; fully
+// reversed articles drop out instead of showing as sold.
+internal static string SalesStatisticsSql(string periodFilter, string limit) => $"""
+    SELECT i.product_name,
+           COALESCE(SUM(CASE WHEN COALESCE(s.transaction_type,'SALE')='SALE' THEN 1 ELSE -1 END *
+               CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0) AS qty,
+           COALESCE(SUM(CASE WHEN COALESCE(s.transaction_type,'SALE')='SALE' THEN 1 ELSE -1 END * i.line_total_cents),0) AS revenue
+    FROM sale_items i
+    JOIN sales s ON s.id=i.sale_id
+    WHERE COALESCE(s.transaction_type,'SALE') IN ('SALE','STORNO','RETURN') {periodFilter}
+    GROUP BY i.product_name
+    HAVING qty<>0 OR revenue<>0
+    ORDER BY revenue DESC
+    {limit};
+    """;
+
 public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct = default)
 {
     return await IoQueue.RunAsync(async () =>
@@ -747,17 +778,7 @@ public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct
         };
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
-        q.CommandText = """
-            SELECT i.product_name,
-                   COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0),
-                   COALESCE(SUM(i.line_total_cents),0)
-            FROM sale_items i
-            JOIN sales s ON s.id=i.sale_id
-            WHERE COALESCE(s.transaction_type,'SALE')='SALE'
-            GROUP BY i.product_name
-            ORDER BY SUM(i.line_total_cents) DESC
-            LIMIT 100;
-            """;
+        q.CommandText = SalesStatisticsSql("", "LIMIT 100");
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
             lines.Add(GermanFormat.Line($"{r.GetString(0)} | {QuantityStorage.FromMilli(r.GetInt64(1)):0.###} | {Money(r.GetInt64(2))}"));
@@ -1414,7 +1435,8 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
                     i.unit_price_cents,
                     i.vat_rate,
                     COALESCE(i.vat_allocations_json,''),
-                    COALESCE(s.transaction_type,'SALE')
+                    COALESCE(s.transaction_type,'SALE'),
+                    i.line_total_cents
                 FROM sales s
                 JOIN sale_items i ON i.sale_id=s.id
                 WHERE s.created_at_utc >= $from
@@ -1438,7 +1460,11 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
                     Quantity = Convert.ToDecimal(r.GetDouble(2)),
                     UnitPriceCents = r.GetInt64(3),
                     VatRate = Convert.ToDecimal(r.GetDouble(4)),
-                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(5))
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(5)),
+                    // V-1: the stored line total is what the customer paid and
+                    // the TSE signed. Recomputing quantity x unit price drifts
+                    // for weighed promotion lines and partial-return slices.
+                    PersistedLineTotalCents = r.GetInt64(7)
                 };
                 var transactionType = r.GetString(6);
 

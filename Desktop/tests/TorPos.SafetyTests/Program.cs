@@ -572,6 +572,7 @@ await R172ReviewTests.Run(Assert);
 await R173ReviewTests.Run(Assert);
 await R174ReviewTests.Run(root, Assert);
 await K1K2WeightedSnapshotTests.Run(root, Assert);
+await V1V2ReportTests.Run(root, Assert);
 await K3FactoryAdminSecurityTests.Run(root, Assert);
 await F1SwissbitTimeAdminSafetyTests.Run(root, Assert);
 await R175ReviewTests.Run(root, Assert);
@@ -666,7 +667,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1374;
+const int ExpectedSafetyChecks = 1378;
 
 if (checks != ExpectedSafetyChecks)
 {
