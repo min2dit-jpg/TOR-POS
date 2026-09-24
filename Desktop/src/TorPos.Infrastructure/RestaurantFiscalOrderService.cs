@@ -91,16 +91,57 @@ public sealed class RestaurantFiscalOrderService
             throw new InvalidOperationException(
                 "Restaurant-Position gehört nicht zum erwarteten Tischvorgang.");
 
+        // Crash/retry safety: once the table line is SECURED, its immutable
+        // Bestellung already exists. A replay must not touch the TSE again.
+        if (await IsItemSecuredAsync(
+                sessionId,
+                item.Id,
+                ct))
+        {
+            return;
+        }
+
         var line = ToCartLine(item);
         var processData = FiscalProcessData.BestellungText(new[] { line });
 
-        var result = await _vorgaenge.FinishAsync(
-            vorgang.Id,
-            FiscalProcessData.BestellungProcessType,
-            processData,
-            actor,
-            $"RESTAURANT:{sessionId}",
-            ct);
+        // F-6 journals a successful TSE Finish before the Restaurant record is
+        // persisted. Reuse that exact result after a crash instead of finishing
+        // the same transaction again. If the Vorgang is already terminal but
+        // its journal is missing, fail closed as a documented outage; never
+        // create a second payment/order-time TSE transaction on recovery.
+        var result =
+            await _vorgaenge.GetJournaledFinishAsync(
+                vorgang.Id,
+                ct);
+
+        if (result is null)
+        {
+            var state =
+                await _vorgaenge.GetAsync(
+                    vorgang.Id,
+                    ct);
+
+            if (state is not null &&
+                state.State is
+                    TseVorgangService.Finished or
+                    TseVorgangService.Aborted)
+            {
+                result = SaleTseResult.Outage(
+                    "Restaurant-Bestellung wurde vor dem Persistieren bereits fiskalisch beendet; " +
+                    "kein wiederverwendbares TSE-Finish-Journal vorhanden. " +
+                    "Keine zweite TSE-Transaktion erzeugt.");
+            }
+            else
+            {
+                result = await _vorgaenge.FinishAsync(
+                    vorgang.Id,
+                    FiscalProcessData.BestellungProcessType,
+                    processData,
+                    actor,
+                    $"RESTAURANT:{sessionId}",
+                    ct);
+            }
+        }
 
         await InsertRecordAsync(
             sessionId,
@@ -303,6 +344,33 @@ public sealed class RestaurantFiscalOrderService
 
             return true;
         });
+    }
+
+    private async Task<bool> IsItemSecuredAsync(
+        string sessionId,
+        long itemId,
+        CancellationToken ct)
+    {
+        await using var c = _db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT fiscal_state
+            FROM restaurant_session_items
+            WHERE id=$item
+              AND session_id=$session
+            LIMIT 1;
+            """;
+        q.Parameters.AddWithValue("$item", itemId);
+        q.Parameters.AddWithValue("$session", sessionId);
+
+        var state =
+            Convert.ToString(
+                await q.ExecuteScalarAsync(ct));
+
+        return string.Equals(
+            state,
+            "SECURED",
+            StringComparison.Ordinal);
     }
 
     private async Task InsertRecordAsync(
