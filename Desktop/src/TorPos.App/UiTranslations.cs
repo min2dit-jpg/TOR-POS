@@ -1527,7 +1527,7 @@ internal static class UiTranslations
         ["Zuerst Terminal / Netzbetreiber prüfen. Diese Auswahl sendet weder Zahlung noch Storno an das Terminal."] =
             "Önce terminali / ağ işletmecisini kontrol edin. Bu seçim terminale ne ödeme ne de iptal gönderir.",
         ["Aktuelles Passwort"] = "Geçerli şifre",
-        ["Neues Passwort (mindestens 4 Zeichen)"] = "Yeni şifre (en az 4 karakter)",
+        ["Neues Passwort (mindestens 10 Zeichen)"] = "Yeni şifre (en az 10 karakter)",
         ["Neues Passwort wiederholen"] = "Yeni şifreyi tekrarlayın",
         ["Neue PIN (4 Ziffern)"] = "Yeni PIN (4 rakam)",
         ["Vor dem ersten Kassenstart müssen Standard-Zugangsdaten geändert werden."] =
@@ -3187,7 +3187,7 @@ internal static class UiTranslations
         ["Zuerst Terminal / Netzbetreiber prüfen. Diese Auswahl sendet weder Zahlung noch Storno an das Terminal."] =
             "Check the terminal and the network operator first. This choice sends neither a payment nor a void to the terminal.",
         ["Aktuelles Passwort"] = "Current password",
-        ["Neues Passwort (mindestens 4 Zeichen)"] = "New password (at least 4 characters)",
+        ["Neues Passwort (mindestens 10 Zeichen)"] = "New password (at least 10 characters)",
         ["Neues Passwort wiederholen"] = "Repeat the new password",
         ["Neue PIN (4 Ziffern)"] = "New PIN (4 digits)",
         ["Vor dem ersten Kassenstart müssen Standard-Zugangsdaten geändert werden."] =
