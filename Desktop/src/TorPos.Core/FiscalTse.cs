@@ -182,7 +182,9 @@ public sealed record TseTransactionResult(
     ulong SignatureCounter = 0,
     DateTimeOffset? LogTime = null,
     string SerialNumber = "",
-    string SignatureBase64 = "");
+    string SignatureBase64 = "",
+    bool TimeAdminPinRejected = false,
+    int? TimeAdminRemainingRetries = null);
 
 public sealed record TseExportResult(
     bool Success,

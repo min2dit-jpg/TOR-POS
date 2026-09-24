@@ -573,6 +573,7 @@ await R173ReviewTests.Run(Assert);
 await R174ReviewTests.Run(root, Assert);
 await K1K2WeightedSnapshotTests.Run(root, Assert);
 await K3FactoryAdminSecurityTests.Run(root, Assert);
+await F1SwissbitTimeAdminSafetyTests.Run(root, Assert);
 await R175ReviewTests.Run(root, Assert);
 await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
@@ -663,7 +664,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant foundation: 65 checks lock signed Standard/Plus entitlement,
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1316;
+const int ExpectedSafetyChecks = 1323;
 
 if (checks != ExpectedSafetyChecks)
 {

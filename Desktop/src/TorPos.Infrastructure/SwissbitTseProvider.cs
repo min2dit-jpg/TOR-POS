@@ -13,42 +13,131 @@ public sealed class SwissbitHardwareTseProvider : ITseProvider
 {
     private readonly ISwissbitSdkBridge _bridge;
     private readonly Func<string>? _timeAdminPin;
+    private readonly TseTimeAdminPinStore? _timeAdminPinStore;
+    private readonly TseClockSafetyState? _clockSafety;
 
     public SwissbitHardwareTseProvider(
         ISwissbitSdkBridge? bridge = null,
-        Func<string>? timeAdminPin = null)
+        Func<string>? timeAdminPin = null,
+        TseTimeAdminPinStore? timeAdminPinStore = null,
+        TseClockSafetyState? clockSafety = null)
     {
         _bridge = bridge ??
             new SwissbitWatchdogBridge();
 
         _timeAdminPin = timeAdminPin;
+        _timeAdminPinStore = timeAdminPinStore;
+        _clockSafety = clockSafety;
     }
 
-    // Every transaction request has carried a TimeAdminPin field from the
-    // start, and not one of the six construction sites ever filled it. The
-    // effect only shows on real hardware: when the TSE's own clock is no longer
-    // valid, PrepareForTransaction needs that PIN to call updateTime, and
-    // without it every signature fails with 0x1002 until somebody walks the
-    // full activation screen.
-    //
-    // Filling it here covers all six sites at once and keeps the signing
-    // services unaware of a PIN they have no business holding. A request that
-    // already carries one is left exactly as it is.
-    private string TimeAdminPin(string existing)
-    {
-        if (!string.IsNullOrWhiteSpace(existing))
-            return existing;
+    private sealed record PreparedTimeAdminPin(
+        string Pin,
+        bool FromStoredPin,
+        string WithheldReason);
 
-        try
+    private PreparedTimeAdminPin PrepareTimeAdminPin(
+        string existing)
+    {
+        string candidate;
+        var fromStored = false;
+
+        if (!string.IsNullOrWhiteSpace(existing))
         {
-            return _timeAdminPin?.Invoke() ?? "";
+            candidate = existing;
         }
-        catch
+        else if (_timeAdminPinStore is not null)
         {
-            // No stored PIN is a documented outage; a throw here would be a
-            // crash in the middle of a sale.
-            return "";
+            if (!_timeAdminPinStore.HasStoredValue)
+                return new("", false, "");
+
+            if (_timeAdminPinStore.Suspended)
+            {
+                var reason =
+                    _timeAdminPinStore.SuspensionReason.Length > 0
+                        ? _timeAdminPinStore.SuspensionReason
+                        : "Gespeicherte TimeAdmin-PIN ist nach einem fehlgeschlagenen Login gesperrt. PIN prüfen und neu speichern.";
+                return new("", false, reason);
+            }
+
+            if (_timeAdminPinStore.RemainingRetries is <= 1)
+            {
+                return new(
+                    "",
+                    false,
+                    "Automatische TimeAdmin-PIN-Anmeldung gesperrt: höchstens ein TSE-Versuch verbleibt. PIN zuerst manuell prüfen.");
+            }
+
+            candidate = _timeAdminPinStore.Current;
+            fromStored = candidate.Length > 0;
         }
+        else
+        {
+            try
+            {
+                candidate = _timeAdminPin?.Invoke() ?? "";
+            }
+            catch
+            {
+                candidate = "";
+            }
+        }
+
+        if (candidate.Length == 0)
+            return new("", false, "");
+
+        if (_clockSafety is not null)
+        {
+            var clock =
+                _clockSafety.Assess(
+                    DateTimeOffset.UtcNow);
+
+            if (!clock.Allowed)
+                return new("", false, clock.Message);
+        }
+
+        return new(candidate, fromStored, "");
+    }
+
+    private async Task<TseTransactionResult> CompleteTransactionAsync(
+        TseTransactionResult result,
+        PreparedTimeAdminPin prepared,
+        CancellationToken ct)
+    {
+        if (result.TimeAdminPinRejected &&
+            prepared.FromStoredPin &&
+            _timeAdminPinStore is not null)
+        {
+            var retryText =
+                result.TimeAdminRemainingRetries is { } retries
+                    ? $" Verbleibende TSE-Versuche: {retries}."
+                    : "";
+
+            var reason =
+                "Gespeicherte TimeAdmin-PIN wurde nach fehlgeschlagenem Login automatisch gesperrt." +
+                retryText +
+                " PIN in den TSE-Einstellungen prüfen und ausdrücklich neu speichern.";
+
+            await _timeAdminPinStore.SuspendAsync(
+                result.TimeAdminRemainingRetries,
+                reason,
+                ct);
+
+            return result with { Message = reason };
+        }
+
+        if (!result.Success &&
+            prepared.WithheldReason.Length > 0)
+        {
+            return result with
+            {
+                Message = prepared.WithheldReason
+            };
+        }
+
+        if (result.Success)
+            _clockSafety?.Observe(result.LogTime);
+
+        return result;
     }
 
     public string ProviderId =>
@@ -176,26 +265,68 @@ public sealed class SwissbitHardwareTseProvider : ITseProvider
         }
     }
 
-    public Task<TseTransactionResult> StartTransactionAsync(
+    public async Task<TseTransactionResult> StartTransactionAsync(
         TseTransactionStartRequest request,
-        CancellationToken ct = default) =>
-        _bridge.StartTransactionAsync(
-            request with { TimeAdminPin = TimeAdminPin(request.TimeAdminPin) },
-            ct);
+        CancellationToken ct = default)
+    {
+        var prepared =
+            PrepareTimeAdminPin(request.TimeAdminPin);
 
-    public Task<TseTransactionResult> UpdateTransactionAsync(
+        var result =
+            await _bridge.StartTransactionAsync(
+                request with
+                {
+                    TimeAdminPin = prepared.Pin
+                },
+                ct);
+
+        return await CompleteTransactionAsync(
+            result,
+            prepared,
+            ct);
+    }
+
+    public async Task<TseTransactionResult> UpdateTransactionAsync(
         TseTransactionUpdateRequest request,
-        CancellationToken ct = default) =>
-        _bridge.UpdateTransactionAsync(
-            request with { TimeAdminPin = TimeAdminPin(request.TimeAdminPin) },
-            ct);
+        CancellationToken ct = default)
+    {
+        var prepared =
+            PrepareTimeAdminPin(request.TimeAdminPin);
 
-    public Task<TseTransactionResult> FinishTransactionAsync(
-        TseTransactionFinishRequest request,
-        CancellationToken ct = default) =>
-        _bridge.FinishTransactionAsync(
-            request with { TimeAdminPin = TimeAdminPin(request.TimeAdminPin) },
+        var result =
+            await _bridge.UpdateTransactionAsync(
+                request with
+                {
+                    TimeAdminPin = prepared.Pin
+                },
+                ct);
+
+        return await CompleteTransactionAsync(
+            result,
+            prepared,
             ct);
+    }
+
+    public async Task<TseTransactionResult> FinishTransactionAsync(
+        TseTransactionFinishRequest request,
+        CancellationToken ct = default)
+    {
+        var prepared =
+            PrepareTimeAdminPin(request.TimeAdminPin);
+
+        var result =
+            await _bridge.FinishTransactionAsync(
+                request with
+                {
+                    TimeAdminPin = prepared.Pin
+                },
+                ct);
+
+        return await CompleteTransactionAsync(
+            result,
+            prepared,
+            ct);
+    }
 
     public Task<TseExportResult> ExportTarAsync(
         string targetPath,
