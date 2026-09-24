@@ -2317,12 +2317,30 @@ private Control TsePage()
     // whether a PIN exists.
     var timeStored = new CheckBox
     {
-        Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert",
+        Content = _tseTimeAdminPin.Suspended
+            ? "TimeAdmin-PIN ist gespeichert, aber automatische Anmeldung ist gesperrt"
+            : "TimeAdmin-PIN ist auf dieser Kasse gespeichert",
         MinHeight = 30,
         IsEnabled = false,
-        IsChecked = _tseTimeAdminPin.Enabled
+        IsChecked = _tseTimeAdminPin.HasStoredValue
     };
     clock.Children.Add(ToggleRow(timeStored));
+
+    var timePinSafety = new TextBlock
+    {
+        Text = _tseTimeAdminPin.Suspended
+            ? "⚠ " + (_tseTimeAdminPin.SuspensionReason.Length > 0
+                ? _tseTimeAdminPin.SuspensionReason
+                : "Automatische TimeAdmin-Anmeldung ist nach einem fehlgeschlagenen Login gesperrt.")
+            : (_tseTimeAdminPin.RemainingRetries is <= 1
+                ? "⚠ Automatische TimeAdmin-Anmeldung ist gesperrt, weil höchstens ein TSE-Versuch verbleibt."
+                : "Automatische TimeAdmin-Anmeldung ist nur aktiv, solange keine PIN-Fehlanmeldung erkannt wurde."),
+        TextWrapping = TextWrapping.Wrap,
+        Foreground = _tseTimeAdminPin.CanAutoUse
+            ? Brushes.Gray
+            : Brushes.Orange
+    };
+    clock.Children.Add(timePinSafety);
 
     Form(
         clock,
@@ -2346,6 +2364,10 @@ private Control TsePage()
 
         await _tseTimeAdminPin.SaveAsync(entered);
         timeStored.IsChecked = true;
+        timeStored.Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert";
+        timePinSafety.Text =
+            "Automatische TimeAdmin-Anmeldung ist aktiv. Bei der ersten PIN-Fehlanmeldung wird sie sofort gesperrt.";
+        timePinSafety.Foreground = Brushes.Gray;
         SettingsStatus = "TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt.";
     };
 
@@ -2354,6 +2376,9 @@ private Control TsePage()
         timePin.Text = "";
         await _tseTimeAdminPin.ClearAsync();
         timeStored.IsChecked = false;
+        timeStored.Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert";
+        timePinSafety.Text = "Keine TimeAdmin-PIN für automatische Zeitsynchronisation gespeichert.";
+        timePinSafety.Foreground = Brushes.Gray;
         SettingsStatus = "Gespeicherte TimeAdmin-PIN gelöscht.";
     };
 

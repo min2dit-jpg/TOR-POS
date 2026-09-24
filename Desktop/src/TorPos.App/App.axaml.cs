@@ -148,6 +148,8 @@ public partial class App : Avalonia.Application
             // Read once at start-up so checkout never waits on a settings read.
             var tseTimeAdminPin = new TseTimeAdminPinStore(settings);
             await tseTimeAdminPin.RefreshAsync();
+            var tseClockSafety =
+                await TseClockSafetyState.LoadAsync(db);
             var cloudTse = new CloudTseSettings(settings);
             await cloudTse.RefreshAsync();
             var tseKind = TseProviderKind.Normalize(
@@ -157,7 +159,8 @@ public partial class App : Avalonia.Application
             ITseProvider tseProvider = tseKind == TseProviderKind.Cloud
                 ? new CloudTseProvider(() => cloudTse.Current)
                 : new SwissbitHardwareTseProvider(
-                    timeAdminPin: () => tseTimeAdminPin.Current);
+                    timeAdminPinStore: tseTimeAdminPin,
+                    clockSafety: tseClockSafety);
             var tseOutages = new TseOutageRepository(db, audit);
             var tseFailSafe = new TseFailSafeService(
                 tseProvider,
@@ -245,6 +248,7 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton<ITseProvider>(tseProvider);
             appServices.AddSingleton<ITseOutageRepository>(tseOutages);
             appServices.AddSingleton(tseTimeAdminPin);
+            appServices.AddSingleton(tseClockSafety);
             appServices.AddSingleton(cloudTse);
             appServices.AddSingleton<IReceiptPrinterService>(receiptPrinter);
             appServices.AddSingleton<IDigitalReceiptPublisher>(digitalReceipts);

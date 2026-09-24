@@ -424,8 +424,10 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
                 session.Context,
                 request.TimeAdminPin);
 
-            if (timeResult != WormOk)
-                return Fail("TSE-Zeit konnte nicht aktualisiert werden", timeResult);
+            if (timeResult.Code != WormOk)
+                return Fail(
+                    "TSE-Zeit konnte nicht aktualisiert werden",
+                    timeResult.Code);
 
             RefreshInfo(info.Pointer);
 
@@ -483,7 +485,7 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
                 request.ClientId,
                 request.TimeAdminPin);
 
-            if (ready != WormOk)
+            if (ready.Code != WormOk)
                 return TxFail("TSE ist für die Transaktion nicht bereit", ready);
 
             using var response = CreateTransactionResponse(session.Context);
@@ -527,7 +529,7 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
                 request.ClientId,
                 request.TimeAdminPin);
 
-            if (ready != WormOk)
+            if (ready.Code != WormOk)
                 return TxFail("TSE ist für UpdateTransaction nicht bereit", ready);
 
             using var response = CreateTransactionResponse(session.Context);
@@ -572,7 +574,7 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
                 request.ClientId,
                 request.TimeAdminPin);
 
-            if (ready != WormOk)
+            if (ready.Code != WormOk)
                 return TxFail("TSE ist für FinishTransaction nicht bereit", ready);
 
             using var response = CreateTransactionResponse(session.Context);
@@ -775,7 +777,12 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             CertificateExpiresAtUtc: expiryInstant);
     }
 
-    private int PrepareForTransaction(
+    private readonly record struct PrepareTransactionResult(
+        int Code,
+        bool TimeAdminPinRejected = false,
+        int? RemainingRetries = null);
+
+    private PrepareTransactionResult PrepareForTransaction(
         IntPtr context,
         string clientId,
         string timeAdminPin)
@@ -785,7 +792,7 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         if (InfoU32(info.Pointer, "worm_info_initializationState") !=
             InitInitialized)
         {
-            return 0x10FF;
+            return new(0x10FF);
         }
 
         if (!OptionalInfoBool(
@@ -795,7 +802,7 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             var selfTest = RunSelfTest(context, clientId);
 
             if (selfTest != WormOk)
-                return selfTest;
+                return new(selfTest);
 
             RefreshInfo(info.Pointer);
         }
@@ -805,10 +812,10 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             "worm_info_hasValidTime"))
         {
             if (string.IsNullOrWhiteSpace(timeAdminPin))
-                return 0x1002;
+                return new(0x1002);
 
             var time = UpdateTime(context, timeAdminPin);
-            if (time != WormOk)
+            if (time.Code != WormOk)
                 return time;
         }
 
@@ -817,10 +824,10 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             "worm_info_isCtssInterfaceActive",
             "worm_info_isErsInterfaceActive"))
         {
-            return 0x1053;
+            return new(0x1053);
         }
 
-        return WormOk;
+        return new(WormOk);
     }
 
     private int EnsureClientRegistered(
@@ -837,8 +844,8 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             return selfTest;
 
         var login = UserLogin(context, UserAdmin, adminPin);
-        if (login != WormOk)
-            return login;
+        if (login.Code != WormOk)
+            return login.Code;
 
         try
         {
@@ -874,8 +881,8 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         }
 
         var login = UserLogin(context, UserAdmin, adminPin);
-        if (login != WormOk)
-            return login;
+        if (login.Code != WormOk)
+            return login.Code;
 
         try
         {
@@ -899,7 +906,7 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         }
     }
 
-    private int UpdateTime(
+    private PrepareTransactionResult UpdateTime(
         IntPtr context,
         string timeAdminPin)
     {
@@ -908,18 +915,24 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             UserTimeAdmin,
             timeAdminPin);
 
-        if (login != WormOk)
-            return login;
+        if (login.Code != WormOk)
+        {
+            return new(
+                login.Code,
+                TimeAdminPinRejected: true,
+                RemainingRetries: login.RemainingRetries);
+        }
 
         try
         {
             var unixTime = checked(
                 (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-            return Get<WormTseUpdateTime>(
-                "worm_tse_updateTime")(
-                context,
-                unixTime);
+            return new(
+                Get<WormTseUpdateTime>(
+                    "worm_tse_updateTime")(
+                    context,
+                    unixTime));
         }
         finally
         {
@@ -927,7 +940,11 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         }
     }
 
-    private int UserLogin(
+    private readonly record struct UserLoginResult(
+        int Code,
+        int RemainingRetries);
+
+    private UserLoginResult UserLogin(
         IntPtr context,
         int user,
         string pin)
@@ -936,13 +953,18 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         {
             var retries = 0;
 
-            return Get<WormUserLogin>(
-                "worm_user_login")(
-                context,
-                user,
-                pinPointer,
-                pin.Length,
-                out retries);
+            var code =
+                Get<WormUserLogin>(
+                    "worm_user_login")(
+                    context,
+                    user,
+                    pinPointer,
+                    pin.Length,
+                    out retries);
+
+            return new UserLoginResult(
+                code,
+                retries);
         });
     }
 
@@ -1125,6 +1147,19 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
         new(
             false,
             $"{prefix}: {ErrorText(error)}");
+
+    private TseTransactionResult TxFail(
+        string prefix,
+        PrepareTransactionResult result) =>
+        new(
+            false,
+            result.TimeAdminPinRejected
+                ? $"{prefix}: TimeAdmin-PIN-Anmeldung fehlgeschlagen · verbleibende Versuche: {result.RemainingRetries?.ToString() ?? "unbekannt"} · {ErrorText(result.Code)}"
+                : $"{prefix}: {ErrorText(result.Code)}",
+            TimeAdminPinRejected:
+                result.TimeAdminPinRejected,
+            TimeAdminRemainingRetries:
+                result.RemainingRetries);
 
     private static TseTransactionResult MissingTransactionApi() =>
         new(
@@ -1729,9 +1764,9 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             pointer);
     }
 
-    private static int WithAnsi(
+    private static T WithAnsi<T>(
         string value,
-        Func<IntPtr, int> action)
+        Func<IntPtr, T> action)
     {
         var pointer =
             Marshal.StringToCoTaskMemAnsi(value ?? "");
