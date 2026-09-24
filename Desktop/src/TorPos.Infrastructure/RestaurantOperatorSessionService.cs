@@ -47,13 +47,21 @@ public sealed class RestaurantOperatorSessionService
             100,
             nameof(deviceId));
 
+        var normalizedPin = (pin ?? "").Trim();
+        if (string.Equals(normalizedPin, "1234", StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException(
+                "Die werkseitige PIN 1234 ist für Handheld-Anmeldungen gesperrt.");
+        }
+
         var login = await _authentication.LoginWithPinAsync(
             (username ?? "").Trim(),
-            (pin ?? "").Trim(),
+            normalizedPin,
             ct);
 
         if (!login.Success ||
             login.User is null ||
+            login.User.IsAdmin ||
             !login.User.Can(UserPermissions.Sale))
         {
             throw new UnauthorizedAccessException(
