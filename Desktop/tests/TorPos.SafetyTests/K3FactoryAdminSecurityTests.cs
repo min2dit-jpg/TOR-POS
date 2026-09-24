@@ -246,6 +246,33 @@ public static class K3FactoryAdminSecurityTests
                 !legacyLogin.Success,
                 "K-3 one-time legacy migration disables untouched staff 1234 credentials and records completion");
 
+            var partialDb =
+                await SafetyDatabase.CreateCurrentAsync(
+                    Path.Combine(
+                        dir,
+                        "legacy-partial-staff.db"));
+            var partialStaffId =
+                await InsertPartialLegacyFixtureAsync(partialDb);
+            var partialAuth =
+                new AuthenticationService(
+                    partialDb,
+                    new AuditLogRepository(partialDb));
+            await partialAuth.InitializeAsync();
+
+            var partialPinLogin =
+                await partialAuth.LoginWithPinAsync(
+                    "legacy-partial",
+                    "1234");
+            var partialPasswordLogin =
+                await partialAuth.LoginWithPasswordAsync(
+                    "legacy-partial",
+                    "SicheresPasswort2026!");
+
+            assert(
+                !partialPinLogin.Success &&
+                partialPasswordLogin.Success,
+                "K-3 legacy migration removes a remaining factory PIN 1234 without disabling the already-customized safe password");
+
             await legacyAuth.InitializeAsync();
 
             var secondState =
@@ -392,6 +419,62 @@ public static class K3FactoryAdminSecurityTests
 
         await tx.CommitAsync();
         return staffId;
+    }
+
+    private static async Task<long> InsertPartialLegacyFixtureAsync(
+        SqliteDatabase db)
+    {
+        var password =
+            AuthenticationService.HashTechnicianSecret(
+                "SicheresPasswort2026!");
+        var pin =
+            AuthenticationService.HashTechnicianSecret("1234");
+
+        await using var c = db.OpenConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            INSERT INTO users(
+                username,password_hash,password_salt,
+                pin_hash,pin_salt,
+                password_kdf,password_iterations,
+                pin_kdf,pin_iterations,
+                role,is_admin,is_active,
+                must_change_password,created_at)
+            VALUES(
+                'legacy-partial',$ph,$ps,$ih,$is,
+                $kdf,$iterations,$kdf,$iterations,
+                'MITARBEITER',0,1,0,$created);
+            SELECT last_insert_rowid();
+            """;
+        q.Parameters.AddWithValue("$ph", password.Hash);
+        q.Parameters.AddWithValue("$ps", password.Salt);
+        q.Parameters.AddWithValue("$ih", pin.Hash);
+        q.Parameters.AddWithValue("$is", pin.Salt);
+        q.Parameters.AddWithValue(
+            "$kdf",
+            AuthenticationService.CurrentKdfAlgorithm);
+        q.Parameters.AddWithValue(
+            "$iterations",
+            AuthenticationService.CurrentPbkdf2Iterations);
+        q.Parameters.AddWithValue(
+            "$created",
+            DateTimeOffset.Now.ToString("O"));
+
+        var id = Convert.ToInt64(await q.ExecuteScalarAsync());
+
+        await using var permissions = c.CreateCommand();
+        permissions.CommandText = """
+            INSERT INTO user_permissions(
+                user_id,permissions,credentials_configured)
+            VALUES($id,$permissions,1);
+            """;
+        permissions.Parameters.AddWithValue("$id", id);
+        permissions.Parameters.AddWithValue(
+            "$permissions",
+            (long)UserPermissions.Sale);
+        await permissions.ExecuteNonQueryAsync();
+
+        return id;
     }
 
     private static async Task<LegacyState>
