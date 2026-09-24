@@ -338,6 +338,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
         RestaurantFiscalVorgang? vorgang = null;
         RestaurantSessionItem? item = null;
+        var createdInThisAttempt = false;
 
         try
         {
@@ -429,6 +430,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                         ct);
 
                 item = mutation.Item;
+                createdInThisAttempt = mutation.Created;
 
                 if (!mutation.Created)
                 {
@@ -502,14 +504,48 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         }
         catch (Exception ex)
         {
+            var discardedPending = false;
+            var fiscalOutcomeUncertain = false;
+
             if (vorgang is not null)
             {
                 try
                 {
-                    await _fiscal.AbortChangeAsync(
-                        vorgang,
-                        operatorUser.Username,
-                        CancellationToken.None);
+                    if (createdInThisAttempt && item is not null)
+                    {
+                        var mayDiscard =
+                            await _fiscal.AbortPendingAddedItemAsync(
+                                vorgang,
+                                item,
+                                operatorUser.Username,
+                                CancellationToken.None);
+
+                        if (mayDiscard)
+                        {
+                            discardedPending =
+                                await _restaurant.DiscardPendingItemAsync(
+                                    item.SessionId,
+                                    item.Id,
+                                    operatorUser.Username,
+                                    request.DeviceId,
+                                    CancellationToken.None);
+                        }
+                        else
+                        {
+                            // FINISHED/unknown means the TSE may already have
+                            // accepted this item while the DB capture failed.
+                            // Do not release this command for automatic retry:
+                            // that could create a second fiscal signature.
+                            fiscalOutcomeUncertain = true;
+                        }
+                    }
+                    else
+                    {
+                        await _fiscal.AbortChangeAsync(
+                            vorgang,
+                            operatorUser.Username,
+                            CancellationToken.None);
+                    }
                 }
                 catch
                 {
@@ -519,12 +555,22 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             try
             {
                 var persistedItem =
-                    item ??
-                    await _restaurant.GetItemByLineTokenAsync(
-                        lineToken,
-                        CancellationToken.None);
+                    discardedPending
+                        ? null
+                        : item ??
+                          await _restaurant.GetItemByLineTokenAsync(
+                              lineToken,
+                              CancellationToken.None);
 
-                if (persistedItem is not null)
+                if (fiscalOutcomeUncertain)
+                {
+                    await _commands.FailAsync(
+                        request.DeviceId,
+                        request.CommandId,
+                        "Fiskalischer Status der Restaurant-Position ist unklar. Keine automatische Wiederholung; Kasse prüfen.",
+                        CancellationToken.None);
+                }
+                else if (discardedPending || persistedItem is not null)
                 {
                     await _commands.ReleaseForRecoveryAsync(
                         request.DeviceId,
