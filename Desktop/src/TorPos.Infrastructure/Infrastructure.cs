@@ -86,6 +86,8 @@ public static class AppPaths
 
     public static string DatabasePath => Path.Combine(DataDirectory, "torpos.db");
     public static string ProductImagesPath => Path.Combine(DataDirectory, "ProductImages");
+    /// <summary>Operator's own advertising pictures for the idle customer display.</summary>
+    public static string CustomerDisplayAdsPath => Path.Combine(DataDirectory, "CustomerDisplayAds");
     public static string ReceiptAssetsPath => Path.Combine(DataDirectory, "ReceiptAssets");
     public static string BackupsPath => Path.Combine(DataDirectory, "Backups");
     public static string UpdatesPath => Path.Combine(DataDirectory, "Updates");

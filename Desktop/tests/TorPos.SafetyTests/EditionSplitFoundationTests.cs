@@ -81,7 +81,7 @@ public static class EditionSplitFoundationTests
         var snapshotTool = File.ReadAllText(FindRepoFile("Desktop/tools/TorPos.UiSnapshot/Program.cs"));
         assert(workflow.Contains("-p:TorProductEdition=KIOSK -- ci-results/ui-einzelhandel", StringComparison.Ordinal) && workflow.Contains("-p:TorProductEdition=IMBISS -- ci-results/ui-gastro", StringComparison.Ordinal) && snapshotTool.Contains("new LoginWindow(auth, settings, snapshotEdition)", StringComparison.Ordinal) && snapshotTool.Contains("ProductBuild.FixedEdition ?? \"IMBISS\"", StringComparison.Ordinal), "CI renders the real windows of each dedicated product, including a fixed Kassenart, so a build that cannot come up fails before it reaches a till");
 
-        assert(splitPublish.Contains("-p:TorProductEdition=$Edition", StringComparison.Ordinal) && workflow.Contains("TOR-POS-Split-Setups-", StringComparison.Ordinal) && workflow.Contains("TOR-Einzelhandel-Setup.exe", StringComparison.Ordinal) && workflow.Contains("TOR-Gastro-Setup.exe", StringComparison.Ordinal), "CI publishes and packages both dedicated product variants rather than only compiling the shared app");
+        assert(splitPublish.Contains("-p:TorProductEdition=$Edition", StringComparison.Ordinal) && workflow.Contains("TOR-Einzelhandel-Setup-${{ github.sha }}", StringComparison.Ordinal) && workflow.Contains("TOR-Gastro-Setup-${{ github.sha }}", StringComparison.Ordinal) && workflow.Contains("TOR-Einzelhandel-Setup.exe", StringComparison.Ordinal) && workflow.Contains("TOR-Gastro-Setup.exe", StringComparison.Ordinal), "CI publishes and packages both dedicated product variants rather than only compiling the shared app");
 
         var migrationRoot = Path.Combine(Path.GetTempPath(), "tor-split-migration-" + Guid.NewGuid().ToString("N"));
         var legacy = Path.Combine(migrationRoot, "legacy");
@@ -243,6 +243,7 @@ public static class EditionSplitFoundationTests
         }
 
         var setup = File.ReadAllText(FindRepoFile("Desktop/TOR-POS-Pro-Setup.iss"));
+        assert(!setup.Contains("powershell", StringComparison.OrdinalIgnoreCase) && setup.Contains("CheckForMutexes('{#MyAppMutex}')", StringComparison.Ordinal), "setup detects a running till through its mutex and never launches a hidden PowerShell process, which download scanners flag as malicious");
         assert(!setup.Contains("AdminPage", StringComparison.Ordinal) && !setup.Contains("first-run-admin.cfg", StringComparison.Ordinal), "setup no longer asks for admin credentials and writes no bootstrap credential file");
 
         var loginCode = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/LoginWindow.axaml.cs"));

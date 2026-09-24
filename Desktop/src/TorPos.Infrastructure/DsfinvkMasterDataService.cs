@@ -13,6 +13,16 @@ public static class DsfinvkMasterDataStore
 {
     public static string RunningSoftwareVersion => $"{TorRelease.Version} ({TorRelease.Revision})";
 
+    /// <summary>
+    /// F-2: true while Vorgänge recorded under an older TOR version still wait
+    /// for their closing because the automatic closing at start-up was deferred.
+    /// </summary>
+    public static bool IsUpdateClosingPending(string? storedSoftwareVersion)
+    {
+        var stored = (storedSoftwareVersion ?? "").Trim();
+        return stored.Length > 0 && stored != RunningSoftwareVersion;
+    }
+
     public static async Task<DsfinvkMasterData> CurrentAsync(SqliteConnection c, CancellationToken ct, SqliteTransaction? tx = null)
     {
         var settings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -228,6 +238,19 @@ public sealed class DsfinvkMasterDataService
             if (!open)
             {
                 await _settings.SaveManyAsync(new Dictionary<string, string> { [DsfinvkMasterDataRules.SoftwareVersionKey] = running }, ct);
+                return (ZArchiveRow?)null;
+            }
+
+            // F-2: the automatic closing obeys the same guard as a manual Z.
+            // A Z while parked receipts or a TSE Vorgang are still open would
+            // split them across two closings. The closing is deferred instead:
+            // the stored version stays the old one, so the next start retries,
+            // and the next manual Z records the running version itself.
+            var check = await _closingGuard.CheckAsync(ct);
+            if (!check.Allowed)
+            {
+                await _audit.WriteAsync(actor, "Z_REPORT_AUTO_SOFTWARE_UPDATE_DEFERRED", "Z_REPORT", "",
+                    $"DSFinV-K 3.2: Kassenabschluss für Vorgänge unter {stored} zurückgestellt: {check.Message}", ct);
                 return (ZArchiveRow?)null;
             }
 
