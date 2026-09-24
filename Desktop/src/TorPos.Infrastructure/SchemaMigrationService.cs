@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 38;
+    public const int TargetSchemaVersion = 39;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2187,6 +2187,53 @@ public sealed class SchemaMigrationService
                         ALTER TABLE restaurant_pairing_codes
                           ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0
                           CHECK(failed_attempts BETWEEN 0 AND 5);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                39,
+                "SELF_ORDER_TABLE_AND_SESSION_CAPABILITY",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable(
+                        "TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(
+                            edition,
+                            "RESTAURANT",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_self_order_tables(
+                          table_id INTEGER PRIMARY KEY
+                            REFERENCES restaurant_tables(id),
+                          token_hash TEXT NOT NULL UNIQUE,
+                          enabled INTEGER NOT NULL DEFAULT 1
+                            CHECK(enabled IN (0,1)),
+                          rotated_at TEXT NOT NULL,
+                          rotated_by TEXT NOT NULL);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_self_order_sessions(
+                          session_id TEXT PRIMARY KEY
+                            REFERENCES restaurant_sessions(id),
+                          table_id INTEGER NOT NULL
+                            REFERENCES restaurant_tables(id),
+                          public_session_id TEXT NOT NULL UNIQUE,
+                          capability_hash TEXT NOT NULL,
+                          approval_mode TEXT NOT NULL
+                            CHECK(approval_mode IN ('CONFIRMATION_REQUIRED','AUTOMATIC')),
+                          activated_at TEXT NOT NULL,
+                          expires_at TEXT NOT NULL,
+                          closed_at TEXT NULL,
+                          activated_by TEXT NOT NULL);
+
+                        CREATE INDEX IF NOT EXISTS ix_self_order_session_active
+                          ON restaurant_self_order_sessions(closed_at,expires_at,table_id);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })

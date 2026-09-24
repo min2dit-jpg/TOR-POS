@@ -28,9 +28,36 @@ public sealed record RestaurantSelfOrderTableQrSecret(
     string TokenHash,
     DateTimeOffset CreatedAt);
 
+public sealed record RestaurantSelfOrderTableQrIssue(
+    long TableId,
+    string PublicToken,
+    DateTimeOffset RotatedAt);
+
+public sealed record RestaurantSelfOrderSessionCapabilityIssue(
+    string SessionId,
+    long TableId,
+    string PublicSessionId,
+    string CapabilitySecret,
+    RestaurantSelfOrderApprovalMode ApprovalMode,
+    DateTimeOffset ExpiresAt);
+
+public sealed record RestaurantSelfOrderCapabilityValidation(
+    bool Valid,
+    string SessionId,
+    long TableId,
+    RestaurantSelfOrderApprovalMode ApprovalMode)
+{
+    public static RestaurantSelfOrderCapabilityValidation Invalid { get; } =
+        new(false, "", 0, RestaurantSelfOrderApprovalMode.ConfirmationRequired);
+}
+
 public static class RestaurantSelfOrderSecurity
 {
     public const int TableTokenBytes = 32;
+
+    public static string CreatePublicSessionId() =>
+        Base64Url(
+            RandomNumberGenerator.GetBytes(16));
 
     public static RestaurantSelfOrderTableQrSecret CreateTableQrSecret()
     {
