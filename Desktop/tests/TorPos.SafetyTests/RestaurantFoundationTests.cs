@@ -14,6 +14,14 @@ internal static class RestaurantFoundationTests
             "Restaurant includes the essential Tischplan");
 
         assert(
+            LoginWindow.NormalizeLockedEdition("restaurant") == "RESTAURANT",
+            "Dedicated TOR Restaurant build remains locked to RESTAURANT at login");
+
+        assert(
+            LoginWindow.NormalizeLockedEdition("unknown") is null,
+            "Login edition lock rejects unknown product identities");
+
+        assert(
             RestaurantProductFeatures.Includes(
                 RestaurantProductTier.Restaurant,
                 RestaurantFeature.SplitrechnungNachArtikel),

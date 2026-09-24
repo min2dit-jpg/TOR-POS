@@ -22,10 +22,7 @@ public partial class LoginWindow : Window
     {
         InitializeComponent();
         _auth = auth;
-        _lockedEdition =
-            string.Equals(lockedEdition, "KIOSK", StringComparison.OrdinalIgnoreCase) ? "KIOSK" :
-            string.Equals(lockedEdition, "IMBISS", StringComparison.OrdinalIgnoreCase) ? "IMBISS" :
-            null;
+        _lockedEdition = NormalizeLockedEdition(lockedEdition);
         // Programmsprache wird unter Einstellungen verwaltet, nicht bei der
         // Anmeldung - gelesen wird hier nur der Trainingszugang (R122).
         _settings = settings;
@@ -44,6 +41,13 @@ public partial class LoginWindow : Window
             ShowFixedEdition(ImbissEditionRadio, KioskEditionRadio);
             EditionStatusText.Text = UiLanguage.T("Kassenart: GASTRONOMIE · Lizenz/Installation fest gebunden.");
         }
+        else if (_lockedEdition == "RESTAURANT")
+        {
+            KioskEditionRadio.Content = "RESTAURANT";
+            ShowFixedEdition(KioskEditionRadio, ImbissEditionRadio);
+            EditionStatusText.Text = UiLanguage.T("Kassenart: RESTAURANT · Lizenz/Installation fest gebunden.");
+            Title = ProductBuild.ProductName + " – Anmeldung";
+        }
         else
         {
             KioskEditionRadio.IsChecked = false;
@@ -60,6 +64,12 @@ public partial class LoginWindow : Window
             await RefreshTrainingHintAsync();
         };
     }
+
+    internal static string? NormalizeLockedEdition(string? lockedEdition) =>
+        string.Equals(lockedEdition, "KIOSK", StringComparison.OrdinalIgnoreCase) ? "KIOSK" :
+        string.Equals(lockedEdition, "IMBISS", StringComparison.OrdinalIgnoreCase) ? "IMBISS" :
+        string.Equals(lockedEdition, "RESTAURANT", StringComparison.OrdinalIgnoreCase) ? "RESTAURANT" :
+        null;
 
     // R182: with a fixed Kassenart the remaining entry must not stay in its half
     // of the two-column selector - it looked pushed to one side. It spans the

@@ -559,6 +559,7 @@ public static class MultiLanguageTests
         string[] germanOnlyRestaurantStatusMessages =
         [
             "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.",
+            "RESTAURANT · TISCHPLAN UND DIREKTVERKAUF BEREIT",
             "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein",
             "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen",
             "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen"
