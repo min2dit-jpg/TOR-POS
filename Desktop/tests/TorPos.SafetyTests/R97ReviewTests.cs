@@ -17,11 +17,19 @@ public static class R97ReviewTests
         Func<Func<Task>, string, Task> reject)
     {
         assert(
-            ImHausVat.Effective(7m, imHaus: true, categoryApplies: false) == 7m,
-            "R97 a Warengruppe with the rule switched off stays at 7% even while the global Im-Haus toggle is on");
+            ImHausVat.Effective(
+                7m,
+                imHaus: true,
+                categoryApplies: false,
+                serviceDate: new DateOnly(2025, 6, 1)) == 7m,
+            "R97 historical 2024/2025: an opted-out Warengruppe stays at 7% while Im Haus is on");
         assert(
-            ImHausVat.Effective(7m, imHaus: true, categoryApplies: true) == 19m,
-            "R97 a Warengruppe with the rule switched on (the default) still elevates 7% to 19% exactly as R95 did");
+            ImHausVat.Effective(
+                7m,
+                imHaus: true,
+                categoryApplies: true,
+                serviceDate: new DateOnly(2025, 6, 1)) == 19m,
+            "R97 historical 2024/2025: an opted-in Warengruppe elevates 7% to 19%");
 
         var dir = Path.Combine(root, "r97-category-im-haus");
         Directory.CreateDirectory(dir);
