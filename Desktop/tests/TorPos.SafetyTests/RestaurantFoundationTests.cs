@@ -84,8 +84,18 @@ internal static class RestaurantFoundationTests
                 OperationalStatus.Up) &&
             !RestaurantLanBindingPolicy.IsEligibleInterface(
                 NetworkInterfaceType.Ethernet,
+                OperationalStatus.Up,
+                "vEthernet (Default Switch)",
+                "Hyper-V Virtual Ethernet Adapter") &&
+            !RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Ethernet,
+                OperationalStatus.Up,
+                "WireGuard Tunnel",
+                "Virtual Ethernet Adapter") &&
+            !RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Ethernet,
                 OperationalStatus.Down),
-            "G-2 Restaurant API exposes only active physical Ethernet/WLAN interfaces, never tunnel or loopback as LAN");
+            "G-2 Restaurant API exposes only active physical Ethernet/WLAN interfaces, never VPN, virtual, tunnel or loopback as LAN");
 
         var excessiveQuantityRejected = false;
         try
