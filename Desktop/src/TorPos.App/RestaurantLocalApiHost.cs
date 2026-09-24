@@ -1027,6 +1027,73 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         return persisted;
     }
 
+    private static string CertificateSha256(
+        X509Certificate2 certificate) =>
+        certificate.GetCertHashString(
+            HashAlgorithmName.SHA256);
+
+    private async Task<IResult> SessionConflictAsync(
+        string sessionId,
+        InvalidOperationException error,
+        CancellationToken ct)
+    {
+        var session = await _restaurant.GetSessionAsync(
+            sessionId,
+            ct);
+
+        return Results.Conflict(new
+        {
+            error = error.Message,
+            sessionId,
+            currentSessionVersion = session?.Version,
+            sessionState = session?.State.ToString().ToUpperInvariant()
+        });
+    }
+
+    private static string NormalizeTerminalType(
+        string? terminalType)
+    {
+        var normalized =
+            (terminalType ?? "HANDHELD")
+                .Trim()
+                .ToUpperInvariant();
+
+        if (normalized is not ("KASSE" or "HANDHELD" or "KDS"))
+            throw new ArgumentException(
+                "Terminaltyp muss KASSE, HANDHELD oder KDS sein.",
+                nameof(terminalType));
+
+        return normalized;
+    }
+
+    private static bool TryDeviceCredentials(
+        HttpContext context,
+        out string deviceId,
+        out string deviceToken)
+    {
+        deviceId =
+            context.Request.Headers["X-TOR-Device-Id"]
+                .ToString()
+                .Trim();
+
+        var authorization =
+            context.Request.Headers.Authorization
+                .ToString()
+                .Trim();
+
+        const string prefix = "Bearer ";
+        deviceToken =
+            authorization.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase)
+                ? authorization[prefix.Length..].Trim()
+                : "";
+
+        return deviceId.Length > 0 &&
+               deviceToken.Length > 0;
+    }
+#endif
+
     public static IPAddress ResolveLanBindAddress(
         string? configured,
         IEnumerable<IPAddress>? availableAddresses = null)
@@ -1116,74 +1183,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         }
     }
 
-    private static string CertificateSha256(
-        X509Certificate2 certificate) =>
-        certificate.GetCertHashString(
-            HashAlgorithmName.SHA256);
-
-    private async Task<IResult> SessionConflictAsync(
-        string sessionId,
-        InvalidOperationException error,
-        CancellationToken ct)
-    {
-        var session = await _restaurant.GetSessionAsync(
-            sessionId,
-            ct);
-
-        return Results.Conflict(new
-        {
-            error = error.Message,
-            sessionId,
-            currentSessionVersion = session?.Version,
-            sessionState = session?.State.ToString().ToUpperInvariant()
-        });
-    }
-
-    private static string NormalizeTerminalType(
-        string? terminalType)
-    {
-        var normalized =
-            (terminalType ?? "HANDHELD")
-                .Trim()
-                .ToUpperInvariant();
-
-        if (normalized is not ("KASSE" or "HANDHELD" or "KDS"))
-            throw new ArgumentException(
-                "Terminaltyp muss KASSE, HANDHELD oder KDS sein.",
-                nameof(terminalType));
-
-        return normalized;
-    }
-
-    private static bool TryDeviceCredentials(
-        HttpContext context,
-        out string deviceId,
-        out string deviceToken)
-    {
-        deviceId =
-            context.Request.Headers["X-TOR-Device-Id"]
-                .ToString()
-                .Trim();
-
-        var authorization =
-            context.Request.Headers.Authorization
-                .ToString()
-                .Trim();
-
-        const string prefix = "Bearer ";
-        deviceToken =
-            authorization.StartsWith(
-                prefix,
-                StringComparison.OrdinalIgnoreCase)
-                ? authorization[prefix.Length..].Trim()
-                : "";
-
-        return deviceId.Length > 0 &&
-               deviceToken.Length > 0;
-    }
-#endif
-
     public async ValueTask DisposeAsync()
+
     {
         await StopAsync();
         _gate.Dispose();
