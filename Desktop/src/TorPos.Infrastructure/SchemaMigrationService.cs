@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 35;
+    public const int TargetSchemaVersion = 36;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2088,6 +2088,20 @@ public sealed class SchemaMigrationService
                           ADD COLUMN unit TEXT NOT NULL DEFAULT '';
                         ALTER TABLE training_cancelled_items
                           ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                36,
+                "K3_FACTORY_CREDENTIAL_HARDENING_MARKER",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        INSERT OR IGNORE INTO app_settings(key,value)
+                        VALUES('security.default_staff_credentials_migrated','false');
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
