@@ -102,9 +102,11 @@ public static class TseOutageHistoryTests
         // PUK box and all.
         var store = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/TseTimeAdminPinStore.cs"));
         assert(
-            Regex.Matches(provider, @"request with \{ TimeAdminPin = TimeAdminPin\(request\.TimeAdminPin\) \}").Count == 3 &&
-            provider.Contains("if (!string.IsNullOrWhiteSpace(existing))", StringComparison.Ordinal),
-            "TSE clock: the till can refresh the TSE time on all three transaction calls, and a request that already carries a PIN is left alone");
+            Regex.Matches(provider, @"PrepareTimeAdminPin\(request\.TimeAdminPin\)").Count == 3 &&
+            Regex.Matches(provider, @"TimeAdminPin = prepared\.Pin").Count == 3 &&
+            provider.Contains("if (!string.IsNullOrWhiteSpace(existing))", StringComparison.Ordinal) &&
+            provider.Contains("CompleteTransactionAsync(", StringComparison.Ordinal),
+            "TSE clock: all three transaction calls pass through the guarded TimeAdmin preparation/result path while an explicit request PIN remains explicit");
 
         // Only the weakest of the three secrets may ever be kept, and only
         // because the operator turned it on.
@@ -112,8 +114,10 @@ public static class TseOutageHistoryTests
             store.Contains("ProtectedData.Protect", StringComparison.Ordinal) &&
             store.Contains("DataProtectionScope.CurrentUser", StringComparison.Ordinal) &&
             !Regex.IsMatch(WithoutComments(store), @"\b(Puk|AdminPin|CredentialSeed)\b") &&
-            store.Contains("_current = \"\";", StringComparison.Ordinal),
-            "TSE clock: only the TimeAdmin PIN is ever stored, protected for the Windows user, and a PIN that cannot be decrypted degrades to none instead of crashing a sale");
+            store.Contains("public string Current =>", StringComparison.Ordinal) &&
+            store.Contains("CanAutoUse ? _stored : \"\"", StringComparison.Ordinal) &&
+            store.Contains("SuspendAsync(", StringComparison.Ordinal),
+            "TSE clock: only the TimeAdmin PIN is stored under DPAPI and failed/low-retry credentials are withheld instead of retried");
 
         // The WORM API returns no BSI certification id - the bridge passes an
         // empty string for it - and the settings page used to write that empty
