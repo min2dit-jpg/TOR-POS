@@ -161,8 +161,8 @@ public sealed class UserManagementWindow : Window
                 var newPassword = _adminNewPassword.Text ?? "";
                 var newPin = _adminNewPin.Text ?? "";
 
-                if (newPassword.Length < 4)
-                    throw new InvalidOperationException("Das neue Admin-Passwort muss mindestens 4 Zeichen haben.");
+                if (newPassword.Length < 10)
+                    throw new InvalidOperationException("Das neue Admin-Passwort muss mindestens 10 Zeichen haben.");
 
                 await _authentication.ChangeAdminCredentialsAsync(
                     _adminCurrentPassword.Text ?? "",
@@ -198,8 +198,9 @@ public sealed class UserManagementWindow : Window
                     },
                     new TextBlock
                     {
-                        Text = "Standard bei einer neuen Installation: Benutzer admin · Passwort admin · PIN 1234. " +
-                               "Der Kunde kann Passwort und PIN hier jederzeit ändern.",
+                        Text = "Erstzugang: Benutzer admin · Passwort admin · PIN 1234. " +
+                               "Mit diesen Werkseinstellungen ist nur die Änderung der Admin-Zugangsdaten möglich. " +
+                               "Das neue Passwort benötigt mindestens 10 Zeichen; PIN 1234 darf nicht weiterverwendet werden.",
                         TextWrapping = TextWrapping.Wrap,
                         Opacity = 0.68
                     },
