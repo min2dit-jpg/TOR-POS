@@ -270,8 +270,8 @@ public sealed class TseVorgangService
                     INSERT INTO aborted_vorgang_items(
                       aborted_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,
                       pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
-                      promotion_discount_unit_cents)
-                    VALUES($a,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit);
+                      promotion_discount_unit_cents,unit)
+                    VALUES($a,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$unit);
                     """;
                 item.Parameters.AddWithValue("$a", id);
                 item.Parameters.AddWithValue("$p", line.ProductId);
@@ -289,6 +289,7 @@ public sealed class TseVorgangService
                 item.Parameters.AddWithValue("$pname", line.PromotionName);
                 item.Parameters.AddWithValue("$ppct", line.PromotionPercent);
                 item.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
+                item.Parameters.AddWithValue("$unit", line.Unit);
                 await item.ExecuteNonQueryAsync(ct);
             }
 
@@ -416,7 +417,9 @@ public sealed class TseVorgangService
                 SELECT product_id,product_name,variant_name,barcode,
                        CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
                        unit_price_cents,vat_rate,pfand_cents,
-                       list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents
+                       list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
+                       COALESCE(NULLIF(unit,''),(SELECT p.unit FROM products p WHERE p.id=aborted_vorgang_items.product_id),'Stück'),
+                       line_total_cents
                 FROM aborted_vorgang_items WHERE aborted_id=$id ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$id", id);
@@ -438,6 +441,8 @@ public sealed class TseVorgangService
                     PromotionName = r.GetString(10),
                     PromotionPercent = r.GetInt32(11),
                     PromotionDiscountUnitCents = r.GetInt64(12),
+                    Unit = r.GetString(13),
+                    PersistedLineTotalCents = r.GetInt64(14)
                 });
             }
 

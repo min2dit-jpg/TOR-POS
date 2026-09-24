@@ -175,6 +175,42 @@ public sealed class Product
 
 public sealed class CartLine
 {
+    public CartLine()
+    {
+    }
+
+    /// <summary>
+    /// Snapshot copy constructor. CartLine grows over time; copying through one
+    /// constructor prevents new fiscal fields (for example Unit) from being
+    /// silently lost in menu allocation / Bestellung delta paths.
+    /// </summary>
+    public CartLine(CartLine source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        SaleItemId = source.SaleItemId;
+        ProductId = source.ProductId;
+        ProductName = source.ProductName;
+        VariantName = source.VariantName;
+        Barcode = source.Barcode;
+        Quantity = source.Quantity;
+        Unit = source.Unit;
+        UnitPriceCents = source.UnitPriceCents;
+        ListUnitPriceCents = source.ListUnitPriceCents;
+        VatRate = source.VatRate;
+        VatAllocations = source.VatAllocations.ToArray();
+        MenuComponents = source.MenuComponents.ToArray();
+        ImHausApplicable = source.ImHausApplicable;
+        PfandCents = source.PfandCents;
+        PromotionId = source.PromotionId;
+        PromotionName = source.PromotionName;
+        PromotionPercent = source.PromotionPercent;
+        PromotionDiscountUnitCents = source.PromotionDiscountUnitCents;
+        PromotionStartDate = source.PromotionStartDate;
+        PromotionEndDate = source.PromotionEndDate;
+        PersistedLineTotalCents = source.PersistedLineTotalCents;
+    }
+
     /// <summary>sale_items.id once persisted; 0 for a line still only in the cart. Used to target a specific line for partial Retoure.</summary>
     public long SaleItemId { get; init; }
     public long ProductId { get; init; }
@@ -317,8 +353,16 @@ public sealed class CartLine
         PromotionDiscountCentsFor(alreadyReturned + quantity) -
         PromotionDiscountCentsFor(alreadyReturned);
 
+    /// <summary>
+    /// Immutable gross total read from a persisted fiscal/order line.
+    /// Null for a live cart line. Reloaded records use the stored cents as the
+    /// source of truth instead of recomputing quantity × current formula.
+    /// Quantity-changing copies must clear this value.
+    /// </summary>
+    public long? PersistedLineTotalCents { get; init; }
+
     public long LineTotalCents =>
-        LineTotalCentsFor(Quantity);
+        PersistedLineTotalCents ?? LineTotalCentsFor(Quantity);
 
     public long ListLineTotalCents =>
         ListLineTotalCentsFor(Quantity);

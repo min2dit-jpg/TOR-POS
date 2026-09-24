@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 34;
+    public const int TargetSchemaVersion = 35;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2062,6 +2062,32 @@ public sealed class SchemaMigrationService
 
                         CREATE INDEX IF NOT EXISTS ix_restaurant_operator_sessions_device
                           ON restaurant_operator_sessions(device_id,expires_at,revoked_at);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                35,
+                "R193_CARTLINE_UNIT_SNAPSHOT",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        ALTER TABLE sale_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE parked_receipt_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE training_receipt_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE aborted_vorgang_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE order_bestellung_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE sale_cancelled_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE training_cancelled_items
+                          ADD COLUMN unit TEXT NOT NULL DEFAULT '';
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
