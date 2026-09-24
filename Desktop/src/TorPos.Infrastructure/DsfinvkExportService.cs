@@ -105,7 +105,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             $"Software:          {plan.Master.SoftwareBrand} {plan.Master.SoftwareVersion}",
             $"Kasse:             {plan.Master.KasseSerial}",
             $"Zeitraum:          {DsfinvkCsv.Timestamp(from)} bis {DsfinvkCsv.Timestamp(to)}",
-            $"Fiskalfreigabe:    {(FiscalRelease.Enabled ? "ja" : "NEIN - Prüf-/Testdatensatz")}",
+            $"Fiskalfreigabe:    {(FiscalRelease.ProductionAllowed ? "ja" : "NEIN - Prüf-/Testdatensatz")}",
             "",
             "Kassenabschlüsse:",
         };
@@ -307,7 +307,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     : $"{open} Vorgänge nach dem letzten Kassenabschluss gehören noch zu keinem Z-Bericht und sind nicht enthalten.", Blocking: false));
 
             // What TOR does not record yet. Stated, not hidden.
-            if (!FiscalRelease.Enabled)
+            if (!FiscalRelease.ProductionAllowed)
                 issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
             if (withoutSnapshot.Count > 0)
                 issues.Add(new("STAMMDATEN", (withoutSnapshot.Count == 1 ? "1 Kassenabschluss stammt" : $"{withoutSnapshot.Count} Kassenabschlüsse stammen") + $" aus der Zeit vor R132 ohne eigene Stammdaten; dafür werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));

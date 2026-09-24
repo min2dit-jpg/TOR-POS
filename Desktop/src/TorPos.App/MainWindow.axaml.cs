@@ -5762,6 +5762,7 @@ public partial class MainWindow:Window
             if (completed != probe)
             {
                 _lastTseDevice = null;
+                FiscalRelease.SetActiveTse(_tseProvider.ProviderId, null);
                 TseCertificateWarningBadge.IsVisible = false;
                 StatusLine =
                     "TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar";
@@ -5779,6 +5780,8 @@ public partial class MainWindow:Window
 
             var result = await probe;
             _lastTseDevice = result.Device;
+            // F-3: every booking path now follows the probed TSE.
+            FiscalRelease.SetActiveTse(_tseProvider.ProviderId, result.Device);
 
             if (result.State == TseConnectionState.Ready)
             {
@@ -5797,7 +5800,7 @@ public partial class MainWindow:Window
             {
                 TseConnectionState.Connected => (
                     "TSE erkannt, aber noch nicht betriebsbereit",
-                    "Swissbit TSE erkannt · Einrichtung/Status prüfen"),
+                    "TSE erkannt · Einrichtung/Status prüfen"),
                 TseConnectionState.NotFound => (
                     "Keine TSE gefunden",
                     "Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
@@ -5825,6 +5828,7 @@ public partial class MainWindow:Window
         catch(Exception ex)
         {
             _lastTseDevice = null;
+            FiscalRelease.SetActiveTse(_tseProvider.ProviderId, null);
             TseCertificateWarningBadge.IsVisible = false;
             CrashLog.WriteException("MainWindow operation", ex);
             ReportOperationalError(

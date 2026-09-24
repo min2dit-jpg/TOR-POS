@@ -2424,7 +2424,7 @@ private Control TsePage()
     var kind = Section("Art der TSE");
     kind.Children.Add(ReadOnlyRow(
         "Auswahl",
-        "SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."));
+        "SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS - erst wählbar, wenn der Anbieter freigegeben ist. Die Umstellung wirkt erst nach einem Neustart."));
     Form(
         kind,
         "Art der TSE",
@@ -3959,6 +3959,17 @@ private Control TsePage()
                 {
                     throw new InvalidOperationException("Unbekannter E-Mail-Versandweg.");
                 }
+            }
+
+            // F-4: an unqualified cloud TSE refuses every signature, so every
+            // sale would end up as a TSE outage. It cannot be chosen until the
+            // vendor is released; saving says so instead of storing it.
+            if (TseProviderKind.Normalize(values.GetValueOrDefault(TseProviderKind.Setting, "")) == TseProviderKind.Cloud &&
+                !CloudTseRelease.IsValidated(values.GetValueOrDefault(CloudTseSettings.VendorSetting, "")))
+            {
+                throw new InvalidOperationException(
+                    CloudTseRelease.NotReleasedMessage(values.GetValueOrDefault(CloudTseSettings.VendorSetting, "")) +
+                    " Art der TSE bitte auf SWISSBIT_USB lassen.");
             }
 
             // Werbe-TV: the TV address needs its random code; create it the

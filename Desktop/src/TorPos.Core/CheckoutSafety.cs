@@ -186,12 +186,38 @@ public static class FiscalRelease
         return missing;
     }
 
+    // F-3: one production rule for every path. The booking paths that have
+    // no provider at hand (sale commit, Storno, Retoure, card terminal,
+    // compliance overview, DSFinV-K) follow the TSE the till actually probed -
+    // the same rule as the checkout screen and the TSE fail-safe. Before any
+    // TSE was probed the strict global rule (Enabled) still applies.
+    private sealed record ActiveTseContext(string ProviderId, TseDeviceInfo? Device);
+
+    private static ActiveTseContext? _activeTse;
+
+    /// <summary>Registered by the till after every TSE probe.</summary>
+    public static void SetActiveTse(string providerId, TseDeviceInfo? device) =>
+        Volatile.Write(ref _activeTse, new ActiveTseContext(providerId ?? "", device));
+
+    public static void ClearActiveTse() =>
+        Volatile.Write(ref _activeTse, null);
+
+    public static bool ProductionAllowed =>
+        Volatile.Read(ref _activeTse) is { } active
+            ? EnabledForProvider(active.ProviderId, active.Device)
+            : Enabled;
+
+    public static IReadOnlyList<string> MissingQualificationsForActiveTse() =>
+        Volatile.Read(ref _activeTse) is { } active
+            ? MissingQualificationsForProvider(active.ProviderId, active.Device)
+            : MissingQualifications();
+
     public static void RequireProduction()
     {
-        if (!Enabled)
+        if (!ProductionAllowed)
             throw new InvalidOperationException(
                 "Produktivbuchung gesperrt. Fehlende Freigaben: " +
-                string.Join(", ", MissingQualifications()) +
+                string.Join(", ", MissingQualificationsForActiveTse()) +
                 ". TRAINING verwenden.");
     }
 
