@@ -1556,7 +1556,7 @@ internal static class UiTranslations
         ["Noch keine eigenen Werbebilder. Artikel mit Bild werden trotzdem gezeigt, wenn der Inhalt BEIDE oder ARTIKEL ist."] = "Henüz kendi reklam görseliniz yok. İçerik BEIDE veya ARTIKEL ise resimli ürünler yine de gösterilir.",
         ["eigene Werbebilder"] = "kendi reklam görseli",
         ["KASSENABSCHLUSS NACH UPDATE NÖTIG"] = "GÜNCELLEME SONRASI KASA KAPANIŞI GEREKLİ",
-        ["TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen."] = "TOR POS güncellendi, ancak park edilmiş fişler veya açık bir işlem olduğu için otomatik kasa kapanışı yapılamadı. Lütfen açık fişleri tahsil edin ve bugün bir Z kapanışı yapın.",
+        ["TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen."] = "TOR POS güncellendi, ancak park edilmiş fişler veya açık bir işlem olduğu için otomatik kasa kapanışı yapılamadı. Lütfen açık fişleri tahsil edin ve bugün bir Z-Abschluss yapın.",
         ["Kopplungscode vom Solo (nur bei neuer Kopplung)"] = "Solo'dan eşleştirme kodu (yalnızca yeni eşleştirmede)",
         ["Geräteliste laden, danach Solo auswählen"] = "Cihaz listesini yükleyin, sonra Solo'yu seçin",
         ["Verbindungstest. Der 1,00-€-Test sendet eine ECHTE Zahlungsanforderung an das Solo. KEINE KARTE vorhalten; danach ABBRECHEN."] =
@@ -3232,7 +3232,7 @@ internal static class UiTranslations
         ["Noch keine eigenen Werbebilder. Artikel mit Bild werden trotzdem gezeigt, wenn der Inhalt BEIDE oder ARTIKEL ist."] = "No own advertising pictures yet. Products with a picture are still shown when the content is BEIDE or ARTIKEL.",
         ["eigene Werbebilder"] = "own advertising pictures",
         ["KASSENABSCHLUSS NACH UPDATE NÖTIG"] = "CLOSING REQUIRED AFTER UPDATE",
-        ["TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen."] = "TOR POS was updated, but the automatic closing was not possible because parked receipts or an open transaction remained. Please settle open receipts and run a Z closing today.",
+        ["TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen."] = "TOR POS was updated, but the automatic closing was not possible because parked receipts or an open transaction remained. Please settle open receipts and run a Z-Abschluss today.",
         ["Kopplungscode vom Solo (nur bei neuer Kopplung)"] = "Pairing code from the Solo (only for a new pairing)",
         ["Geräteliste laden, danach Solo auswählen"] = "Load the device list, then choose the Solo",
         ["Verbindungstest. Der 1,00-€-Test sendet eine ECHTE Zahlungsanforderung an das Solo. KEINE KARTE vorhalten; danach ABBRECHEN."] =
