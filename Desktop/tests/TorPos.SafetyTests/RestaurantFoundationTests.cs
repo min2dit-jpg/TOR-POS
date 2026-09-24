@@ -1271,6 +1271,216 @@ internal static class RestaurantFoundationTests
                 !validationAfterRealTableClose.Valid,
                 "Self Order capability becomes invalid when the real Restaurant table session closes even without a separate Self Order close call");
 
+            var inboxProduct = new Product
+            {
+                Id = 910001,
+                Name = "Self Order Testartikel",
+                BasePriceCents = 790,
+                PfandCents = 25,
+                VatRate = 7m,
+                Unit = "Stück",
+                IsActive = true
+            };
+
+            var inboxCatalog =
+                new FakeProductCatalog(inboxProduct);
+
+            var inboxService =
+                new RestaurantSelfOrderInboxService(
+                    db,
+                    selfOrderEntitlements,
+                    selfOrder,
+                    inboxCatalog);
+
+            var inboxTableId =
+                await repo.SaveTableAsync(
+                    areaId,
+                    "TSOINBOX",
+                    "Self Order Inbox",
+                    seats: 4,
+                    sortOrder: 93);
+
+            var inboxSession =
+                await repo.OpenTableAsync(
+                    inboxTableId,
+                    "SELF-ORDER-TEST",
+                    guestCount: 2,
+                    deviceId: "KASSE-SELF");
+
+            var inboxQr =
+                await selfOrder.RotateTableQrAsync(
+                    inboxTableId,
+                    "ADMIN");
+
+            var inboxCapability =
+                await selfOrder.ActivateSessionAsync(
+                    inboxSession.Id,
+                    RestaurantSelfOrderApprovalMode.ConfirmationRequired,
+                    "ADMIN",
+                    TimeSpan.FromHours(1));
+
+            var receivedOrder =
+                await inboxService.ReceiveAsync(
+                    inboxQr.PublicToken,
+                    inboxCapability.PublicSessionId,
+                    inboxCapability.CapabilitySecret,
+                    "client-order-0001",
+                    new[]
+                    {
+                        new RestaurantSelfOrderLineRequest(
+                            inboxProduct.Id,
+                            2)
+                    },
+                    "Ohne Eis");
+
+            long storedUnitPrice;
+            long storedLineTotal;
+            long storedOrderTotal;
+            long storedPfand;
+            decimal storedVat;
+
+            await using (var c = db.OpenReadConnection())
+            {
+                await using var q = c.CreateCommand();
+                q.CommandText = """
+                    SELECT
+                        i.unit_price_cents,
+                        i.line_total_cents,
+                        o.total_cents,
+                        i.pfand_cents,
+                        i.vat_rate
+                    FROM restaurant_self_order_orders o
+                    JOIN restaurant_self_order_order_items i
+                      ON i.order_id=o.id
+                    WHERE o.id=$id;
+                    """;
+                q.Parameters.AddWithValue(
+                    "$id",
+                    receivedOrder.OrderId);
+
+                await using var r =
+                    await q.ExecuteReaderAsync();
+
+                if (!await r.ReadAsync())
+                    throw new InvalidOperationException(
+                        "Self Order inbox snapshot missing.");
+
+                storedUnitPrice = r.GetInt64(0);
+                storedLineTotal = r.GetInt64(1);
+                storedOrderTotal = r.GetInt64(2);
+                storedPfand = r.GetInt64(3);
+                storedVat = Convert.ToDecimal(r.GetDouble(4));
+            }
+
+            assert(
+                receivedOrder.State ==
+                    RestaurantSelfOrderOrderState.Received &&
+                !receivedOrder.Replay &&
+                storedUnitPrice == 815 &&
+                storedLineTotal == 1630 &&
+                storedOrderTotal == 1630 &&
+                storedPfand == 25 &&
+                storedVat == 7m,
+                "Self Order inbox snapshots price, VAT and Pfand exclusively from the POS catalog instead of customer-supplied values");
+
+            var inboxLineTamperRejected = false;
+            try
+            {
+                await using var c = db.OpenConnection();
+                await using var q = c.CreateCommand();
+                q.CommandText = """
+                    UPDATE restaurant_self_order_order_items
+                    SET unit_price_cents=1
+                    WHERE order_id=$id;
+                    """;
+                q.Parameters.AddWithValue(
+                    "$id",
+                    receivedOrder.OrderId);
+                await q.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException)
+            {
+                inboxLineTamperRejected = true;
+            }
+
+            assert(
+                inboxLineTamperRejected,
+                "Self Order RECEIVED line snapshots are immutable after persistence");
+
+            inboxProduct.BasePriceCents = 990;
+            inboxProduct.IsActive = false;
+
+            var replayedOrder =
+                await inboxService.ReceiveAsync(
+                    inboxQr.PublicToken,
+                    inboxCapability.PublicSessionId,
+                    inboxCapability.CapabilitySecret,
+                    "client-order-0001",
+                    new[]
+                    {
+                        new RestaurantSelfOrderLineRequest(
+                            inboxProduct.Id,
+                            2)
+                    },
+                    "Ohne Eis");
+
+            assert(
+                replayedOrder.Replay &&
+                replayedOrder.OrderId ==
+                    receivedOrder.OrderId &&
+                replayedOrder.PublicOrderId ==
+                    receivedOrder.PublicOrderId,
+                "Self Order network retry stays idempotent even if catalog price or active state changes after the first accepted inbox write");
+
+            var conflictingReplayRejected = false;
+            try
+            {
+                await inboxService.ReceiveAsync(
+                    inboxQr.PublicToken,
+                    inboxCapability.PublicSessionId,
+                    inboxCapability.CapabilitySecret,
+                    "client-order-0001",
+                    new[]
+                    {
+                        new RestaurantSelfOrderLineRequest(
+                            inboxProduct.Id,
+                            1)
+                    },
+                    "Ohne Eis");
+            }
+            catch (InvalidOperationException)
+            {
+                conflictingReplayRejected = true;
+            }
+
+            assert(
+                conflictingReplayRejected,
+                "Self Order rejects reuse of a client-order id with changed order content");
+
+            var invalidCapabilityRejected = false;
+            try
+            {
+                await inboxService.ReceiveAsync(
+                    inboxQr.PublicToken,
+                    inboxCapability.PublicSessionId,
+                    inboxCapability.CapabilitySecret + "x",
+                    "client-order-0002",
+                    new[]
+                    {
+                        new RestaurantSelfOrderLineRequest(
+                            inboxProduct.Id,
+                            1)
+                    });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                invalidCapabilityRejected = true;
+            }
+
+            assert(
+                invalidCapabilityRejected,
+                "Self Order inbox rejects an invalid session capability before creating a RECEIVED order");
+
             var duplicateRejected = false;
             try
             {
@@ -2321,6 +2531,44 @@ internal static class RestaurantFoundationTests
             SqliteConnection.ClearAllPools();
             try { Directory.Delete(root, true); } catch { }
         }
+    }
+
+    private sealed class FakeProductCatalog : IProductCatalog
+    {
+        public FakeProductCatalog(params Product[] products)
+        {
+            Products = products;
+        }
+
+        public IReadOnlyList<ProductGroup> Groups { get; } =
+            Array.Empty<ProductGroup>();
+
+        public IReadOnlyList<Category> Categories { get; } =
+            Array.Empty<Category>();
+
+        public IReadOnlyList<Product> Products { get; }
+
+        public ValueTask ReloadAsync(
+            CancellationToken ct = default) =>
+            ValueTask.CompletedTask;
+
+        public bool TryGetByBarcode(
+            string barcode,
+            out Product? product)
+        {
+            product = Products.FirstOrDefault(x =>
+                string.Equals(
+                    x.Barcode,
+                    barcode,
+                    StringComparison.OrdinalIgnoreCase));
+            return product is not null;
+        }
+
+        public IReadOnlyList<Product> GetByCategory(
+            long categoryId) =>
+            Products
+                .Where(x => x.CategoryId == categoryId)
+                .ToArray();
     }
 
     private sealed class FakeCommercialLicenseService : ICommercialLicenseService
