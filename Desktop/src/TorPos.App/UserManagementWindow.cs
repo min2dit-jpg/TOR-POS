@@ -256,7 +256,7 @@ public sealed class UserManagementWindow : Window
             AddField(fields, "Neues Passwort", _password,
                 user.CredentialsConfigured
                     ? "Leer lassen = vorhandenes Passwort behalten."
-                    : "Zum Aktivieren reicht Passwort oder PIN. Passwort: mindestens 4 Zeichen.");
+                    : "Zum Aktivieren reicht Passwort oder PIN. Passwort: mindestens 10 Zeichen.");
             AddField(fields, "Neue 4-stellige PIN", _pin,
                 user.CredentialsConfigured
                     ? "Leer lassen = vorhandene PIN behalten."
