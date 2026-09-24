@@ -86,6 +86,36 @@ public static class AdTvTests
             !page.Contains("=>", StringComparison.Ordinal),
             "the TV page cannot be broken by the company name, inserts texts as text and runs on older TV browsers (ES5)");
 
+        // Kundendisplay, Werbe-TV and Bestellmonitor stay apart: the TV has its
+        // own picture folder, and the order monitor shows no advertising.
+        var main = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
+        var settingsUi = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/SettingsWindow.axaml.cs"));
+        var orderScreens =
+            File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/OrderBoardWindow.cs")) +
+            File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/OrderCustomerDisplayWindow.cs"));
+        assert(
+            main.Contains("BuildAdSlidesAsync(settings, AppPaths.CustomerDisplayAdsPath)", StringComparison.Ordinal) &&
+            main.Contains("BuildAdSlidesAsync(AdTv.SlideSettings(settings), AppPaths.AdTvImagesPath)", StringComparison.Ordinal) &&
+            settingsUi.Contains("AddCustomerDisplayAdImagesAsync(adTvImageStatus, AppPaths.AdTvImagesPath)", StringComparison.Ordinal) &&
+            settingsUi.Contains("AddCustomerDisplayAdImagesAsync(adStatus, AppPaths.CustomerDisplayAdsPath)", StringComparison.Ordinal) &&
+            !orderScreens.Contains("CustomerDisplayAds", StringComparison.Ordinal) &&
+            !orderScreens.Contains("AdTv", StringComparison.Ordinal),
+            "Werbe-TV pictures have their own folder and never appear on the Kundendisplay, and the Bestellmonitor shows no advertising");
+
         return Task.CompletedTask;
+    }
+
+    private static string FindRepoFile(string relativePath)
+    {
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+        throw new FileNotFoundException(relativePath);
     }
 }
