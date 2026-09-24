@@ -726,6 +726,45 @@ internal static class RestaurantFoundationTests
                 terminalRows.Single(x => x.TerminalId == "KASSE-2").IsActive,
                 "Restaurant Plus terminal heartbeat updates one stable terminal identity without duplicates");
 
+            var terminalTypeChangeRejected = false;
+            try
+            {
+                await terminals.RegisterOrHeartbeatAsync(
+                    "KASSE-2",
+                    "Manipuliertes Gerät",
+                    "HANDHELD",
+                    "R190",
+                    "SERVER-2");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                terminalTypeChangeRejected = true;
+            }
+
+            assert(
+                terminalTypeChangeRejected,
+                "G-2 registered Restaurant terminal type cannot be escalated or changed by heartbeat");
+
+            await terminals.RequireTypeAsync(
+                "KASSE-2",
+                new[] { "KASSE" });
+
+            var terminalScopeRejected = false;
+            try
+            {
+                await terminals.RequireTypeAsync(
+                    "KASSE-2",
+                    new[] { "HANDHELD" });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                terminalScopeRejected = true;
+            }
+
+            assert(
+                terminalScopeRejected,
+                "G-2 Restaurant terminal scope guard rejects an endpoint role not assigned to the device");
+
             var terminalBeforeCoalesce =
                 terminalRows.Single(x =>
                     x.TerminalId == "KASSE-2");
