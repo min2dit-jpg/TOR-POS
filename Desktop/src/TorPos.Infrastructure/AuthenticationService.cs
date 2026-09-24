@@ -334,6 +334,8 @@ public async Task InitializeAsync(CancellationToken ct = default)
         }
         if (pin.Length > 0 && !IsValidPin(pin))
             throw new InvalidOperationException("Die neue PIN muss genau 4 Ziffern haben.");
+        if (pin.Length > 0 && IsFactoryPin(pin))
+            throw new InvalidOperationException("Die Standard-PIN 1234 darf nicht weiterverwendet werden.");
         await using var c = _db.OpenConnection();
         bool configured;
         await using (var state = c.CreateCommand())
