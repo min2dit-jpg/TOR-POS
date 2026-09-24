@@ -3769,9 +3769,41 @@ public async Task<DailyCloseCheck> CheckAsync(CancellationToken ct = default)
             var open = Convert.ToInt32(await q.ExecuteScalarAsync(ct));
             if (open > 0)
                 return new DailyCloseCheck(false, open, "Z-Abschluss gesperrt: an der Kasse ist noch ein Vorgang offen. Bitte zuerst kassieren, parken oder den Bon leeren.");
+
+            await using var restaurantTable = c.CreateCommand();
+            restaurantTable.CommandText = """
+                SELECT COUNT(*)
+                FROM sqlite_master
+                WHERE type='table'
+                  AND name='restaurant_sessions';
+                """;
+            var hasRestaurantSessions =
+                Convert.ToInt32(
+                    await restaurantTable.ExecuteScalarAsync(ct)) > 0;
+
+            if (hasRestaurantSessions)
+            {
+                await using var restaurant = c.CreateCommand();
+                restaurant.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_sessions
+                    WHERE state IN ('OPEN','CHECK_REQUESTED');
+                    """;
+                var openRestaurantSessions =
+                    Convert.ToInt32(
+                        await restaurant.ExecuteScalarAsync(ct));
+
+                if (openRestaurantSessions > 0)
+                {
+                    return new DailyCloseCheck(
+                        false,
+                        openRestaurantSessions,
+                        $"Z-Abschluss gesperrt: {openRestaurantSessions} Restaurant-Tischvorgang/-vorgänge sind noch offen. Bitte zuerst alle Tische abschließen.");
+                }
+            }
         }
 
-        return new DailyCloseCheck(true, 0, "Z-Abschluss freigegeben: keine geparkten Bons offen.");
+        return new DailyCloseCheck(true, 0, "Z-Abschluss freigegeben: keine geparkten Bons oder offenen Restaurant-Tischvorgänge vorhanden.");
     });
 }}
 

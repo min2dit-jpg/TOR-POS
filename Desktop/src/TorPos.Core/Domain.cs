@@ -372,24 +372,48 @@ public sealed class CartLine
 }
 
 /// <summary>
-/// German Im-Haus/Außer-Haus VAT rule for food service (§12 UStG): food
-/// consumed on the premises is a "Bewirtungsleistung" taxed at the
-/// standard rate, while the same item taken away is a reduced-rate goods
-/// sale. Drinks are already standard-rate regardless of location and are
-/// deliberately left untouched here. The menu/gross price a customer pays
-/// never changes - only the internal net/VAT split does (CartLine.LineTotalCents
-/// depends solely on Quantity*UnitPriceCents, never on VatRate).
+/// German Im-Haus/Außer-Haus VAT transition for food service (§ 12 UStG).
+/// From 01.01.2024 through 31.12.2025, reduced-rate food consumed on the
+/// premises was taxed at 19 %. From 01.01.2026, restaurant and catering food
+/// is permanently reduced again; drinks remain at their normal 19 % base rate.
+/// The gross customer price never changes here - only the VAT snapshot.
 /// </summary>
 public static class ImHausVat
 {
     public const decimal ReducedRate = 7m;
     public const decimal StandardRate = 19m;
 
-    // R97: categoryApplies lets an admin opt a specific Warengruppe out of
-    // this rule entirely (Category.ImHausApplicable/CartLine.ImHausApplicable).
-    // Defaults to true so existing callers keep the original R95 behavior.
-    public static decimal Effective(decimal baseRate, bool imHaus, bool categoryApplies = true) =>
-        imHaus && categoryApplies && baseRate == ReducedRate ? StandardRate : baseRate;
+    public static readonly DateOnly LegacyStandardRateFrom =
+        new(2024, 1, 1);
+    public static readonly DateOnly RestaurantReducedRateFrom =
+        new(2026, 1, 1);
+
+    // R97: categoryApplies preserves the historical per-Warengruppe switch.
+    // Current (2026+) food remains at its reduced base rate even when Im Haus
+    // is selected. An explicit serviceDate keeps historical 2024/2025 replay
+    // and tests deterministic; live checkout defaults to the local sale date.
+    public static decimal Effective(
+        decimal baseRate,
+        bool imHaus,
+        bool categoryApplies = true,
+        DateOnly? serviceDate = null)
+    {
+        if (!imHaus ||
+            !categoryApplies ||
+            baseRate != ReducedRate)
+        {
+            return baseRate;
+        }
+
+        var date =
+            serviceDate ??
+            DateOnly.FromDateTime(DateTime.Now);
+
+        return date >= LegacyStandardRateFrom &&
+               date < RestaurantReducedRateFrom
+            ? StandardRate
+            : baseRate;
+    }
 }
 
 // R101: Mixed means the sale's total was split across cash and a card

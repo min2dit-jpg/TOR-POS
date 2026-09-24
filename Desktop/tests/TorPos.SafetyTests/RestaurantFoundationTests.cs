@@ -1658,6 +1658,71 @@ internal static class RestaurantFoundationTests
                 VatRate = 19m
             };
 
+            var reducedRestaurantProduct = new Product
+            {
+                Id = 900002,
+                Name = "Restaurant Reduziert",
+                BasePriceCents = 1000,
+                VatRate = 7m,
+                ImHausApplicable = true,
+                Unit = "Stück"
+            };
+
+            var vatGuardTableId = await repo.SaveTableAsync(
+                areaId,
+                "TK4VAT",
+                "K4 MwSt/Z",
+                seats: 2,
+                sortOrder: 88);
+
+            var vatGuardSession = await repo.OpenTableAsync(
+                vatGuardTableId,
+                "KELLNER-VAT",
+                guestCount: 1,
+                deviceId: "KASSE-VAT");
+
+            var vatGuardItem = await repo.AddItemAsync(
+                vatGuardSession.Id,
+                vatGuardSession.Version,
+                reducedRestaurantProduct,
+                1m,
+                "KELLNER-VAT",
+                "KASSE-VAT");
+
+            assert(
+                vatGuardItem.VatRate == 7m,
+                "K-4/R2026 Restaurant Bestellung snapshots the effective current Im-Haus VAT: food remains 7% from 01.01.2026 while drinks keep their own 19% base rate");
+
+            var restaurantClosingGuard = new DailyClosingGuard(
+                new ParkedReceiptRepository(db),
+                db);
+            var restaurantClosingCheck =
+                await restaurantClosingGuard.CheckAsync();
+
+            assert(
+                !restaurantClosingCheck.Allowed &&
+                restaurantClosingCheck.Message.Contains(
+                    "Restaurant",
+                    StringComparison.OrdinalIgnoreCase),
+                "K-4 Z-Abschluss is blocked while a Restaurant table session is OPEN");
+
+            await repo.DiscardPendingItemAsync(
+                vatGuardSession.Id,
+                vatGuardItem.Id,
+                "KELLNER-VAT",
+                "KASSE-VAT");
+
+            var vatGuardAfterDiscard =
+                await repo.GetSessionAsync(vatGuardSession.Id)
+                ?? throw new InvalidOperationException(
+                    "K4 VAT/Z test session missing.");
+
+            await repo.CloseEmptySessionAsync(
+                vatGuardAfterDiscard.Id,
+                vatGuardAfterDiscard.Version,
+                "KELLNER-VAT",
+                "KASSE-VAT");
+
             var concurrentTableId = await repo.SaveTableAsync(
                 areaId,
                 "TCONC",

@@ -1,27 +1,30 @@
 using System.Linq;
 using TorPos.Core;
 
-// R95: Im-Haus/Außer-Haus VAT rule (§12 UStG). Food eaten on the premises
-// is taxed at the standard rate (19%) instead of the reduced rate (7%) a
-// takeaway sale of the same item carries; drinks are already 19% either
-// way and must never be touched by this rule. The swap happens exactly
-// once, in CheckoutSnapshot.CopyLines, right when the live cart is
-// captured for checkout - everything downstream (receipt MwSt breakdown,
-// BusinessManagementService tax reports, FiscalProcessData VAT-class
-// bucketing) already groups generically by CartLine.VatRate, so nothing
-// else needed to change. The customer-facing gross price never changes -
-// CartLine.LineTotalCents depends only on Quantity*UnitPriceCents.
+// R95/R2026: Im-Haus/Außer-Haus VAT transition (§ 12 UStG).
+// The 19% Im-Haus elevation applied in 2024/2025. From 01.01.2026,
+// restaurant/catering food is reduced again; drinks remain 19%.
+// CheckoutSnapshot.CopyLines still centralizes the effective VAT snapshot,
+// while historical tests pass an explicit service date.
 public static class R95ReviewTests
 {
     public static Task Run(Action<bool, string> assert, Func<Func<Task>, string, Task> reject)
     {
         assert(
-            ImHausVat.Effective(7m, imHaus: true) == 19m,
-            "R95 a reduced-rate (7%) item becomes standard-rate (19%) when Im Haus is on");
+            ImHausVat.Effective(
+                7m,
+                imHaus: true,
+                categoryApplies: true,
+                serviceDate: new DateOnly(2025, 6, 1)) == 19m,
+            "R95 historical 2024/2025: a reduced-rate food item becomes 19% when Im Haus is on");
 
         assert(
-            ImHausVat.Effective(7m, imHaus: false) == 7m,
-            "R95 a reduced-rate item keeps its rate when Im Haus is off (Außer Haus, the default)");
+            ImHausVat.Effective(
+                7m,
+                imHaus: true,
+                categoryApplies: true,
+                serviceDate: new DateOnly(2026, 1, 1)) == 7m,
+            "R2026 from 01.01.2026: restaurant food stays at the reduced 7% rate even when Im Haus is on");
 
         assert(
             ImHausVat.Effective(19m, imHaus: true) == 19m,
@@ -44,8 +47,8 @@ public static class R95ReviewTests
 
         var eatIn = CheckoutSnapshot.CopyLines(cart, imHaus: true);
         assert(
-            eatIn[0].VatRate == 19m && eatIn[1].VatRate == 19m,
-            "R95 Im Haus bumps the food line to 19% and leaves the already-19% drink unchanged");
+            eatIn[0].VatRate == 7m && eatIn[1].VatRate == 19m,
+            "R2026 current Im Haus keeps food at 7% and leaves the already-19% drink unchanged");
 
         assert(
             eatIn[0].UnitPriceCents == takeaway[0].UnitPriceCents &&

@@ -55,8 +55,8 @@ public static class R136ReviewTests
                start.Kind == TseVorgangActionKind.Start && start.StartedAt == t0 && start.VorgangId.Length > 0 &&
                again.Kind == TseVorgangActionKind.None &&
                abort.Kind == TseVorgangActionKind.Abort && abort.VorgangId == start.VorgangId && abort.StartedAt == t0 &&
-               abort.Lines.Single().Quantity == 2 && abort.Lines.Single().VatRate == 19m && tracker.VorgangId is null,
-            "R136 the Vorgang starts with the first position of a fiscal till and ends as aborted when the cart is emptied, with the positions as they were (Im Haus VAT)");
+               abort.Lines.Single().Quantity == 2 && abort.Lines.Single().VatRate == 7m && tracker.VorgangId is null,
+            "R136/R2026 the Vorgang starts with the first position and aborts with the snapshotted current Im-Haus VAT; food remains 7% from 01.01.2026");
 
         cart.Add(new CartLine { ProductId = 2, ProductName = "Cola", Quantity = 1, UnitPriceCents = 300, VatRate = 19m });
         var paid = tracker.OnCartChanged(cart, 0, false, true, t0.AddMinutes(1));

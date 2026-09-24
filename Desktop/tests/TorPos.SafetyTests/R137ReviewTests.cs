@@ -47,9 +47,9 @@ public static class R137ReviewTests
         var imHausSwitch = OrderBestellungDelta.Compute(
             CheckoutSnapshot.CopyLines(new[] { L(1, "Döner", 1, 700, 7m) }, imHaus: false),
             CheckoutSnapshot.CopyLines(new[] { L(1, "Döner", 1, 700, 7m) }, imHaus: true));
-        assert(imHausSwitch.Count == 2 && imHausSwitch.Any(l => l.VatRate == 19m && l.Quantity == 1) && imHausSwitch.Any(l => l.VatRate == 7m && l.Quantity == -1) &&
+        assert(imHausSwitch.Count == 0 &&
                FiscalProcessData.BestellungText(new[] { L(2, "Cola \"Zero\"", -1, 250, 19m) }) == "-1;\"Cola \"\"Zero\"\"\";2.50",
-            "R137 switching Im Haus changes the position's rate and is secured as such; Anhang I Bestellung-V1 carries the negative quantity");
+            "R137/R2026 switching Im Haus alone creates no food-VAT delta; Anhang I Bestellung-V1 still carries negative quantities correctly");
 
         // ---------- a recalled order starts no Vorgang until it changes ----------
         var tracker = new TseVorgangCartTracker();
@@ -138,7 +138,7 @@ public static class R137ReviewTests
         // order B: Im Haus, accepted without a tracked Vorgang, paid unchanged
         var orderB = await parked.ParkAsync(new[] { L(4, "Lahmacun", 1, 500, 7m) }, 0, "kasse1", assignPickupNumber: true, imHaus: true);
         var acceptedB = await signing.SecureChangeAsync(orderB, orderB.Lines, "", null, "kasse1");
-        var saleId = await InsertSaleAsync(db, 137001, 500, 19m);
+        var saleId = await InsertSaleAsync(db, 137001, 500, 7m);
         await using (var c = db.OpenConnection())
         {
             await using var q = c.CreateCommand();
@@ -153,10 +153,10 @@ public static class R137ReviewTests
             new ReceiptPrintJob(sale.ReceiptNumber, sale.CreatedAt, "R137 Imbiss", "Hauptstraße 1, 10115 Berlin", "27/123/45678", "", "", "", "Bar",
                 sale.DiscountCents, sale.TotalCents, sale.Lines, FiscalTestMode: false, OrderStart: sale.OrderStartedAt),
             DigitalReceiptDocument.PaymentsFor(PaymentMethod.Cash, sale.TotalCents, 0));
-        assert(acceptedB is { Kind: OrderBestellungKind.Annahme } && acceptedB.Lines.Single().VatRate == 19m &&
+        assert(acceptedB is { Kind: OrderBestellungKind.Annahme } && acceptedB.Lines.Single().VatRate == 7m &&
                sale.OrderStartedAt is not null && sale.OrderStartedAt == acceptedB.Tse!.StartLogTime &&
                digital.Field(DigitalReceiptDocument.OrderStartLabel) == TseReceiptTime.Format(sale.OrderStartedAt.Value),
-            "R137 the receipt of a paid order carries the start of its first order transaction (DSFinV-K 2.7.2); the order's positions carry the Im Haus rate");
+            "R137/R2026 the paid order carries its first transaction start and keeps food at the reduced 7% Im-Haus rate");
 
         // order C: signed before R137 (only on the order row), then changed
         var orderC = await parked.ParkAsync(new[] { L(5, "Pide", 1, 900, 7m) }, 0, "kasse1");
@@ -212,9 +212,9 @@ public static class R137ReviewTests
             "R137 the cancellation refers to the acceptance and each record carries its own Bestellung-V1 transaction");
         var b1 = $"BE-{orderB.ParkNumber}-1";
         assert(groups.Single(g => g["BON_ID"] == b1)["ABRECHNUNGSKREIS"] == groups.Single(g => g["BON_ID"] == "137001")["ABRECHNUNGSKREIS"] &&
-               headVat.Single(v => v["BON_ID"] == b1)["UST_SCHLUESSEL"] == "1" &&
+               headVat.Single(v => v["BON_ID"] == b1)["UST_SCHLUESSEL"] == "2" &&
                cases.Length == 1 && cases[0].Contains(";5,00;"),
-            "R137 order records and the receipt share the Abrechnungskreis (2.7.1), Im Haus shows the standard rate, and orders do not touch the closing totals");
+            "R137/R2026 order records and the receipt share the Abrechnungskreis (2.7.1), food uses the reduced VAT key, and orders do not touch the closing totals");
         assert(report.Ready && report.Issues.All(x => x.Code is not ("BESTELLUNG" or "BESTELLSTORNO")),
             "R137 orders recorded under R137 raise no hint about unsecured changes or cancellations");
     }
