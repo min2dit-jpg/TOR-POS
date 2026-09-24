@@ -674,6 +674,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
         RestaurantFiscalVorgang? vorgang = null;
         RestaurantSessionItem? cancelled = null;
+        RestaurantSessionItem? auditItem = null;
         var actionId = CommandGuid(
             "RESTAURANT-STORNO-AUDIT",
             request.DeviceId,
@@ -691,6 +692,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 ct)
                 ?? throw new InvalidOperationException(
                     "Restaurant-Position wurde nicht gefunden.");
+            auditItem = item;
 
             if (item.State == RestaurantSessionItemState.Cancelled)
             {
@@ -854,7 +856,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         }
         catch (Exception ex)
         {
-            if (auditAuthorized && !auditApplied && cancelled is not null)
+            if (auditAuthorized && !auditApplied && auditItem is not null)
             {
                 try
                 {
@@ -864,7 +866,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                         operatorUser.Username,
                         request.DeviceId,
                         request.SessionId,
-                        cancelled,
+                        auditItem,
                         reason,
                         auditBeforeTotal,
                         auditAfterTotal,
