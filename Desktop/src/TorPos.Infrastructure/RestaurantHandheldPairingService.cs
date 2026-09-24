@@ -30,6 +30,15 @@ public sealed class RestaurantHandheldPairingService
     private static readonly TimeSpan LastSeenWriteInterval =
         TimeSpan.FromSeconds(30);
 
+    private static readonly object PairingAttemptGate = new();
+    private static readonly Queue<DateTimeOffset> GlobalPairingAttempts = new();
+    private static readonly Dictionary<string, Queue<DateTimeOffset>> PairingAttemptsByCode =
+        new(StringComparer.Ordinal);
+    private static readonly TimeSpan PairingAttemptWindow =
+        TimeSpan.FromMinutes(1);
+    private const int GlobalPairingAttemptLimit = 30;
+    private const int PerCodePairingAttemptLimit = 5;
+
     public RestaurantHandheldPairingService(
         SqliteDatabase db,
         RestaurantEntitlementService entitlements)
@@ -120,6 +129,8 @@ public sealed class RestaurantHandheldPairingService
         if (displayName.Length == 0 || displayName.Length > 120)
             throw new ArgumentException("Gerätename ist ungültig.", nameof(displayName));
 
+        RequirePairingAttemptBudget(pairingCode);
+
         var now = DateTimeOffset.UtcNow;
         var token = Convert.ToBase64String(
             RandomNumberGenerator.GetBytes(32));
@@ -132,6 +143,24 @@ public sealed class RestaurantHandheldPairingService
 
             string? pairingId = null;
             string? pairedBy = null;
+
+            await using (var existingDevice = c.CreateCommand())
+            {
+                existingDevice.Transaction = tx;
+                existingDevice.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_handheld_devices
+                    WHERE device_id=$device;
+                    """;
+                existingDevice.Parameters.AddWithValue("$device", deviceId);
+
+                if (Convert.ToInt32(
+                        await existingDevice.ExecuteScalarAsync(ct)) > 0)
+                {
+                    throw new InvalidOperationException(
+                        "Geräte-ID ist bereits gekoppelt. Vor einer erneuten Kopplung muss eine neue Geräte-ID verwendet werden.");
+                }
+            }
 
             await using (var find = c.CreateCommand())
             {
@@ -185,14 +214,7 @@ public sealed class RestaurantHandheldPairingService
                     INSERT INTO restaurant_handheld_devices(
                         device_id,display_name,token_hash,paired_at,paired_by,
                         last_seen_at,is_active)
-                    VALUES($id,$name,$token,$now,$actor,$now,1)
-                    ON CONFLICT(device_id) DO UPDATE SET
-                        display_name=excluded.display_name,
-                        token_hash=excluded.token_hash,
-                        paired_at=excluded.paired_at,
-                        paired_by=excluded.paired_by,
-                        last_seen_at=excluded.last_seen_at,
-                        is_active=1;
+                    VALUES($id,$name,$token,$now,$actor,$now,1);
                     """;
                 device.Parameters.AddWithValue("$id", deviceId);
                 device.Parameters.AddWithValue("$name", displayName);
@@ -364,6 +386,52 @@ public sealed class RestaurantHandheldPairingService
             q.Parameters.AddWithValue("$id", (deviceId ?? "").Trim());
             await q.ExecuteNonQueryAsync(ct);
         });
+
+    private static void RequirePairingAttemptBudget(
+        string pairingCode)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now - PairingAttemptWindow;
+        var codeKey = Hash(pairingCode);
+
+        lock (PairingAttemptGate)
+        {
+            while (GlobalPairingAttempts.Count > 0 &&
+                   GlobalPairingAttempts.Peek() < cutoff)
+            {
+                GlobalPairingAttempts.Dequeue();
+            }
+
+            if (!PairingAttemptsByCode.TryGetValue(
+                    codeKey,
+                    out var codeAttempts))
+            {
+                codeAttempts = new Queue<DateTimeOffset>();
+                PairingAttemptsByCode[codeKey] = codeAttempts;
+            }
+
+            while (codeAttempts.Count > 0 &&
+                   codeAttempts.Peek() < cutoff)
+            {
+                codeAttempts.Dequeue();
+            }
+
+            if (GlobalPairingAttempts.Count >=
+                    GlobalPairingAttemptLimit ||
+                codeAttempts.Count >=
+                    PerCodePairingAttemptLimit)
+            {
+                throw new InvalidOperationException(
+                    "Zu viele Pairing-Versuche. Bitte kurz warten und einen neuen Pairing-Code verwenden.");
+            }
+
+            GlobalPairingAttempts.Enqueue(now);
+            codeAttempts.Enqueue(now);
+
+            if (codeAttempts.Count == 0)
+                PairingAttemptsByCode.Remove(codeKey);
+        }
+    }
 
     private static string Hash(string value) =>
         Convert.ToHexString(
