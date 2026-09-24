@@ -26,25 +26,62 @@ public sealed class RestaurantFiscalOrderService
         _vorgaenge = vorgaenge;
     }
 
-    public async Task<RestaurantFiscalVorgang> BeginChangeAsync(
+    public Task<RestaurantFiscalVorgang> BeginChangeAsync(
         string sessionId,
         string actor,
+        CancellationToken ct = default) =>
+        BeginStableChangeAsync(
+            sessionId,
+            actor,
+            "restaurant-" + Guid.NewGuid().ToString("N"),
+            ct);
+
+    /// <summary>
+    /// Starts (or resumes) a Restaurant Bestellung with a caller-supplied
+    /// stable Vorgang ID. Self Order acceptance persists this ID before any
+    /// TSE call so a crash/retry always addresses the same fiscal transaction.
+    /// </summary>
+    public async Task<RestaurantFiscalVorgang> BeginStableChangeAsync(
+        string sessionId,
+        string actor,
+        string vorgangId,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
             throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
 
-        var id = "restaurant-" + Guid.NewGuid().ToString("N");
-        var startedAt = DateTimeOffset.Now;
+        vorgangId = (vorgangId ?? "").Trim();
+        if (vorgangId.Length is < 8 or > 160 ||
+            vorgangId.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                "Restaurant-Vorgangskennung ist ungültig.",
+                nameof(vorgangId));
+        }
+
+        var existing =
+            await _vorgaenge.GetAsync(
+                vorgangId,
+                ct);
+        var startedAt =
+            existing?.StartedAt ??
+            DateTimeOffset.Now;
 
         await _vorgaenge.StartAsync(
-            id,
+            vorgangId,
             training: false,
             startedAt,
             actor,
             ct);
 
-        return new RestaurantFiscalVorgang(id, startedAt);
+        var persisted =
+            await _vorgaenge.GetAsync(
+                vorgangId,
+                ct);
+
+        return new RestaurantFiscalVorgang(
+            vorgangId,
+            persisted?.StartedAt ?? startedAt);
     }
 
     public Task AbortChangeAsync(
