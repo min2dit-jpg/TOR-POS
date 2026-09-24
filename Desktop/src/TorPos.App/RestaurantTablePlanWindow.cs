@@ -671,6 +671,7 @@ public sealed class RestaurantTablePlanWindow : Window
 
         RestaurantFiscalVorgang? fiscalVorgang = null;
         RestaurantSessionItem? pendingItem = null;
+        RestaurantSessionItem? addedItem = null;
 
         try
         {
@@ -698,6 +699,7 @@ public sealed class RestaurantTablePlanWindow : Window
                 quantity,
                 _user.Username,
                 Environment.MachineName);
+            addedItem = pendingItem;
 
             await _restaurantFiscal.SecureAddedItemAsync(
                 _selectedSession.Id,
@@ -711,22 +713,16 @@ public sealed class RestaurantTablePlanWindow : Window
             _selectedSession = await _restaurant.GetSessionAsync(
                 _selectedSession.Id);
 
-            if (_selectedSession is not null)
+            if (_selectedSession is not null &&
+                addedItem is not null)
             {
-                var item = (await _restaurant.ListActiveItemsAsync(
-                        _selectedSession.Id))
-                    .LastOrDefault();
-
-                if (item is not null)
-                {
-                    await _kitchen.EnqueueNewItemAsync(
-                        _selectedSession,
-                        item,
-                        _selectedTable?.DisplayName ?? "Tisch",
-                        _user.Username,
-                        ResolveKitchenStation(product));
-                    _kitchenDispatcher.Notify();
-                }
+                await _kitchen.EnqueueNewItemAsync(
+                    _selectedSession,
+                    addedItem,
+                    _selectedTable?.DisplayName ?? "Tisch",
+                    _user.Username,
+                    ResolveKitchenStation(product));
+                _kitchenDispatcher.Notify();
             }
 
             _quantity.Value = 1;
