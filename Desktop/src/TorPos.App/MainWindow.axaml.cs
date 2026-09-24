@@ -6161,7 +6161,7 @@ public partial class MainWindow:Window
         {
             _adTvTimer?.Stop();
             if (settings.Enabled && _adTv.LastError is not null)
-                StatusLine = "WERBE-TV: Port " + settings.Port + " ist belegt oder gesperrt. In Einstellungen einen anderen Port wählen.";
+                StatusLine = "WERBE-TV: Der gewählte TV-Port ist belegt oder gesperrt. In Einstellungen einen anderen TV-Port wählen.";
             return;
         }
 
