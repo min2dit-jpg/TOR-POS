@@ -133,6 +133,9 @@ jobs:
           dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=IMBISS -- ci-results/ui-gastro 1366x768 --check 2>&1 |
             Tee-Object -FilePath ci-results/ui-gastro.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=RESTAURANT -- ci-results/ui-restaurant 1366x768 --check 2>&1 |
+            Tee-Object -FilePath ci-results/ui-restaurant.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # SafetyTests is an executable, not an xUnit/MSTest test project.
       # Do not substitute dotnet test: use the same entry point as the BAT file.

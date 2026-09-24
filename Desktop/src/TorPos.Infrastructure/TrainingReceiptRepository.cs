@@ -242,7 +242,8 @@ public sealed class TrainingReceiptRepository
                        list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
                        COALESCE(vat_allocations_json,''),
                        COALESCE(menu_components_json,''),
-                       COALESCE((SELECT p.unit FROM products p WHERE p.id=training_receipt_items.product_id),'Stück')
+                       COALESCE(NULLIF(training_receipt_items.unit,''),(SELECT p.unit FROM products p WHERE p.id=training_receipt_items.product_id),'Stück'),
+                       line_total_cents
                 FROM training_receipt_items WHERE training_id=$id ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$id", id);
@@ -266,7 +267,8 @@ public sealed class TrainingReceiptRepository
                     PromotionDiscountUnitCents = r.GetInt64(12),
                     VatAllocations = VatAllocationStorage.Deserialize(r.GetString(13)),
                     MenuComponents = MenuComponentStorage.Deserialize(r.GetString(14)),
-                    Unit = r.GetString(15)
+                    Unit = r.GetString(15),
+                    PersistedLineTotalCents = r.GetInt64(16)
                 });
             }
         }
@@ -284,8 +286,8 @@ public sealed class TrainingReceiptRepository
             INSERT INTO training_receipt_items(
               training_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,
               pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
-              promotion_discount_unit_cents,vat_allocations_json,menu_components_json)
-            VALUES($t,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
+              promotion_discount_unit_cents,vat_allocations_json,menu_components_json,unit)
+            VALUES($t,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents,$unit);
             """;
         q.Parameters.AddWithValue("$t", trainingId);
         q.Parameters.AddWithValue("$p", line.ProductId);
@@ -305,6 +307,7 @@ public sealed class TrainingReceiptRepository
         q.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
         q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
         q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+        q.Parameters.AddWithValue("$unit", line.Unit);
         await q.ExecuteNonQueryAsync(ct);
     }
 }

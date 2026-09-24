@@ -2178,14 +2178,14 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
                   list_unit_price_cents,list_line_total_cents,
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
-                  promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json)
+                  promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json,unit)
                 VALUES(
                   $sale,$product,$name,$variant,$barcode,$qty,$qtyMilli,
                   $price,$vat,$pfand,$total,
                   $listUnit,$listTotal,
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
-                  $promotionStart,$promotionEnd,$vatAllocations,$menuComponents);
+                  $promotionStart,$promotionEnd,$vatAllocations,$menuComponents,$unit);
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
             q.Parameters.AddWithValue("$product", line.ProductId);
@@ -2209,6 +2209,7 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
             q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
             q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
             q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+            q.Parameters.AddWithValue("$unit", line.Unit);
             await q.ExecuteNonQueryAsync(ct);
             // R153: selected menu articles are immutable per sale line.
             // Use the captured choice/fixed-component snapshot for stock; only
@@ -2510,7 +2511,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                        promotion_start_date,promotion_end_date,
                        COALESCE(vat_allocations_json,''),
                        COALESCE(menu_components_json,''),
-                       COALESCE((SELECT p.unit FROM products p WHERE p.id=sale_items.product_id),'Stück')
+                       COALESCE(NULLIF(sale_items.unit,''),(SELECT p.unit FROM products p WHERE p.id=sale_items.product_id),'Stück'),
+                       line_total_cents
                 FROM sale_items WHERE sale_id=$sale ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$sale", saleId);
@@ -2539,7 +2541,8 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
                     PromotionEndDate = r.GetString(15),
                     VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16)),
                     MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17)),
-                    Unit = r.GetString(18)
+                    Unit = r.GetString(18),
+                    PersistedLineTotalCents = r.GetInt64(19)
                 });
             }
         }
@@ -2713,14 +2716,14 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                       list_unit_price_cents,list_line_total_cents,
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
-                      promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json)
+                      promotion_start_date,promotion_end_date,vat_allocations_json,menu_components_json,unit)
                     VALUES(
                       $sale,$product,$name,$variant,$barcode,$qty,$qtyMilli,
                       $price,$vat,$pfand,$total,
                       $listUnit,$listTotal,
                       $promotionId,$promotionName,$promotionPercent,
                       $promotionUnit,$promotionTotal,
-                      $promotionStart,$promotionEnd,$vatAllocations,$menuComponents);
+                      $promotionStart,$promotionEnd,$vatAllocations,$menuComponents,$unit);
                     """;
                 q.Parameters.AddWithValue("$sale", saleId);
                 q.Parameters.AddWithValue("$product", line.ProductId);
@@ -2744,6 +2747,7 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
                 q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
                 q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
                 q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+            q.Parameters.AddWithValue("$unit", line.Unit);
                 await q.ExecuteNonQueryAsync(ct);
             }
 
@@ -3090,7 +3094,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       promotion_id,promotion_name,promotion_percent,
                       promotion_discount_unit_cents,promotion_discount_cents,
                       promotion_start_date,promotion_end_date,
-                      vat_allocations_json,menu_components_json,original_sale_item_id)
+                      vat_allocations_json,menu_components_json,unit,original_sale_item_id)
                     VALUES(
                       $sale,$product,$name,$variant,$barcode,$qty,$qtyMilli,
                       $price,$vat,$pfand,$total,
@@ -3098,7 +3102,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                       $promotionId,$promotionName,$promotionPercent,
                       $promotionUnit,$promotionTotal,
                       $promotionStart,$promotionEnd,
-                      $vatAllocations,$menuComponents,$originalItem);
+                      $vatAllocations,$menuComponents,$unit,$originalItem);
                     """;
                 q.Parameters.AddWithValue("$sale", saleId);
                 q.Parameters.AddWithValue("$product", originalLine.ProductId);
@@ -3130,6 +3134,7 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
                 q.Parameters.AddWithValue("$promotionEnd", originalLine.PromotionEndDate);
                 q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(originalLine));
                 q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(originalLine));
+                q.Parameters.AddWithValue("$unit", originalLine.Unit);
                 q.Parameters.AddWithValue("$originalItem", originalLine.SaleItemId);
                 await q.ExecuteNonQueryAsync(ct);
             }
@@ -3629,7 +3634,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                   promotion_id,promotion_name,promotion_percent,
                   promotion_discount_unit_cents,promotion_discount_cents,
                   promotion_start_date,promotion_end_date,im_haus_applicable,
-                  vat_allocations_json,menu_components_json)
+                  vat_allocations_json,menu_components_json,unit)
                 VALUES(
                   $parked,$product,$name,$variant,
                   $barcode,$qty,$qtyMilli,$price,$vat,$pfand,$total,
@@ -3637,7 +3642,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                   $promotionId,$promotionName,$promotionPercent,
                   $promotionUnit,$promotionTotal,
                   $promotionStart,$promotionEnd,$imHaus,
-                  $vatAllocations,$menuComponents);
+                  $vatAllocations,$menuComponents,$unit);
                 """;
             q.Parameters.AddWithValue("$parked", parkedId);
             q.Parameters.AddWithValue("$product", line.ProductId);
@@ -3662,6 +3667,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
             q.Parameters.AddWithValue("$promotionEnd", line.PromotionEndDate);
             q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
             q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+            q.Parameters.AddWithValue("$unit", line.Unit);
             await q.ExecuteNonQueryAsync(ct);
         }
     }
@@ -3684,7 +3690,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                    COALESCE(im_haus_applicable,1),
                    COALESCE(vat_allocations_json,''),
                    COALESCE(menu_components_json,''),
-                   COALESCE((SELECT p.unit FROM products p WHERE p.id=parked_receipt_items.product_id),'Stück')
+                   COALESCE(NULLIF(parked_receipt_items.unit,''),(SELECT p.unit FROM products p WHERE p.id=parked_receipt_items.product_id),'Stück'),
+                   line_total_cents
             FROM parked_receipt_items
             WHERE parked_receipt_id=$id
             ORDER BY id;
@@ -3716,7 +3723,8 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
                 ImHausApplicable = r.GetInt64(15) != 0,
                 VatAllocations = VatAllocationStorage.Deserialize(r.GetString(16)),
                 MenuComponents = MenuComponentStorage.Deserialize(r.GetString(17)),
-                Unit = r.GetString(18)
+                Unit = r.GetString(18),
+                PersistedLineTotalCents = r.GetInt64(19)
             });
         }
 
@@ -3725,28 +3733,7 @@ public async Task RecordTseResultAsync(long parkedReceiptId, SaleTseResult resul
 
     private static IReadOnlyList<CartLine> CloneLines(
         IReadOnlyList<CartLine> lines) =>
-        lines.Select(line => new CartLine
-        {
-            ProductId = line.ProductId,
-            ProductName = line.ProductName,
-            VariantName = line.VariantName,
-            Barcode = line.Barcode,
-            Quantity = line.Quantity,
-            Unit = line.Unit,
-            UnitPriceCents = line.UnitPriceCents,
-            ListUnitPriceCents = line.EffectiveListUnitPriceCents,
-            VatRate = line.VatRate,
-            VatAllocations = line.VatAllocations.ToArray(),
-            MenuComponents = line.MenuComponents.ToArray(),
-            ImHausApplicable = line.ImHausApplicable,
-            PfandCents = line.PfandCents,
-            PromotionId = line.PromotionId,
-            PromotionName = line.PromotionName,
-            PromotionPercent = line.PromotionPercent,
-            PromotionDiscountUnitCents = line.PromotionDiscountUnitCents,
-            PromotionStartDate = line.PromotionStartDate,
-            PromotionEndDate = line.PromotionEndDate
-        }).ToArray();
+        lines.Select(line => new CartLine(line)).ToArray();
 }
 
 public sealed class DailyClosingGuard : IDailyClosingGuard

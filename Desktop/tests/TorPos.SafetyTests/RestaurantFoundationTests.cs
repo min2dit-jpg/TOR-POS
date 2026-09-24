@@ -14,6 +14,14 @@ internal static class RestaurantFoundationTests
             "Restaurant includes the essential Tischplan");
 
         assert(
+            LoginWindow.NormalizeLockedEdition("restaurant") == "RESTAURANT",
+            "Dedicated TOR Restaurant build remains locked to RESTAURANT at login");
+
+        assert(
+            LoginWindow.NormalizeLockedEdition("unknown") is null,
+            "Login edition lock rejects unknown product identities");
+
+        assert(
             RestaurantProductFeatures.Includes(
                 RestaurantProductTier.Restaurant,
                 RestaurantFeature.SplitrechnungNachArtikel),
@@ -252,9 +260,8 @@ internal static class RestaurantFoundationTests
             var result = await migration.InitializeDatabaseAsync();
 
             assert(
-                result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 34,
-                "Restaurant database reaches schema version 34");
+                result.ToVersion == SchemaMigrationService.TargetSchemaVersion,
+                $"Restaurant database reaches current schema version {SchemaMigrationService.TargetSchemaVersion}");
 
             await using (var c = db.OpenConnection())
             {
