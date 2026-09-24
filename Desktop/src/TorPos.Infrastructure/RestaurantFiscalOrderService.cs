@@ -87,7 +87,8 @@ public sealed class RestaurantFiscalOrderService
             actor,
             new[] { line },
             result,
-            ct);
+            ct,
+            securedItemId: item.Id);
     }
 
     public async Task SecureCancelledItemAsync(
@@ -200,6 +201,24 @@ public sealed class RestaurantFiscalOrderService
         {
             await using var c = _db.OpenConnection();
 
+            await using (var pending = c.CreateCommand())
+            {
+                pending.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_session_items
+                    WHERE session_id=$session
+                      AND state IN ('ACTIVE','PAID')
+                      AND fiscal_state='PENDING';
+                    """;
+                pending.Parameters.AddWithValue("$session", sessionId);
+
+                if (Convert.ToInt32(
+                        await pending.ExecuteScalarAsync(ct)) > 0)
+                {
+                    return false;
+                }
+            }
+
             var open = new Dictionary<string,long>(StringComparer.Ordinal);
             await using (var q = c.CreateCommand())
             {
@@ -271,7 +290,8 @@ public sealed class RestaurantFiscalOrderService
         string actor,
         IReadOnlyList<CartLine> lines,
         SaleTseResult result,
-        CancellationToken ct)
+        CancellationToken ct,
+        long? securedItemId = null)
     {
         await IoQueue.RunAsync(async () =>
         {
@@ -346,6 +366,29 @@ public sealed class RestaurantFiscalOrderService
                 item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                 item.Parameters.AddWithValue("$pfand", line.PfandCents);
                 await item.ExecuteNonQueryAsync(ct);
+            }
+
+            if (securedItemId is { } itemId)
+            {
+                await using var secure = c.CreateCommand();
+                secure.Transaction = tx;
+                secure.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET fiscal_state='SECURED',
+                        version=version+1
+                    WHERE id=$item
+                      AND session_id=$session
+                      AND state='ACTIVE'
+                      AND fiscal_state='PENDING';
+                    """;
+                secure.Parameters.AddWithValue("$item", itemId);
+                secure.Parameters.AddWithValue("$session", sessionId);
+
+                if (await secure.ExecuteNonQueryAsync(ct) != 1)
+                {
+                    throw new InvalidOperationException(
+                        "Restaurant-Position konnte nicht atomar als fiskalisch gesichert markiert werden.");
+                }
             }
 
             await tx.CommitAsync(ct);
