@@ -69,6 +69,60 @@ public sealed record RestaurantSessionItem(
 }
 
 
+public static class RestaurantOrderQuantityPolicy
+{
+    public const decimal MaxQuantity = 99m;
+
+    public static void ValidateRaw(decimal quantity)
+    {
+        if (quantity <= 0m || quantity > MaxQuantity)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                $"Restaurant-Menge muss zwischen 1 und {MaxQuantity:0} liegen.");
+        }
+    }
+
+    public static long ToMilli(
+        Product product,
+        decimal quantity)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+        ValidateRaw(quantity);
+
+        var unit = (product.Unit ?? "").Trim();
+        var isPiece =
+            unit.Length == 0 ||
+            string.Equals(
+                unit,
+                "Stück",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(
+                unit,
+                "Stueck",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (isPiece &&
+            quantity != decimal.Truncate(quantity))
+        {
+            throw new ArgumentException(
+                "Stückartikel dürfen nur als ganze Anzahl bestellt werden.",
+                nameof(quantity));
+        }
+
+        var scaled = quantity * 1000m;
+        if (scaled != decimal.Truncate(scaled))
+        {
+            throw new ArgumentException(
+                "Restaurant-Mengen unterstützen höchstens drei Nachkommastellen.",
+                nameof(quantity));
+        }
+
+        return checked((long)scaled);
+    }
+}
+
+
 public sealed record RestaurantSplitSelection(
     long SessionItemId,
     long QuantityMilli);
