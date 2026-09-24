@@ -88,6 +88,8 @@ public static class AppPaths
     public static string ProductImagesPath => Path.Combine(DataDirectory, "ProductImages");
     /// <summary>Operator's own advertising pictures for the idle customer display.</summary>
     public static string CustomerDisplayAdsPath => Path.Combine(DataDirectory, "CustomerDisplayAds");
+    /// <summary>Werbe-TV pictures - a folder of their own, never shown on the Kundendisplay.</summary>
+    public static string AdTvImagesPath => Path.Combine(DataDirectory, "WerbeTvBilder");
     public static string ReceiptAssetsPath => Path.Combine(DataDirectory, "ReceiptAssets");
     public static string BackupsPath => Path.Combine(DataDirectory, "Backups");
     public static string UpdatesPath => Path.Combine(DataDirectory, "Updates");
