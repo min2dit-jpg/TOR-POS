@@ -72,6 +72,33 @@ internal static class RestaurantFoundationTests
             CustomBonId: "RB-900",
             CustomAllocationGroup: "Restaurant session-900");
 
+        var restaurantOtherOrderRecord =
+            restaurantOrderRecord with
+            {
+                Id = 901,
+                CustomBonId = "RB-901",
+                CustomAllocationGroup = "Restaurant session-901"
+            };
+
+        var restaurantStornoRecord =
+            restaurantOrderRecord with
+            {
+                Id = 902,
+                Sequence = 2,
+                Kind = OrderBestellungKind.Storno,
+                CreatedAt = exportTime.AddMinutes(2),
+                Lines = new[]
+                {
+                    new CartLine(
+                        restaurantOrderRecord.Lines.Single())
+                    {
+                        Quantity = -1m
+                    }
+                },
+                CustomBonId = "RB-902",
+                CustomAllocationGroup = "Restaurant session-900"
+            };
+
         var exportRows = DsfinvkClosingBuilder.Build(
             new DsfinvkClosingInput
             {
@@ -90,7 +117,12 @@ internal static class RestaurantFoundationTests
                     "TEST-001",
                     "TOR Restaurant",
                     "R185"),
-                OrderRecords = new[] { restaurantOrderRecord }
+                OrderRecords = new[]
+                {
+                    restaurantOtherOrderRecord,
+                    restaurantOrderRecord,
+                    restaurantStornoRecord
+                }
             });
 
         assert(
@@ -105,6 +137,19 @@ internal static class RestaurantFoundationTests
                     "Restaurant session-900",
                     StringComparison.Ordinal)),
             "Restaurant Bestellung keeps its RB BON_ID and Restaurant allocation group in DSFinV-K rows");
+
+        assert(
+            exportRows.For("Bon_Referenzen").Any(
+                row =>
+                    string.Equals(
+                        Convert.ToString(row["BON_ID"]),
+                        "RB-902",
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        Convert.ToString(row["REF_BON_ID"]),
+                        "RB-900",
+                        StringComparison.Ordinal)),
+            "K-4 Restaurant Storno references the acceptance RB identity of the same session instead of BE-0-1");
 
         var standardEntitlements = new RestaurantEntitlementService(
             new FakeCommercialLicenseService(
