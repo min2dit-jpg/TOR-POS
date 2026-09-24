@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 39;
+    public const int TargetSchemaVersion = 40;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2234,6 +2234,79 @@ public sealed class SchemaMigrationService
 
                         CREATE INDEX IF NOT EXISTS ix_self_order_session_active
                           ON restaurant_self_order_sessions(closed_at,expires_at,table_id);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                40,
+                "SELF_ORDER_RECEIVED_ORDER_INBOX",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable(
+                        "TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(
+                            edition,
+                            "RESTAURANT",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_self_order_orders(
+                          id TEXT PRIMARY KEY,
+                          public_order_id TEXT NOT NULL UNIQUE,
+                          session_id TEXT NOT NULL
+                            REFERENCES restaurant_sessions(id),
+                          table_id INTEGER NOT NULL
+                            REFERENCES restaurant_tables(id),
+                          client_order_id TEXT NOT NULL,
+                          request_hash TEXT NOT NULL,
+                          state TEXT NOT NULL
+                            CHECK(state IN ('RECEIVED','ACCEPTED','REJECTED','EXPIRED')),
+                          approval_mode TEXT NOT NULL
+                            CHECK(approval_mode IN ('CONFIRMATION_REQUIRED','AUTOMATIC')),
+                          note TEXT NOT NULL DEFAULT '',
+                          total_cents INTEGER NOT NULL
+                            CHECK(total_cents >= 0),
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          UNIQUE(session_id,client_order_id));
+
+                        CREATE TABLE IF NOT EXISTS restaurant_self_order_order_items(
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          order_id TEXT NOT NULL
+                            REFERENCES restaurant_self_order_orders(id),
+                          line_no INTEGER NOT NULL,
+                          product_id INTEGER NOT NULL,
+                          product_name TEXT NOT NULL,
+                          quantity_milli INTEGER NOT NULL
+                            CHECK(quantity_milli > 0),
+                          unit_price_cents INTEGER NOT NULL
+                            CHECK(unit_price_cents >= 0),
+                          vat_rate REAL NOT NULL,
+                          pfand_cents INTEGER NOT NULL DEFAULT 0,
+                          line_total_cents INTEGER NOT NULL
+                            CHECK(line_total_cents >= 0),
+                          UNIQUE(order_id,line_no));
+
+                        CREATE INDEX IF NOT EXISTS ix_self_order_orders_state
+                          ON restaurant_self_order_orders(state,created_at,table_id);
+
+                        CREATE TRIGGER IF NOT EXISTS trg_self_order_items_no_update
+                        BEFORE UPDATE ON restaurant_self_order_order_items
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant_self_order_order_items are immutable');
+                        END;
+
+                        CREATE TRIGGER IF NOT EXISTS trg_self_order_items_no_delete
+                        BEFORE DELETE ON restaurant_self_order_order_items
+                        BEGIN
+                          SELECT RAISE(ABORT,'restaurant_self_order_order_items are immutable');
+                        END;
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
