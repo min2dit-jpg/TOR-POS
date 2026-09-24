@@ -144,24 +144,6 @@ public sealed class RestaurantHandheldPairingService
             string? pairingId = null;
             string? pairedBy = null;
 
-            await using (var existingDevice = c.CreateCommand())
-            {
-                existingDevice.Transaction = tx;
-                existingDevice.CommandText = """
-                    SELECT COUNT(*)
-                    FROM restaurant_handheld_devices
-                    WHERE device_id=$device;
-                    """;
-                existingDevice.Parameters.AddWithValue("$device", deviceId);
-
-                if (Convert.ToInt32(
-                        await existingDevice.ExecuteScalarAsync(ct)) > 0)
-                {
-                    throw new InvalidOperationException(
-                        "Geräte-ID ist bereits gekoppelt. Vor einer erneuten Kopplung muss eine neue Geräte-ID verwendet werden.");
-                }
-            }
-
             await using (var find = c.CreateCommand())
             {
                 find.Transaction = tx;
@@ -187,6 +169,28 @@ public sealed class RestaurantHandheldPairingService
             if (pairingId is null)
                 throw new InvalidOperationException(
                     "Pairing-Code ist abgelaufen, bereits verwendet oder ungültig.");
+
+            // Only after proving knowledge of a valid one-time code may the
+            // service reveal that a device identity already exists. The check
+            // still happens before consume, so a duplicate identity never
+            // burns the administrator-issued code.
+            await using (var existingDevice = c.CreateCommand())
+            {
+                existingDevice.Transaction = tx;
+                existingDevice.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_handheld_devices
+                    WHERE device_id=$device;
+                    """;
+                existingDevice.Parameters.AddWithValue("$device", deviceId);
+
+                if (Convert.ToInt32(
+                        await existingDevice.ExecuteScalarAsync(ct)) > 0)
+                {
+                    throw new InvalidOperationException(
+                        "Geräte-ID ist bereits gekoppelt. Vor einer erneuten Kopplung muss eine neue Geräte-ID verwendet werden.");
+                }
+            }
 
             await using (var consume = c.CreateCommand())
             {
