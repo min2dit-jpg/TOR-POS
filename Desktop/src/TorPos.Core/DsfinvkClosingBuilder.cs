@@ -581,20 +581,41 @@ public static class DsfinvkClosingBuilder
                 ["ABRECHNUNGSKREIS"] = DsfinvkCsv.Fit(allocationGroup, 50)
             });
 
-            if (record.Kind == OrderBestellungKind.Storno &&
-                _input.OrderRecords.FirstOrDefault(r => r.ParkNumber == record.ParkNumber && r.Sequence == 1) is not null)
+            if (record.Kind == OrderBestellungKind.Storno)
             {
-                // An order cannot outlive a closing (open orders block the
-                // Z-Bericht), so its acceptance is in this closing.
-                Add("Bon_Referenzen", new()
+                var acceptance =
+                    !string.IsNullOrWhiteSpace(
+                        record.CustomAllocationGroup)
+                        ? _input.OrderRecords.FirstOrDefault(r =>
+                            r.Sequence == 1 &&
+                            string.Equals(
+                                r.CustomAllocationGroup,
+                                record.CustomAllocationGroup,
+                                StringComparison.Ordinal))
+                        : _input.OrderRecords.FirstOrDefault(r =>
+                            r.ParkNumber == record.ParkNumber &&
+                            r.Sequence == 1);
+
+                if (acceptance is not null)
                 {
-                    ["BON_ID"] = bonId,
-                    ["REF_TYP"] = "Transaktion",
-                    ["REF_DATUM"] = DsfinvkCsv.Timestamp(_input.Closing.CreatedAt),
-                    ["REF_Z_KASSE_ID"] = _input.Master.KasseId,
-                    ["REF_Z_NR"] = _input.Closing.ZNumber,
-                    ["REF_BON_ID"] = OrderRecordBonId(record.ParkNumber, 1),
-                });
+                    // Restaurant orders use their own stable RB-* identity.
+                    // Legacy/IMBISS records keep the historical BE-* identity.
+                    var acceptanceBonId =
+                        acceptance.CustomBonId ??
+                        OrderRecordBonId(
+                            acceptance.ParkNumber,
+                            acceptance.Sequence);
+
+                    Add("Bon_Referenzen", new()
+                    {
+                        ["BON_ID"] = bonId,
+                        ["REF_TYP"] = "Transaktion",
+                        ["REF_DATUM"] = DsfinvkCsv.Timestamp(_input.Closing.CreatedAt),
+                        ["REF_Z_KASSE_ID"] = _input.Master.KasseId,
+                        ["REF_Z_NR"] = _input.Closing.ZNumber,
+                        ["REF_BON_ID"] = acceptanceBonId,
+                    });
+                }
             }
 
             WritePositions(bonId, record.Lines, 0, 1, inHaus: record.ImHaus ? "1" : "0", beleg: false);
