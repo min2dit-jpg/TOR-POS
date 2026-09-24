@@ -193,7 +193,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                 () => Results.Ok(new
                 {
                     product = "TOR Restaurant Plus",
-                    apiVersion = 2,
+                    apiVersion = 3,
                     secure = true,
                     heartbeatSeconds =
                         RestaurantTerminalRegistry.RecommendedHeartbeatSeconds,
@@ -209,6 +209,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         try
                         {
                             var paired = await _pairing.PairAsync(
+                                request.PairingId,
                                 request.PairingCode,
                                 request.DeviceId,
                                 request.DisplayName,
@@ -234,7 +235,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 paired.PairedAt,
                                 certificateSha256 =
                                     CertificateSha256(cert),
-                                apiVersion = 2,
+                                apiVersion = 3,
                                 heartbeatSeconds =
                                     RestaurantTerminalRegistry.RecommendedHeartbeatSeconds,
                                 offlineAfterSeconds =
@@ -1130,6 +1131,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         string OperatorSessionToken);
 
     private sealed record PairRequest(
+        string PairingId,
         string PairingCode,
         string DeviceId,
         string DisplayName,

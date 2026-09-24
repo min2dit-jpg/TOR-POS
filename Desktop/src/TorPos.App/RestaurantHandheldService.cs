@@ -263,9 +263,14 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.OperatorSessionToken,
             ct);
 
-        if (request.Quantity <= 0m)
+        if (request.Quantity <= 0m ||
+            request.Quantity > 99m ||
+            request.Quantity != decimal.Truncate(request.Quantity))
+        {
             throw new ArgumentOutOfRangeException(
-                nameof(request.Quantity));
+                nameof(request.Quantity),
+                "Handheld-Menge muss eine ganze Stückzahl zwischen 1 und 99 sein.");
+        }
 
         var product = _catalog.Products
             .FirstOrDefault(x =>
@@ -273,6 +278,14 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 x.IsActive)
             ?? throw new InvalidOperationException(
                 "Artikel ist nicht vorhanden oder deaktiviert.");
+
+        if (product.IsWeighted ||
+            product.IsCombo ||
+            product.Variants.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Dieser Artikel benötigt einen erweiterten Restaurant-Snapshot und ist für Handheld-Stückbestellungen gesperrt.");
+        }
 
         var quantityMilli =
             (long)Math.Round(
