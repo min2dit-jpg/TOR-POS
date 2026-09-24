@@ -224,6 +224,15 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      # Signs the product executables before they are packaged. Without the
+      # signing secrets this step is a no-op and the build stays unsigned.
+      - name: Ayrik urun EXElerini imzala (sertifika varsa)
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          pwsh -NoProfile -File tools/Sign-WindowsFiles.ps1 -Path publish\split\TOR-Einzelhandel\TOR-Einzelhandel.exe,publish\split\TOR-Gastro\TOR-Gastro.exe,publish\split\TOR-Restaurant\TOR-Restaurant.exe
+
       - name: Ayrik TOR Einzelhandel, TOR Gastro ve TOR Restaurant Setup EXElerini olustur
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
@@ -246,14 +255,39 @@ jobs:
           if (-not (Test-Path installer-output\TOR-Gastro-Setup.exe)) { throw 'TOR Gastro Setup missing.' }
           if (-not (Test-Path installer-output\TOR-Restaurant-Setup.exe)) { throw 'TOR Restaurant Setup missing.' }
 
-      - name: Ayrik Setup EXElerini sakla
+      - name: Ayrik Setup EXElerini imzala (sertifika varsa)
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          pwsh -NoProfile -File tools/Sign-WindowsFiles.ps1 -Path installer-output\TOR-Einzelhandel-Setup.exe,installer-output\TOR-Gastro-Setup.exe,installer-output\TOR-Restaurant-Setup.exe
+
+      # One artifact per product: a customer download holds exactly one
+      # setup, and the Restaurant build (still in development) never travels
+      # in the same archive as the released retail/gastro products.
+      - name: TOR Einzelhandel Setup EXE sakla
         uses: actions/upload-artifact@v7
         with:
-          name: TOR-POS-Split-Setups-${{ github.sha }}
-          path: |
-            Desktop/installer-output/TOR-Einzelhandel-Setup.exe
-            Desktop/installer-output/TOR-Gastro-Setup.exe
-            Desktop/installer-output/TOR-Restaurant-Setup.exe
+          name: TOR-Einzelhandel-Setup-${{ github.sha }}
+          path: Desktop/installer-output/TOR-Einzelhandel-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: TOR Gastro Setup EXE sakla
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-Gastro-Setup-${{ github.sha }}
+          path: Desktop/installer-output/TOR-Gastro-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: TOR Restaurant Setup EXE sakla (gelistirme)
+        uses: actions/upload-artifact@v7
+        with:
+          name: TOR-Restaurant-Setup-DEV-${{ github.sha }}
+          path: Desktop/installer-output/TOR-Restaurant-Setup.exe
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

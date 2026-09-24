@@ -41,6 +41,12 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppReleaseName}
 AppPublisher={#MyAppPublisher}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoCopyright=(c) {#MyAppPublisher}
 DefaultDirName={autopf}\{#MyDefaultDirName}
 UsePreviousAppDir=yes
 DefaultGroupName={#MyDefaultGroupName}
@@ -167,19 +173,18 @@ begin
   Result := PageID = EditionPage.ID;
 end;
 
+{ The running-app check uses the mutex every TOR build creates at start
+  (ProductBuild.RunningMutexName) instead of a hidden PowerShell process.
+  A setup that silently launches PowerShell is exactly the pattern browser
+  download scanners and antivirus heuristics classify as malicious. }
 function TorPosProcessRunning(): Boolean;
-var ResultCode: Integer; PowerShellPath: String;
 begin
-  Result := False; PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'); if not FileExists(PowerShellPath) then Exit;
-  if Exec(PowerShellPath, '-NoProfile -NonInteractive -Command "if (Get-Process -Name {#MyProcessName} -ErrorAction SilentlyContinue) { exit 66 } else { exit 0 }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then Result := ResultCode = 66;
+  Result := CheckForMutexes('{#MyAppMutex}');
 end;
 
 function LegacyTorPosProcessRunning(): Boolean;
-var ResultCode: Integer; PowerShellPath: String;
 begin
-  Result := False; if not LegacyMatchesFixedEdition() then Exit;
-  PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'); if not FileExists(PowerShellPath) then Exit;
-  if Exec(PowerShellPath, '-NoProfile -NonInteractive -Command "if (Get-Process -Name TorPos.App -ErrorAction SilentlyContinue) { exit 66 } else { exit 0 }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then Result := ResultCode = 66;
+  Result := LegacyMatchesFixedEdition() and CheckForMutexes('TOR-POS-Pro-Running');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
