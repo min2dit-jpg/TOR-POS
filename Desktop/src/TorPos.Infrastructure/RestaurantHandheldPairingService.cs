@@ -5,6 +5,7 @@ using System.Text;
 namespace TorPos.Infrastructure;
 
 public sealed record RestaurantPairingCode(
+    string Id,
     string Code,
     DateTimeOffset ExpiresAt);
 
@@ -97,10 +98,11 @@ public sealed class RestaurantHandheldPairingService
             await tx.CommitAsync(ct);
         });
 
-        return new RestaurantPairingCode(code, expires);
+        return new RestaurantPairingCode(id, code, expires);
     }
 
     public async Task<RestaurantPairedDevice> PairAsync(
+        string pairingId,
         string pairingCode,
         string deviceId,
         string displayName,
@@ -109,16 +111,37 @@ public sealed class RestaurantHandheldPairingService
         _entitlements.Require(
             TorPos.Core.RestaurantFeature.HandheldBestellung);
 
+        pairingId = (pairingId ?? "").Trim();
         pairingCode = (pairingCode ?? "").Trim();
         deviceId = (deviceId ?? "").Trim();
         displayName = (displayName ?? "").Trim();
 
-        if (pairingCode.Length != 6 || !pairingCode.All(char.IsDigit))
-            throw new InvalidOperationException("Pairing-Code ist ungültig.");
+        if (pairingId.Length is < 16 or > 64 ||
+            !pairingId.All(Uri.IsHexDigit))
+        {
+            throw new InvalidOperationException(
+                "Pairing-Sitzung ist ungültig.");
+        }
+
+        if (pairingCode.Length != 6 ||
+            !pairingCode.All(char.IsDigit))
+        {
+            throw new InvalidOperationException(
+                "Pairing-Code ist ungültig.");
+        }
+
         if (deviceId.Length is < 4 or > 128)
-            throw new ArgumentException("Geräte-ID ist ungültig.", nameof(deviceId));
-        if (displayName.Length == 0 || displayName.Length > 120)
-            throw new ArgumentException("Gerätename ist ungültig.", nameof(displayName));
+            throw new ArgumentException(
+                "Geräte-ID ist ungültig.",
+                nameof(deviceId));
+
+        if (displayName.Length == 0 ||
+            displayName.Length > 120)
+        {
+            throw new ArgumentException(
+                "Gerätename ist ungültig.",
+                nameof(displayName));
+        }
 
         var now = DateTimeOffset.UtcNow;
         var token = Convert.ToBase64String(
@@ -130,34 +153,110 @@ public sealed class RestaurantHandheldPairingService
             await using var c = _db.OpenConnection();
             await using var tx = c.BeginTransaction();
 
-            string? pairingId = null;
+            await using (var existingDevice = c.CreateCommand())
+            {
+                existingDevice.Transaction = tx;
+                existingDevice.CommandText = """
+                    SELECT is_active
+                    FROM restaurant_handheld_devices
+                    WHERE device_id=$id
+                    LIMIT 1;
+                    """;
+                existingDevice.Parameters.AddWithValue(
+                    "$id",
+                    deviceId);
+
+                var existing =
+                    await existingDevice.ExecuteScalarAsync(ct);
+
+                if (existing is not null)
+                {
+                    throw new InvalidOperationException(
+                        "Diese Geräte-ID ist bereits registriert. " +
+                        "Ein bestehendes oder deaktiviertes Gerät darf nicht durch Pairing überschrieben werden.");
+                }
+            }
+
+            string? storedCodeHash = null;
             string? pairedBy = null;
+            var failedAttempts = 0;
 
             await using (var find = c.CreateCommand())
             {
                 find.Transaction = tx;
                 find.CommandText = """
-                    SELECT id,created_by
+                    SELECT code_hash,created_by,failed_attempts
                     FROM restaurant_pairing_codes
-                    WHERE code_hash=$hash
+                    WHERE id=$id
                       AND consumed_at IS NULL
                       AND expires_at >= $now
                     LIMIT 1;
                     """;
-                find.Parameters.AddWithValue("$hash", Hash(pairingCode));
-                find.Parameters.AddWithValue("$now", now.ToString("O"));
+                find.Parameters.AddWithValue(
+                    "$id",
+                    pairingId);
+                find.Parameters.AddWithValue(
+                    "$now",
+                    now.ToString("O"));
 
-                await using var r = await find.ExecuteReaderAsync(ct);
+                await using var r =
+                    await find.ExecuteReaderAsync(ct);
+
                 if (await r.ReadAsync(ct))
                 {
-                    pairingId = r.GetString(0);
+                    storedCodeHash = r.GetString(0);
                     pairedBy = r.GetString(1);
+                    failedAttempts = r.GetInt32(2);
                 }
             }
 
-            if (pairingId is null)
+            if (storedCodeHash is null ||
+                failedAttempts >= 5)
+            {
                 throw new InvalidOperationException(
-                    "Pairing-Code ist abgelaufen, bereits verwendet oder ungültig.");
+                    "Pairing-Sitzung ist abgelaufen, gesperrt oder bereits verwendet.");
+            }
+
+            if (!FixedEquals(
+                    storedCodeHash,
+                    Hash(pairingCode)))
+            {
+                var nextAttempts =
+                    Math.Min(5, failedAttempts + 1);
+
+                await using var failed = c.CreateCommand();
+                failed.Transaction = tx;
+                failed.CommandText = """
+                    UPDATE restaurant_pairing_codes
+                    SET failed_attempts=$attempts,
+                        consumed_at=CASE
+                            WHEN $attempts >= 5 THEN $now
+                            ELSE consumed_at
+                        END,
+                        consumed_by_device=CASE
+                            WHEN $attempts >= 5 THEN 'FAILED_ATTEMPTS'
+                            ELSE consumed_by_device
+                        END
+                    WHERE id=$id
+                      AND consumed_at IS NULL;
+                    """;
+                failed.Parameters.AddWithValue(
+                    "$attempts",
+                    nextAttempts);
+                failed.Parameters.AddWithValue(
+                    "$now",
+                    now.ToString("O"));
+                failed.Parameters.AddWithValue(
+                    "$id",
+                    pairingId);
+                await failed.ExecuteNonQueryAsync(ct);
+                await tx.CommitAsync(ct);
+
+                throw new InvalidOperationException(
+                    nextAttempts >= 5
+                        ? "Pairing-Code wurde nach fünf Fehlversuchen gesperrt."
+                        : $"Pairing-Code ist ungültig. Noch {5 - nextAttempts} Versuch(e).");
+            }
 
             await using (var consume = c.CreateCommand())
             {
@@ -167,15 +266,24 @@ public sealed class RestaurantHandheldPairingService
                     SET consumed_at=$now,
                         consumed_by_device=$device
                     WHERE id=$id
-                      AND consumed_at IS NULL;
+                      AND consumed_at IS NULL
+                      AND failed_attempts < 5;
                     """;
-                consume.Parameters.AddWithValue("$now", now.ToString("O"));
-                consume.Parameters.AddWithValue("$device", deviceId);
-                consume.Parameters.AddWithValue("$id", pairingId);
+                consume.Parameters.AddWithValue(
+                    "$now",
+                    now.ToString("O"));
+                consume.Parameters.AddWithValue(
+                    "$device",
+                    deviceId);
+                consume.Parameters.AddWithValue(
+                    "$id",
+                    pairingId);
 
                 if (await consume.ExecuteNonQueryAsync(ct) != 1)
+                {
                     throw new InvalidOperationException(
-                        "Pairing-Code wurde bereits verwendet.");
+                        "Pairing-Sitzung wurde bereits verwendet oder gesperrt.");
+                }
             }
 
             await using (var device = c.CreateCommand())
@@ -185,20 +293,23 @@ public sealed class RestaurantHandheldPairingService
                     INSERT INTO restaurant_handheld_devices(
                         device_id,display_name,token_hash,paired_at,paired_by,
                         last_seen_at,is_active)
-                    VALUES($id,$name,$token,$now,$actor,$now,1)
-                    ON CONFLICT(device_id) DO UPDATE SET
-                        display_name=excluded.display_name,
-                        token_hash=excluded.token_hash,
-                        paired_at=excluded.paired_at,
-                        paired_by=excluded.paired_by,
-                        last_seen_at=excluded.last_seen_at,
-                        is_active=1;
+                    VALUES($id,$name,$token,$now,$actor,$now,1);
                     """;
-                device.Parameters.AddWithValue("$id", deviceId);
-                device.Parameters.AddWithValue("$name", displayName);
-                device.Parameters.AddWithValue("$token", tokenHash);
-                device.Parameters.AddWithValue("$now", now.ToString("O"));
-                device.Parameters.AddWithValue("$actor", pairedBy ?? "");
+                device.Parameters.AddWithValue(
+                    "$id",
+                    deviceId);
+                device.Parameters.AddWithValue(
+                    "$name",
+                    displayName);
+                device.Parameters.AddWithValue(
+                    "$token",
+                    tokenHash);
+                device.Parameters.AddWithValue(
+                    "$now",
+                    now.ToString("O"));
+                device.Parameters.AddWithValue(
+                    "$actor",
+                    pairedBy ?? "");
                 await device.ExecuteNonQueryAsync(ct);
             }
 
