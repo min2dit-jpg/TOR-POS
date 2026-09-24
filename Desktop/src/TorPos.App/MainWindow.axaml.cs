@@ -6043,7 +6043,7 @@ public partial class MainWindow:Window
             return;
         }
 
-        var window = new CustomerDisplayWindow(screen, _settingsCache.GetText("company.name", "TOR POS"));
+        var window = new CustomerDisplayWindow(screen, _settingsCache.GetText("company.name", "TOR POS"), Screens.ScreenFromWindow(this)?.Bounds);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_customerDisplayWindow, window)) _customerDisplayWindow = null;
@@ -6152,7 +6152,7 @@ public partial class MainWindow:Window
             return;
         }
 
-        var window = new OrderCustomerDisplayWindow(OrderWorkflow, _currentUser.IsTraining, screen, refresh);
+        var window = new OrderCustomerDisplayWindow(OrderWorkflow, _currentUser.IsTraining, screen, refresh, Screens.ScreenFromWindow(this)?.Bounds);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_orderDisplayWindow, window)) _orderDisplayWindow = null;

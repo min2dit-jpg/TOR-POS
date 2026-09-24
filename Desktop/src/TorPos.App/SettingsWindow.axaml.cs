@@ -1207,7 +1207,7 @@ public partial class SettingsWindow : Window
         page.Children.Add(ToggleRow(customerDisplayEnabled));
 
         var customerDisplaySection = Section("Kundendisplay · eigener Bildschirm");
-        Form(customerDisplaySection, "Bildschirm", Combo("device.customer_display.screen_index", "0", "1", "2", "3", "4"), "0 = automatisch den zweiten Bildschirm verwenden; 1–4 = feste Bildschirmnummer.");
+        Form(customerDisplaySection, "Bildschirm", Combo("device.customer_display.screen_index", "0", "1", "2", "3", "4"), "0 = automatisch einen zweiten Bildschirm (nie den Kassenbildschirm); 1 = Windows-Hauptbildschirm, 2–4 = weitere Bildschirme von links nach rechts.");
         customerDisplaySection.Children.Add(InfoCard("Getrennt vom Bestellmonitor", "Das Kundendisplay zeigt den Warenkorb/die Summe während des Verkaufs und danach 'Vielen Dank' - bei aktiviertem digitalem Bon (R103) auch den QR-Code dort statt auf dem Kassenbildschirm. Der Bestellmonitor unten ist ein eigener, unabhängiger Bildschirm nur für Bestellnummern und deren Status.", AppTheme.InfoCardBg));
 
         // Idle advertising on the customer display.
@@ -1245,7 +1245,7 @@ public partial class SettingsWindow : Window
             page.Children.Add(ToggleRow(orderEnabled));
 
             var orderDisplay = Section("Bestellmonitor · eigener Bildschirm");
-            Form(orderDisplay, "Bildschirm", Combo("order_display.screen_index", "0", "1", "2", "3", "4"), "0 = automatisch den zweiten Bildschirm verwenden; 1–4 = feste Bildschirmnummer.");
+            Form(orderDisplay, "Bildschirm", Combo("order_display.screen_index", "0", "1", "2", "3", "4"), "0 = automatisch einen zweiten Bildschirm (nie den Kassenbildschirm); 1 = Windows-Hauptbildschirm, 2–4 = weitere Bildschirme von links nach rechts.");
             Form(orderDisplay, "Aktualisierung (Sek.)", Text("order_display.refresh_seconds"), "1–10 Sekunden · Standard 2.");
             orderDisplay.Children.Add(InfoCard("Nur Bestellungen", "ANGENOMMEN / IN VORBEREITUNG erscheinen als WIRD VORBEREITET. ABHOLBEREIT erscheint grün als FERTIG. AUSGEGEBEN verschwindet vom Bestellmonitor.", AppTheme.InfoCardBg));
             orderDisplay.IsVisible = false;

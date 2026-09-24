@@ -265,7 +265,7 @@ public static class MultiLanguageTests
             "Kundendisplay verwenden",
             "Kundendisplay · eigener Bildschirm",
             "Bildschirm",
-            "0 = automatisch den zweiten Bildschirm verwenden; 1–4 = feste Bildschirmnummer.",
+            "0 = automatisch einen zweiten Bildschirm (nie den Kassenbildschirm); 1 = Windows-Hauptbildschirm, 2–4 = weitere Bildschirme von links nach rechts.",
             "Getrennt vom Bestellmonitor",
             "Separaten Bestellmonitor verwenden",
             "Bestellmonitor · eigener Bildschirm",

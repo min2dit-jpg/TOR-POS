@@ -123,6 +123,44 @@ public static class CustomerDisplayAdsTests
             CustomerDisplayAds.Combine(off, pictures, cards).Count == 0,
             "the chosen source decides what is shown, own pictures come first, and switched off means the plain welcome screen");
 
+        // ---------- which monitor the customer window uses ----------
+        // Windows may list the primary (till) screen second. The automatic
+        // setting must still pick the other monitor, never the till's own.
+        var primarySecond = new[]
+        {
+            new DisplayScreenInfo(IsPrimary: false, X: 1920, Y: 0),
+            new DisplayScreenInfo(IsPrimary: true, X: 0, Y: 0)
+        };
+        assert(
+            DisplayScreenSelection.Choose(primarySecond, configured: 0, tillScreenIndex: 1) == 0 &&
+            DisplayScreenSelection.Choose(primarySecond, configured: 0, tillScreenIndex: null) == 0,
+            "the automatic customer display never opens on the till's screen, whatever order Windows lists the monitors in");
+
+        var single = new[] { new DisplayScreenInfo(true, 0, 0) };
+        var tillOnSecondary = new[]
+        {
+            new DisplayScreenInfo(true, 0, 0),
+            new DisplayScreenInfo(false, 1920, 0)
+        };
+        assert(
+            DisplayScreenSelection.Choose(single, 0, 0) is null &&
+            DisplayScreenSelection.Choose(single, 0, null) is null &&
+            DisplayScreenSelection.Choose(tillOnSecondary, 0, 1) == 0,
+            "with only one monitor the automatic setting finds no target, and a till on the secondary monitor sends the customer window to the other one");
+
+        var three = new[]
+        {
+            new DisplayScreenInfo(false, 1920, 0),
+            new DisplayScreenInfo(true, 0, 0),
+            new DisplayScreenInfo(false, -1280, 0)
+        };
+        assert(
+            DisplayScreenSelection.Choose(three, 1, null) == 1 &&
+            DisplayScreenSelection.Choose(three, 2, null) == 2 &&
+            DisplayScreenSelection.Choose(three, 3, null) == 0 &&
+            DisplayScreenSelection.Choose(three, 4, null) == 0,
+            "screen numbers 1-4 are stable: 1 is the Windows primary screen, the others follow from left to right");
+
         return Task.CompletedTask;
     }
 }
