@@ -23,7 +23,12 @@ public sealed class CustomerDisplayWindow : Window
     private readonly int _screenIndex;
     private readonly PixelRect? _tillScreenBounds;
     private readonly string _companyName;
-    private readonly DispatcherTimer _revertTimer = new() { Interval = TimeSpan.FromSeconds(20) };
+    /// <summary>How long "Vielen Dank" stays before the idle/advertising screen returns.</summary>
+    internal const int ThankYouSeconds = 10;
+    /// <summary>With a digital-receipt QR code the customer needs time to scan it.</summary>
+    internal const int ThankYouWithQrSeconds = 60;
+
+    private readonly DispatcherTimer _revertTimer = new() { Interval = TimeSpan.FromSeconds(ThankYouSeconds) };
 
     private readonly Panel _idlePanel;
     private readonly Control _welcomeContent;
@@ -351,7 +356,7 @@ public sealed class CustomerDisplayWindow : Window
         }
 
         // R145: a QR code needs time to be scanned.
-        _revertTimer.Interval = TimeSpan.FromSeconds(qrPayload is null ? 20 : 60);
+        _revertTimer.Interval = TimeSpan.FromSeconds(qrPayload is null ? ThankYouSeconds : ThankYouWithQrSeconds);
         _revertTimer.Stop();
         _revertTimer.Start();
     }
