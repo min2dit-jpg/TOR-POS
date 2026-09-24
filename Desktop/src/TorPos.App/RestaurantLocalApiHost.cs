@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -17,6 +18,54 @@ using System.Threading.RateLimiting;
 #endif
 
 namespace TorPos.App;
+
+public static class RestaurantLanBindingPolicy
+{
+    public static bool IsEligibleInterface(
+        NetworkInterfaceType type,
+        OperationalStatus status) =>
+        status == OperationalStatus.Up &&
+        type is NetworkInterfaceType.Ethernet or
+            NetworkInterfaceType.Wireless80211;
+
+    public static bool IsPrivateIpv4(IPAddress address)
+    {
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+            return false;
+
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 10 ||
+               (bytes[0] == 172 &&
+                bytes[1] is >= 16 and <= 31) ||
+               (bytes[0] == 192 &&
+                bytes[1] == 168);
+    }
+
+    public static IReadOnlyList<IPAddress> ActivePrivateIpv4()
+    {
+        try
+        {
+            return NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(x =>
+                    IsEligibleInterface(
+                        x.NetworkInterfaceType,
+                        x.OperationalStatus))
+                .SelectMany(x =>
+                    x.GetIPProperties()
+                        .UnicastAddresses)
+                .Select(x => x.Address)
+                .Where(IsPrivateIpv4)
+                .Distinct()
+                .OrderBy(x => x.ToString(), StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch
+        {
+            return Array.Empty<IPAddress>();
+        }
+    }
+}
 
 public sealed record RestaurantLocalApiStatus(
     bool Running,
@@ -127,6 +176,15 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
             }
 
 #if TOR_RESTAURANT_PRODUCT
+            var bindAddresses =
+                RestaurantLanBindingPolicy.ActivePrivateIpv4();
+
+            if (bindAddresses.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Restaurant-Geräte-API: Kein aktives privates Ethernet/WLAN gefunden. VPN, Tunnel und öffentliche Interfaces werden nicht freigegeben.");
+            }
+
             var cert = EnsureServerCertificate();
             var builder = WebApplication.CreateSlimBuilder();
 
@@ -180,9 +238,18 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
             builder.WebHost.ConfigureKestrel(options =>
             {
-                options.ListenAnyIP(
+                options.Listen(
+                    IPAddress.Loopback,
                     port,
                     listen => listen.UseHttps(cert));
+
+                foreach (var address in bindAddresses)
+                {
+                    options.Listen(
+                        address,
+                        port,
+                        listen => listen.UseHttps(cert));
+                }
             });
 
             var app = builder.Build();
@@ -865,12 +932,17 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
             _certificate = cert;
 
             var host = Environment.MachineName;
+            var lanList =
+                string.Join(
+                    ", ",
+                    bindAddresses.Select(x => x.ToString()));
+
             Status = new(
                 true,
                 $"https://{host}:{port}",
                 port,
                 CertificateSha256(cert),
-                "Restaurant-Geräte-API läuft über HTTPS.");
+                $"Restaurant-Geräte-API läuft über HTTPS · LAN: {lanList}.");
 #else
             Status = new(
                 false,
