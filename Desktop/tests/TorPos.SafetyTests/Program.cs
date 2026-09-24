@@ -594,6 +594,7 @@ await MultiLanguageTests.Run(Assert);
 await TseLifecycleReleaseGateTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await RestaurantFoundationTests.Run(Assert);
+await RestaurantFiscalRetryTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -673,7 +674,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1398;
+const int ExpectedSafetyChecks = 1400;
 
 if (checks != ExpectedSafetyChecks)
 {
