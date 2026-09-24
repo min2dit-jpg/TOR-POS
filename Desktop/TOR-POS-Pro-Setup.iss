@@ -174,8 +174,8 @@ begin
 end;
 
 { The running-app check uses the mutex every TOR build creates at start
-  (ProductBuild.RunningMutexName) instead of a hidden PowerShell process.
-  A setup that silently launches PowerShell is exactly the pattern browser
+  (ProductBuild.RunningMutexName) instead of a hidden shell process.
+  A setup that silently launches a script host is exactly the pattern browser
   download scanners and antivirus heuristics classify as malicious. }
 function TorPosProcessRunning(): Boolean;
 begin
