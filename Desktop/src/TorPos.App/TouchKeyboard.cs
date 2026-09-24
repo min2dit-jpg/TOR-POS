@@ -15,7 +15,17 @@ internal sealed class TouchKeyboard
 {
     static readonly ConditionalWeakTable<Window, TouchKeyboard> attached = new();
     static bool installed;
-    public static bool AutoOpen { get; set; } = true;
+    static bool autoOpenOnTouch = true;
+    static event Action? AutoOpenChanged;
+
+    // With AutoOpen the keyboard appears when a field is tapped, so the
+    // TASTATUR bar is only shown as the manual switch when AutoOpen is off.
+    public static bool AutoOpen
+    {
+        get => autoOpenOnTouch;
+        set { if (autoOpenOnTouch == value) return; autoOpenOnTouch = value; AutoOpenChanged?.Invoke(); }
+    }
+    readonly StackPanel bar = new() { Orientation = Orientation.Horizontal, Spacing = 10 };
     readonly Window window;
     readonly DockPanel root = new();
     readonly Control body;
@@ -35,6 +45,9 @@ internal sealed class TouchKeyboard
         Control.LoadedEvent.AddClassHandler<Window>((w, args) =>
         {
             if (attached.TryGetValue(w, out _) || w.Content is not Control content) return;
+            // Customer-facing screens take no input; a keyboard bar there is
+            // only noise in the corner of the Kundendisplay.
+            if (w is CustomerDisplayWindow or OrderCustomerDisplayWindow) return;
             attached.Add(w, new TouchKeyboard(w, content));
         });
     }
@@ -43,7 +56,6 @@ internal sealed class TouchKeyboard
         window = owner;
         body = content; originalMinHeight=content.MinHeight;
         var bottom = new StackPanel { Spacing = 3, Margin = new Thickness(4) };
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         bar.Children.Add(Key("TASTATUR", () => { if(keys.IsVisible) Hide(); else Show(); }));
         bar.Children.Add(hint);
         bottom.Children.Add(bar); bottom.Children.Add(keys);
@@ -68,7 +80,14 @@ internal sealed class TouchKeyboard
             if(box is not null && !box.IsReadOnly && box.IsEnabled) { target=box; Show(); }
         }, RoutingStrategies.Bubble, true);
         owner.Deactivated += (_, _) => Hide();
-        owner.Closed += (_, _) => { target=null; keys.Children.Clear(); };
+        UpdateBar();
+        AutoOpenChanged += UpdateBar;
+        owner.Closed += (_, _) => { AutoOpenChanged -= UpdateBar; target=null; keys.Children.Clear(); };
+    }
+    void UpdateBar()
+    {
+        if (Dispatcher.UIThread.CheckAccess()) bar.IsVisible = !AutoOpen;
+        else Dispatcher.UIThread.Post(() => bar.IsVisible = !AutoOpen);
     }
     Button Key(string caption, Action action)
     {

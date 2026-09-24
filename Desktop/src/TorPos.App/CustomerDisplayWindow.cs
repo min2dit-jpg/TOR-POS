@@ -21,6 +21,7 @@ namespace TorPos.App;
 public sealed class CustomerDisplayWindow : Window
 {
     private readonly int _screenIndex;
+    private readonly PixelRect? _tillScreenBounds;
     private readonly string _companyName;
     private readonly DispatcherTimer _revertTimer = new() { Interval = TimeSpan.FromSeconds(20) };
 
@@ -61,9 +62,10 @@ public sealed class CustomerDisplayWindow : Window
         TextAlignment = TextAlignment.Center, IsVisible = false
     };
 
-    public CustomerDisplayWindow(int screenIndex, string companyName)
+    public CustomerDisplayWindow(int screenIndex, string companyName, PixelRect? tillScreenBounds = null)
     {
         _screenIndex = screenIndex;
+        _tillScreenBounds = tillScreenBounds;
         _companyName = string.IsNullOrWhiteSpace(companyName) ? "TOR POS" : companyName;
 
         Title = "TOR POS · Kundendisplay";
@@ -94,7 +96,13 @@ public sealed class CustomerDisplayWindow : Window
 
         Opened += (_, _) =>
         {
-            MoveToConfiguredScreen();
+            // Never go fullscreen on the till's own screen: without a
+            // separate customer monitor the window closes again instead.
+            if (!CustomerScreenPlacement.MoveTo(this, _screenIndex, _tillScreenBounds))
+            {
+                Close();
+                return;
+            }
             WindowState = WindowState.FullScreen;
             ShowIdle();
         };
@@ -300,6 +308,17 @@ public sealed class CustomerDisplayWindow : Window
         _totalText.Text = Formatting.Money(totalCents);
     }
 
+    /// <summary>
+    /// The till's cart became empty. A cart still on screen (items removed,
+    /// Storno, parked) gives way to the idle/advertising screen; the
+    /// thank-you screen of a finished sale keeps running its own timer.
+    /// </summary>
+    public void ShowCartCleared()
+    {
+        if (_cartPanel.IsVisible)
+            ShowIdle();
+    }
+
     /// <param name="qrPayload">The digital-receipt URL, or null when no digital receipt applies to this sale.</param>
     public void ShowThankYou(long totalCents, string? qrPayload)
     {
@@ -441,14 +460,4 @@ public sealed class CustomerDisplayWindow : Window
         }
     };
 
-    private void MoveToConfiguredScreen()
-    {
-        var screens = Screens.All;
-        if (screens.Count == 0) return;
-        var index = _screenIndex <= 0
-            ? (screens.Count > 1 ? 1 : 0)
-            : Math.Clamp(_screenIndex - 1, 0, screens.Count - 1);
-        var target = screens[index];
-        Position = new PixelPoint(target.Bounds.X, target.Bounds.Y);
-    }
 }

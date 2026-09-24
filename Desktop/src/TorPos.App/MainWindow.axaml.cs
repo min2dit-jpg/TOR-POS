@@ -764,14 +764,15 @@ public partial class MainWindow:Window
         EmptyCartHint.IsVisible = itemCount == 0;
         RefreshSalesActionState();
 
-        // R104: only pushes a non-empty cart - an empty cart here can mean
-        // either "no customer yet" (already idle) or "just finished a sale"
-        // (ClearCompletedCart runs this right after ShowThankYou) - showing
-        // idle unconditionally would immediately overwrite the thank-you/QR
-        // screen before the customer has a chance to see it. The window's
-        // own internal timer (or the next non-empty cart) handles reverting.
+        // R104: an empty cart can mean "no customer yet", "just finished a
+        // sale" (ClearCompletedCart shows the thank-you screen first) or
+        // "cart emptied without a sale". ShowCartCleared only leaves a
+        // still-visible cart view for the idle/advertising screen, so the
+        // thank-you/QR screen is never cut short.
         if (itemCount > 0)
             _customerDisplayWindow?.ShowCart(_engine.Cart, _engine.DiscountCents, _engine.TotalCents);
+        else
+            _customerDisplayWindow?.ShowCartCleared();
 
         TrackTseVorgang();
 
@@ -3751,12 +3752,7 @@ public partial class MainWindow:Window
         {
             _=PrintReceiptAndReportAsync(BuildReceiptPrintJob(sale,snapshot.Method,cashPayment:cash),
                 _settingsCache.GetText("device.receipt_printer.name",""));
-            // R104: still a "thank you" moment on the Kundendisplay even
-            // when paper prints normally - no QR, just the total.
-            _customerDisplayWindow?.ShowThankYou(sale.TotalCents, null);
         }
-        else
-            _customerDisplayWindow?.ShowThankYou(sale.TotalCents, null);
 
         if (GetImbissPickupMode() != "ORDER")
             _ = PrintKitchenForSaleAsync(sale);
@@ -3883,6 +3879,11 @@ public partial class MainWindow:Window
 
     private void ClearCompletedCart()
     {
+        // R104: every completed checkout - real, TEST/simulation or recovered
+        // after an error - thanks the customer and then returns the
+        // Kundendisplay to its idle/advertising screen. A digital receipt
+        // later replaces this with the QR version.
+        _customerDisplayWindow?.ShowThankYou(_engine.TotalCents, null);
         // R136: the Vorgang ended with its receipt; the empty cart is no abort.
         _tseVorgang.Release();
         _pendingCheckout=null; _engine.IsReadOnly=false; _engine.Clear();
@@ -6043,7 +6044,7 @@ public partial class MainWindow:Window
             return;
         }
 
-        var window = new CustomerDisplayWindow(screen, _settingsCache.GetText("company.name", "TOR POS"));
+        var window = new CustomerDisplayWindow(screen, _settingsCache.GetText("company.name", "TOR POS"), Screens.ScreenFromWindow(this)?.Bounds);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_customerDisplayWindow, window)) _customerDisplayWindow = null;
@@ -6152,7 +6153,7 @@ public partial class MainWindow:Window
             return;
         }
 
-        var window = new OrderCustomerDisplayWindow(OrderWorkflow, _currentUser.IsTraining, screen, refresh);
+        var window = new OrderCustomerDisplayWindow(OrderWorkflow, _currentUser.IsTraining, screen, refresh, Screens.ScreenFromWindow(this)?.Bounds);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_orderDisplayWindow, window)) _orderDisplayWindow = null;

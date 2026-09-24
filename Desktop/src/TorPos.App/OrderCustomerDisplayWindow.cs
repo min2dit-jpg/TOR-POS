@@ -16,6 +16,7 @@ public sealed class OrderCustomerDisplayWindow : Window
     private readonly OrderWorkflowService _service;
     private readonly bool _training;
     private readonly int _screenIndex;
+    private readonly PixelRect? _tillScreenBounds;
     private readonly DispatcherTimer _timer = new();
     private readonly WrapPanel _preparing = new() { Orientation = Orientation.Horizontal };
     private readonly WrapPanel _ready = new() { Orientation = Orientation.Horizontal };
@@ -27,11 +28,13 @@ public sealed class OrderCustomerDisplayWindow : Window
         OrderWorkflowService service,
         bool training,
         int screenIndex,
-        int refreshSeconds)
+        int refreshSeconds,
+        PixelRect? tillScreenBounds = null)
     {
         _service = service;
         _training = training;
         _screenIndex = screenIndex;
+        _tillScreenBounds = tillScreenBounds;
 
         Title = "TOR POS · Bestellmonitor";
         WindowStartupLocation = WindowStartupLocation.Manual;
@@ -81,7 +84,11 @@ public sealed class OrderCustomerDisplayWindow : Window
         _timer.Tick += async (_, _) => await ReloadAsync();
         Opened += async (_, _) =>
         {
-            MoveToConfiguredScreen();
+            if (!CustomerScreenPlacement.MoveTo(this, _screenIndex, _tillScreenBounds))
+            {
+                Close();
+                return;
+            }
             WindowState = WindowState.FullScreen;
             await ReloadAsync();
             _timer.Start();
@@ -181,14 +188,4 @@ public sealed class OrderCustomerDisplayWindow : Window
         }
     }
 
-    private void MoveToConfiguredScreen()
-    {
-        var screens = Screens.All;
-        if (screens.Count == 0) return;
-        var index = _screenIndex <= 0
-            ? (screens.Count > 1 ? 1 : 0)
-            : Math.Clamp(_screenIndex - 1, 0, screens.Count - 1);
-        var target = screens[index];
-        Position = new PixelPoint(target.Bounds.X, target.Bounds.Y);
-    }
 }
