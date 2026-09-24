@@ -402,6 +402,26 @@ public sealed class RestaurantHandheldPairingService
                 GlobalPairingAttempts.Dequeue();
             }
 
+            foreach (var key in PairingAttemptsByCode.Keys.ToArray())
+            {
+                var queue = PairingAttemptsByCode[key];
+                while (queue.Count > 0 &&
+                       queue.Peek() < cutoff)
+                {
+                    queue.Dequeue();
+                }
+
+                if (queue.Count == 0)
+                    PairingAttemptsByCode.Remove(key);
+            }
+
+            if (GlobalPairingAttempts.Count >=
+                    GlobalPairingAttemptLimit)
+            {
+                throw new InvalidOperationException(
+                    "Zu viele Pairing-Versuche. Bitte kurz warten und einen neuen Pairing-Code verwenden.");
+            }
+
             if (!PairingAttemptsByCode.TryGetValue(
                     codeKey,
                     out var codeAttempts))
@@ -410,15 +430,7 @@ public sealed class RestaurantHandheldPairingService
                 PairingAttemptsByCode[codeKey] = codeAttempts;
             }
 
-            while (codeAttempts.Count > 0 &&
-                   codeAttempts.Peek() < cutoff)
-            {
-                codeAttempts.Dequeue();
-            }
-
-            if (GlobalPairingAttempts.Count >=
-                    GlobalPairingAttemptLimit ||
-                codeAttempts.Count >=
+            if (codeAttempts.Count >=
                     PerCodePairingAttemptLimit)
             {
                 throw new InvalidOperationException(
@@ -427,9 +439,6 @@ public sealed class RestaurantHandheldPairingService
 
             GlobalPairingAttempts.Enqueue(now);
             codeAttempts.Enqueue(now);
-
-            if (codeAttempts.Count == 0)
-                PairingAttemptsByCode.Remove(codeKey);
         }
     }
 
