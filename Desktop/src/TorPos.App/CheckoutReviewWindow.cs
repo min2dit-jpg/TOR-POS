@@ -48,7 +48,7 @@ internal sealed class RequiredAdminCredentialsWindow : Window
         Title="ADMIN-ZUGANG EINRICHTEN"; Width=500; Height=440; CanResize=false;
         WindowStartupLocation=WindowStartupLocation.CenterOwner;
         var oldPassword=new TextBox{PasswordChar='●',PlaceholderText="Aktuelles Passwort"};
-        var password=new TextBox{PasswordChar='●',PlaceholderText="Neues Passwort (mindestens 4 Zeichen)"};
+        var password=new TextBox{PasswordChar='●',PlaceholderText="Neues Passwort (mindestens 10 Zeichen)"};
         var confirm=new TextBox{PasswordChar='●',PlaceholderText="Neues Passwort wiederholen"};
         var pin=new TextBox{PasswordChar='●',PlaceholderText="Neue PIN (4 Ziffern)"};
         var status=new TextBlock{TextWrapping=Avalonia.Media.TextWrapping.Wrap};
