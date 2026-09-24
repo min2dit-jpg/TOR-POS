@@ -43,6 +43,45 @@ internal static class RestaurantFoundationTests
                 RestaurantFeature.Tischplan),
             "Restaurant Plus contains Plus modules and all standard essentials");
 
+        var excessiveQuantityRejected = false;
+        try
+        {
+            RestaurantOrderQuantityPolicy.ValidateRaw(100m);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            excessiveQuantityRejected = true;
+        }
+
+        assert(
+            excessiveQuantityRejected,
+            "G-2 Restaurant order quantity rejects values above the bounded handheld/self-order limit before arithmetic");
+
+        var fractionalPieceRejected = false;
+        try
+        {
+            RestaurantOrderQuantityPolicy.ToMilli(
+                new Product { Unit = "Stück" },
+                1.5m);
+        }
+        catch (ArgumentException)
+        {
+            fractionalPieceRejected = true;
+        }
+
+        assert(
+            fractionalPieceRejected,
+            "G-2 Restaurant Stück items reject fractional quantities");
+
+        assert(
+            RestaurantOrderQuantityPolicy.ToMilli(
+                new Product { Unit = "Stück" },
+                99m) == 99000 &&
+            RestaurantOrderQuantityPolicy.ToMilli(
+                new Product { Unit = "l" },
+                1.125m) == 1125,
+            "G-2 Restaurant quantity policy keeps bounded whole-piece and three-decimal non-piece quantities exact");
+
         var exportTime = DateTimeOffset.Parse("2026-09-22T18:00:00+02:00");
         var restaurantOrderRecord = new DsfinvkOrderRecord(
             Id: 900,
