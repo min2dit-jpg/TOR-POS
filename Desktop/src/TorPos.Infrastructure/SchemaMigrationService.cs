@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 36;
+    public const int TargetSchemaVersion = 37;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2102,6 +2102,50 @@ public sealed class SchemaMigrationService
                     q.CommandText = """
                         INSERT OR IGNORE INTO app_settings(key,value)
                         VALUES('security.default_staff_credentials_migrated','false');
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                37,
+                "K4_RESTAURANT_PENDING_FISCAL_STATE",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable(
+                        "TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(
+                            edition,
+                            "RESTAURANT",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    await using (var exists = c.CreateCommand())
+                    {
+                        exists.Transaction = tx;
+                        exists.CommandText = """
+                            SELECT COUNT(*)
+                            FROM sqlite_master
+                            WHERE type='table'
+                              AND name='restaurant_session_items';
+                            """;
+                        if (Convert.ToInt32(
+                                await exists.ExecuteScalarAsync(ct)) == 0)
+                        {
+                            return;
+                        }
+                    }
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        ALTER TABLE restaurant_session_items
+                          ADD COLUMN fiscal_state TEXT NOT NULL DEFAULT 'SECURED'
+                          CHECK(fiscal_state IN ('PENDING','SECURED'));
+
+                        CREATE INDEX IF NOT EXISTS ix_restaurant_items_fiscal_state
+                          ON restaurant_session_items(session_id,fiscal_state,state,id);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
