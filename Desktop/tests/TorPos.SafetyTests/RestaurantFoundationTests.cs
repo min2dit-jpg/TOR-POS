@@ -2160,6 +2160,8 @@ internal static class RestaurantFoundationTests
 
             var laneJournal = new PrintJobJournal(
                 Path.Combine(root, "restaurant-printer-lanes"));
+            var slowLaneStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
 
             await using var slowPrinterLane =
                 new StarMcPrint3PrinterService(
@@ -2167,6 +2169,7 @@ internal static class RestaurantFoundationTests
                     TimeSpan.FromMilliseconds(80),
                     async () =>
                     {
+                        slowLaneStarted.TrySetResult();
                         await Task.Delay(300);
                     },
                     "TEST-KITCHEN-SLOW");
@@ -2206,7 +2209,8 @@ internal static class RestaurantFoundationTests
                         "",
                         Kitchen: lanePrint));
 
-            await Task.Delay(10);
+            await slowLaneStarted.Task.WaitAsync(
+                TimeSpan.FromSeconds(3));
 
             await fastPrinterLane
                 .SubmitOrderAsync(
@@ -2219,7 +2223,7 @@ internal static class RestaurantFoundationTests
                         "",
                         Kitchen: lanePrint))
                 .WaitAsync(
-                    TimeSpan.FromSeconds(1));
+                    TimeSpan.FromSeconds(3));
 
             var slowTimedOut = false;
             try
