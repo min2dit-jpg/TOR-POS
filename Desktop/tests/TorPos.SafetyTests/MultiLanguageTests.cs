@@ -1349,7 +1349,7 @@ public static class MultiLanguageTests
             "Terminalbeleg / Trace / Prüfnachweis und Begründung",
             "Zuerst Terminal / Netzbetreiber prüfen. Diese Auswahl sendet weder Zahlung noch Storno an das Terminal.",
             "Aktuelles Passwort",
-            "Neues Passwort (mindestens 4 Zeichen)",
+            "Neues Passwort (mindestens 10 Zeichen)",
             "Neues Passwort wiederholen",
             "Neue PIN (4 Ziffern)",
             "Vor dem ersten Kassenstart müssen Standard-Zugangsdaten geändert werden.",
