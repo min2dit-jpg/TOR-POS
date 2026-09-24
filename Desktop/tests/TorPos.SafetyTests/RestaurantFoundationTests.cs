@@ -1481,6 +1481,85 @@ internal static class RestaurantFoundationTests
                 invalidCapabilityRejected,
                 "Self Order inbox rejects an invalid session capability before creating a RECEIVED order");
 
+            // Hold the global mutation lane so close is admitted before receive.
+            // Before the race fix, ReceiveAsync validated outside IoQueue while
+            // the close was still waiting, then persisted after the close.
+            inboxProduct.IsActive = true;
+            var raceQueueEntered = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var raceQueueRelease = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var raceBlocker = IoQueue.RunAsync(async () =>
+            {
+                raceQueueEntered.TrySetResult();
+                await raceQueueRelease.Task;
+            });
+
+            await raceQueueEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(3));
+
+            var closeBeforeReceive =
+                selfOrder.CloseSessionAsync(
+                    inboxSession.Id);
+
+            const string raceClientOrderId =
+                "client-order-race-0003";
+            var receiveAfterQueuedClose =
+                inboxService.ReceiveAsync(
+                    inboxQr.PublicToken,
+                    inboxCapability.PublicSessionId,
+                    inboxCapability.CapabilitySecret,
+                    raceClientOrderId,
+                    new[]
+                    {
+                        new RestaurantSelfOrderLineRequest(
+                            inboxProduct.Id,
+                            1)
+                    });
+
+            // Give the pre-fix outside-queue validation a chance to finish
+            // while the close is deliberately still blocked.
+            await Task.Delay(100);
+            raceQueueRelease.TrySetResult();
+            await raceBlocker;
+            await closeBeforeReceive;
+
+            var racedReceiveRejected = false;
+            try
+            {
+                await receiveAfterQueuedClose;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                racedReceiveRejected = true;
+            }
+
+            long racedOrderCount;
+            await using (var c = db.OpenReadConnection())
+            await using (var q = c.CreateCommand())
+            {
+                q.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_self_order_orders
+                    WHERE session_id=$session
+                      AND client_order_id=$client;
+                    """;
+                q.Parameters.AddWithValue(
+                    "$session",
+                    inboxSession.Id);
+                q.Parameters.AddWithValue(
+                    "$client",
+                    raceClientOrderId);
+                racedOrderCount =
+                    Convert.ToInt64(
+                        await q.ExecuteScalarAsync());
+            }
+
+            assert(
+                racedReceiveRejected &&
+                racedOrderCount == 0,
+                "Self Order revalidates capability inside the serialized mutation lane so a queued session close wins before RECEIVED persistence");
+
             var duplicateRejected = false;
             try
             {
