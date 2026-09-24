@@ -572,6 +572,7 @@ await R172ReviewTests.Run(Assert);
 await R173ReviewTests.Run(Assert);
 await R174ReviewTests.Run(root, Assert);
 await K1K2WeightedSnapshotTests.Run(root, Assert);
+await K3FactoryAdminSecurityTests.Run(root, Assert);
 await R175ReviewTests.Run(root, Assert);
 await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
@@ -636,6 +637,8 @@ await BarTestBonPreparationTests.Run(Assert);
 // unit preservation and identical partial-return allocation.
 // K-1/K-2: 7 behavioral checks lock CartLine unit snapshots, additive R193
 // persistence, parked/sale reloads and stored line totals through KassenbelegText.
+// K-3: 8 behavioral checks lock forced factory-admin credential replacement,
+// >=10-character passwords, handheld restrictions and one-time staff migration.
 // R175: 8 reviewed checks lock read-only fiskaltrust/Swissbit discovery,
 // Queue Echo + SCU/device probes, secret isolation and the still-closed
 // physical-TSE production release gate.
@@ -661,7 +664,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant foundation: 65 checks lock signed Standard/Plus entitlement,
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1297;
+const int ExpectedSafetyChecks = 1305;
 
 if (checks != ExpectedSafetyChecks)
 {
