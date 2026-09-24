@@ -670,15 +670,28 @@ public sealed class RestaurantTablePlanWindow : Window
         }
 
         RestaurantFiscalVorgang? fiscalVorgang = null;
+        RestaurantSessionItem? pendingItem = null;
+
         try
         {
+            var secured =
+                await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                    _selectedSession.Id);
+
+            if (!secured)
+            {
+                await ShowErrorAsync(
+                    "Neue Position kann nicht hinzugefügt werden: Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
+                return;
+            }
+
             var quantity = Convert.ToDecimal(_quantity.Value ?? 1m);
 
             fiscalVorgang = await _restaurantFiscal.BeginChangeAsync(
                 _selectedSession.Id,
                 _user.Username);
 
-            var item = await _restaurant.AddItemAsync(
+            pendingItem = await _restaurant.AddItemAsync(
                 _selectedSession.Id,
                 _selectedSession.Version,
                 product,
@@ -688,10 +701,11 @@ public sealed class RestaurantTablePlanWindow : Window
 
             await _restaurantFiscal.SecureAddedItemAsync(
                 _selectedSession.Id,
-                item,
+                pendingItem,
                 fiscalVorgang,
                 _user.Username);
 
+            pendingItem = null;
             fiscalVorgang = null;
 
             _selectedSession = await _restaurant.GetSessionAsync(
@@ -699,13 +713,20 @@ public sealed class RestaurantTablePlanWindow : Window
 
             if (_selectedSession is not null)
             {
-                await _kitchen.EnqueueNewItemAsync(
-                    _selectedSession,
-                    item,
-                    _selectedTable?.DisplayName ?? "Tisch",
-                    _user.Username,
-                    ResolveKitchenStation(product));
-                _kitchenDispatcher.Notify();
+                var item = (await _restaurant.ListActiveItemsAsync(
+                        _selectedSession.Id))
+                    .LastOrDefault();
+
+                if (item is not null)
+                {
+                    await _kitchen.EnqueueNewItemAsync(
+                        _selectedSession,
+                        item,
+                        _selectedTable?.DisplayName ?? "Tisch",
+                        _user.Username,
+                        ResolveKitchenStation(product));
+                    _kitchenDispatcher.Notify();
+                }
             }
 
             _quantity.Value = 1;
@@ -713,17 +734,46 @@ public sealed class RestaurantTablePlanWindow : Window
         }
         catch (Exception ex)
         {
+            var mayDiscardPending = false;
+
             if (fiscalVorgang is not null)
             {
                 try
                 {
-                    await _restaurantFiscal.AbortChangeAsync(
-                        fiscalVorgang,
-                        _user.Username);
+                    if (pendingItem is not null)
+                    {
+                        mayDiscardPending =
+                            await _restaurantFiscal.AbortPendingAddedItemAsync(
+                                fiscalVorgang,
+                                pendingItem,
+                                _user.Username);
+                    }
+                    else
+                    {
+                        await _restaurantFiscal.AbortChangeAsync(
+                            fiscalVorgang,
+                            _user.Username);
+                    }
                 }
                 catch
                 {
                     // Original failure remains the operator-facing cause.
+                }
+            }
+
+            if (mayDiscardPending && pendingItem is not null)
+            {
+                try
+                {
+                    await _restaurant.DiscardPendingItemAsync(
+                        pendingItem.SessionId,
+                        pendingItem.Id,
+                        _user.Username,
+                        Environment.MachineName);
+                }
+                catch
+                {
+                    // Keep the pending row visible to the secured-state guard.
                 }
             }
 
