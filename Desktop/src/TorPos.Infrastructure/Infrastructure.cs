@@ -3756,10 +3756,45 @@ public async Task<DailyCloseCheck> CheckAsync(CancellationToken ct = default)
         }
 
         // R136: AEAO zu § 146a Nr. 2.2.3.3 - at a closing no Vorgang may still
-        // be open in the TSE (a cart at the till).
+        // be open in the TSE (a cart at the till). Restaurant table sessions
+        // are also cross-receipt Vorgänge and must not outlive the closing that
+        // contains their Bestellung records.
         if (_db is not null)
         {
             await using var c = _db.OpenConnection();
+
+            await using (var tableExists = c.CreateCommand())
+            {
+                tableExists.CommandText = """
+                    SELECT COUNT(*)
+                    FROM sqlite_master
+                    WHERE type='table'
+                      AND name='restaurant_sessions';
+                    """;
+
+                if (Convert.ToInt32(
+                        await tableExists.ExecuteScalarAsync(ct)) == 1)
+                {
+                    await using var restaurant = c.CreateCommand();
+                    restaurant.CommandText = """
+                        SELECT COUNT(*)
+                        FROM restaurant_sessions
+                        WHERE state IN ('OPEN','CHECK_REQUESTED');
+                        """;
+                    var openRestaurant =
+                        Convert.ToInt32(
+                            await restaurant.ExecuteScalarAsync(ct));
+
+                    if (openRestaurant > 0)
+                    {
+                        return new DailyCloseCheck(
+                            false,
+                            openRestaurant,
+                            $"Z-Abschluss gesperrt: {openRestaurant} Restaurant-Tischvorgang/-vorgänge sind noch offen. Bitte zuerst kassieren oder leere Tische schließen.");
+                    }
+                }
+            }
+
             await using var q = c.CreateCommand();
             q.CommandText = "SELECT COUNT(*) FROM tse_vorgaenge WHERE state='OPEN';";
             var open = Convert.ToInt32(await q.ExecuteScalarAsync(ct));
