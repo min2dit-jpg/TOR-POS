@@ -43,6 +43,62 @@ internal static class RestaurantFoundationTests
                 RestaurantFeature.Tischplan),
             "Restaurant Plus contains Plus modules and all standard essentials");
 
+        var testLanAddresses = new[]
+        {
+            System.Net.IPAddress.Parse("8.8.8.8"),
+            System.Net.IPAddress.Loopback,
+            System.Net.IPAddress.Parse("192.168.44.21"),
+            System.Net.IPAddress.Parse("10.10.0.7")
+        };
+
+        assert(
+            RestaurantLocalApiHost.ResolveLanBindAddress(
+                "AUTO_PRIVATE",
+                testLanAddresses).Equals(
+                    System.Net.IPAddress.Parse("10.10.0.7")),
+            "G-2 Restaurant API AUTO_PRIVATE selects only a private LAN IPv4 and never ListenAnyIP/public/loopback");
+
+        var nonLocalPrivateRejected = false;
+        try
+        {
+            _ = RestaurantLocalApiHost.ResolveLanBindAddress(
+                "192.168.99.10",
+                testLanAddresses);
+        }
+        catch (InvalidOperationException)
+        {
+            nonLocalPrivateRejected = true;
+        }
+
+        assert(
+            nonLocalPrivateRejected,
+            "G-2 Restaurant API rejects a private bind address that is not present on a local interface");
+
+        var unsafeBindRejected = false;
+        try
+        {
+            _ = RestaurantLocalApiHost.ResolveLanBindAddress(
+                "8.8.8.8",
+                testLanAddresses);
+        }
+        catch (InvalidOperationException)
+        {
+            try
+            {
+                _ = RestaurantLocalApiHost.ResolveLanBindAddress(
+                    "127.0.0.1",
+                    testLanAddresses);
+            }
+            catch (InvalidOperationException)
+            {
+                unsafeBindRejected = true;
+            }
+        }
+
+        assert(
+            unsafeBindRejected,
+            "G-2 Restaurant API rejects public and loopback bind addresses");
+
         var exportTime = DateTimeOffset.Parse("2026-09-22T18:00:00+02:00");
         var restaurantOrderRecord = new DsfinvkOrderRecord(
             Id: 900,
