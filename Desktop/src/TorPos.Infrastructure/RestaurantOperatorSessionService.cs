@@ -47,13 +47,22 @@ public sealed class RestaurantOperatorSessionService
             100,
             nameof(deviceId));
 
+        var normalizedPin = (pin ?? "").Trim();
+        if (AuthenticationService.IsFactoryPin(normalizedPin))
+        {
+            throw new UnauthorizedAccessException(
+                "Die Standard-PIN 1234 darf am Handheld nicht verwendet werden.");
+        }
+
         var login = await _authentication.LoginWithPinAsync(
             (username ?? "").Trim(),
-            (pin ?? "").Trim(),
+            normalizedPin,
             ct);
 
         if (!login.Success ||
             login.User is null ||
+            login.User.IsAdmin ||
+            login.User.MustChangePassword ||
             !login.User.Can(UserPermissions.Sale))
         {
             throw new UnauthorizedAccessException(
@@ -212,10 +221,10 @@ public sealed class RestaurantOperatorSessionService
             var canSell =
                 active &&
                 !mustChange &&
-                (isAdmin ||
-                 (configured &&
-                  (permissions & UserPermissions.Sale) ==
-                      UserPermissions.Sale));
+                !isAdmin &&
+                configured &&
+                (permissions & UserPermissions.Sale) ==
+                    UserPermissions.Sale;
 
             if (!canSell)
             {
