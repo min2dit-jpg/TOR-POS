@@ -23,10 +23,40 @@ public static class RestaurantLanBindingPolicy
 {
     public static bool IsEligibleInterface(
         NetworkInterfaceType type,
-        OperationalStatus status) =>
-        status == OperationalStatus.Up &&
-        type is NetworkInterfaceType.Ethernet or
-            NetworkInterfaceType.Wireless80211;
+        OperationalStatus status,
+        string? name = null,
+        string? description = null)
+    {
+        if (status != OperationalStatus.Up ||
+            type is not (
+                NetworkInterfaceType.Ethernet or
+                NetworkInterfaceType.Wireless80211))
+        {
+            return false;
+        }
+
+        var label =
+            ((name ?? "") + " " + (description ?? ""))
+                .ToUpperInvariant();
+
+        string[] virtualHints =
+        {
+            "VPN",
+            "VIRTUAL",
+            "VETHERNET",
+            "HYPER-V",
+            "VMWARE",
+            "VIRTUALBOX",
+            "WIREGUARD",
+            "TUNNEL",
+            "TAP-",
+            "TAP ",
+            "TUN-",
+            "TUN "
+        };
+
+        return !virtualHints.Any(label.Contains);
+    }
 
     public static bool IsPrivateIpv4(IPAddress address)
     {
@@ -50,7 +80,9 @@ public static class RestaurantLanBindingPolicy
                 .Where(x =>
                     IsEligibleInterface(
                         x.NetworkInterfaceType,
-                        x.OperationalStatus))
+                        x.OperationalStatus,
+                        x.Name,
+                        x.Description))
                 .SelectMany(x =>
                     x.GetIPProperties()
                         .UnicastAddresses)
