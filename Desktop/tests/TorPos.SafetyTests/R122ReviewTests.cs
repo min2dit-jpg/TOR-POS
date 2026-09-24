@@ -8,11 +8,11 @@ using TorPos.Infrastructure;
 // G4 - the factory admin (admin/admin, PIN 1234) had must_change_password set
 //      correctly, but only the UI acted on it. Any caller that forgot the check
 //      got a FULL admin session on factory credentials.
-//      R182 turned the shipped access into a usable default: the flag is no
-//      longer set at seeding, so the checks below assert the new contract. The
-//      audit trace stays - it is now written whenever the factory password or
-//      PIN is used. AuthenticatedUser.Can() still denies everything while a
-//      must-change flag is set, which staff slots continue to rely on.
+//      R182 temporarily turned the shipped access into a usable default.
+//      K-3 restores the fail-closed contract: factory admin/admin or PIN 1234
+//      may authenticate only far enough to reach the mandatory credential
+//      replacement dialog. The resulting session remains powerless and the
+//      audit trace records the unconfigured credential use.
 //
 // G5 - the backup recovery code was turned into a key with one unsalted
 //      SHA-256. Also: a corrupt .tpe could declare any blob length it liked and
@@ -65,11 +65,11 @@ public static class R122ReviewTests
 
         var login = await auth.LoginWithPasswordAsync("admin", "admin");
         assert(
-            login.Success && login.User is { IsAdmin: true, MustChangePassword: false },
-            "R182 the shipped admin access signs in without a forced credential change");
+            login.Success && login.User is { IsAdmin: true, MustChangePassword: true },
+            "K-3 the shipped admin access authenticates only into mandatory credential replacement");
         assert(
-            login.User is not null && login.User.Can(UserPermissions.Sale),
-            "R182 ... and can work immediately; the operator replaces the credentials later");
+            login.User is not null && !login.User.Can(UserPermissions.Sale),
+            "K-3 factory admin credentials cannot authorize normal POS work before replacement");
 
         using (var c = db.OpenConnection())
         {
