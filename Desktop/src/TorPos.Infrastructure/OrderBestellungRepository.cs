@@ -39,7 +39,8 @@ public sealed class OrderBestellungRepository
                            i.list_unit_price_cents,i.promotion_id,i.promotion_name,i.promotion_percent,i.promotion_discount_unit_cents,
                            COALESCE(i.vat_allocations_json,''),
                            COALESCE(i.menu_components_json,''),
-                           COALESCE((SELECT p.unit FROM products p WHERE p.id=i.product_id),'Stück')
+                           COALESCE(NULLIF(i.unit,''),(SELECT p.unit FROM products p WHERE p.id=i.product_id),'Stück'),
+                           i.line_total_cents
                     FROM order_bestellung_items i
                     JOIN order_bestellungen b ON b.id=i.bestellung_id
                     WHERE b.parked_receipt_id=$id
@@ -119,8 +120,8 @@ public sealed class OrderBestellungRepository
                     INSERT INTO order_bestellung_items(
                       bestellung_id,product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,
                       pfand_cents,line_total_cents,list_unit_price_cents,promotion_id,promotion_name,promotion_percent,
-                      promotion_discount_unit_cents,vat_allocations_json,menu_components_json)
-                    VALUES($b,$p,$n,$v,$bc,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
+                      promotion_discount_unit_cents,vat_allocations_json,menu_components_json,unit)
+                    VALUES($b,$p,$n,$v,$bc,$q,$qm,$u,$vat,$pfand,$total,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents,$unit);
                     """;
                 item.Parameters.AddWithValue("$b", id);
                 item.Parameters.AddWithValue("$p", line.ProductId);
@@ -140,6 +141,7 @@ public sealed class OrderBestellungRepository
                 item.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
                 item.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
                 item.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+                item.Parameters.AddWithValue("$unit", line.Unit);
                 await item.ExecuteNonQueryAsync(ct);
             }
 
@@ -200,7 +202,8 @@ public sealed class OrderBestellungRepository
                        list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
                        COALESCE(vat_allocations_json,''),
                        COALESCE(menu_components_json,''),
-                       COALESCE((SELECT p.unit FROM products p WHERE p.id=order_bestellung_items.product_id),'Stück')
+                       COALESCE(NULLIF(order_bestellung_items.unit,''),(SELECT p.unit FROM products p WHERE p.id=order_bestellung_items.product_id),'Stück'),
+                       line_total_cents
                 FROM order_bestellung_items WHERE bestellung_id=$id ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$id", head.Id);
@@ -244,6 +247,7 @@ public sealed class OrderBestellungRepository
         PromotionDiscountUnitCents = r.GetInt64(o + 12),
         VatAllocations = VatAllocationStorage.Deserialize(r.GetString(o + 13)),
         MenuComponents = MenuComponentStorage.Deserialize(r.GetString(o + 14)),
-        Unit = r.GetString(o + 15)
+        Unit = r.GetString(o + 15),
+        PersistedLineTotalCents = r.GetInt64(o + 16)
     };
 }
