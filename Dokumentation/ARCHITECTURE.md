@@ -1,6 +1,6 @@
 # TOR POS – Architecture Overview
 
-Stand: R182 · 2026-09-22
+Stand: R182 · 2026-09-23
 
 ## Hauptkomponenten
 

@@ -21,7 +21,7 @@
 
 ## TSE
 
-### Zertifizierung des Produkts (aus dem BSI-Zertifikat, 2026-09-23)
+### Zertifizierung des Produkts (Referenz, aus dem BSI-Zertifikat)
 
 | | |
 |---|---|
@@ -88,45 +88,12 @@ bleiben maßgeblich.
 | Drucker End-to-End | ☐ PASS ☐ FAIL | |
 | Kartenterminal End-to-End (falls aktiv) | ☐ PASS ☐ FAIL | |
 
-### Gemeldetes Teilergebnis (Betreiber, 23.09.2026)
-
-Der Betreiber hat auf einem echten Windows-PC **ohne angeschlossene TSE** beide
-Produkte gestartet und gemeldet, dass das Warnfenster in **TOR Einzelhandel und
-TOR Gastro** erschienen ist. Geprüft wurde der Stand aus CI-Run 662
-(Commit `c13d971`).
-
-Weiter gemeldet und per Foto belegt (TOR Einzelhandel, Admin-Sitzung):
-
-- das Fenster benennt den Zustand korrekt mit **„Swissbit SDK nicht gefunden“**
-  und gibt die Gerätemeldung „WormAPI.dll nicht gefunden“ darunter aus
-- nach dem Hinweis ist **Anmeldung und Verkauf möglich**
-- der Hinweis erscheint **nur einmal** pro Programmlauf
-- die Schaltfläche **TSE-EINSTELLUNGEN ÖFFNEN** ist in der Admin-Sitzung vorhanden
-- in der **Kassenkraft-Sitzung** fehlt diese Schaltfläche; stattdessen steht dort
-  „Bitte die Betreiberin oder den Betreiber informieren. Der Verkauf kann
-  weiterlaufen.“ – es bleibt die einzelne Schaltfläche **WEITER OHNE TSE**
-- **nach dem Schließen** des Fensters bleibt das Badge **TSE-AUSFALL** in der
-  Kopfzeile stehen, und die Statuszeile trägt den vollen Satz
-  „Swissbit SDK nicht gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht
-  signiert“
-
-Wichtig für die weitere Abnahme: der gemeldete Zustand ist **SdkMissing**, nicht
-NotFound. Ohne die offizielle `WormAPI.dll` bricht die Prüfung ab, **bevor** nach
-Hardware gesucht wird. Die Zeile „nach Anstecken einer betriebsbereiten TSE kein
-Warnfenster mehr“ kann deshalb erst geprüft werden, wenn das Swissbit SDK
-eingerichtet ist; bis dahin bleibt der Hinweis unabhängig von der angesteckten
-Hardware bestehen.
-
-Damit sind die entsprechenden Zeilen der Tabelle als gemeldet zu lesen. Sie ist hier
-festgehalten, damit sie nicht verloren geht, und ersetzt das Protokoll **nicht**:
-keine Zeile ist gekreuzt, kein Tester ist unterschrieben, und das Gesamtergebnis
-bleibt offen. Offen sind damit nur noch drei Zeilen: das Badge-Tooltip mit
-Beginn und Grund (braucht eine Maus, am Touchscreen schwer zu prüfen), der
-Eintrag in `tse_outage_log` (nachweisbar über den DSFinV-K-Export) und das
-Verschwinden des Hinweises nach dem Anstecken einer betriebsbereiten TSE - das
-letzte ist bis zur Einrichtung des Swissbit SDK ohnehin nicht prüfbar.
-
 ### Startprüfung ohne TSE
+
+> Diese Datei ist die **Vorlage** und bleibt leer. Ergebnisse gehören in eine
+> datierte Kopie; der bisher einzige Bericht liegt in
+> `verification/TSE-STARTPRUEFUNG-BERICHT-2026-09-23.md`.
+
 
 Diese acht Zeilen werden **vor** dem Anstecken der TSE geprüft: Programm auf
 einem PC ohne angeschlossene TSE starten und mit einem Admin-Konto sowie mit
