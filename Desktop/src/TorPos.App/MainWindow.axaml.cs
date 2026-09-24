@@ -5849,7 +5849,7 @@ public partial class MainWindow:Window
             "RESTAURANT",
             StringComparison.Ordinal);
 
-        CompanyNameText.Text=isRestaurant ? "TOR Restaurant" : "TOR-POS";
+        CompanyNameText.Text="TOR-POS";
         RegisterInfoText.Text=$"{registerName} · {businessDisplay}";
         EditionText.Text=businessDisplay.ToUpperInvariant();
         EditionActionText.Text = business == "IMBISS" ? "EXTRA" : "PFAND";
