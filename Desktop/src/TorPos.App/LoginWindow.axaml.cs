@@ -43,10 +43,8 @@ public partial class LoginWindow : Window
         }
         else if (_lockedEdition == "RESTAURANT")
         {
-            KioskEditionRadio.IsChecked = false;
-            ImbissEditionRadio.IsChecked = false;
-            KioskEditionRadio.IsVisible = false;
-            ImbissEditionRadio.IsVisible = false;
+            KioskEditionRadio.Content = "RESTAURANT";
+            ShowFixedEdition(KioskEditionRadio, ImbissEditionRadio);
             EditionStatusText.Text = "Kassenart: RESTAURANT · Lizenz/Installation fest gebunden.";
             Title = ProductBuild.ProductName + " – Anmeldung";
         }
