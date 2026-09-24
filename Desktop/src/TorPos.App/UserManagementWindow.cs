@@ -161,8 +161,9 @@ public sealed class UserManagementWindow : Window
                 var newPassword = _adminNewPassword.Text ?? "";
                 var newPin = _adminNewPin.Text ?? "";
 
-                if (newPassword.Length < 4)
-                    throw new InvalidOperationException("Das neue Admin-Passwort muss mindestens 4 Zeichen haben.");
+                if (newPassword.Length < AuthenticationService.MinimumPasswordLength)
+                    throw new InvalidOperationException(
+                        $"Das neue Admin-Passwort muss mindestens {AuthenticationService.MinimumPasswordLength} Zeichen haben.");
 
                 await _authentication.ChangeAdminCredentialsAsync(
                     _adminCurrentPassword.Text ?? "",
@@ -255,7 +256,7 @@ public sealed class UserManagementWindow : Window
             AddField(fields, "Neues Passwort", _password,
                 user.CredentialsConfigured
                     ? "Leer lassen = vorhandenes Passwort behalten."
-                    : "Zum Aktivieren reicht Passwort oder PIN. Passwort: mindestens 4 Zeichen.");
+                    : "Zum Aktivieren reicht Passwort oder PIN. Passwort: mindestens 10 Zeichen.");
             AddField(fields, "Neue 4-stellige PIN", _pin,
                 user.CredentialsConfigured
                     ? "Leer lassen = vorhandene PIN behalten."
