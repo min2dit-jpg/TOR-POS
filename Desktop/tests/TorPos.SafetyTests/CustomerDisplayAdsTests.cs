@@ -180,6 +180,12 @@ public static class CustomerDisplayAdsTests
             cleared.Contains("ShowIdle()", StringComparison.Ordinal),
             "a cart emptied without a sale returns the customer display to the advertising, without cutting a thank-you screen short");
 
+        var keyboard = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/TouchKeyboard.cs"));
+        assert(
+            keyboard.Contains("if (w is CustomerDisplayWindow or OrderCustomerDisplayWindow) return;", StringComparison.Ordinal) &&
+            keyboard.Contains("bar.IsVisible = !AutoOpen", StringComparison.Ordinal),
+            "the customer screens carry no TASTATUR bar, and the till shows it only when the keyboard does not open on touch");
+
         return Task.CompletedTask;
     }
 

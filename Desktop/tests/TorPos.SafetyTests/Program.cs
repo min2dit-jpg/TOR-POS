@@ -664,7 +664,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant foundation: 82 checks lock signed Standard/Plus entitlement,
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1345;
+const int ExpectedSafetyChecks = 1346;
 
 if (checks != ExpectedSafetyChecks)
 {
