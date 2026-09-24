@@ -608,7 +608,8 @@ public async Task InitializeAsync(CancellationToken ct = default)
         await using var tx =
             (SqliteTransaction)await c.BeginTransactionAsync(ct);
 
-        var legacyIds = new List<long>();
+        var legacyCredentials =
+            new List<(long Id, bool PasswordIsDefault, bool PinIsDefault)>();
 
         await using (var q = c.CreateCommand())
         {
@@ -639,53 +640,86 @@ public async Task InitializeAsync(CancellationToken ct = default)
                     r.GetString(7),
                     r.GetInt32(8));
 
-                if (passwordIsDefault && pinIsDefault)
-                    legacyIds.Add(r.GetInt64(0));
+                if (passwordIsDefault || pinIsDefault)
+                {
+                    legacyCredentials.Add(
+                        (r.GetInt64(0), passwordIsDefault, pinIsDefault));
+                }
             }
         }
 
-        foreach (var id in legacyIds)
+        foreach (var legacy in legacyCredentials)
         {
-            var randomPassword = HashSecret(
-                Convert.ToBase64String(
-                    RandomNumberGenerator.GetBytes(32)));
-            var randomPin = HashSecret(
-                Convert.ToBase64String(
-                    RandomNumberGenerator.GetBytes(32)));
-
-            await using (var q = c.CreateCommand())
+            if (legacy.PasswordIsDefault)
             {
-                q.Transaction = tx;
-                q.CommandText = """
+                var randomPassword = HashSecret(
+                    Convert.ToBase64String(
+                        RandomNumberGenerator.GetBytes(32)));
+
+                await using var password = c.CreateCommand();
+                password.Transaction = tx;
+                password.CommandText = """
                     UPDATE users
-                    SET password_hash=$ph,
-                        password_salt=$ps,
+                    SET password_hash=$hash,
+                        password_salt=$salt,
                         password_kdf=$kdf,
-                        password_iterations=$iterations,
-                        pin_hash=$ih,
-                        pin_salt=$is,
-                        pin_kdf=$kdf,
-                        pin_iterations=$iterations,
-                        is_active=0,
-                        must_change_password=1,
-                        failed_attempts=0,
-                        locked_until=''
+                        password_iterations=$iterations
                     WHERE id=$id AND is_admin=0;
                     """;
-                q.Parameters.AddWithValue("$ph", randomPassword.Hash);
-                q.Parameters.AddWithValue("$ps", randomPassword.Salt);
-                q.Parameters.AddWithValue("$ih", randomPin.Hash);
-                q.Parameters.AddWithValue("$is", randomPin.Salt);
-                q.Parameters.AddWithValue("$kdf", CurrentKdfAlgorithm);
-                q.Parameters.AddWithValue(
-                    "$iterations",
-                    CurrentPbkdf2Iterations);
-                q.Parameters.AddWithValue("$id", id);
-                await q.ExecuteNonQueryAsync(ct);
+                password.Parameters.AddWithValue("$hash", randomPassword.Hash);
+                password.Parameters.AddWithValue("$salt", randomPassword.Salt);
+                password.Parameters.AddWithValue("$kdf", CurrentKdfAlgorithm);
+                password.Parameters.AddWithValue("$iterations", CurrentPbkdf2Iterations);
+                password.Parameters.AddWithValue("$id", legacy.Id);
+                await password.ExecuteNonQueryAsync(ct);
             }
 
-            await using (var permissions = c.CreateCommand())
+            if (legacy.PinIsDefault)
             {
+                var randomPin = HashSecret(
+                    Convert.ToBase64String(
+                        RandomNumberGenerator.GetBytes(32)));
+
+                await using var pin = c.CreateCommand();
+                pin.Transaction = tx;
+                pin.CommandText = """
+                    UPDATE users
+                    SET pin_hash=$hash,
+                        pin_salt=$salt,
+                        pin_kdf=$kdf,
+                        pin_iterations=$iterations
+                    WHERE id=$id AND is_admin=0;
+                    """;
+                pin.Parameters.AddWithValue("$hash", randomPin.Hash);
+                pin.Parameters.AddWithValue("$salt", randomPin.Salt);
+                pin.Parameters.AddWithValue("$kdf", CurrentKdfAlgorithm);
+                pin.Parameters.AddWithValue("$iterations", CurrentPbkdf2Iterations);
+                pin.Parameters.AddWithValue("$id", legacy.Id);
+                await pin.ExecuteNonQueryAsync(ct);
+            }
+
+            // If both login methods were still the factory default, there is
+            // no safe credential left. Disable the account until an admin
+            // explicitly configures it. If only one was default, preserve the
+            // other configured credential and the account's active state.
+            if (legacy.PasswordIsDefault && legacy.PinIsDefault)
+            {
+                await using (var disable = c.CreateCommand())
+                {
+                    disable.Transaction = tx;
+                    disable.CommandText = """
+                        UPDATE users
+                        SET is_active=0,
+                            must_change_password=1,
+                            failed_attempts=0,
+                            locked_until=''
+                        WHERE id=$id AND is_admin=0;
+                        """;
+                    disable.Parameters.AddWithValue("$id", legacy.Id);
+                    await disable.ExecuteNonQueryAsync(ct);
+                }
+
+                await using var permissions = c.CreateCommand();
                 permissions.Transaction = tx;
                 permissions.CommandText = """
                     INSERT INTO user_permissions(
@@ -694,7 +728,7 @@ public async Task InitializeAsync(CancellationToken ct = default)
                     ON CONFLICT(user_id) DO UPDATE SET
                         credentials_configured=0;
                     """;
-                permissions.Parameters.AddWithValue("$id", id);
+                permissions.Parameters.AddWithValue("$id", legacy.Id);
                 await permissions.ExecuteNonQueryAsync(ct);
             }
         }
