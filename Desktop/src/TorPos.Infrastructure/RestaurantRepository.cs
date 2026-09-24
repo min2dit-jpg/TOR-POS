@@ -662,6 +662,11 @@ public sealed class RestaurantRepository
         if (quantityMilli <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
 
+        var effectiveVatRate = ImHausVat.Effective(
+            product.VatRate,
+            imHaus: true,
+            product.ImHausApplicable);
+
         return await IoQueue.RunAsync(async () =>
         {
             await using var c = _db.OpenConnection();
@@ -763,7 +768,7 @@ public sealed class RestaurantRepository
                 insert.Parameters.AddWithValue(
                     "$price",
                     product.BasePriceCents + product.PfandCents);
-                insert.Parameters.AddWithValue("$vat", product.VatRate);
+                insert.Parameters.AddWithValue("$vat", effectiveVatRate);
                 insert.Parameters.AddWithValue("$pfand", product.PfandCents);
                 insert.Parameters.AddWithValue("$operator", operatorName);
                 insert.Parameters.AddWithValue("$now", now);
@@ -802,7 +807,7 @@ public sealed class RestaurantRepository
                     "",
                     quantityMilli,
                     product.BasePriceCents + product.PfandCents,
-                    product.VatRate,
+                    effectiveVatRate,
                     product.PfandCents,
                     RestaurantSessionItemState.Active,
                     operatorName,
