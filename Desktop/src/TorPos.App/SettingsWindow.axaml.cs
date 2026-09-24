@@ -68,6 +68,7 @@ public partial class SettingsWindow : Window
 
     private readonly Dictionary<string,TextBox> _text = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string,CheckBox> _check = new(StringComparer.OrdinalIgnoreCase);
+    private TextBlock? _adTvAddress;
     private readonly Dictionary<string,ComboBox> _combo = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string,Control> _pages = new(StringComparer.OrdinalIgnoreCase);
     private readonly TextBox _reportSmtpPassword = new()
@@ -925,6 +926,52 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private async Task RenewAdTvCodeAsync()
+    {
+        try
+        {
+            await _settings.SaveManyAsync(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [AdTv.CodeKey] = AdTv.NewCode()
+            });
+            await UpdateAdTvAddressAsync();
+            SettingsStatus = "Neue TV-Adresse erzeugt - am TV neu eingeben";
+        }
+        catch (Exception ex)
+        {
+            SettingsStatus = UiLanguage.T("TV-Adresse konnte nicht ermittelt werden") + ": " + ex.Message;
+        }
+    }
+
+    private async Task UpdateAdTvAddressAsync()
+    {
+        if (_adTvAddress is not { } address)
+            return;
+        try
+        {
+            var settings = AdTv.ReadSettings(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [AdTv.CodeKey] = await _settings.GetAsync(AdTv.CodeKey, ""),
+                [AdTv.PortKey] = await _settings.GetAsync(AdTv.PortKey, "")
+            });
+            if (!AdTv.IsValidCode(settings.Code))
+            {
+                address.Text = UiLanguage.T("Die TV-Adresse erscheint nach dem Einschalten und Speichern.");
+                return;
+            }
+
+            var lan = AdTvServer.LocalLanAddresses();
+            address.Text = lan.Count == 0
+                ? UiLanguage.T("Kein lokales Netzwerk gefunden. Kasse mit dem WLAN/LAN des TVs verbinden.")
+                : UiLanguage.T("Am TV im Browser eingeben") + ":" + Environment.NewLine +
+                  string.Join(Environment.NewLine, lan.Select(x => AdTv.Url(x, settings.Port, settings.Code)));
+        }
+        catch (Exception ex)
+        {
+            address.Text = UiLanguage.T("TV-Adresse konnte nicht ermittelt werden") + ": " + ex.Message;
+        }
+    }
+
     private void OpenCustomerDisplayAdFolder(TextBlock status)
     {
         try
@@ -1238,6 +1285,49 @@ public partial class SettingsWindow : Window
         customerDisplaySection.IsVisible = false;
         customerDisplayEnabled.IsCheckedChanged += (_, _) => customerDisplaySection.IsVisible = customerDisplayEnabled.IsChecked == true;
         page.Children.Add(customerDisplaySection);
+
+        // Werbe-TV: the same advertising as a web page for Smart-TVs in the
+        // shop's network - independent of the Kundendisplay.
+        var adTvEnabled = Check(AdTv.EnabledKey, "Werbe-TV im Netzwerk verwenden");
+        page.Children.Add(ToggleRow(adTvEnabled));
+        var adTvSection = Section("Werbe-TV · Smart-TV im WLAN");
+        Form(adTvSection, "Werbeinhalt",
+            Combo(AdTv.SourceKey, CustomerDisplayAds.SourceBoth, CustomerDisplayAds.SourceImages, CustomerDisplayAds.SourceProducts),
+            "BEIDE = eigene Werbebilder und Artikel mit Bild · BILDER = nur eigene Werbebilder · ARTIKEL = Artikel mit Bild, Preis und aktivem Angebot.");
+        Form(adTvSection, "Wechsel alle (Sek.)",
+            Combo(AdTv.IntervalKey, "8", "5", "10", "15", "20", "30"),
+            "Der TV prüft jede Minute, ob sich Bilder oder Preise geändert haben.");
+        Form(adTvSection, "TV-Port",
+            Combo(AdTv.PortKey, AdTv.Ports.Select(x => x.ToString()).ToArray()),
+            "Nur ändern, wenn ein anderes Programm diesen Port belegt.");
+        _adTvAddress = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 20, FontWeight = FontWeight.Bold };
+        adTvSection.Children.Add(_adTvAddress);
+        var adTvImageStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.8 };
+        var adTvAddImages = new Button { Content = "WERBEBILDER HINZUFÜGEN", MinHeight = 46, MinWidth = 220, FontWeight = FontWeight.Bold };
+        var adTvOpenFolder = new Button { Content = "WERBEBILDER-ORDNER ÖFFNEN", MinHeight = 46, MinWidth = 220 };
+        var adTvNewCode = new Button { Content = "NEUE TV-ADRESSE ERZEUGEN", MinHeight = 46, MinWidth = 220 };
+        adTvAddImages.Click += async (_, _) => await AddCustomerDisplayAdImagesAsync(adTvImageStatus);
+        adTvOpenFolder.Click += (_, _) => OpenCustomerDisplayAdFolder(adTvImageStatus);
+        adTvNewCode.Click += async (_, _) => await RenewAdTvCodeAsync();
+        adTvSection.Children.Add(new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            ItemSpacing = 10,
+            LineSpacing = 10,
+            Children = { adTvAddImages, adTvOpenFolder, adTvNewCode }
+        });
+        adTvSection.Children.Add(adTvImageStatus);
+        UpdateCustomerDisplayAdStatus(adTvImageStatus);
+        adTvSection.Children.Add(InfoCard("So kommt die Werbung auf den TV",
+            "Kasse und TV im selben WLAN/Netzwerk. Am TV den Internet-Browser öffnen (Samsung: Internet, LG: Webbrowser, Android TV: z. B. ein Kiosk-Browser) und die Adresse oben eingeben. " +
+            "Die Werbebilder sind dieselben wie beim Kundendisplay; Inhalt und Wechselzeit werden hier getrennt eingestellt. " +
+            "Beim ersten Start fragt Windows eventuell nach der Firewall: Zugriff in privaten Netzwerken erlauben. " +
+            "Die Seite ist nur im eigenen Netzwerk erreichbar und hat keinen Einfluss auf Bon, TSE oder Kassiervorgang.",
+            AppTheme.InfoCardBg));
+        adTvSection.IsVisible = false;
+        adTvEnabled.IsCheckedChanged += (_, _) => adTvSection.IsVisible = adTvEnabled.IsChecked == true;
+        page.Children.Add(adTvSection);
+        _ = UpdateAdTvAddressAsync();
 
         if (InstallationEdition.ReadLocked() == "IMBISS")
         {
@@ -3873,6 +3963,14 @@ private Control TsePage()
                 }
             }
 
+            // Werbe-TV: the TV address needs its random code; create it the
+            // first time the Werbe-TV is switched on (kept on later saves).
+            if (values.GetValueOrDefault(AdTv.EnabledKey, "false") == "true" &&
+                !AdTv.IsValidCode(await _settings.GetAsync(AdTv.CodeKey, "")))
+            {
+                values[AdTv.CodeKey] = AdTv.NewCode();
+            }
+
             // R132 (DSFinV-K 3.2): a change of the company master data while
             // Vorgänge are waiting for a closing creates that closing first.
             var database = new SqliteDatabase(AppPaths.DatabasePath);
@@ -3896,6 +3994,7 @@ private Control TsePage()
                 "",
                 "Einstellungen gespeichert; keine Zugangsdaten protokolliert.");
             await RefreshLegalStatusAsync();
+            await UpdateAdTvAddressAsync();
             SettingsStatus = saved.AutomaticClosing is { } closing
                 ? $"Alle Einstellungen gespeichert · vorher automatisch Kassenabschluss Z {closing.ZNumber:000000} erstellt (Stammdatenänderung, DSFinV-K 3.2)"
                 : "Alle Einstellungen gespeichert";

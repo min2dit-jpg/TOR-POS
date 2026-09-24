@@ -126,6 +126,9 @@ public partial class MainWindow:Window
     // the slides are rebuilt periodically as well as after every settings load.
     private DispatcherTimer? _customerDisplayAdsTimer;
     private int _customerDisplayAdsGeneration;
+    private readonly AdTvServer _adTv = new();
+    private DispatcherTimer? _adTvTimer;
+    private int _adTvGeneration;
     // R116: simulation is now "anything that cannot book a real sale", not
     // "no licence installed" - see TorPos.Core.SaleModePolicy.
     private bool IsSimulation => !CanCommitProductionSale();
@@ -397,6 +400,8 @@ public partial class MainWindow:Window
             _tseWatch?.Stop();
             _tseWatch = null;
             _customerDisplayAdsTimer?.Stop();
+            _adTvTimer?.Stop();
+            _adTv.Stop();
         };
     }
 
@@ -6010,6 +6015,7 @@ public partial class MainWindow:Window
         UiLanguage.Apply(this);
         RefreshOrderDisplayWindow(business);
         RefreshCustomerDisplayWindow();
+        RefreshAdTv();
     }
 
     // R104: mirrors RefreshOrderDisplayWindow's exact lifecycle pattern
@@ -6084,41 +6090,7 @@ public partial class MainWindow:Window
 
         try
         {
-            var products = _catalog.Products.ToArray();
-            var slides = await Task.Run(async () =>
-            {
-                IReadOnlyList<CustomerDisplaySlide> imageSlides = Array.Empty<CustomerDisplaySlide>();
-                if (settings.Source != CustomerDisplayAds.SourceProducts)
-                {
-                    var folder = AppPaths.CustomerDisplayAdsPath;
-                    Directory.CreateDirectory(folder);
-                    imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(folder));
-                }
-
-                IReadOnlyList<CustomerDisplaySlide> productSlides = Array.Empty<CustomerDisplaySlide>();
-                if (settings.Source != CustomerDisplayAds.SourceImages)
-                {
-                    var candidates = products
-                        .Where(x => x.IsActive &&
-                                    CustomerDisplayAds.IsSupportedImage(x.ImagePath) &&
-                                    File.Exists(x.ImagePath))
-                        .OrderBy(x => x.SortOrder)
-                        .ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
-                        .Take(CustomerDisplayAds.MaxProductSlides)
-                        .ToArray();
-
-                    var promotions = new Dictionary<long, PromotionSnapshot?>();
-                    foreach (var product in candidates)
-                        promotions[product.Id] = await _promotions.GetBestForProductAsync(product.Id, product.CategoryId);
-
-                    productSlides = CustomerDisplayAds.BuildProductSlides(
-                        candidates,
-                        product => promotions.GetValueOrDefault(product.Id),
-                        File.Exists);
-                }
-
-                return CustomerDisplayAds.Combine(settings, imageSlides, productSlides);
-            });
+            var slides = await BuildAdSlidesAsync(settings);
 
             if (generation == _customerDisplayAdsGeneration &&
                 ReferenceEquals(window, _customerDisplayWindow))
@@ -6129,6 +6101,94 @@ public partial class MainWindow:Window
         catch (Exception ex)
         {
             CrashLog.WriteException("Customer display advertising", ex);
+        }
+    }
+
+    /// <summary>
+    /// Builds advertising slides (own pictures and/or product cards) off the
+    /// UI thread. Shared by the Kundendisplay and the Werbe-TV; each passes
+    /// its own content choice.
+    /// </summary>
+    private async Task<IReadOnlyList<CustomerDisplaySlide>> BuildAdSlidesAsync(CustomerDisplayAdSettings settings)
+    {
+        var products = _catalog.Products.ToArray();
+        return await Task.Run(async () =>
+        {
+            IReadOnlyList<CustomerDisplaySlide> imageSlides = Array.Empty<CustomerDisplaySlide>();
+            if (settings.Source != CustomerDisplayAds.SourceProducts)
+            {
+                var folder = AppPaths.CustomerDisplayAdsPath;
+                Directory.CreateDirectory(folder);
+                imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(folder));
+            }
+
+            IReadOnlyList<CustomerDisplaySlide> productSlides = Array.Empty<CustomerDisplaySlide>();
+            if (settings.Source != CustomerDisplayAds.SourceImages)
+            {
+                var candidates = products
+                    .Where(x => x.IsActive &&
+                                CustomerDisplayAds.IsSupportedImage(x.ImagePath) &&
+                                File.Exists(x.ImagePath))
+                    .OrderBy(x => x.SortOrder)
+                    .ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+                    .Take(CustomerDisplayAds.MaxProductSlides)
+                    .ToArray();
+
+                var promotions = new Dictionary<long, PromotionSnapshot?>();
+                foreach (var product in candidates)
+                    promotions[product.Id] = await _promotions.GetBestForProductAsync(product.Id, product.CategoryId);
+
+                productSlides = CustomerDisplayAds.BuildProductSlides(
+                    candidates,
+                    product => promotions.GetValueOrDefault(product.Id),
+                    File.Exists);
+            }
+
+            return CustomerDisplayAds.Combine(settings, imageSlides, productSlides);
+        });
+    }
+
+    /// <summary>
+    /// Werbe-TV: starts/stops the small web server for Smart-TVs and keeps
+    /// its slide list current (every 5 minutes and after each settings save).
+    /// Independent of the Kundendisplay; never touches the checkout.
+    /// </summary>
+    private void RefreshAdTv()
+    {
+        var settings = AdTv.ReadSettings(_settingsCache);
+        _adTv.Apply(settings);
+        if (!_adTv.Running)
+        {
+            _adTvTimer?.Stop();
+            if (settings.Enabled && _adTv.LastError is not null)
+                StatusLine = "WERBE-TV: Der gewählte TV-Port ist belegt oder gesperrt. In Einstellungen einen anderen TV-Port wählen.";
+            return;
+        }
+
+        if (_adTvTimer is null)
+        {
+            _adTvTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
+            _adTvTimer.Tick += async (_, _) => await RefreshAdTvSlidesAsync();
+        }
+        _adTvTimer.Start();
+        _ = RefreshAdTvSlidesAsync();
+    }
+
+    private async Task RefreshAdTvSlidesAsync()
+    {
+        var generation = ++_adTvGeneration;
+        var settings = AdTv.ReadSettings(_settingsCache);
+        if (!settings.Enabled)
+            return;
+        try
+        {
+            var slides = await BuildAdSlidesAsync(AdTv.SlideSettings(settings));
+            if (generation == _adTvGeneration)
+                _adTv.SetSlides(slides, settings.Interval, _settingsCache.GetText("company.name", "TOR POS"));
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Werbe-TV advertising", ex);
         }
     }
 
