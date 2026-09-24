@@ -121,27 +121,18 @@ public static class OrderBestellungDelta
     public static IReadOnlyList<CartLine> Reverse(IReadOnlyList<CartLine> lines) =>
         lines.Select(l => WithQuantity(l, -l.Quantity)).ToList();
 
-    public static CartLine WithQuantity(CartLine line, decimal quantity) => new()
-    {
-        ProductId = line.ProductId,
-        ProductName = line.ProductName,
-        VariantName = line.VariantName,
-        Barcode = line.Barcode,
-        Quantity = quantity,
-        UnitPriceCents = line.UnitPriceCents,
-        ListUnitPriceCents = line.EffectiveListUnitPriceCents,
-        VatRate = line.VatRate,
-        VatAllocations = line.VatAllocations.ToArray(),
-        MenuComponents = line.MenuComponents.ToArray(),
-        ImHausApplicable = line.ImHausApplicable,
-        PfandCents = line.PfandCents,
-        PromotionId = line.PromotionId,
-        PromotionName = line.PromotionName,
-        PromotionPercent = line.PromotionPercent,
-        PromotionDiscountUnitCents = line.PromotionDiscountUnitCents,
-        PromotionStartDate = line.PromotionStartDate,
-        PromotionEndDate = line.PromotionEndDate,
-    };
+    public static CartLine WithQuantity(CartLine line, decimal quantity) =>
+        new CartLine(line)
+        {
+            // Delta/reversal lines are new fiscal positions, not the original
+            // persisted sale item. A changed quantity also needs a fresh total.
+            SaleItemId = 0,
+            Quantity = quantity,
+            PersistedLineTotalCents =
+                quantity == line.Quantity
+                    ? line.PersistedLineTotalCents
+                    : null
+        };
 
     // A position is the same article at the same price and rate; the VAT rate
     // is part of it, so switching Im Haus/Außer Haus changes the position.
