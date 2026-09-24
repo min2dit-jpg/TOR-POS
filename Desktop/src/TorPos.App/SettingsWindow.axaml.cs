@@ -1947,8 +1947,9 @@ public partial class SettingsWindow : Window
             try
             {
                 SettingsStatus = UiLanguage.T("Sicherung wird erstellt ...");
-                var path = await _backup.CreateBackupAsync(_text["backup.directory"].Text);
-                path = await new BackupEncryptionService(_settings).EncryptIfEnabledAsync(path);
+                var path = await new BackupEncryptionService(_settings).CreateProtectedAsync(
+                    target => _backup.CreateBackupAsync(target),
+                    _backup.ResolveDirectory(_text["backup.directory"].Text));
                 SettingsStatus = $"{UiLanguage.T("Sicherung erstellt:")} {path}";
             }
             catch (Exception ex)
@@ -1963,9 +1964,8 @@ public partial class SettingsWindow : Window
             try{
                 SettingsStatus=UiLanguage.T("Sicherung und Wiederherstellungsprüfung laufen ...");
                 var service=new FullBackupService(new SqliteDatabase(AppPaths.DatabasePath),AppPaths.DataDirectory);
-                package=await service.CreateAsync(_backup.ResolveDirectory(_text["backup.directory"].Text));
                 var encryption=new BackupEncryptionService(_settings);
-                package=await encryption.EncryptIfEnabledAsync(package);
+                package=await encryption.CreateProtectedAsync(service.CreateAsync,_backup.ResolveDirectory(_text["backup.directory"].Text));
                 var toVerify=package;
                 if(BackupEncryptionService.LooksEncrypted(package))
                 {

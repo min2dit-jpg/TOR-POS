@@ -58,7 +58,12 @@ public sealed class FullBackupService(
                              "ReceiptAssets",
                              "PrintJobs",
                              "CustomerDisplayAds",
-                             "WerbeTvBilder"
+                             "WerbeTvBilder",
+                             // O-14: TSE TAR exports must be kept (GoBD /
+                             // KassenSichV retention) and exist nowhere else;
+                             // Z/month reports belong to the books as well.
+                             "TseExports",
+                             "Reports"
                          })
                 {
                     var source =
@@ -111,6 +116,19 @@ public sealed class FullBackupService(
                     }
                 }
 
+                // O-14: the commercial licence file and its deactivation
+                // journal, so a restored till is not left unlicensed.
+                foreach (var single in new[]
+                         {
+                             "commercial-license.json",
+                             "commercial-license-deactivations.jsonl"
+                         })
+                {
+                    var source = Path.Combine(dataDirectory, single);
+                    if (File.Exists(source))
+                        File.Copy(source, Path.Combine(staging, single));
+                }
+
                 var hashes =
                     new Dictionary<string,string>();
 
@@ -149,7 +167,8 @@ public sealed class FullBackupService(
                     "Nur bei geschlossener Kasse und nach Prüfung wiederherstellen. " +
                     "Absolute Bildpfade ggf. anpassen. Windows-geschützte Zugangsdaten " +
                     "auf neuem Konto erneut einrichten. Enthalten: Datenbank, " +
-                    "ProductImages, ReceiptAssets, PrintJobs, CustomerDisplayAds, WerbeTvBilder. Nicht enthalten: " +
+                    "ProductImages, ReceiptAssets, PrintJobs, CustomerDisplayAds, WerbeTvBilder, TseExports (TSE-TAR-Exporte), " +
+                    "Reports, Lizenzdatei. Nicht enthalten: " +
                     "laufende Warenkorb-Recovery, externe Dateien, Updates. " +
                     "Offene Zahlungen/Druckaufträge nach Wiederherstellung prüfen.");
 
