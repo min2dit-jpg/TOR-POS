@@ -51,6 +51,32 @@ public sealed class RestaurantTerminalRegistry
         return IoQueue.RunAsync(async () =>
         {
             await using var c = _db.OpenConnection();
+
+            await using (var existing = c.CreateCommand())
+            {
+                existing.CommandText = """
+                    SELECT terminal_type
+                    FROM restaurant_terminals
+                    WHERE terminal_id=$id
+                    LIMIT 1;
+                    """;
+                existing.Parameters.AddWithValue("$id", terminalId);
+
+                var existingType =
+                    Convert.ToString(
+                        await existing.ExecuteScalarAsync(ct));
+
+                if (!string.IsNullOrWhiteSpace(existingType) &&
+                    !string.Equals(
+                        existingType,
+                        terminalType,
+                        StringComparison.Ordinal))
+                {
+                    throw new UnauthorizedAccessException(
+                        "Terminaltyp ist für dieses Gerät bereits festgelegt.");
+                }
+            }
+
             await using var q = c.CreateCommand();
             q.CommandText = """
                 INSERT INTO restaurant_terminals(
@@ -59,14 +85,12 @@ public sealed class RestaurantTerminalRegistry
                 VALUES($id,$name,$type,$seen,$version,$machine,1)
                 ON CONFLICT(terminal_id) DO UPDATE SET
                     display_name=excluded.display_name,
-                    terminal_type=excluded.terminal_type,
                     last_seen_at=excluded.last_seen_at,
                     app_version=excluded.app_version,
                     machine_name=excluded.machine_name,
                     is_active=1
                 WHERE restaurant_terminals.last_seen_at <= $cutoff
                    OR restaurant_terminals.display_name <> excluded.display_name
-                   OR restaurant_terminals.terminal_type <> excluded.terminal_type
                    OR restaurant_terminals.app_version <> excluded.app_version
                    OR restaurant_terminals.machine_name <> excluded.machine_name
                    OR restaurant_terminals.is_active <> 1;
@@ -83,6 +107,56 @@ public sealed class RestaurantTerminalRegistry
             q.Parameters.AddWithValue("$machine", machineName);
             await q.ExecuteNonQueryAsync(ct);
         });
+    }
+
+    public async Task RequireTypeAsync(
+        string terminalId,
+        IReadOnlyCollection<string> allowedTypes,
+        CancellationToken ct = default)
+    {
+        _entitlements.Require(RestaurantFeature.MehrereKassen);
+
+        terminalId = NormalizeRequired(
+            terminalId,
+            100,
+            nameof(terminalId));
+
+        var normalizedAllowed = allowedTypes
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (normalizedAllowed.Length == 0)
+            throw new ArgumentException(
+                "Mindestens ein Terminaltyp muss erlaubt sein.",
+                nameof(allowedTypes));
+
+        string? terminalType;
+        await using (var c = _db.OpenReadConnection())
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT terminal_type
+                FROM restaurant_terminals
+                WHERE terminal_id=$id
+                  AND is_active=1
+                LIMIT 1;
+                """;
+            q.Parameters.AddWithValue("$id", terminalId);
+            terminalType =
+                Convert.ToString(
+                    await q.ExecuteScalarAsync(ct));
+        }
+
+        if (string.IsNullOrWhiteSpace(terminalType) ||
+            !normalizedAllowed.Contains(
+                terminalType,
+                StringComparer.Ordinal))
+        {
+            throw new UnauthorizedAccessException(
+                "Terminaltyp ist für diese API-Funktion nicht freigegeben.");
+        }
     }
 
     public async Task<IReadOnlyList<RestaurantTerminalStatus>> ListAsync(
