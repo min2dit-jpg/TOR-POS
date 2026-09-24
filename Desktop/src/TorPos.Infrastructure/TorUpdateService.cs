@@ -230,6 +230,11 @@ public sealed class TorUpdateService
         return new(target, manifest, backupPath);
     }
 
+    // G-3: never resolve "powershell.exe" through PATH / the working directory.
+    internal static string PowerShellPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+
     public string ScheduleInstallAfterExit(TorStagedUpdate staged)
     {
         if (!File.Exists(staged.InstallerPath))
@@ -238,11 +243,27 @@ public sealed class TorUpdateService
         // Detached Windows helper: waits until TOR POS has fully closed (including the normal
         // exit backup / printer shutdown) and only then starts the Inno Setup installer.
         // Environment variables avoid command-line quoting problems with customer paths.
-        var command = "$target=[int]$env:TOR_UPDATE_PID;" +
+        // G-3: the installer was verified when it was downloaded, but the helper
+        // starts it minutes later with admin rights. It therefore opens the file
+        // read-only with FileShare.Read (nobody can replace or change it until
+        // Setup has started), checks the SHA-256 again and, when a signer is
+        // pinned, the Authenticode signature, and only then starts it.
+        var command = "$ErrorActionPreference='Stop';" +
+                      "function Stop-Update($m){try{Add-Content -LiteralPath $env:TOR_UPDATE_LOG -Value ((Get-Date).ToString('o')+' '+$m)}catch{};exit 5};" +
+                      "$target=[int]$env:TOR_UPDATE_PID;" +
                       "while(Get-Process -Id $target -ErrorAction SilentlyContinue){Start-Sleep -Milliseconds 500};" +
-                      "Start-Process -FilePath $env:TOR_UPDATE_INSTALLER -ArgumentList '/SILENT','/NORESTART' -Verb RunAs;";
+                      "$f=$env:TOR_UPDATE_INSTALLER;" +
+                      "try{$lock=[System.IO.File]::Open($f,'Open','Read','Read')}catch{Stop-Update 'Installer nicht lesbar'};" +
+                      "try{" +
+                      "$sha=[System.Security.Cryptography.SHA256]::Create();" +
+                      "$hash=[System.BitConverter]::ToString($sha.ComputeHash($lock)).Replace('-','');" +
+                      "if($hash -ne $env:TOR_UPDATE_SHA256){Stop-Update 'SHA-256 stimmt nicht'};" +
+                      "if($env:TOR_UPDATE_THUMB){$sig=Get-AuthenticodeSignature -LiteralPath $f;" +
+                      "if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne $env:TOR_UPDATE_THUMB){Stop-Update 'Signatur ungueltig'}};" +
+                      "Start-Process -FilePath $f -ArgumentList '/SILENT','/NORESTART' -Verb RunAs;" +
+                      "}finally{$lock.Dispose()}";
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-        var psi = new ProcessStartInfo("powershell.exe")
+        var psi = new ProcessStartInfo(PowerShellPath)
         {
             UseShellExecute = false,
             CreateNoWindow = true
@@ -253,6 +274,9 @@ public sealed class TorUpdateService
         psi.ArgumentList.Add(encoded);
         psi.Environment["TOR_UPDATE_PID"] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         psi.Environment["TOR_UPDATE_INSTALLER"] = staged.InstallerPath;
+        psi.Environment["TOR_UPDATE_SHA256"] = staged.Manifest.Sha256.ToUpperInvariant();
+        psi.Environment["TOR_UPDATE_THUMB"] = TorRelease.UpdateSignerThumbprint.Replace(" ", "", StringComparison.Ordinal).ToUpperInvariant();
+        psi.Environment["TOR_UPDATE_LOG"] = Path.Combine(AppPaths.UpdatesPath, "update-helper.log");
         _ = Process.Start(psi) ?? throw new InvalidOperationException("Update-Helfer konnte nicht gestartet werden.");
         return "PowerShell update helper";
     }
@@ -345,7 +369,7 @@ public sealed class TorUpdateService
                       "$e=($env:TOR_UPDATE_THUMB -replace ' ','').ToUpperInvariant();" +
                       "if($t -ne $e){Write-Output ('THUMB='+$t);exit 4};Write-Output ('THUMB='+$t);";
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-        var psi = new ProcessStartInfo("powershell.exe")
+        var psi = new ProcessStartInfo(PowerShellPath)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
