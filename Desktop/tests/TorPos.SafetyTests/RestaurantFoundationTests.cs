@@ -46,6 +46,13 @@ internal static class RestaurantFoundationTests
             "Restaurant Plus contains Plus modules and all standard essentials");
 
         assert(
+            RestaurantDeviceScopePolicy.PairingTerminalType == "HANDHELD" &&
+            RestaurantDeviceScopePolicy.IsHandheldApiType("HANDHELD") &&
+            !RestaurantDeviceScopePolicy.IsHandheldApiType("KASSE") &&
+            !RestaurantDeviceScopePolicy.IsHandheldApiType("KDS"),
+            "G-2 Restaurant /pair owns the HANDHELD scope server-side and cannot be promoted by a client-supplied terminal role");
+
+        assert(
             RestaurantLanBindingPolicy.IsPrivateIpv4(
                 IPAddress.Parse("10.12.0.5")) &&
             RestaurantLanBindingPolicy.IsPrivateIpv4(
