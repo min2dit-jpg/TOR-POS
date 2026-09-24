@@ -330,21 +330,18 @@ public sealed record CheckoutSnapshot(
     // reports, TSE ProcessData VAT-class bucketing) already groups
     // generically by CartLine.VatRate/sale_items.vat_rate, so nothing else
     // needs to know this rule exists.
-    public static CartLine[] CopyLines(IEnumerable<CartLine> lines, bool imHaus = false) => lines.Select(x => new CartLine
-    {
-        ProductId=x.ProductId, ProductName=x.ProductName, VariantName=x.VariantName,
-        Barcode=x.Barcode, Quantity=x.Quantity, Unit=x.Unit, UnitPriceCents=x.UnitPriceCents,
-        ListUnitPriceCents=x.EffectiveListUnitPriceCents,
-        VatRate=ImHausVat.Effective(x.VatRate, imHaus, x.ImHausApplicable), PfandCents=x.PfandCents,
-        VatAllocations=x.VatAllocations.ToArray(),
-        MenuComponents=x.MenuComponents.ToArray(),
-        ImHausApplicable=x.ImHausApplicable,
-        PromotionId=x.PromotionId, PromotionName=x.PromotionName,
-        PromotionPercent=x.PromotionPercent,
-        PromotionDiscountUnitCents=x.PromotionDiscountUnitCents,
-        PromotionStartDate=x.PromotionStartDate,
-        PromotionEndDate=x.PromotionEndDate
-    }).ToArray();
+    public static CartLine[] CopyLines(IEnumerable<CartLine> lines, bool imHaus = false) =>
+        lines.Select(x => new CartLine(x)
+        {
+            // A checkout snapshot is a new commercial line identity but keeps
+            // any already persisted gross-total snapshot (e.g. recalled park).
+            SaleItemId = 0,
+            ListUnitPriceCents = x.EffectiveListUnitPriceCents,
+            VatRate = ImHausVat.Effective(
+                x.VatRate,
+                imHaus,
+                x.ImHausApplicable)
+        }).ToArray();
 }
 public sealed record CheckoutOperation(
     CheckoutSnapshot Snapshot,
