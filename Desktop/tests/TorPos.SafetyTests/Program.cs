@@ -570,7 +570,7 @@ await R170ReviewTests.Run(Assert);
 await R171ReviewTests.Run(Assert);
 await R172ReviewTests.Run(Assert);
 await R173ReviewTests.Run(Assert);
-await R174ReviewTests.Run(root, Assert);
+await R174ReviewTests.Run(root, Assert);\nawait K1K2WeightedSnapshotTests.Run(root, Assert);
 await R175ReviewTests.Run(root, Assert);
 await R176ReviewTests.Run(root, Assert);
 await R177ReviewTests.Run(root, Assert);
@@ -633,6 +633,8 @@ await BarTestBonPreparationTests.Run(Assert);
 // R174: 9 reviewed checks lock PowerShell 5.1 simulator verification,
 // operating/Z-day promotion dates, cent-exact weighted promotions, checkout
 // unit preservation and identical partial-return allocation.
+// K-1/K-2: 7 behavioral checks lock CartLine unit snapshots, additive R193
+// persistence, parked/sale reloads and stored line totals through KassenbelegText.
 // R175: 8 reviewed checks lock read-only fiskaltrust/Swissbit discovery,
 // Queue Echo + SCU/device probes, secret isolation and the still-closed
 // physical-TSE production release gate.
@@ -658,7 +660,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant foundation: 65 checks lock signed Standard/Plus entitlement,
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1290;
+const int ExpectedSafetyChecks = 1297;
 
 if (checks != ExpectedSafetyChecks)
 {
