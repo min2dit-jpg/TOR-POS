@@ -413,7 +413,7 @@ private static async Task<decimal?> ExistingCategoryVatAsync(SqliteConnection c,
     q.Parameters.AddWithValue("$n", string.IsNullOrWhiteSpace(category) ? "Import" : category.Trim());
     var value = await q.ExecuteScalarAsync(ct);
     return value is null or DBNull ? null : Convert.ToDecimal(value, CultureInfo.InvariantCulture);
-}}public async Task<int> ImportArticlesFromDatabaseAsync(string sourceDatabasePath, string actor, CancellationToken ct = default)
+}public async Task<int> ImportArticlesFromDatabaseAsync(string sourceDatabasePath, string actor, CancellationToken ct = default)
 {
     return await IoQueue.RunAsync(async () =>
     {
