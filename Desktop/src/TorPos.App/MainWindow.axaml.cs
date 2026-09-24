@@ -6090,7 +6090,7 @@ public partial class MainWindow:Window
 
         try
         {
-            var slides = await BuildAdSlidesAsync(settings);
+            var slides = await BuildAdSlidesAsync(settings, AppPaths.CustomerDisplayAdsPath);
 
             if (generation == _customerDisplayAdsGeneration &&
                 ReferenceEquals(window, _customerDisplayWindow))
@@ -6107,9 +6107,9 @@ public partial class MainWindow:Window
     /// <summary>
     /// Builds advertising slides (own pictures and/or product cards) off the
     /// UI thread. Shared by the Kundendisplay and the Werbe-TV; each passes
-    /// its own content choice.
+    /// its own content choice and its own picture folder.
     /// </summary>
-    private async Task<IReadOnlyList<CustomerDisplaySlide>> BuildAdSlidesAsync(CustomerDisplayAdSettings settings)
+    private async Task<IReadOnlyList<CustomerDisplaySlide>> BuildAdSlidesAsync(CustomerDisplayAdSettings settings, string imageFolder)
     {
         var products = _catalog.Products.ToArray();
         return await Task.Run(async () =>
@@ -6117,9 +6117,8 @@ public partial class MainWindow:Window
             IReadOnlyList<CustomerDisplaySlide> imageSlides = Array.Empty<CustomerDisplaySlide>();
             if (settings.Source != CustomerDisplayAds.SourceProducts)
             {
-                var folder = AppPaths.CustomerDisplayAdsPath;
-                Directory.CreateDirectory(folder);
-                imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(folder));
+                Directory.CreateDirectory(imageFolder);
+                imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(imageFolder));
             }
 
             IReadOnlyList<CustomerDisplaySlide> productSlides = Array.Empty<CustomerDisplaySlide>();
@@ -6182,7 +6181,8 @@ public partial class MainWindow:Window
             return;
         try
         {
-            var slides = await BuildAdSlidesAsync(AdTv.SlideSettings(settings));
+            // Own folder: TV pictures never appear on the Kundendisplay.
+            var slides = await BuildAdSlidesAsync(AdTv.SlideSettings(settings), AppPaths.AdTvImagesPath);
             if (generation == _adTvGeneration)
                 _adTv.SetSlides(slides, settings.Interval, _settingsCache.GetText("company.name", "TOR POS"));
         }
