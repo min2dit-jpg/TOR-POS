@@ -14,6 +14,8 @@ public sealed class RestaurantTablePlanWindow : Window
     private readonly RestaurantKitchenOutbox _kitchen;
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
     private readonly IProductCatalog _catalog;
+    private readonly ISettingsRepository _settings;
+    private readonly ControlledPosActionService _controlledActions;
     private readonly AuthenticatedUser _user;
 
     private readonly WrapPanel _tablePanel = new()
@@ -170,6 +172,8 @@ public sealed class RestaurantTablePlanWindow : Window
         RestaurantKitchenOutbox kitchen,
         RestaurantKitchenDispatcher kitchenDispatcher,
         IProductCatalog catalog,
+        ISettingsRepository settings,
+        ControlledPosActionService controlledActions,
         AuthenticatedUser user)
     {
         _restaurant = restaurant;
@@ -177,6 +181,8 @@ public sealed class RestaurantTablePlanWindow : Window
         _kitchen = kitchen;
         _kitchenDispatcher = kitchenDispatcher;
         _catalog = catalog;
+        _settings = settings;
+        _controlledActions = controlledActions;
         _user = user;
 
         Title = "TOR Restaurant · Tischplan";
@@ -208,6 +214,7 @@ public sealed class RestaurantTablePlanWindow : Window
         _items.SelectionChanged += (_, _) =>
         {
             _cancelItem.IsEnabled =
+                _user.Can(UserPermissions.ImmediateStorno) &&
                 _selectedSession is not null &&
                 _selectedSession.State == RestaurantTableSessionState.Open &&
                 _items.SelectedItems?.Count == 1;
@@ -937,7 +944,38 @@ public sealed class RestaurantTablePlanWindow : Window
             return;
         }
 
+        if (!_user.Can(UserPermissions.ImmediateStorno))
+        {
+            try
+            {
+                await WriteRestaurantStornoAuditAsync(
+                    Guid.NewGuid().ToString("N"),
+                    "DENIED",
+                    "MISSING_IMMEDIATE_STORNO",
+                    selected,
+                    0,
+                    0,
+                    "desktop_permission_denied");
+            }
+            catch
+            {
+            }
+
+            await ShowErrorAsync(
+                "Keine Berechtigung für Restaurant-Storno.");
+            return;
+        }
+
+        var reason = await AskRestaurantStornoReasonAsync(selected);
+        if (reason is null)
+            return;
+
         RestaurantFiscalVorgang? fiscal = null;
+        var actionId = Guid.NewGuid().ToString("N");
+        var auditAuthorized = false;
+        var auditApplied = false;
+        long beforeTotal = 0;
+        long afterTotal = 0;
 
         try
         {
@@ -951,6 +989,26 @@ public sealed class RestaurantTablePlanWindow : Window
                     "Position kann nicht storniert werden: Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
                 return;
             }
+
+            var activeItems =
+                await _restaurant.ListActiveItemsAsync(
+                    _selectedSession.Id);
+            beforeTotal =
+                activeItems.Sum(x => x.LineTotalCents);
+            afterTotal =
+                Math.Max(
+                    0,
+                    beforeTotal - selected.LineTotalCents);
+
+            await WriteRestaurantStornoAuditAsync(
+                actionId,
+                "AUTHORIZED",
+                reason,
+                selected,
+                beforeTotal,
+                afterTotal,
+                "source=DESKTOP");
+            auditAuthorized = true;
 
             fiscal = await _restaurantFiscal.BeginChangeAsync(
                 _selectedSession.Id,
@@ -970,6 +1028,16 @@ public sealed class RestaurantTablePlanWindow : Window
                 _user.Username);
 
             fiscal = null;
+
+            await WriteRestaurantStornoAuditAsync(
+                actionId,
+                "APPLIED",
+                reason,
+                cancelled,
+                beforeTotal,
+                afterTotal,
+                "source=DESKTOP");
+            auditApplied = true;
 
             _selectedSession = await _restaurant.GetSessionAsync(
                 _selectedSession.Id);
@@ -992,6 +1060,24 @@ public sealed class RestaurantTablePlanWindow : Window
         }
         catch (Exception ex)
         {
+            if (auditAuthorized && !auditApplied)
+            {
+                try
+                {
+                    await WriteRestaurantStornoAuditAsync(
+                        actionId,
+                        "FAILED",
+                        reason,
+                        selected,
+                        beforeTotal,
+                        afterTotal,
+                        "source=DESKTOP; error=" + ex.Message);
+                }
+                catch
+                {
+                }
+            }
+
             if (fiscal is not null)
             {
                 try
@@ -1063,6 +1149,72 @@ public sealed class RestaurantTablePlanWindow : Window
         var draft = await dialog.ShowDialog<RestaurantCheckoutDraft?>(this);
         if (draft is not null)
             Close(draft);
+    }
+
+    private async Task<string?> AskRestaurantStornoReasonAsync(
+        RestaurantSessionItem item)
+    {
+        const string fallback =
+            "Fehlbuchung|Doppelte Erfassung|Kundenwunsch|Nicht verfügbar|Sonstiger Grund";
+
+        var configured = await _settings.GetAsync(
+            "function.storno_reasons",
+            fallback);
+
+        var reasons = configured
+            .Split(
+                new[] { '|', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (reasons.Length == 0)
+        {
+            reasons = fallback
+                .Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .ToArray();
+        }
+
+        return await new PosActionReasonWindow(
+            "RESTAURANT STORNO",
+            $"{item.ProductName} · Menge {item.Quantity:0.###} · {Formatting.Money(item.LineTotalCents)}",
+            reasons)
+            .ShowDialog<string?>(this);
+    }
+
+    private Task WriteRestaurantStornoAuditAsync(
+        string actionId,
+        string phase,
+        string reason,
+        RestaurantSessionItem item,
+        long beforeTotalCents,
+        long afterTotalCents,
+        string details)
+    {
+        return _controlledActions.AppendAsync(
+            new PosActionLogRequest
+            {
+                ActionId = actionId,
+                Phase = phase,
+                Actor = _user.Username,
+                RegisterId = Environment.MachineName,
+                OperationId =
+                    _selectedSession?.Id ??
+                    item.SessionId,
+                ActionType = "RESTAURANT_POSITION_STORNO",
+                Reason = reason,
+                EntityType = "RESTAURANT_SESSION_ITEM",
+                EntityId = item.Id.ToString(),
+                BeforeTotalCents = beforeTotalCents,
+                AfterTotalCents = afterTotalCents,
+                AmountCents = Math.Max(0, item.LineTotalCents),
+                Details =
+                    $"product_id={item.ProductId}; product={item.ProductName}; " +
+                    $"qty_milli={item.QuantityMilli}; {details}"
+            });
     }
 
     private string ResolveKitchenStation(Product? product)

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TorPos.Application;
 using TorPos.App;
 using TorPos.Core;
 using TorPos.Infrastructure;
@@ -513,6 +514,66 @@ internal static class RestaurantFoundationTests
                     UserPermissions.Sale),
                 "Restaurant operator session resolves a non-admin canonical POS waiter with Sale permission");
 
+            var g1Handheld = new RestaurantHandheldService(
+                plusEntitlements,
+                null!,
+                null!,
+                null!,
+                null!,
+                pairing,
+                operatorSessions,
+                null!,
+                null!,
+                null!);
+
+            var unauthorizedStornoRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G1-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G1-CANCEL-0001",
+                        operatorLogin.SessionToken,
+                        "Fehlbuchung"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                unauthorizedStornoRejected = true;
+            }
+
+            assert(
+                unauthorizedStornoRejected,
+                "G-1 handheld Restaurant storno requires ImmediateStorno even with a valid paired device and operator session");
+
+            await operatorAuth.SaveStaffUserAsync(
+                new StaffUserUpdate(
+                    operatorStaff.Id,
+                    "kellner1",
+                    true,
+                    UserPermissions.Sale |
+                    UserPermissions.ImmediateStorno,
+                    "",
+                    "4826"),
+                "admin");
+
+            var stornoLogin =
+                await operatorAuth.LoginWithPinAsync(
+                    "kellner1",
+                    "4826");
+
+            assert(
+                stornoLogin.Success &&
+                stornoLogin.User is not null &&
+                stornoLogin.User.Can(
+                    UserPermissions.ImmediateStorno),
+                "G-1 Restaurant storno permission is resolved from the canonical POS operator identity");
+
             var wrongDeviceRejected = false;
             try
             {
@@ -548,6 +609,69 @@ internal static class RestaurantFoundationTests
             assert(
                 loggedOutRejected,
                 "Restaurant operator logout revokes the shift token immediately");
+
+            var stornoOperatorSession =
+                await operatorSessions.LoginAsync(
+                    paired.DeviceId,
+                    "kellner1",
+                    "4826");
+
+            var missingOperatorSessionRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G2A-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "4826",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G2A-CANCEL-0001",
+                        "",
+                        "Fehlbuchung"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                missingOperatorSessionRejected = true;
+            }
+
+            assert(
+                missingOperatorSessionRejected,
+                "G-2 Restaurant mutation rejects device-authenticated requests without an operator session token");
+
+            var missingReasonRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G1-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G1-CANCEL-0002",
+                        stornoOperatorSession.SessionToken,
+                        ""));
+            }
+            catch (ArgumentException ex)
+                when (ex.Message.Contains(
+                    "Stornogrund",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                missingReasonRejected = true;
+            }
+
+            assert(
+                missingReasonRejected,
+                "G-1 handheld Restaurant storno rejects a blank reason before command or repository mutation");
+
+            await operatorSessions.LogoutAsync(
+                paired.DeviceId,
+                stornoOperatorSession.SessionToken);
 
             await pairing.DeactivateAsync(
                 paired.DeviceId);
@@ -601,6 +725,45 @@ internal static class RestaurantFoundationTests
                 terminalRows.Single(x => x.TerminalId == "KASSE-2").DisplayName == "Kasse 2 Neu" &&
                 terminalRows.Single(x => x.TerminalId == "KASSE-2").IsActive,
                 "Restaurant Plus terminal heartbeat updates one stable terminal identity without duplicates");
+
+            var terminalTypeChangeRejected = false;
+            try
+            {
+                await terminals.RegisterOrHeartbeatAsync(
+                    "KASSE-2",
+                    "Manipuliertes Gerät",
+                    "HANDHELD",
+                    "R190",
+                    "SERVER-2");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                terminalTypeChangeRejected = true;
+            }
+
+            assert(
+                terminalTypeChangeRejected,
+                "G-2 registered Restaurant terminal type cannot be escalated or changed by heartbeat");
+
+            await terminals.RequireTypeAsync(
+                "KASSE-2",
+                new[] { "KASSE" });
+
+            var terminalScopeRejected = false;
+            try
+            {
+                await terminals.RequireTypeAsync(
+                    "KASSE-2",
+                    new[] { "HANDHELD" });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                terminalScopeRejected = true;
+            }
+
+            assert(
+                terminalScopeRejected,
+                "G-2 Restaurant terminal scope guard rejects an endpoint role not assigned to the device");
 
             var terminalBeforeCoalesce =
                 terminalRows.Single(x =>
