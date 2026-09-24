@@ -44,12 +44,13 @@ public async Task InitializeAsync(CancellationToken ct = default)
             var bootstrap = ReadBootstrapAndDelete();
             var password = string.IsNullOrWhiteSpace(bootstrap.Password) ? "admin" : bootstrap.Password;
             var pin = IsValidPin(bootstrap.Pin) ? bootstrap.Pin : "1234";
-            // R182: the documented factory access is a usable default, not a locked
-            // state. A till ships ready to work with admin/admin and the 0000
-            // training code; the operator changes the credentials later in the
-            // Benutzerverwaltung. Marking it must-change made Can() deny every
-            // permission, so the first start was blocked by a forced dialog.
-            await CreateAdminAsync(c, "admin", password, pin, mustChangePassword: false, ct);
+            // Factory credentials may bootstrap the first login, but they never
+            // authorize normal POS work. App.axaml.cs routes this powerless admin
+            // session directly into RequiredAdminCredentialsWindow.
+            var usesFactoryCredential =
+                string.Equals(password, FactoryAdminPassword, StringComparison.Ordinal) ||
+                string.Equals(pin, FactoryAdminPin, StringComparison.Ordinal);
+            await CreateAdminAsync(c, "admin", password, pin, mustChangePassword: usesFactoryCredential, ct);
         }
         else
         {
@@ -59,8 +60,7 @@ public async Task InitializeAsync(CancellationToken ct = default)
 
         await EnsurePermissionRowsAsync(c, ct);
         await EnsureThreeStaffUsersAsync(c, ct);
-        await EnsureDefaultStaffCredentialsAsync(c, ct);
-        await DisableLegacyDefaultStaffCredentialsAsync(c, ct);
+        await MigrateLegacyDefaultStaffCredentialsOnceAsync(c, ct);
         try
         {
             File.WriteAllText(AppPaths.SecurityInitializedPath, DateTimeOffset.Now.ToString("O"));
@@ -102,21 +102,24 @@ public async Task InitializeAsync(CancellationToken ct = default)
         if (!row.IsAdmin && row.MustChangePassword)
             return new AuthenticationResult(false, "Mitarbeiter-Zugang noch nicht eingerichtet. Bitte durch Administrator konfigurieren.");
 
-        // R122 (G4) / R182: an admin session running on the shipped credentials is
-        // no longer blocked, but it must still be visible. The trace is written
-        // whenever the factory password is used, not only while a must-change flag
-        // is set.
-        if (row.IsAdmin &&
-            (row.MustChangePassword ||
-             string.Equals(password, FactoryAdminPassword, StringComparison.Ordinal)))
+        var factoryAdminLogin =
+            row.IsAdmin &&
+            string.Equals(password, FactoryAdminPassword, StringComparison.Ordinal);
+        if (row.IsAdmin && (row.MustChangePassword || factoryAdminLogin))
+        {
+            await MarkMustChangePasswordAsync(c, row.Id, ct);
             await WriteAuditSafeAsync(row.Username, "ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED", ct);
+        }
 
         var passwordUpgraded = await TryUpgradePasswordKdfAsync(c, row, password, ct);
         await RegisterSuccessfulLoginAsync(c, row.Id, ct);
         if (passwordUpgraded)
             await WriteAuditSafeAsync(row.Username, "PASSWORD_KDF_UPGRADED", $"algorithm={CurrentKdfAlgorithm}; iterations={CurrentPbkdf2Iterations}", ct);
         await WriteAuditSafeAsync(row.Username, "LOGIN_OK", ct);
-        return new AuthenticationResult(true, "Anmeldung erfolgreich.", ToAuthenticated(row));
+        var authenticated = ToAuthenticated(row);
+        if (factoryAdminLogin)
+            authenticated = authenticated with { MustChangePassword = true };
+        return new AuthenticationResult(true, "Anmeldung erfolgreich.", authenticated);
     });
 }public async Task<AuthenticationResult> LoginWithPinAsync(string username, string pin, CancellationToken ct = default)
 {
@@ -150,31 +153,35 @@ public async Task InitializeAsync(CancellationToken ct = default)
         if (!row.IsAdmin && row.MustChangePassword)
             return new AuthenticationResult(false, "Mitarbeiter-Zugang noch nicht eingerichtet. Bitte durch Administrator konfigurieren.");
 
-        // R122 (G4) / R182: same as the password path above.
-        if (row.IsAdmin &&
-            (row.MustChangePassword ||
-             string.Equals(pin, FactoryAdminPin, StringComparison.Ordinal)))
+        var factoryAdminPinLogin =
+            row.IsAdmin &&
+            string.Equals(pin, FactoryAdminPin, StringComparison.Ordinal);
+        if (row.IsAdmin && (row.MustChangePassword || factoryAdminPinLogin))
+        {
+            await MarkMustChangePasswordAsync(c, row.Id, ct);
             await WriteAuditSafeAsync(row.Username, "ADMIN_LOGIN_CREDENTIALS_UNCONFIGURED", ct);
+        }
 
         var pinUpgraded = await TryUpgradePinKdfAsync(c, row, pin, ct);
         await RegisterSuccessfulLoginAsync(c, row.Id, ct);
         if (pinUpgraded)
             await WriteAuditSafeAsync(row.Username, "PIN_KDF_UPGRADED", $"algorithm={CurrentKdfAlgorithm}; iterations={CurrentPbkdf2Iterations}", ct);
         await WriteAuditSafeAsync(row.Username, "PIN_LOGIN_OK", ct);
-        return new AuthenticationResult(true, "Anmeldung erfolgreich.", ToAuthenticated(row));
+        var authenticated = ToAuthenticated(row);
+        if (factoryAdminPinLogin)
+            authenticated = authenticated with { MustChangePassword = true };
+        return new AuthenticationResult(true, "Anmeldung erfolgreich.", authenticated);
     });
 }public async Task ChangeAdminCredentialsAsync(string currentPassword, string newPassword, string newPin, CancellationToken ct = default)
 {
     await IoQueue.RunAsync(async () =>
     {
-        // R182: an operator who chooses to replace the factory access should not be
-        // forced into a 10-character password or away from a 4-digit PIN they can
-        // actually use at the till. The structural rules stay: a password is
-        // required and a PIN is exactly four digits.
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 4)
-            throw new InvalidOperationException("Neues Passwort muss mindestens 4 Zeichen haben.");
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 10)
+            throw new InvalidOperationException("Neues Passwort muss mindestens 10 Zeichen haben.");
         if (!IsValidPin(newPin))
             throw new InvalidOperationException("PIN muss genau 4 Ziffern haben.");
+        if (string.Equals(newPin, FactoryAdminPin, StringComparison.Ordinal))
+            throw new InvalidOperationException("Die werkseitige PIN 1234 darf nicht weiterverwendet werden.");
         var login = await LoginWithPasswordAsync("admin", currentPassword, ct);
         if (!login.Success)
             throw new InvalidOperationException("Aktuelles Admin-Passwort ist falsch.");
@@ -531,6 +538,49 @@ public async Task InitializeAsync(CancellationToken ct = default)
             permission.Parameters.AddWithValue("$permissions", (long)defaultPermissions);
             await permission.ExecuteNonQueryAsync(ct);
         }
+    }
+
+    private static async Task MarkMustChangePasswordAsync(
+        SqliteConnection c,
+        long userId,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            UPDATE users
+            SET must_change_password=1
+            WHERE id=$id AND is_admin=1;
+            """;
+        q.Parameters.AddWithValue("$id", userId);
+        await q.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task MigrateLegacyDefaultStaffCredentialsOnceAsync(
+        SqliteConnection c,
+        CancellationToken ct)
+    {
+        await using (var marker = c.CreateCommand())
+        {
+            marker.CommandText = """
+                SELECT value
+                FROM app_settings
+                WHERE key='security.default_staff_credentials_migrated';
+                """;
+            var value = Convert.ToString(await marker.ExecuteScalarAsync(ct));
+            if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        await EnsureDefaultStaffCredentialsAsync(c, ct);
+        await DisableLegacyDefaultStaffCredentialsAsync(c, ct);
+
+        await using var done = c.CreateCommand();
+        done.CommandText = """
+            INSERT INTO app_settings(key,value)
+            VALUES('security.default_staff_credentials_migrated','true')
+            ON CONFLICT(key) DO UPDATE SET value='true';
+            """;
+        await done.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task DisableLegacyDefaultStaffCredentialsAsync(
