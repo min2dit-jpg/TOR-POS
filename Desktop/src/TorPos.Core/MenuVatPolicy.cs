@@ -380,27 +380,9 @@ public static class MenuVatPolicy
     private static CartLine CloneWithAllocations(
         CartLine line,
         IReadOnlyList<MenuVatAllocation> allocations) =>
-        new()
+        new CartLine(line)
         {
-            SaleItemId = line.SaleItemId,
-            ProductId = line.ProductId,
-            ProductName = line.ProductName,
-            VariantName = line.VariantName,
-            Barcode = line.Barcode,
-            Quantity = line.Quantity,
-            UnitPriceCents = line.UnitPriceCents,
-            ListUnitPriceCents = line.EffectiveListUnitPriceCents,
-            VatRate = line.VatRate,
-            VatAllocations = allocations.ToArray(),
-            MenuComponents = line.MenuComponents.ToArray(),
-            ImHausApplicable = line.ImHausApplicable,
-            PfandCents = line.PfandCents,
-            PromotionId = line.PromotionId,
-            PromotionName = line.PromotionName,
-            PromotionPercent = line.PromotionPercent,
-            PromotionDiscountUnitCents = line.PromotionDiscountUnitCents,
-            PromotionStartDate = line.PromotionStartDate,
-            PromotionEndDate = line.PromotionEndDate
+            VatAllocations = allocations.ToArray()
         };
 
     /// <summary>
