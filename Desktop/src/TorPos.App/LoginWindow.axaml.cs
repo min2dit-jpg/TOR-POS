@@ -45,7 +45,7 @@ public partial class LoginWindow : Window
         {
             KioskEditionRadio.Content = "RESTAURANT";
             ShowFixedEdition(KioskEditionRadio, ImbissEditionRadio);
-            EditionStatusText.Text = "Kassenart: RESTAURANT · Lizenz/Installation fest gebunden.";
+            EditionStatusText.Text = UiLanguage.T("Kassenart: RESTAURANT · Lizenz/Installation fest gebunden.");
             Title = ProductBuild.ProductName + " – Anmeldung";
         }
         else
