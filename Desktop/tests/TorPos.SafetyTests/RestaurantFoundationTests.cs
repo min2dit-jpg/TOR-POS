@@ -447,8 +447,10 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_reservations") &&
                     TableExists(c, "restaurant_terminals") &&
                     TableExists(c, "restaurant_device_commands") &&
-                    TableExists(c, "restaurant_operator_sessions"),
-                    "Restaurant-only tables including Bestellung, kitchen, reservations, terminal and device-command records are created for the Restaurant product");
+                    TableExists(c, "restaurant_operator_sessions") &&
+                    TableExists(c, "restaurant_self_order_tables") &&
+                    TableExists(c, "restaurant_self_order_sessions"),
+                    "Restaurant-only tables including Bestellung, kitchen, reservations, terminal, device-command and Self Order records are created for the Restaurant product");
 
                 assert(
                     ColumnExists(c, "restaurant_session_items", "fiscal_state"),
@@ -1096,6 +1098,178 @@ internal static class RestaurantFoundationTests
                 session.Note == "Kinderstuhl" &&
                 session.Version == 1,
                 "Opening a table captures guests and note in one versioned Tischvorgang");
+
+            var selfOrder = new RestaurantSelfOrderService(
+                db,
+                repo,
+                selfOrderEntitlements);
+
+            var tableQr = await selfOrder.RotateTableQrAsync(
+                tableId,
+                "ADMIN");
+
+            string storedTableTokenHash;
+            await using (var c = db.OpenReadConnection())
+            await using (var q = c.CreateCommand())
+            {
+                q.CommandText = """
+                    SELECT token_hash
+                    FROM restaurant_self_order_tables
+                    WHERE table_id=$table;
+                    """;
+                q.Parameters.AddWithValue("$table", tableId);
+                storedTableTokenHash =
+                    Convert.ToString(
+                        await q.ExecuteScalarAsync()) ?? "";
+            }
+
+            assert(
+                storedTableTokenHash.Length == 64 &&
+                !string.Equals(
+                    storedTableTokenHash,
+                    tableQr.PublicToken,
+                    StringComparison.Ordinal) &&
+                RestaurantSelfOrderSecurity.VerifyToken(
+                    tableQr.PublicToken,
+                    storedTableTokenHash),
+                "Self Order persists only the table QR hash and never the printable raw table token");
+
+            var selfCapability =
+                await selfOrder.ActivateSessionAsync(
+                    session.Id,
+                    RestaurantSelfOrderApprovalMode.ConfirmationRequired,
+                    "ADMIN",
+                    TimeSpan.FromHours(4));
+
+            string storedCapabilityHash;
+            await using (var c = db.OpenReadConnection())
+            await using (var q = c.CreateCommand())
+            {
+                q.CommandText = """
+                    SELECT capability_hash
+                    FROM restaurant_self_order_sessions
+                    WHERE session_id=$session;
+                    """;
+                q.Parameters.AddWithValue("$session", session.Id);
+                storedCapabilityHash =
+                    Convert.ToString(
+                        await q.ExecuteScalarAsync()) ?? "";
+            }
+
+            assert(
+                storedCapabilityHash.Length == 64 &&
+                !string.Equals(
+                    storedCapabilityHash,
+                    selfCapability.CapabilitySecret,
+                    StringComparison.Ordinal) &&
+                selfCapability.TableId == tableId &&
+                selfCapability.ExpiresAt > DateTimeOffset.UtcNow,
+                "Self Order active table-session stores only a capability hash and returns a bounded raw capability once");
+
+            var selfOrderValid =
+                await selfOrder.ValidateOrderCapabilityAsync(
+                    tableQr.PublicToken,
+                    selfCapability.PublicSessionId,
+                    selfCapability.CapabilitySecret);
+
+            assert(
+                selfOrderValid.Valid &&
+                selfOrderValid.SessionId == session.Id &&
+                selfOrderValid.TableId == tableId &&
+                selfOrderValid.ApprovalMode ==
+                    RestaurantSelfOrderApprovalMode.ConfirmationRequired,
+                "Self Order requires the matching static table QR and active table-session capability together");
+
+            var selfOrderWrongSecret =
+                await selfOrder.ValidateOrderCapabilityAsync(
+                    tableQr.PublicToken,
+                    selfCapability.PublicSessionId,
+                    selfCapability.CapabilitySecret + "x");
+
+            assert(
+                !selfOrderWrongSecret.Valid,
+                "Self Order static table QR alone cannot authorize an order with a wrong session capability");
+
+            await selfOrder.CloseSessionAsync(
+                session.Id);
+
+            var selfOrderAfterClose =
+                await selfOrder.ValidateOrderCapabilityAsync(
+                    tableQr.PublicToken,
+                    selfCapability.PublicSessionId,
+                    selfCapability.CapabilitySecret);
+
+            assert(
+                !selfOrderAfterClose.Valid,
+                "Closing a Self Order table-session capability immediately invalidates subsequent customer ordering");
+
+            var selfOrderSecurityTableId =
+                await repo.SaveTableAsync(
+                    areaId,
+                    "TSOSEC",
+                    "Self Order Sicherheit",
+                    seats: 2,
+                    sortOrder: 92);
+
+            var selfOrderSecuritySession =
+                await repo.OpenTableAsync(
+                    selfOrderSecurityTableId,
+                    "SELF-ORDER-TEST",
+                    guestCount: 1,
+                    deviceId: "KASSE-SELF");
+
+            var firstSecurityQr =
+                await selfOrder.RotateTableQrAsync(
+                    selfOrderSecurityTableId,
+                    "ADMIN");
+
+            var securityCapability =
+                await selfOrder.ActivateSessionAsync(
+                    selfOrderSecuritySession.Id,
+                    RestaurantSelfOrderApprovalMode.Automatic,
+                    "ADMIN",
+                    TimeSpan.FromHours(1));
+
+            var rotatedSecurityQr =
+                await selfOrder.RotateTableQrAsync(
+                    selfOrderSecurityTableId,
+                    "ADMIN");
+
+            var oldQrValidation =
+                await selfOrder.ValidateOrderCapabilityAsync(
+                    firstSecurityQr.PublicToken,
+                    securityCapability.PublicSessionId,
+                    securityCapability.CapabilitySecret);
+
+            var rotatedQrValidation =
+                await selfOrder.ValidateOrderCapabilityAsync(
+                    rotatedSecurityQr.PublicToken,
+                    securityCapability.PublicSessionId,
+                    securityCapability.CapabilitySecret);
+
+            assert(
+                !oldQrValidation.Valid &&
+                rotatedQrValidation.Valid,
+                "Self Order QR rotation invalidates the previously printed table QR without invalidating the current table-session capability");
+
+            var closedSecuritySession =
+                await repo.CloseEmptySessionAsync(
+                    selfOrderSecuritySession.Id,
+                    selfOrderSecuritySession.Version,
+                    "ADMIN",
+                    "KASSE-SELF");
+
+            var validationAfterRealTableClose =
+                await selfOrder.ValidateOrderCapabilityAsync(
+                    rotatedSecurityQr.PublicToken,
+                    securityCapability.PublicSessionId,
+                    securityCapability.CapabilitySecret);
+
+            assert(
+                closedSecuritySession.State ==
+                    RestaurantTableSessionState.Closed &&
+                !validationAfterRealTableClose.Valid,
+                "Self Order capability becomes invalid when the real Restaurant table session closes even without a separate Self Order close call");
 
             var duplicateRejected = false;
             try
