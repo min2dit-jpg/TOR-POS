@@ -222,6 +222,73 @@ internal static class RestaurantFoundationTests
                     "TEST",
                     Features: new[] { RestaurantEntitlementService.PlusFeatureCode })));
 
+        var selfOrderWithoutPlus =
+            new RestaurantEntitlementService(
+                new FakeCommercialLicenseService(
+                    new CommercialLicenseStatus(
+                        CommercialLicenseState.Active,
+                        "TEST",
+                        Features: new[]
+                        {
+                            RestaurantEntitlementService.SelfOrderFeatureCode
+                        })));
+
+        var selfOrderEntitlements =
+            new RestaurantEntitlementService(
+                new FakeCommercialLicenseService(
+                    new CommercialLicenseStatus(
+                        CommercialLicenseState.Active,
+                        "TEST",
+                        Features: new[]
+                        {
+                            RestaurantEntitlementService.PlusFeatureCode,
+                            RestaurantEntitlementService.SelfOrderFeatureCode
+                        })));
+
+        assert(
+            RestaurantProductFeatures.IsAddOn(
+                RestaurantFeature.QrTischbestellung) &&
+            !RestaurantProductFeatures.Includes(
+                RestaurantProductTier.RestaurantPlus,
+                RestaurantFeature.QrTischbestellung),
+            "Self Order stays a separately licensed add-on and is not silently bundled into Restaurant Plus");
+
+        assert(
+            !plusEntitlements.IsEnabled(
+                RestaurantFeature.QrTischbestellung),
+            "Restaurant Plus alone does not unlock the paid Self Order add-on");
+
+        assert(
+            !selfOrderWithoutPlus.IsEnabled(
+                RestaurantFeature.QrTischbestellung),
+            "Self Order add-on code without Restaurant Plus does not unlock QR ordering");
+
+        assert(
+            selfOrderEntitlements.IsEnabled(
+                RestaurantFeature.QrTischbestellung),
+            "Restaurant Plus plus RESTAURANT_SELF_ORDER unlocks QR table ordering");
+
+        var selfOrderQr =
+            RestaurantSelfOrderSecurity.CreateTableQrSecret();
+
+        assert(
+            selfOrderQr.PublicToken.Length >= 40 &&
+            selfOrderQr.TokenHash.Length == 64 &&
+            !string.Equals(
+                selfOrderQr.PublicToken,
+                selfOrderQr.TokenHash,
+                StringComparison.Ordinal) &&
+            RestaurantSelfOrderSecurity.VerifyToken(
+                selfOrderQr.PublicToken,
+                selfOrderQr.TokenHash),
+            "Self Order QR creates a high-entropy public token while persistence can keep only its SHA-256 hash");
+
+        assert(
+            !RestaurantSelfOrderSecurity.VerifyToken(
+                selfOrderQr.PublicToken + "x",
+                selfOrderQr.TokenHash),
+            "Self Order QR token verification rejects a modified table token");
+
         assert(
             standardEntitlements.CurrentTier() == RestaurantProductTier.Restaurant &&
             !standardEntitlements.IsEnabled(RestaurantFeature.KitchenDisplaySystem),
