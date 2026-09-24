@@ -338,6 +338,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
         RestaurantFiscalVorgang? vorgang = null;
         RestaurantSessionItem? item = null;
+        var createdInThisAttempt = false;
 
         try
         {
@@ -429,6 +430,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                         ct);
 
                 item = mutation.Item;
+                createdInThisAttempt = mutation.Created;
 
                 if (!mutation.Created)
                 {
@@ -502,14 +504,39 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         }
         catch (Exception ex)
         {
+            var discardedPending = false;
+
             if (vorgang is not null)
             {
                 try
                 {
-                    await _fiscal.AbortChangeAsync(
-                        vorgang,
-                        operatorUser.Username,
-                        CancellationToken.None);
+                    if (createdInThisAttempt && item is not null)
+                    {
+                        var mayDiscard =
+                            await _fiscal.AbortPendingAddedItemAsync(
+                                vorgang,
+                                item,
+                                operatorUser.Username,
+                                CancellationToken.None);
+
+                        if (mayDiscard)
+                        {
+                            discardedPending =
+                                await _restaurant.DiscardPendingItemAsync(
+                                    item.SessionId,
+                                    item.Id,
+                                    operatorUser.Username,
+                                    request.DeviceId,
+                                    CancellationToken.None);
+                        }
+                    }
+                    else
+                    {
+                        await _fiscal.AbortChangeAsync(
+                            vorgang,
+                            operatorUser.Username,
+                            CancellationToken.None);
+                    }
                 }
                 catch
                 {
@@ -519,12 +546,14 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             try
             {
                 var persistedItem =
-                    item ??
-                    await _restaurant.GetItemByLineTokenAsync(
-                        lineToken,
-                        CancellationToken.None);
+                    discardedPending
+                        ? null
+                        : item ??
+                          await _restaurant.GetItemByLineTokenAsync(
+                              lineToken,
+                              CancellationToken.None);
 
-                if (persistedItem is not null)
+                if (discardedPending || persistedItem is not null)
                 {
                     await _commands.ReleaseForRecoveryAsync(
                         request.DeviceId,
