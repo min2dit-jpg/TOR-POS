@@ -65,19 +65,6 @@ public sealed class RestaurantSelfOrderInboxService
                 nameof(lines));
         }
 
-        var capability =
-            await _selfOrder.ValidateOrderCapabilityAsync(
-                tablePublicToken,
-                publicSessionId,
-                capabilitySecret,
-                ct);
-
-        if (!capability.Valid)
-        {
-            throw new UnauthorizedAccessException(
-                "Self-Order-Sitzung ist ungültig oder abgelaufen.");
-        }
-
         var totalQuantity = 0;
 
         foreach (var request in lines)
@@ -100,23 +87,41 @@ public sealed class RestaurantSelfOrderInboxService
             }
         }
 
-        var requestHash = ComputeRequestHash(
-            capability.SessionId,
-            clientOrderId,
-            note,
-            lines);
-
-        var now = DateTimeOffset.UtcNow;
-        var orderId = Guid.NewGuid().ToString("N");
-        var publicOrderId =
-            RestaurantSelfOrderSecurity.CreatePublicSessionId();
-        var mode = capability.ApprovalMode ==
-            RestaurantSelfOrderApprovalMode.Automatic
-                ? "AUTOMATIC"
-                : "CONFIRMATION_REQUIRED";
-
         return await IoQueue.RunAsync(async () =>
         {
+            // Validate the table/session capability only after entering the
+            // same serialized mutation lane used by QR rotation, session close
+            // and Restaurant table mutations. This removes the validation-to-
+            // persist race: once validation succeeds here, no close/rotation
+            // can interleave before the RECEIVED order is committed.
+            var capability =
+                await _selfOrder.ValidateOrderCapabilityAsync(
+                    tablePublicToken,
+                    publicSessionId,
+                    capabilitySecret,
+                    ct);
+
+            if (!capability.Valid)
+            {
+                throw new UnauthorizedAccessException(
+                    "Self-Order-Sitzung ist ungültig oder abgelaufen.");
+            }
+
+            var requestHash = ComputeRequestHash(
+                capability.SessionId,
+                clientOrderId,
+                note,
+                lines);
+
+            var now = DateTimeOffset.UtcNow;
+            var orderId = Guid.NewGuid().ToString("N");
+            var publicOrderId =
+                RestaurantSelfOrderSecurity.CreatePublicSessionId();
+            var mode = capability.ApprovalMode ==
+                RestaurantSelfOrderApprovalMode.Automatic
+                    ? "AUTOMATIC"
+                    : "CONFIRMATION_REQUIRED";
+
             await using var c = _db.OpenConnection();
             await using var tx = c.BeginTransaction();
 
