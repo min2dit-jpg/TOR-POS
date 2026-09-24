@@ -748,11 +748,11 @@ public sealed class RestaurantRepository
                     INSERT INTO restaurant_session_items(
                         session_id,line_token,product_id,product_name,variant_name,
                         quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        added_by,added_at,version)
+                        fiscal_state,added_by,added_at,version)
                     VALUES(
                         $session,$token,$product,$name,'',
                         $quantity,$price,$vat,$pfand,'ACTIVE',
-                        $operator,$now,1)
+                        'PENDING',$operator,$now,1)
                     RETURNING id;
                     """;
                 insert.Parameters.AddWithValue("$session", sessionId);
@@ -809,6 +809,112 @@ public sealed class RestaurantRepository
                     DateTimeOffset.Parse(now),
                     1),
                 Created: true);
+        });
+    }
+
+    public async Task<bool> DiscardPendingItemAsync(
+        string sessionId,
+        long sessionItemId,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+
+        if (sessionId.Length == 0 || sessionItemId <= 0)
+            return false;
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+            var now = DateTimeOffset.UtcNow.ToString("O");
+
+            long productId;
+            string productName;
+            long quantityMilli;
+
+            await using (var read = c.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = """
+                    SELECT product_id,product_name,quantity_milli
+                    FROM restaurant_session_items
+                    WHERE id=$item
+                      AND session_id=$session
+                      AND state='ACTIVE'
+                      AND fiscal_state='PENDING';
+                    """;
+                read.Parameters.AddWithValue("$item", sessionItemId);
+                read.Parameters.AddWithValue("$session", sessionId);
+
+                await using var r = await read.ExecuteReaderAsync(ct);
+                if (!await r.ReadAsync(ct))
+                {
+                    await tx.CommitAsync(ct);
+                    return false;
+                }
+
+                productId = r.GetInt64(0);
+                productName = r.GetString(1);
+                quantityMilli = r.GetInt64(2);
+            }
+
+            await using (var delete = c.CreateCommand())
+            {
+                delete.Transaction = tx;
+                delete.CommandText = """
+                    DELETE FROM restaurant_session_items
+                    WHERE id=$item
+                      AND session_id=$session
+                      AND state='ACTIVE'
+                      AND fiscal_state='PENDING';
+                    """;
+                delete.Parameters.AddWithValue("$item", sessionItemId);
+                delete.Parameters.AddWithValue("$session", sessionId);
+
+                if (await delete.ExecuteNonQueryAsync(ct) != 1)
+                {
+                    throw new InvalidOperationException(
+                        "Ungesicherte Restaurant-Position wurde zwischenzeitlich geändert.");
+                }
+            }
+
+            await using (var touch = c.CreateCommand())
+            {
+                touch.Transaction = tx;
+                touch.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET updated_at=$now,
+                        version=version+1
+                    WHERE id=$session
+                      AND state='OPEN';
+                    """;
+                touch.Parameters.AddWithValue("$now", now);
+                touch.Parameters.AddWithValue("$session", sessionId);
+                await touch.ExecuteNonQueryAsync(ct);
+            }
+
+            await AppendEventAsync(
+                c,
+                tx,
+                sessionId,
+                "POSITION_FISKAL_VERWORFEN",
+                actor,
+                deviceId,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sessionItemId,
+                    productId,
+                    productName,
+                    quantityMilli
+                }),
+                now,
+                ct);
+
+            await tx.CommitAsync(ct);
+            return true;
         });
     }
 

@@ -72,6 +72,33 @@ internal static class RestaurantFoundationTests
             CustomBonId: "RB-900",
             CustomAllocationGroup: "Restaurant session-900");
 
+        var restaurantOtherOrderRecord =
+            restaurantOrderRecord with
+            {
+                Id = 901,
+                CustomBonId = "RB-901",
+                CustomAllocationGroup = "Restaurant session-901"
+            };
+
+        var restaurantStornoRecord =
+            restaurantOrderRecord with
+            {
+                Id = 902,
+                Sequence = 2,
+                Kind = OrderBestellungKind.Storno,
+                CreatedAt = exportTime.AddMinutes(2),
+                Lines = new[]
+                {
+                    new CartLine(
+                        restaurantOrderRecord.Lines.Single())
+                    {
+                        Quantity = -1m
+                    }
+                },
+                CustomBonId = "RB-902",
+                CustomAllocationGroup = "Restaurant session-900"
+            };
+
         var exportRows = DsfinvkClosingBuilder.Build(
             new DsfinvkClosingInput
             {
@@ -90,7 +117,12 @@ internal static class RestaurantFoundationTests
                     "TEST-001",
                     "TOR Restaurant",
                     "R185"),
-                OrderRecords = new[] { restaurantOrderRecord }
+                OrderRecords = new[]
+                {
+                    restaurantOtherOrderRecord,
+                    restaurantOrderRecord,
+                    restaurantStornoRecord
+                }
             });
 
         assert(
@@ -105,6 +137,19 @@ internal static class RestaurantFoundationTests
                     "Restaurant session-900",
                     StringComparison.Ordinal)),
             "Restaurant Bestellung keeps its RB BON_ID and Restaurant allocation group in DSFinV-K rows");
+
+        assert(
+            exportRows.For("Bon_Referenzen").Any(
+                row =>
+                    string.Equals(
+                        Convert.ToString(row["BON_ID"]),
+                        "RB-902",
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        Convert.ToString(row["REF_BON_ID"]),
+                        "RB-900",
+                        StringComparison.Ordinal)),
+            "K-4 Restaurant Storno references the acceptance RB identity of the same session instead of BE-0-1");
 
         var standardEntitlements = new RestaurantEntitlementService(
             new FakeCommercialLicenseService(
@@ -280,6 +325,10 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_device_commands") &&
                     TableExists(c, "restaurant_operator_sessions"),
                     "Restaurant-only tables including Bestellung, kitchen, reservations, terminal and device-command records are created for the Restaurant product");
+
+                assert(
+                    ColumnExists(c, "restaurant_session_items", "fiscal_state"),
+                    "K-4 Restaurant schema tracks PENDING versus SECURED fiscal item state");
 
                 var immutableBestellung = false;
                 try
@@ -995,6 +1044,23 @@ internal static class RestaurantFoundationTests
                 afterItem.Version == reassigned.Version + 1,
                 "Adding a table item is cent-exact and advances the session version");
 
+            var fiscalState = new RestaurantFiscalOrderService(db, null!);
+            string itemFiscalState;
+            await using (var c = db.OpenReadConnection())
+            await using (var q = c.CreateCommand())
+            {
+                q.CommandText =
+                    "SELECT fiscal_state FROM restaurant_session_items WHERE id=$id;";
+                q.Parameters.AddWithValue("$id", item.Id);
+                itemFiscalState =
+                    Convert.ToString(await q.ExecuteScalarAsync()) ?? "";
+            }
+
+            assert(
+                itemFiscalState == "PENDING" &&
+                !await fiscalState.IsCurrentStateSecuredAsync(session.Id),
+                "K-4 newly added Restaurant item remains PENDING and blocks secured-state until Bestellung capture commits");
+
             var liveSummaries =
                 await repo.ListLiveTableSummariesAsync();
 
@@ -1070,7 +1136,6 @@ internal static class RestaurantFoundationTests
                 staleItemRejected,
                 "Stale concurrent item add is rejected instead of duplicating a table position");
 
-            var fiscalState = new RestaurantFiscalOrderService(db, null!);
             await InsertRestaurantBestellungAsync(
                 db,
                 session.Id,
@@ -1082,6 +1147,38 @@ internal static class RestaurantFoundationTests
             assert(
                 await fiscalState.IsCurrentStateSecuredAsync(session.Id),
                 "Restaurant secured-state matches the table after immutable Bestellung capture");
+
+            var rollbackTableId = await repo.SaveTableAsync(
+                areaId,
+                "TK4ROLL",
+                "K4 Rollback",
+                seats: 2,
+                sortOrder: 91);
+            var rollbackSession = await repo.OpenTableAsync(
+                rollbackTableId,
+                "KELLNER-4",
+                deviceId: "KASSE-K4");
+            var rollbackItem = await repo.AddItemAsync(
+                rollbackSession.Id,
+                rollbackSession.Version,
+                product,
+                1m,
+                "KELLNER-4",
+                "KASSE-K4");
+            var discarded = await repo.DiscardPendingItemAsync(
+                rollbackSession.Id,
+                rollbackItem.Id,
+                "KELLNER-4",
+                "KASSE-K4");
+
+            assert(
+                discarded &&
+                await repo.GetItemAsync(
+                    rollbackSession.Id,
+                    rollbackItem.Id) is null &&
+                await fiscalState.IsCurrentStateSecuredAsync(
+                    rollbackSession.Id),
+                "K-4 aborted PENDING Restaurant item can be compensated without leaving the table permanently inconsistent");
 
             var splitItems = await repo.ListActiveItemsAsync(session.Id);
             var splitQuote = RestaurantSplitCalculator.ByItems(
@@ -1732,7 +1829,42 @@ internal static class RestaurantFoundationTests
             await item.ExecuteNonQueryAsync();
         }
 
+        await using (var secured = c.CreateCommand())
+        {
+            secured.Transaction = tx;
+            secured.CommandText = """
+                UPDATE restaurant_session_items
+                SET fiscal_state='SECURED'
+                WHERE session_id=$session
+                  AND fiscal_state='PENDING';
+                """;
+            secured.Parameters.AddWithValue("$session", sessionId);
+            await secured.ExecuteNonQueryAsync();
+        }
+
         await tx.CommitAsync();
+    }
+
+    private static bool ColumnExists(
+        SqliteConnection c,
+        string table,
+        string column)
+    {
+        using var q = c.CreateCommand();
+        q.CommandText = $"PRAGMA table_info({table});";
+        using var r = q.ExecuteReader();
+        while (r.Read())
+        {
+            if (string.Equals(
+                    r.GetString(1),
+                    column,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TableExists(SqliteConnection c, string name)
