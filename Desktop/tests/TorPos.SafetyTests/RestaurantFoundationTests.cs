@@ -1006,6 +1006,20 @@ internal static class RestaurantFoundationTests
                 session.Version == 1,
                 "Opening a table captures guests and note in one versioned Tischvorgang");
 
+            var restaurantClosingGuard =
+                new DailyClosingGuard(
+                    new ParkedReceiptRepository(db),
+                    db);
+            var restaurantCloseCheck =
+                await restaurantClosingGuard.CheckAsync();
+
+            assert(
+                !restaurantCloseCheck.Allowed &&
+                restaurantCloseCheck.Message.Contains(
+                    "Restaurant-Tischvorgang",
+                    StringComparison.OrdinalIgnoreCase),
+                "Restaurant fiscal follow-up blocks Z closing while a table session is still live");
+
             var duplicateRejected = false;
             try
             {
@@ -1095,6 +1109,62 @@ internal static class RestaurantFoundationTests
             assert(
                 staleRejected,
                 "Stale table-session writes are rejected instead of overwriting newer data");
+
+            var vatTableId = await repo.SaveTableAsync(
+                areaId,
+                "TVAT",
+                "KDV Tisch",
+                seats: 2,
+                sortOrder: 88);
+            var vatSession = await repo.OpenTableAsync(
+                vatTableId,
+                "KELLNER-VAT",
+                guestCount: 1);
+
+            var reducedFood = new Product
+            {
+                Id = 900002,
+                Name = "Speise 7 Prozent",
+                BasePriceCents = 1000,
+                VatRate = 7m,
+                ImHausApplicable = true
+            };
+
+            var restaurantFood = await repo.AddItemAsync(
+                vatSession.Id,
+                vatSession.Version,
+                reducedFood,
+                1m,
+                "KELLNER-VAT");
+
+            assert(
+                restaurantFood.VatRate == 19m,
+                "Restaurant fiscal follow-up snapshots the Im-Haus 19% VAT rate when a reduced-rate food item is added to a table");
+
+            var vatSessionAfterFood =
+                await repo.GetSessionAsync(vatSession.Id)
+                ?? throw new InvalidOperationException(
+                    "VAT test session missing.");
+
+            var reducedExempt = new Product
+            {
+                Id = 900003,
+                Name = "Nicht Im-Haus umzustellen",
+                BasePriceCents = 800,
+                VatRate = 7m,
+                ImHausApplicable = false
+            };
+
+            var exemptItem = await repo.AddItemAsync(
+                vatSession.Id,
+                vatSessionAfterFood.Version,
+                reducedExempt,
+                1m,
+                "KELLNER-VAT");
+
+            assert(
+                exemptItem.VatRate == 7m,
+                "Restaurant fiscal follow-up preserves the configured reduced VAT rate when Im-Haus conversion is disabled");
 
             var product = new Product
             {
