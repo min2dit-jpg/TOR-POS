@@ -1541,6 +1541,8 @@ internal static class UiTranslations
         ["SOLO MIT DIESEM KONTO KOPPELN"] = "SOLO'YU BU HESAPLA EŞLEŞTİR",
         ["Händlercode (Merchant Code)"] = "Bayi kodu (Merchant Code)",
         ["SumUp API-Key"] = "SumUp API anahtarı",
+        ["KASSENABSCHLUSS NACH UPDATE NÖTIG"] = "GÜNCELLEME SONRASI KASA KAPANIŞI GEREKLİ",
+        ["TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen."] = "TOR POS güncellendi, ancak park edilmiş fişler veya açık bir işlem olduğu için otomatik kasa kapanışı yapılamadı. Lütfen açık fişleri tahsil edin ve bugün bir Z kapanışı yapın.",
         ["Kopplungscode vom Solo (nur bei neuer Kopplung)"] = "Solo'dan eşleştirme kodu (yalnızca yeni eşleştirmede)",
         ["Geräteliste laden, danach Solo auswählen"] = "Cihaz listesini yükleyin, sonra Solo'yu seçin",
         ["Verbindungstest. Der 1,00-€-Test sendet eine ECHTE Zahlungsanforderung an das Solo. KEINE KARTE vorhalten; danach ABBRECHEN."] =
@@ -3201,6 +3203,8 @@ internal static class UiTranslations
         ["SOLO MIT DIESEM KONTO KOPPELN"] = "PAIR THE SOLO WITH THIS ACCOUNT",
         ["Händlercode (Merchant Code)"] = "Merchant code",
         ["SumUp API-Key"] = "SumUp API key",
+        ["KASSENABSCHLUSS NACH UPDATE NÖTIG"] = "CLOSING REQUIRED AFTER UPDATE",
+        ["TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen."] = "TOR POS was updated, but the automatic closing was not possible because parked receipts or an open transaction remained. Please settle open receipts and run a Z closing today.",
         ["Kopplungscode vom Solo (nur bei neuer Kopplung)"] = "Pairing code from the Solo (only for a new pairing)",
         ["Geräteliste laden, danach Solo auswählen"] = "Load the device list, then choose the Solo",
         ["Verbindungstest. Der 1,00-€-Test sendet eine ECHTE Zahlungsanforderung an das Solo. KEINE KARTE vorhalten; danach ABBRECHEN."] =

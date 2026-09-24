@@ -117,6 +117,29 @@ public static class R132ReviewTests
         // ---------- software version ----------
         await SaleAsync(db);
         await settings.SaveManyAsync(new Dictionary<string, string> { [DsfinvkMasterDataRules.SoftwareVersionKey] = "0.7.33.700 (R70)" });
+
+        // F-2: an open parked receipt blocks the automatic closing exactly like
+        // a manual Z. The closing is deferred and the old version kept.
+        var blockingOrder = await parked.ParkAsync(new[] { new CartLine { ProductName = "Ayran", Quantity = 1, UnitPriceCents = 250, VatRate = 7m } }, 0, "kasse1");
+        var closingsBeforeDeferred = await ClosingCountAsync();
+        var deferred = await service.EnsureSoftwareVersionAsync("SYSTEM");
+        long deferredAudit;
+        await using (var c = db.OpenConnection())
+        {
+            await using var q = c.CreateCommand();
+            q.CommandText = "SELECT COUNT(*) FROM audit_log WHERE event_type='Z_REPORT_AUTO_SOFTWARE_UPDATE_DEFERRED';";
+            deferredAudit = Convert.ToInt64(await q.ExecuteScalarAsync());
+            q.CommandText = "UPDATE parked_receipts SET status='CANCELLED' WHERE id=$id;";
+            q.Parameters.AddWithValue("$id", blockingOrder.Id);
+            await q.ExecuteNonQueryAsync();
+        }
+        var storedAfterDeferred = await settings.GetAsync(DsfinvkMasterDataRules.SoftwareVersionKey);
+        assert(deferred is null && await ClosingCountAsync() == closingsBeforeDeferred && deferredAudit == 1 &&
+               storedAfterDeferred == "0.7.33.700 (R70)" &&
+               DsfinvkMasterDataStore.IsUpdateClosingPending(storedAfterDeferred) &&
+               !DsfinvkMasterDataStore.IsUpdateClosingPending(DsfinvkMasterDataStore.RunningSoftwareVersion),
+            "F-2 an open parked receipt defers the automatic closing after an update: no Z, old version kept, the deferral audited and reported as pending");
+
         var updateClosing = await service.EnsureSoftwareVersionAsync("SYSTEM");
         var secondRun = await service.EnsureSoftwareVersionAsync("SYSTEM");
         string secondSnapshot;

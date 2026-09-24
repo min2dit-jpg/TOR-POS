@@ -100,7 +100,11 @@ public sealed class SaleFiscalSigningService
         {
             processData = FiscalProcessData.KassenbelegText(sale);
         }
-        catch (UnsupportedVatRateException ex)
+        // F-5: UnsupportedVatRateException is one InvalidOperationException;
+        // an inconsistent Kassenbeleg ("inkonsistent") is another. Both mean the
+        // data cannot be signed and must end as a documented outage, never as
+        // an escaped exception that leaves no TSE record and an open Vorgang.
+        catch (InvalidOperationException ex)
         {
             await vorgaenge.CloseUnsignedAsync(vorgangId, reference, ct);
             await ReportOutageAsync(sale, ex.Message, actor, ct);
@@ -153,7 +157,8 @@ public sealed class SaleFiscalSigningService
         {
             processData = FiscalProcessData.BuildKassenbeleg(sale);
         }
-        catch (UnsupportedVatRateException ex)
+        // F-5: see SignInVorgangAsync - any unsignable data is an outage.
+        catch (InvalidOperationException ex)
         {
             await ReportOutageAsync(sale, ex.Message, actor, ct);
             return;

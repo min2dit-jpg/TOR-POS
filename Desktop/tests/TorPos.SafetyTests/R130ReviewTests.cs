@@ -158,6 +158,20 @@ public static class R130ReviewTests
             "R130 it is documented as a TSE outage naming the unsupported rate, so the receipt carries the outage note instead of a silent gap");
         await outages.CloseOpenAsync("tester");
 
+        // F-5: Kassenbeleg-V1 refuses a sale whose positions do not add up to
+        // its total ("inkonsistent"). That must end as a documented outage too.
+        var inconsistent = await StoredSaleAsync(Line("A", 1000, 19m));
+        inconsistent.TotalCents += 1;
+        inconsistent.CashPortionCents += 1;
+        var escaped = false;
+        try { await saleSigning.SignAsync(inconsistent, "tester"); }
+        catch (InvalidOperationException) { escaped = true; }
+        var inconsistentOutage = await outages.GetOpenAsync();
+        assert(!escaped && provider.Starts.Count == 1 && inconsistent.TseOutage &&
+               inconsistentOutage is not null && inconsistentOutage.Reason.Contains("inkonsistent"),
+            "F-5 an inconsistent Kassenbeleg never opens a TSE transaction and is documented as an outage instead of escaping as an exception");
+        await outages.CloseOpenAsync("tester");
+
         var orders = new ParkedReceiptRepository(db);
         var orderSigning = new OrderFiscalSigningService(failSafe, settings, orders);
         var order = await orders.ParkAsync(new[] { Line("Döner", 850, 7m, 2m) }, 0, "tester", assignPickupNumber: true, orderPrint: false);

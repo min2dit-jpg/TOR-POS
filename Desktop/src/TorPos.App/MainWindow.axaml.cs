@@ -360,6 +360,18 @@ public partial class MainWindow:Window
             using (_perf.Measure("startup.stock_warning"))
                 await RefreshStockWarningAsync();
 
+            // F-2: the automatic closing after an update was deferred because
+            // parked receipts or an open Vorgang blocked it. Tell the operator
+            // once per start; the next Z-Abschluss resolves it.
+            if (!_currentUser.IsTraining &&
+                DsfinvkMasterDataStore.IsUpdateClosingPending(
+                    _settingsCache.GetText(DsfinvkMasterDataRules.SoftwareVersionKey, "")))
+            {
+                await ShowMenuInfoAsync(
+                    "KASSENABSCHLUSS NACH UPDATE NÖTIG",
+                    "TOR POS wurde aktualisiert, aber der automatische Kassenabschluss war nicht möglich, weil noch geparkte Bons oder ein offener Vorgang vorhanden waren. Bitte offene Bons kassieren und heute einen Z-Abschluss durchführen.");
+            }
+
             _ = CheckForUpdateInBackgroundAsync();
             if (_currentUser.IsTraining)
             {
