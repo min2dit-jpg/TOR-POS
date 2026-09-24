@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 37;
+    public const int TargetSchemaVersion = 38;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2146,6 +2146,47 @@ public sealed class SchemaMigrationService
 
                         CREATE INDEX IF NOT EXISTS ix_restaurant_items_fiscal_state
                           ON restaurant_session_items(session_id,fiscal_state,state,id);
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                38,
+                "G2B_RESTAURANT_PAIRING_ATTEMPT_LIMIT",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable(
+                        "TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(
+                            edition,
+                            "RESTAURANT",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    await using (var exists = c.CreateCommand())
+                    {
+                        exists.Transaction = tx;
+                        exists.CommandText = """
+                            SELECT COUNT(*)
+                            FROM sqlite_master
+                            WHERE type='table'
+                              AND name='restaurant_pairing_codes';
+                            """;
+                        if (Convert.ToInt32(
+                                await exists.ExecuteScalarAsync(ct)) == 0)
+                        {
+                            return;
+                        }
+                    }
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        ALTER TABLE restaurant_pairing_codes
+                          ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0
+                          CHECK(failed_attempts BETWEEN 0 AND 5);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
