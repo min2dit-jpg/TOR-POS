@@ -2338,7 +2338,7 @@ private Control TsePage()
         TextWrapping = TextWrapping.Wrap,
         Foreground = _tseTimeAdminPin.CanAutoUse
             ? AppTheme.MutedText
-            : AppTheme.WarningOrange
+            : Brushes.Orange
     };
     clock.Children.Add(timePinSafety);
 
