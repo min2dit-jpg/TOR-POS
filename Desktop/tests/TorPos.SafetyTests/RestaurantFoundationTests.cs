@@ -445,6 +445,32 @@ internal static class RestaurantFoundationTests
                 pairingReuseRejected,
                 "Restaurant handheld pairing code is one-time use");
 
+            var perCodeRateLimitReached = false;
+            for (var attempt = 0; attempt < 6; attempt++)
+            {
+                try
+                {
+                    await pairing.PairAsync(
+                        "000000",
+                        "GUESS-DEVICE-001",
+                        "Guess Device");
+                }
+                catch (InvalidOperationException ex)
+                {
+                    if (ex.Message.Contains(
+                            "Zu viele Pairing-Versuche",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        perCodeRateLimitReached = true;
+                        break;
+                    }
+                }
+            }
+
+            assert(
+                perCodeRateLimitReached,
+                "G-2 Restaurant pairing applies a service-side per-code attempt limit in addition to the HTTP IP limiter");
+
             var operatorAuth =
                 new AuthenticationService(db);
             await operatorAuth.InitializeAsync();
@@ -691,6 +717,38 @@ internal static class RestaurantFoundationTests
             assert(
                 deactivatedRejected,
                 "Deactivated Restaurant handheld token is rejected");
+
+            var rePairCode =
+                await pairing.CreatePairingCodeAsync(
+                    "ADMIN",
+                    TimeSpan.FromMinutes(5));
+
+            var deactivatedIdentityRejected = false;
+            try
+            {
+                await pairing.PairAsync(
+                    rePairCode.Code,
+                    paired.DeviceId,
+                    "Manipuliertes Handheld");
+            }
+            catch (InvalidOperationException ex)
+                when (ex.Message.Contains(
+                    "bereits gekoppelt",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                deactivatedIdentityRejected = true;
+            }
+
+            var replacementDevice =
+                await pairing.PairAsync(
+                    rePairCode.Code,
+                    "DEVICE-003",
+                    "Handheld 3");
+
+            assert(
+                deactivatedIdentityRejected &&
+                replacementDevice.DeviceId == "DEVICE-003",
+                "G-2 deactivated Restaurant device identity cannot be re-enabled and a rejected duplicate does not consume the pairing code");
 
             var repo = new RestaurantRepository(db);
             var areaId = await repo.SaveAreaAsync("Innenbereich");
