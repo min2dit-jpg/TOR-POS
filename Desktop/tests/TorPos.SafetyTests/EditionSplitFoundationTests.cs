@@ -203,12 +203,10 @@ public static class EditionSplitFoundationTests
         }
 
 
-        // R182: the products ship ready to work. Setup no longer asks for
-        // credentials, the documented access (admin / admin, staff PIN 1234,
-        // training code 0000) is usable at the first start instead of being
-        // blocked by a forced credential dialog, and an operator who does
-        // replace it is not pushed into a 10-character password. The audit
-        // trace for a session on shipped credentials is asserted in R122.
+        // K-3: setup still ships with documented recovery credentials, but
+        // they are only an entry into the mandatory admin credential dialog.
+        // The session itself is powerless until a >=10-character password and
+        // a non-factory PIN have been stored.
         var accessRoot = Path.Combine(Path.GetTempPath(), "tor-split-access-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(accessRoot);
         try
@@ -218,11 +216,29 @@ public static class EditionSplitFoundationTests
             await accessAuth.InitializeAsync();
 
             var factory = await accessAuth.LoginWithPasswordAsync("admin", "admin");
-            assert(factory.Success && factory.User is { IsAdmin: true, MustChangePassword: false } && factory.User.Can(TorPos.Core.UserPermissions.Sale) && factory.User.Can(TorPos.Core.UserPermissions.ZReport), "the shipped admin access works at the first start instead of being blocked by a forced credential change");
+            assert(
+                factory.Success &&
+                factory.User is { IsAdmin: true, MustChangePassword: true } &&
+                !factory.User.Can(TorPos.Core.UserPermissions.Sale) &&
+                !factory.User.Can(TorPos.Core.UserPermissions.ZReport),
+                "the shipped admin credentials open only a powerless must-change session");
 
-            await accessAuth.ChangeAdminCredentialsAsync("admin", "1234", "1234");
-            var replaced = await accessAuth.LoginWithPasswordAsync("admin", "1234");
-            assert(replaced.Success && replaced.User is { IsAdmin: true, MustChangePassword: false }, "an operator may choose a short password and a 1234 PIN instead of a forced 10-character password");
+            var shortRejected = false;
+            try
+            {
+                await accessAuth.ChangeAdminCredentialsAsync(
+                    "admin",
+                    "123456789",
+                    "4826");
+            }
+            catch (InvalidOperationException)
+            {
+                shortRejected = true;
+            }
+
+            assert(
+                shortRejected,
+                "admin credential replacement enforces the reviewed 10-character password minimum");
         }
         finally
         {
