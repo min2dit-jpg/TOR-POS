@@ -38,7 +38,11 @@ public enum RestaurantFeature
     Kundenbindung,
     MehrereKassen,
     Filialverbund,
-    ErweiterteRestaurantAuswertung
+    ErweiterteRestaurantAuswertung,
+
+    // Paid add-on. This is deliberately NOT part of RestaurantPlus itself.
+    // A license must carry RESTAURANT_PLUS + RESTAURANT_SELF_ORDER.
+    QrTischbestellung
 }
 
 /// <summary>
@@ -80,6 +84,12 @@ public static class RestaurantProductFeatures
             RestaurantFeature.ErweiterteRestaurantAuswertung
         }.ToFrozenSet();
 
+    private static readonly FrozenSet<RestaurantFeature> AddOns =
+        new[]
+        {
+            RestaurantFeature.QrTischbestellung
+        }.ToFrozenSet();
+
     public static bool Includes(
         RestaurantProductTier tier,
         RestaurantFeature feature) =>
@@ -94,4 +104,7 @@ public static class RestaurantProductFeatures
 
     public static bool IsPlusOnly(RestaurantFeature feature) =>
         PlusOnly.Contains(feature);
+
+    public static bool IsAddOn(RestaurantFeature feature) =>
+        AddOns.Contains(feature);
 }
