@@ -260,9 +260,8 @@ internal static class RestaurantFoundationTests
             var result = await migration.InitializeDatabaseAsync();
 
             assert(
-                result.ToVersion == SchemaMigrationService.TargetSchemaVersion &&
-                result.ToVersion == 34,
-                "Restaurant database reaches schema version 34");
+                result.ToVersion == SchemaMigrationService.TargetSchemaVersion,
+                $"Restaurant database reaches current schema version {SchemaMigrationService.TargetSchemaVersion}");
 
             await using (var c = db.OpenConnection())
             {
