@@ -14,7 +14,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private readonly RestaurantKitchenOutbox _kitchen;
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
     private readonly RestaurantHandheldPairingService _pairing;
-    private readonly IAuthenticationService _authentication;
     private readonly RestaurantOperatorSessionService _operatorSessions;
     private readonly RestaurantCommandJournal _commands;
     private readonly IProductCatalog _catalog;
@@ -27,7 +26,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         RestaurantKitchenOutbox kitchen,
         RestaurantKitchenDispatcher kitchenDispatcher,
         RestaurantHandheldPairingService pairing,
-        IAuthenticationService authentication,
         RestaurantOperatorSessionService operatorSessions,
         RestaurantCommandJournal commands,
         IProductCatalog catalog,
@@ -39,7 +37,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         _kitchen = kitchen;
         _kitchenDispatcher = kitchenDispatcher;
         _pairing = pairing;
-        _authentication = authentication;
         _operatorSessions = operatorSessions;
         _commands = commands;
         _catalog = catalog;
@@ -135,8 +132,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ct);
 
         var operatorUser = await RequireOperatorAsync(
-            request.OperatorName,
-            request.OperatorPin,
             request.DeviceId,
             request.OperatorSessionToken,
             ct);
@@ -207,8 +202,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ct);
 
         var operatorUser = await RequireOperatorAsync(
-            request.OperatorName,
-            request.OperatorPin,
             request.DeviceId,
             request.OperatorSessionToken,
             ct);
@@ -266,8 +259,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ct);
 
         var operatorUser = await RequireOperatorAsync(
-            request.OperatorName,
-            request.OperatorPin,
             request.DeviceId,
             request.OperatorSessionToken,
             ct);
@@ -610,8 +601,6 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             ct);
 
         var operatorUser = await RequireOperatorAsync(
-            request.OperatorName,
-            request.OperatorPin,
             request.DeviceId,
             request.OperatorSessionToken,
             ct);
@@ -1006,35 +995,21 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     }
 
     private async Task<AuthenticatedUser> RequireOperatorAsync(
-        string operatorName,
-        string operatorPin,
         string deviceId,
         string operatorSessionToken,
         CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(
+        if (string.IsNullOrWhiteSpace(
                 operatorSessionToken))
         {
-            return await _operatorSessions.RequireAsync(
-                deviceId,
-                operatorSessionToken,
-                ct);
-        }
-
-        var login = await _authentication.LoginWithPinAsync(
-            (operatorName ?? "").Trim(),
-            (operatorPin ?? "").Trim(),
-            ct);
-
-        if (!login.Success ||
-            login.User is null ||
-            !login.User.Can(UserPermissions.Sale))
-        {
             throw new UnauthorizedAccessException(
-                "Bediener/PIN ist ungültig oder nicht für Verkauf freigegeben.");
+                "Bediener-Sitzung fehlt. Bitte am Handheld anmelden.");
         }
 
-        return login.User;
+        return await _operatorSessions.RequireAsync(
+            deviceId,
+            operatorSessionToken,
+            ct);
     }
 
 }
