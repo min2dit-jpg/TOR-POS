@@ -183,6 +183,105 @@ public static class K3FactoryAdminSecurityTests
             adminHandheldRejected &&
             fakeAuth.PinLoginCalls == 1,
             "K-3 handheld rejects administrator accounts even with a non-factory PIN");
+
+        var previousEdition =
+            Environment.GetEnvironmentVariable(
+                "TOR_POS_PRODUCT_EDITION");
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                "TOR_POS_PRODUCT_EDITION",
+                "RESTAURANT",
+                EnvironmentVariableTarget.Process);
+
+            var legacyDb = await SafetyDatabase.CreateCurrentAsync(
+                Path.Combine(dir, "legacy-admin-session.db"));
+            var legacyAuth =
+                new AuthenticationService(legacyDb);
+            await legacyAuth.InitializeAsync();
+            await legacyAuth.ChangeAdminCredentialsAsync(
+                "admin",
+                "SicheresPasswort11",
+                "5931");
+
+            var rawToken =
+                Convert.ToHexString(
+                    System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            var tokenHash =
+                Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes(rawToken)));
+            long adminId;
+
+            await using (var dbWrite = legacyDb.OpenConnection())
+            {
+                await using (var id = dbWrite.CreateCommand())
+                {
+                    id.CommandText =
+                        "SELECT id FROM users WHERE username='admin' COLLATE NOCASE;";
+                    adminId =
+                        Convert.ToInt64(await id.ExecuteScalarAsync());
+                }
+
+                await using var insert = dbWrite.CreateCommand();
+                insert.CommandText = """
+                    INSERT INTO restaurant_operator_sessions(
+                        id,device_id,user_id,username,token_hash,is_admin,
+                        permissions,created_at,expires_at,last_seen_at,revoked_at)
+                    VALUES(
+                        $id,'DEVICE-LEGACY',$user,'admin',$token,1,
+                        $permissions,$now,$expires,$now,NULL);
+                    """;
+                insert.Parameters.AddWithValue(
+                    "$id",
+                    Guid.NewGuid().ToString("N"));
+                insert.Parameters.AddWithValue(
+                    "$user",
+                    adminId);
+                insert.Parameters.AddWithValue(
+                    "$token",
+                    tokenHash);
+                insert.Parameters.AddWithValue(
+                    "$permissions",
+                    (long)UserPermissions.Sale);
+                insert.Parameters.AddWithValue(
+                    "$now",
+                    DateTimeOffset.UtcNow.ToString("O"));
+                insert.Parameters.AddWithValue(
+                    "$expires",
+                    DateTimeOffset.UtcNow.AddHours(1).ToString("O"));
+                await insert.ExecuteNonQueryAsync();
+            }
+
+            var legacySessions =
+                new RestaurantOperatorSessionService(
+                    legacyDb,
+                    entitlements,
+                    legacyAuth);
+
+            var legacyAdminSessionRejected = false;
+            try
+            {
+                await legacySessions.RequireAsync(
+                    "DEVICE-LEGACY",
+                    rawToken);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                legacyAdminSessionRejected = true;
+            }
+
+            assert(
+                legacyAdminSessionRejected,
+                "K-3 handheld rejects an administrator token issued by an older build even after admin credentials were hardened");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                "TOR_POS_PRODUCT_EDITION",
+                previousEdition,
+                EnvironmentVariableTarget.Process);
+        }
     }
 
     private sealed class FakeAuthenticationService : IAuthenticationService
