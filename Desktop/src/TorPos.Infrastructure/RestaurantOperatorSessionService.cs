@@ -220,10 +220,10 @@ public sealed class RestaurantOperatorSessionService
             var canSell =
                 active &&
                 !mustChange &&
-                (isAdmin ||
-                 (configured &&
-                  (permissions & UserPermissions.Sale) ==
-                      UserPermissions.Sale));
+                !isAdmin &&
+                configured &&
+                (permissions & UserPermissions.Sale) ==
+                    UserPermissions.Sale;
 
             if (!canSell)
             {
