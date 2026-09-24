@@ -399,6 +399,18 @@ internal static class RestaurantFoundationTests
                 new AuthenticationService(db);
             await operatorAuth.InitializeAsync();
 
+            var operatorStaff =
+                (await operatorAuth.GetStaffUsersAsync()).First();
+            await operatorAuth.SaveStaffUserAsync(
+                new StaffUserUpdate(
+                    operatorStaff.Id,
+                    "kellner1",
+                    true,
+                    UserPermissions.Sale,
+                    "",
+                    "4826"),
+                "admin");
+
             var operatorSessions =
                 new RestaurantOperatorSessionService(
                     db,
@@ -408,8 +420,8 @@ internal static class RestaurantFoundationTests
             var operatorLogin =
                 await operatorSessions.LoginAsync(
                     paired.DeviceId,
-                    "admin",
-                    "1234");
+                    "kellner1",
+                    "4826");
 
             string storedOperatorTokenHash;
             await using (var operatorRead = db.OpenReadConnection())
@@ -419,7 +431,7 @@ internal static class RestaurantFoundationTests
                     SELECT token_hash
                     FROM restaurant_operator_sessions
                     WHERE device_id=$device
-                      AND username='admin'
+                      AND username='kellner1'
                       AND revoked_at IS NULL
                     LIMIT 1;
                     """;
@@ -446,10 +458,11 @@ internal static class RestaurantFoundationTests
                     operatorLogin.SessionToken);
 
             assert(
-                authenticatedOperator.Username == "admin" &&
+                authenticatedOperator.Username == "kellner1" &&
+                !authenticatedOperator.IsAdmin &&
                 authenticatedOperator.Can(
                     UserPermissions.Sale),
-                "Restaurant operator session resolves the canonical current POS user with Sale permission");
+                "Restaurant operator session resolves a non-admin canonical POS waiter with Sale permission");
 
             var wrongDeviceRejected = false;
             try
