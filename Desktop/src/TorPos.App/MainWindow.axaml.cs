@@ -5844,21 +5844,34 @@ public partial class MainWindow:Window
             ?? _settingsCache.GetText("business.mode","IMBISS").ToUpperInvariant();
         var businessDisplay = InstallationEdition.DisplayName(business);
 
-        CompanyNameText.Text="TOR-POS";
+        var isRestaurant = string.Equals(
+            business,
+            "RESTAURANT",
+            StringComparison.Ordinal);
+
+        CompanyNameText.Text=isRestaurant ? "TOR Restaurant" : "TOR-POS";
         RegisterInfoText.Text=$"{registerName} · {businessDisplay}";
         EditionText.Text=businessDisplay.ToUpperInvariant();
         EditionActionText.Text = business == "IMBISS" ? "EXTRA" : "PFAND";
         var pickupMode=GetImbissPickupMode();
         ParkButtonText.Text = business=="IMBISS" && pickupMode=="ORDER" ? "BESTELLUNG\nANNEHMEN" : "PARKEN";
         ParkButtonSubText.Text = business=="IMBISS" && pickupMode=="ORDER" ? (_settingsCache.GetBool("imbiss.order.number_enabled",true) ? "F3 · ABHOLNR." : "F3 · BESTELLUNG") : "F3 · BON";
-        Title = $"TOR POS Pro · {businessDisplay}";
+        Title = isRestaurant
+            ? "TOR Restaurant"
+            : $"TOR POS Pro · {businessDisplay}";
 
-        // Internal edition codes remain KIOSK/IMBISS for compatibility.
-        // Customer-facing labels use the broader sectors Einzelhandel/Gastronomie.
+        // Internal edition codes remain stable for compatibility. Dedicated
+        // Restaurant builds get their own operator-facing identity instead of
+        // falling through to the Gastronomie presentation.
         if (business == "KIOSK")
         {
             CategoryHeaderText.Text = "SCHNELLWAHL · EINZELHANDEL";
             BackToCategoriesButton.Content = "◀ SCHNELLWAHL";
+        }
+        else if (isRestaurant)
+        {
+            CategoryHeaderText.Text = "WARENGRUPPEN · RESTAURANT";
+            BackToCategoriesButton.Content = "◀ WARENGRUPPEN";
         }
         else
         {
@@ -5883,6 +5896,14 @@ public partial class MainWindow:Window
             ProductModeHintText.Text = "Schnellwahl optional · Scanner bleibt aktiv";
             EmptyCartHintText.Text = "BARCODE SCANNEN";
             CheckoutHintText.Text = "SCANNEN → F5 KASSIEREN";
+        }
+        else if (isRestaurant)
+        {
+            StatusLine = "RESTAURANT · TISCHPLAN UND DIREKTVERKAUF BEREIT";
+            CategoryModeHintText.Text = "TOUCH · Warengruppe → Artikel";
+            ProductModeHintText.Text = "TOUCH · Artikel → direkt im Bon";
+            EmptyCartHintText.Text = "TISCHPLAN ODER WARENGRUPPE ÖFFNEN";
+            CheckoutHintText.Text = "TISCHPLAN ODER DIREKTVERKAUF → ZAHLUNG";
         }
         else
         {
