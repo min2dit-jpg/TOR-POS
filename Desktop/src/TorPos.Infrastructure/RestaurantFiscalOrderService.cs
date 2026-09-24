@@ -59,6 +59,27 @@ public sealed class RestaurantFiscalOrderService
             actor,
             ct);
 
+    public async Task<bool> AbortPendingAddedItemAsync(
+        RestaurantFiscalVorgang vorgang,
+        RestaurantSessionItem item,
+        string actor,
+        CancellationToken ct = default)
+    {
+        await _vorgaenge.AbortAsync(
+            vorgang.Id,
+            new[] { ToCartLine(item) },
+            0,
+            actor,
+            actor,
+            ct);
+
+        var state = await _vorgaenge.GetAsync(
+            vorgang.Id,
+            ct);
+
+        return state?.State == TseVorgangService.Aborted;
+    }
+
     public async Task SecureAddedItemAsync(
         string sessionId,
         RestaurantSessionItem item,
