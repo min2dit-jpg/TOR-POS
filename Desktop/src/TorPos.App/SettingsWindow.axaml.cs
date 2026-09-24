@@ -2337,7 +2337,7 @@ private Control TsePage()
                 : "Automatische TimeAdmin-Anmeldung ist nur aktiv, solange keine PIN-Fehlanmeldung erkannt wurde."),
         TextWrapping = TextWrapping.Wrap,
         Foreground = _tseTimeAdminPin.CanAutoUse
-            ? AppTheme.MutedText
+            ? Brushes.Gray
             : Brushes.Orange
     };
     clock.Children.Add(timePinSafety);
@@ -2367,7 +2367,7 @@ private Control TsePage()
         timeStored.Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert";
         timePinSafety.Text =
             "Automatische TimeAdmin-Anmeldung ist aktiv. Bei der ersten PIN-Fehlanmeldung wird sie sofort gesperrt.";
-        timePinSafety.Foreground = AppTheme.MutedText;
+        timePinSafety.Foreground = Brushes.Gray;
         SettingsStatus = "TimeAdmin-PIN gespeichert. Die TSE-Uhr wird jetzt automatisch nachgeführt.";
     };
 
@@ -2378,7 +2378,7 @@ private Control TsePage()
         timeStored.IsChecked = false;
         timeStored.Content = "TimeAdmin-PIN ist auf dieser Kasse gespeichert";
         timePinSafety.Text = "Keine TimeAdmin-PIN für automatische Zeitsynchronisation gespeichert.";
-        timePinSafety.Foreground = AppTheme.MutedText;
+        timePinSafety.Foreground = Brushes.Gray;
         SettingsStatus = "Gespeicherte TimeAdmin-PIN gelöscht.";
     };
 
