@@ -223,6 +223,11 @@ internal sealed class AdTvServer : IAsyncDisposable
             var read = await stream.ReadAsync(buffer.AsMemory(length), ct);
             if (read == 0)
                 return null;
+            // Browsers (Chrome) may try https:// first when the address is
+            // typed without "http://". A TLS handshake starts with 0x16; close
+            // at once so the browser falls back to http:// instead of waiting.
+            if (length == 0 && buffer[0] == 0x16)
+                return null;
             length += read;
 
             var end = buffer.AsSpan(0, length).IndexOf("\r\n\r\n"u8);
