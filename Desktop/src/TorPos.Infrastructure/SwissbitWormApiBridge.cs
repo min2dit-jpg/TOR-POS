@@ -1762,9 +1762,9 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
             pointer);
     }
 
-    private static int WithAnsi(
+    private static T WithAnsi<T>(
         string value,
-        Func<IntPtr, int> action)
+        Func<IntPtr, T> action)
     {
         var pointer =
             Marshal.StringToCoTaskMemAnsi(value ?? "");
