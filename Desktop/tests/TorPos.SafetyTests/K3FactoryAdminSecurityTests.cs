@@ -130,9 +130,31 @@ public static class K3FactoryAdminSecurityTests
                         StringComparison.Ordinal);
             }
 
+            var factoryStaffPinRejected = false;
+            try
+            {
+                await auth.SaveStaffUserAsync(
+                    new StaffUserUpdate(
+                        staff.Id,
+                        "k3-mitarbeiter",
+                        true,
+                        UserPermissions.Sale,
+                        "MitarbeiterPasswort2026",
+                        "1234"),
+                    "admin");
+            }
+            catch (InvalidOperationException ex)
+            {
+                factoryStaffPinRejected =
+                    ex.Message.Contains(
+                        "1234",
+                        StringComparison.Ordinal);
+            }
+
             assert(
-                shortStaffRejected,
-                "K-3 newly assigned staff passwords also require at least 10 characters");
+                shortStaffRejected &&
+                factoryStaffPinRejected,
+                "K-3 staff credential assignment requires >=10-character passwords and rejects factory PIN 1234");
 
             var plusEntitlements =
                 new RestaurantEntitlementService(
