@@ -964,7 +964,8 @@ public partial class SettingsWindow : Window
             address.Text = lan.Count == 0
                 ? UiLanguage.T("Kein lokales Netzwerk gefunden. Kasse mit dem WLAN/LAN des TVs verbinden.")
                 : UiLanguage.T("Am TV im Browser eingeben") + ":" + Environment.NewLine +
-                  string.Join(Environment.NewLine, lan.Select(x => AdTv.Url(x, settings.Port, settings.Code)));
+                  string.Join(Environment.NewLine, lan.Select(x => AdTv.Url(x, settings.Port, settings.Code))) +
+                  Environment.NewLine + UiLanguage.T("Die Adresse ist aktiv, sobald die Einstellungen geschlossen sind. Adresse mit http:// eingeben.");
         }
         catch (Exception ex)
         {
