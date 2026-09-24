@@ -161,6 +161,46 @@ public sealed class BackupEncryptionService
     /// If disabled, returns plainPath unchanged - callers should always use
     /// the returned path, not assume the extension.
     /// </summary>
+    /// <summary>True when backups are encrypted: switched on and a recovery key is set up.</summary>
+    public async Task<bool> IsActiveAsync(CancellationToken ct = default)
+    {
+        var values = await _settings.LoadAllAsync(ct);
+        return string.Equals(values.GetValueOrDefault(EnabledKey, "false"), "true", StringComparison.OrdinalIgnoreCase) &&
+               !string.IsNullOrWhiteSpace(values.GetValueOrDefault(RecoveryKekProtectedKey, ""));
+    }
+
+    /// <summary>
+    /// O-14: with encryption on, the plain backup used to be written to the
+    /// backup folder (often a USB stick or network share) and deleted after
+    /// encrypting - the plain file could still be recovered from that medium.
+    /// It is now created in a local temporary folder, encrypted there, and
+    /// only the encrypted file is moved to the backup folder.
+    /// </summary>
+    public async Task<string> CreateProtectedAsync(
+        Func<string, Task<string>> create,
+        string destination,
+        CancellationToken ct = default)
+    {
+        if (!await IsActiveAsync(ct))
+            return await create(destination);
+
+        Directory.CreateDirectory(destination);
+        var staging = Path.Combine(Path.GetTempPath(), "tor-backup-enc-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(staging);
+        try
+        {
+            var plain = await create(staging);
+            var encrypted = await EncryptIfEnabledAsync(plain, ct);
+            var target = Path.Combine(destination, Path.GetFileName(encrypted));
+            File.Move(encrypted, target);
+            return target;
+        }
+        finally
+        {
+            try { Directory.Delete(staging, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
     public async Task<string> EncryptIfEnabledAsync(string plainPath, CancellationToken ct = default)
     {
         var values = await _settings.LoadAllAsync(ct);
@@ -321,7 +361,7 @@ public sealed class BackupEncryptionService
             }
             catch (CryptographicException)
             {
-                throw new InvalidOperationException("Kurtarma kodu falsch oder Sicherung beschädigt.");
+                throw new InvalidOperationException("Wiederherstellungscode falsch oder Sicherung beschädigt.");
             }
         }
 

@@ -58,8 +58,10 @@ public sealed class DailyBackupScheduler : IAsyncDisposable
             try
             {
                 var directory = values.TryGetValue("backup.directory", out var configured) ? configured : "";
-                var path = await _backup.CreateBackupAsync(directory, ct);
-                path = await new BackupEncryptionService(_settings).EncryptIfEnabledAsync(path, ct);
+                var path = await new BackupEncryptionService(_settings).CreateProtectedAsync(
+                    target => _backup.CreateBackupAsync(target, ct),
+                    _backup.ResolveDirectory(directory),
+                    ct);
                 var completed = _now();
                 await _settings.SaveManyAsync(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
