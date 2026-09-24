@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 41;
+    public const int TargetSchemaVersion = 42;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2326,6 +2326,64 @@ public sealed class SchemaMigrationService
                           ADD COLUMN finish_attempted_at TEXT NOT NULL DEFAULT '';
                         ALTER TABLE tse_vorgaenge
                           ADD COLUMN finish_result_json TEXT NOT NULL DEFAULT '';
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            new(
+                42,
+                "SELF_ORDER_ACCEPTANCE_JOURNAL",
+                static async (c, tx, ct) =>
+                {
+                    var edition = Environment.GetEnvironmentVariable(
+                        "TOR_POS_PRODUCT_EDITION");
+                    if (!string.Equals(
+                            edition,
+                            "RESTAURANT",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS restaurant_self_order_acceptances(
+                          order_id TEXT PRIMARY KEY
+                            REFERENCES restaurant_self_order_orders(id),
+                          session_id TEXT NOT NULL
+                            REFERENCES restaurant_sessions(id),
+                          table_id INTEGER NOT NULL
+                            REFERENCES restaurant_tables(id),
+                          state TEXT NOT NULL
+                            CHECK(state IN ('IN_PROGRESS','COMPLETED')),
+                          accepted_by TEXT NOT NULL,
+                          device_id TEXT NOT NULL DEFAULT '',
+                          error_text TEXT NOT NULL DEFAULT '',
+                          started_at TEXT NOT NULL,
+                          updated_at TEXT NOT NULL,
+                          completed_at TEXT NULL);
+
+                        CREATE TABLE IF NOT EXISTS restaurant_self_order_acceptance_items(
+                          order_id TEXT NOT NULL
+                            REFERENCES restaurant_self_order_acceptances(order_id),
+                          line_no INTEGER NOT NULL,
+                          line_token TEXT NOT NULL UNIQUE,
+                          tse_vorgang_id TEXT NOT NULL UNIQUE,
+                          session_item_id INTEGER NULL
+                            REFERENCES restaurant_session_items(id),
+                          state TEXT NOT NULL
+                            CHECK(state IN ('PENDING','SECURED')),
+                          updated_at TEXT NOT NULL,
+                          PRIMARY KEY(order_id,line_no),
+                          FOREIGN KEY(order_id,line_no)
+                            REFERENCES restaurant_self_order_order_items(order_id,line_no));
+
+                        CREATE INDEX IF NOT EXISTS ix_self_order_acceptance_state
+                          ON restaurant_self_order_acceptances(state,updated_at);
+
+                        CREATE INDEX IF NOT EXISTS ix_self_order_acceptance_items_state
+                          ON restaurant_self_order_acceptance_items(order_id,state,line_no);
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })
