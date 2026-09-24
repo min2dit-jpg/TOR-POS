@@ -1690,8 +1690,8 @@ internal static class RestaurantFoundationTests
                 "KASSE-VAT");
 
             assert(
-                vatGuardItem.VatRate == 19m,
-                "K-4 Restaurant Bestellung snapshot uses effective Im-Haus VAT so a 7% applicable product is secured and later paid consistently at 19%");
+                vatGuardItem.VatRate == 7m,
+                "K-4/R2026 Restaurant Bestellung snapshots the effective current Im-Haus VAT: food remains 7% from 01.01.2026 while drinks keep their own 19% base rate");
 
             var restaurantClosingGuard = new DailyClosingGuard(
                 new ParkedReceiptRepository(db),
