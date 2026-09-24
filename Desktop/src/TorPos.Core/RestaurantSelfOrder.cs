@@ -41,6 +41,21 @@ public sealed record RestaurantSelfOrderSessionCapabilityIssue(
     RestaurantSelfOrderApprovalMode ApprovalMode,
     DateTimeOffset ExpiresAt);
 
+public sealed record RestaurantSelfOrderLineRequest(
+    long ProductId,
+    int Quantity);
+
+public sealed record RestaurantSelfOrderReceivedOrder(
+    string OrderId,
+    string PublicOrderId,
+    string SessionId,
+    long TableId,
+    RestaurantSelfOrderOrderState State,
+    RestaurantSelfOrderApprovalMode ApprovalMode,
+    long TotalCents,
+    DateTimeOffset CreatedAt,
+    bool Replay);
+
 public sealed record RestaurantSelfOrderCapabilityValidation(
     bool Valid,
     string SessionId,
