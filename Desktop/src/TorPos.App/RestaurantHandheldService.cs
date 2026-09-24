@@ -505,6 +505,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         catch (Exception ex)
         {
             var discardedPending = false;
+            var fiscalOutcomeUncertain = false;
 
             if (vorgang is not null)
             {
@@ -528,6 +529,14 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                                     operatorUser.Username,
                                     request.DeviceId,
                                     CancellationToken.None);
+                        }
+                        else
+                        {
+                            // FINISHED/unknown means the TSE may already have
+                            // accepted this item while the DB capture failed.
+                            // Do not release this command for automatic retry:
+                            // that could create a second fiscal signature.
+                            fiscalOutcomeUncertain = true;
                         }
                     }
                     else
@@ -553,7 +562,15 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                               lineToken,
                               CancellationToken.None);
 
-                if (discardedPending || persistedItem is not null)
+                if (fiscalOutcomeUncertain)
+                {
+                    await _commands.FailAsync(
+                        request.DeviceId,
+                        request.CommandId,
+                        "Fiskalischer Status der Restaurant-Position ist unklar. Keine automatische Wiederholung; Kasse prüfen.",
+                        CancellationToken.None);
+                }
+                else if (discardedPending || persistedItem is not null)
                 {
                     await _commands.ReleaseForRecoveryAsync(
                         request.DeviceId,
