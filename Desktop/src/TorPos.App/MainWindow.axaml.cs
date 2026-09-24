@@ -122,6 +122,10 @@ public partial class MainWindow:Window
     // from the IMBISS order/pickup-number board above.
     private CustomerDisplayWindow? _customerDisplayWindow;
     private string _customerDisplaySignature = "";
+    // Idle advertising: prices and Angebote change with the business day, so
+    // the slides are rebuilt periodically as well as after every settings load.
+    private DispatcherTimer? _customerDisplayAdsTimer;
+    private int _customerDisplayAdsGeneration;
     // R116: simulation is now "anything that cannot book a real sale", not
     // "no licence installed" - see TorPos.Core.SaleModePolicy.
     private bool IsSimulation => !CanCommitProductionSale();
@@ -392,6 +396,7 @@ public partial class MainWindow:Window
         {
             _tseWatch?.Stop();
             _tseWatch = null;
+            _customerDisplayAdsTimer?.Stop();
         };
     }
 
@@ -6016,14 +6021,22 @@ public partial class MainWindow:Window
         var screen = _settingsCache.GetInt("device.customer_display.screen_index", 0);
         var signature = enabled ? screen.ToString() : "off";
 
-        if (_customerDisplayWindow is not null && _customerDisplaySignature == signature) return;
+        if (_customerDisplayWindow is not null && _customerDisplaySignature == signature)
+        {
+            _ = RefreshCustomerDisplayAdsAsync();
+            return;
+        }
         if (_customerDisplayWindow is not null)
         {
             try { _customerDisplayWindow.Close(); } catch { }
             _customerDisplayWindow = null;
         }
         _customerDisplaySignature = signature;
-        if (!enabled) return;
+        if (!enabled)
+        {
+            _customerDisplayAdsTimer?.Stop();
+            return;
+        }
         if (screen <= 0 && Screens.All.Count < 2)
         {
             StatusLine = "KUNDENDISPLAY: Kein zweiter Bildschirm erkannt. In Einstellungen einen Bildschirm wählen oder zweiten Monitor anschließen.";
@@ -6039,6 +6052,83 @@ public partial class MainWindow:Window
         window.Show();
         if (_engine.Cart.Count > 0)
             window.ShowCart(_engine.Cart, _engine.DiscountCents, _engine.TotalCents);
+
+        if (_customerDisplayAdsTimer is null)
+        {
+            _customerDisplayAdsTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
+            _customerDisplayAdsTimer.Tick += async (_, _) => await RefreshCustomerDisplayAdsAsync();
+        }
+        _customerDisplayAdsTimer.Start();
+        _ = RefreshCustomerDisplayAdsAsync();
+    }
+
+    /// <summary>
+    /// Builds the idle slides (own pictures and/or product cards) off the UI
+    /// thread and hands them to the customer display. Never touches the cart
+    /// or the checkout; a failure only leaves the welcome screen in place.
+    /// </summary>
+    private async Task RefreshCustomerDisplayAdsAsync()
+    {
+        var window = _customerDisplayWindow;
+        if (window is null)
+            return;
+
+        var generation = ++_customerDisplayAdsGeneration;
+        var settings = CustomerDisplayAds.ReadSettings(_settingsCache);
+        if (!settings.Enabled)
+        {
+            window.SetSlides(Array.Empty<CustomerDisplaySlide>(), settings.Interval);
+            return;
+        }
+
+        try
+        {
+            var products = _catalog.Products.ToArray();
+            var slides = await Task.Run(async () =>
+            {
+                IReadOnlyList<CustomerDisplaySlide> imageSlides = Array.Empty<CustomerDisplaySlide>();
+                if (settings.Source != CustomerDisplayAds.SourceProducts)
+                {
+                    var folder = AppPaths.CustomerDisplayAdsPath;
+                    Directory.CreateDirectory(folder);
+                    imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(folder));
+                }
+
+                IReadOnlyList<CustomerDisplaySlide> productSlides = Array.Empty<CustomerDisplaySlide>();
+                if (settings.Source != CustomerDisplayAds.SourceImages)
+                {
+                    var candidates = products
+                        .Where(x => x.IsActive &&
+                                    CustomerDisplayAds.IsSupportedImage(x.ImagePath) &&
+                                    File.Exists(x.ImagePath))
+                        .OrderBy(x => x.SortOrder)
+                        .ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+                        .Take(CustomerDisplayAds.MaxProductSlides)
+                        .ToArray();
+
+                    var promotions = new Dictionary<long, PromotionSnapshot?>();
+                    foreach (var product in candidates)
+                        promotions[product.Id] = await _promotions.GetBestForProductAsync(product.Id, product.CategoryId);
+
+                    productSlides = CustomerDisplayAds.BuildProductSlides(
+                        candidates,
+                        product => promotions.GetValueOrDefault(product.Id),
+                        File.Exists);
+                }
+
+                return CustomerDisplayAds.Combine(settings, imageSlides, productSlides);
+            });
+
+            if (generation == _customerDisplayAdsGeneration &&
+                ReferenceEquals(window, _customerDisplayWindow))
+            {
+                window.SetSlides(slides, settings.Interval);
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Customer display advertising", ex);
+        }
     }
 
     private void RefreshOrderDisplayWindow(string business)

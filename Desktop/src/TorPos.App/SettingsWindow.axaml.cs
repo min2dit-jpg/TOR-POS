@@ -860,6 +860,108 @@ public partial class SettingsWindow : Window
         return page;
     }
 
+    private async Task AddCustomerDisplayAdImagesAsync(TextBlock status)
+    {
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(
+                new FilePickerOpenOptions
+                {
+                    Title = "Werbebilder auswählen",
+                    AllowMultiple = true,
+                    FileTypeFilter =
+                    [
+                        new FilePickerFileType("Bilddateien")
+                        {
+                            Patterns = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.webp"]
+                        }
+                    ]
+                });
+
+            if (files.Count == 0)
+                return;
+
+            var folder = AppPaths.CustomerDisplayAdsPath;
+            Directory.CreateDirectory(folder);
+            var copied = 0;
+            var skipped = new List<string>();
+            foreach (var file in files)
+            {
+                var source = file.Path.LocalPath;
+                var info = new FileInfo(source);
+                if (!info.Exists || !CustomerDisplayAds.IsSupportedImage(source))
+                {
+                    skipped.Add(Path.GetFileName(source));
+                    continue;
+                }
+                if (info.Length > 15 * 1024 * 1024)
+                {
+                    skipped.Add(Path.GetFileName(source) + " (> 15 MB)");
+                    continue;
+                }
+
+                // Keep the original name so the operator controls the order
+                // ("01-…", "02-…"); never overwrite an existing picture.
+                var name = Path.GetFileNameWithoutExtension(source);
+                var ext = Path.GetExtension(source).ToLowerInvariant();
+                var target = Path.Combine(folder, name + ext);
+                for (var n = 2; File.Exists(target); n++)
+                    target = Path.Combine(folder, $"{name}-{n}{ext}");
+
+                if (!string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+                    File.Copy(source, target, overwrite: false);
+                copied++;
+            }
+
+            await _audit.WriteAsync(_currentUser.Username, "CUSTOMER_DISPLAY_ADS_ADDED", "SETTINGS", "", $"added={copied}; skipped={skipped.Count}");
+            UpdateCustomerDisplayAdStatus(status);
+            if (skipped.Count > 0)
+                status.Text += " · " + UiLanguage.T("Nicht übernommen") + ": " + string.Join(", ", skipped);
+            SettingsStatus = "Werbebilder gespeichert";
+        }
+        catch (Exception ex)
+        {
+            status.Text = UiLanguage.T("Werbebilder konnten nicht übernommen werden") + ": " + ex.Message;
+        }
+    }
+
+    private void OpenCustomerDisplayAdFolder(TextBlock status)
+    {
+        try
+        {
+            var folder = AppPaths.CustomerDisplayAdsPath;
+            Directory.CreateDirectory(folder);
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = folder,
+                    UseShellExecute = true
+                });
+        }
+        catch (Exception ex)
+        {
+            status.Text = UiLanguage.T("Ordner konnte nicht geöffnet werden") + ": " + ex.Message;
+        }
+    }
+
+    private static void UpdateCustomerDisplayAdStatus(TextBlock status)
+    {
+        try
+        {
+            var folder = AppPaths.CustomerDisplayAdsPath;
+            var count = Directory.Exists(folder)
+                ? Directory.EnumerateFiles(folder).Count(CustomerDisplayAds.IsSupportedImage)
+                : 0;
+            status.Text = count == 0
+                ? UiLanguage.T("Noch keine eigenen Werbebilder. Artikel mit Bild werden trotzdem gezeigt, wenn der Inhalt BEIDE oder ARTIKEL ist.")
+                : $"{count} " + UiLanguage.T("eigene Werbebilder") + " · " + folder;
+        }
+        catch
+        {
+            status.Text = "";
+        }
+    }
+
     private async Task ChooseReceiptLogoAsync(TextBox logoPath, TextBlock status)
     {
         try
@@ -1107,6 +1209,32 @@ public partial class SettingsWindow : Window
         var customerDisplaySection = Section("Kundendisplay · eigener Bildschirm");
         Form(customerDisplaySection, "Bildschirm", Combo("device.customer_display.screen_index", "0", "1", "2", "3", "4"), "0 = automatisch den zweiten Bildschirm verwenden; 1–4 = feste Bildschirmnummer.");
         customerDisplaySection.Children.Add(InfoCard("Getrennt vom Bestellmonitor", "Das Kundendisplay zeigt den Warenkorb/die Summe während des Verkaufs und danach 'Vielen Dank' - bei aktiviertem digitalem Bon (R103) auch den QR-Code dort statt auf dem Kassenbildschirm. Der Bestellmonitor unten ist ein eigener, unabhängiger Bildschirm nur für Bestellnummern und deren Status.", AppTheme.InfoCardBg));
+
+        // Idle advertising on the customer display.
+        customerDisplaySection.Children.Add(ToggleRow(Check(CustomerDisplayAds.EnabledKey, "Werbung im Leerlauf anzeigen")));
+        Form(customerDisplaySection, "Werbeinhalt",
+            Combo(CustomerDisplayAds.SourceKey, CustomerDisplayAds.SourceBoth, CustomerDisplayAds.SourceImages, CustomerDisplayAds.SourceProducts),
+            "BEIDE = eigene Werbebilder und Artikel mit Bild · BILDER = nur eigene Werbebilder · ARTIKEL = Artikel mit Bild, Preis und aktivem Angebot.");
+        Form(customerDisplaySection, "Wechsel alle (Sek.)",
+            Combo(CustomerDisplayAds.IntervalKey, "8", "5", "10", "15", "20", "30"),
+            "Sobald ein Artikel gescannt wird, zeigt das Kundendisplay sofort den Warenkorb.");
+        var adStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.8 };
+        var addAdImages = new Button { Content = "WERBEBILDER HINZUFÜGEN", MinHeight = 46, MinWidth = 220, FontWeight = FontWeight.Bold };
+        var openAdFolder = new Button { Content = "WERBEBILDER-ORDNER ÖFFNEN", MinHeight = 46, MinWidth = 220 };
+        addAdImages.Click += async (_, _) => await AddCustomerDisplayAdImagesAsync(adStatus);
+        openAdFolder.Click += (_, _) => OpenCustomerDisplayAdFolder(adStatus);
+        customerDisplaySection.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Children = { addAdImages, openAdFolder }
+        });
+        customerDisplaySection.Children.Add(adStatus);
+        UpdateCustomerDisplayAdStatus(adStatus);
+        customerDisplaySection.Children.Add(InfoCard("Werbung im Leerlauf",
+            "Ohne Kunden wechselt das Kundendisplay zwischen den eigenen Werbebildern (JPG, PNG, BMP, WEBP; Reihenfolge nach Dateiname) und Artikeln mit Bild. " +
+            "Artikelkarten zeigen den aktuellen Verkaufspreis und ein aktives Angebot genau so, wie die Kasse sie berechnet. Kein Einfluss auf Bon, TSE oder Kassiervorgang.",
+            AppTheme.InfoCardBg));
         customerDisplaySection.IsVisible = false;
         customerDisplayEnabled.IsCheckedChanged += (_, _) => customerDisplaySection.IsVisible = customerDisplayEnabled.IsChecked == true;
         page.Children.Add(customerDisplaySection);

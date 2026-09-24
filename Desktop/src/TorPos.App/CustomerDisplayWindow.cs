@@ -1,5 +1,6 @@
 using System.IO;
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -24,6 +25,25 @@ public sealed class CustomerDisplayWindow : Window
     private readonly DispatcherTimer _revertTimer = new() { Interval = TimeSpan.FromSeconds(20) };
 
     private readonly Panel _idlePanel;
+    private readonly Control _welcomeContent;
+
+    // Idle advertising: rotating own pictures / product cards while no
+    // customer is being served. Only the current picture is kept decoded, so a
+    // large slide list never costs more than one bitmap of memory.
+    private readonly DispatcherTimer _slideTimer = new() { Interval = TimeSpan.FromSeconds(CustomerDisplayAds.DefaultIntervalSeconds) };
+    private IReadOnlyList<CustomerDisplaySlide> _slides = Array.Empty<CustomerDisplaySlide>();
+    private int _slideIndex = -1;
+    private int _slideGeneration;
+    private Bitmap? _currentSlideBitmap;
+    private readonly Grid _slideHost = new() { IsVisible = false, Opacity = 1 };
+    private readonly Image _fullImage = new() { Stretch = Stretch.Uniform, IsVisible = false };
+    private readonly Grid _productCard = new() { IsVisible = false, Margin = new Thickness(48), ColumnDefinitions = new ColumnDefinitions("3*,2*"), ColumnSpacing = 48 };
+    private readonly Image _productImage = new() { Stretch = Stretch.Uniform };
+    private readonly TextBlock _productTitle = new() { FontSize = 52, FontWeight = FontWeight.Bold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _productPrice = new() { FontSize = 80, FontWeight = FontWeight.Bold, Foreground = Brushes.White };
+    private readonly TextBlock _productOldPrice = new() { FontSize = 34, Opacity = 0.7, Foreground = Brushes.White, TextDecorations = TextDecorations.Strikethrough };
+    private readonly TextBlock _productBadgeText = new() { FontSize = 30, FontWeight = FontWeight.Bold, Foreground = Brushes.White };
+    private readonly Border _productBadge;
     private readonly Panel _cartPanel;
     private readonly Panel _thankYouPanel;
 
@@ -54,6 +74,15 @@ public sealed class CustomerDisplayWindow : Window
         MinHeight = 500;
         Background = new SolidColorBrush(Color.Parse("#07111F"));
 
+        _productBadge = new Border
+        {
+            Background = Brushes.OrangeRed,
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(18, 8),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = _productBadgeText
+        };
+        _welcomeContent = BuildWelcomeContent();
         _idlePanel = BuildIdlePanel();
         _cartPanel = BuildCartPanel();
         _thankYouPanel = BuildThankYouPanel();
@@ -61,6 +90,7 @@ public sealed class CustomerDisplayWindow : Window
         Content = new Panel { Children = { _idlePanel, _cartPanel, _thankYouPanel } };
 
         _revertTimer.Tick += (_, _) => { _revertTimer.Stop(); ShowIdle(); };
+        _slideTimer.Tick += async (_, _) => await AdvanceSlideAsync();
 
         Opened += (_, _) =>
         {
@@ -68,7 +98,29 @@ public sealed class CustomerDisplayWindow : Window
             WindowState = WindowState.FullScreen;
             ShowIdle();
         };
-        Closed += (_, _) => _revertTimer.Stop();
+        Closed += (_, _) =>
+        {
+            _revertTimer.Stop();
+            _slideTimer.Stop();
+            _slideGeneration++;
+            ReplaceSlideBitmap(null);
+        };
+    }
+
+    /// <summary>
+    /// Replaces the advertising slides. An empty list (or advertising switched
+    /// off) shows the plain welcome screen again.
+    /// </summary>
+    public void SetSlides(IReadOnlyList<CustomerDisplaySlide> slides, TimeSpan interval)
+    {
+        _slides = slides ?? Array.Empty<CustomerDisplaySlide>();
+        _slideTimer.Interval = interval < TimeSpan.FromSeconds(CustomerDisplayAds.MinIntervalSeconds)
+            ? TimeSpan.FromSeconds(CustomerDisplayAds.MinIntervalSeconds)
+            : interval;
+        _slideIndex = -1;
+        _slideGeneration++;
+        if (_idlePanel.IsVisible)
+            StartSlides();
     }
 
     public void ShowIdle()
@@ -77,11 +129,142 @@ public sealed class CustomerDisplayWindow : Window
         _idlePanel.IsVisible = true;
         _cartPanel.IsVisible = false;
         _thankYouPanel.IsVisible = false;
+        StartSlides();
+    }
+
+    private void StartSlides()
+    {
+        _slideTimer.Stop();
+        if (_slides.Count == 0)
+        {
+            ShowWelcome();
+            return;
+        }
+
+        _ = AdvanceSlideAsync();
+        if (_slides.Count > 1)
+            _slideTimer.Start();
+    }
+
+    private void StopSlides()
+    {
+        _slideTimer.Stop();
+        _slideGeneration++;
+    }
+
+    private void ShowWelcome()
+    {
+        _slideHost.IsVisible = false;
+        _welcomeContent.IsVisible = true;
+        ReplaceSlideBitmap(null);
+    }
+
+    private async Task AdvanceSlideAsync()
+    {
+        if (!_idlePanel.IsVisible || _slides.Count == 0)
+            return;
+
+        var generation = ++_slideGeneration;
+        var slides = _slides;
+        // Try each slide at most once per step: a deleted or broken picture is
+        // skipped instead of leaving the screen blank.
+        for (var attempt = 0; attempt < slides.Count; attempt++)
+        {
+            _slideIndex = (_slideIndex + 1) % slides.Count;
+            var slide = slides[_slideIndex];
+            var path = slide.ImagePath;
+            var bitmap = await Task.Run(() => LoadBitmap(path));
+
+            if (generation != _slideGeneration || !_idlePanel.IsVisible)
+            {
+                bitmap?.Dispose();
+                return;
+            }
+
+            if (bitmap is null)
+                continue;
+
+            if (_slideHost.IsVisible)
+            {
+                _slideHost.Opacity = 0;
+                await Task.Delay(350);
+                if (generation != _slideGeneration || !_idlePanel.IsVisible)
+                {
+                    bitmap.Dispose();
+                    return;
+                }
+            }
+
+            ShowSlide(slide, bitmap);
+            _slideHost.Opacity = 1;
+            return;
+        }
+
+        ShowWelcome();
+    }
+
+    private void ShowSlide(CustomerDisplaySlide slide, Bitmap bitmap)
+    {
+        if (slide.Kind == CustomerDisplaySlideKind.Product)
+        {
+            _fullImage.IsVisible = false;
+            _fullImage.Source = null;
+            _productImage.Source = bitmap;
+            _productTitle.Text = slide.Title;
+            _productPrice.Text = slide.PriceText;
+            _productOldPrice.Text = slide.OldPriceText;
+            _productOldPrice.IsVisible = slide.OldPriceText.Length > 0;
+            _productBadgeText.Text = slide.Badge;
+            _productBadge.IsVisible = slide.Badge.Length > 0;
+            _productCard.IsVisible = true;
+        }
+        else
+        {
+            _productCard.IsVisible = false;
+            _productImage.Source = null;
+            _fullImage.Source = bitmap;
+            _fullImage.IsVisible = true;
+        }
+
+        ReplaceSlideBitmap(bitmap);
+        _welcomeContent.IsVisible = false;
+        _slideHost.IsVisible = true;
+    }
+
+    private void ReplaceSlideBitmap(Bitmap? next)
+    {
+        var previous = _currentSlideBitmap;
+        _currentSlideBitmap = next;
+        if (next is null)
+        {
+            _fullImage.Source = null;
+            _productImage.Source = null;
+        }
+
+        if (previous is not null && !ReferenceEquals(previous, next))
+            previous.Dispose();
+    }
+
+    private static Bitmap? LoadBitmap(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+            using var stream = File.OpenRead(path);
+            // Decoded at screen width, not at the camera's original size.
+            return Bitmap.DecodeToWidth(stream, 1920, BitmapInterpolationMode.MediumQuality);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void ShowCart(IReadOnlyList<CartLine> lines, long discountCents, long totalCents)
     {
         _revertTimer.Stop();
+        StopSlides();
         _idlePanel.IsVisible = false;
         _thankYouPanel.IsVisible = false;
         _cartPanel.IsVisible = true;
@@ -120,6 +303,7 @@ public sealed class CustomerDisplayWindow : Window
     /// <param name="qrPayload">The digital-receipt URL, or null when no digital receipt applies to this sale.</param>
     public void ShowThankYou(long totalCents, string? qrPayload)
     {
+        StopSlides();
         _idlePanel.IsVisible = false;
         _cartPanel.IsVisible = false;
         _thankYouPanel.IsVisible = true;
@@ -153,9 +337,35 @@ public sealed class CustomerDisplayWindow : Window
         _revertTimer.Start();
     }
 
-    private Panel BuildIdlePanel() => new StackPanel
+    private Panel BuildIdlePanel()
     {
-        IsVisible = false,
+        _slideHost.Transitions = new Transitions
+        {
+            new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(350) }
+        };
+
+        var details = new StackPanel
+        {
+            Spacing = 18,
+            VerticalAlignment = VerticalAlignment.Center,
+            [Grid.ColumnProperty] = 1,
+            Children = { _productBadge, _productTitle, _productOldPrice, _productPrice }
+        };
+        _productCard.Children.Add(_productImage);
+        _productCard.Children.Add(details);
+
+        _slideHost.Children.Add(_fullImage);
+        _slideHost.Children.Add(_productCard);
+
+        return new Grid
+        {
+            IsVisible = false,
+            Children = { _welcomeContent, _slideHost }
+        };
+    }
+
+    private Control BuildWelcomeContent() => new StackPanel
+    {
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Center,
         Spacing = 16,
