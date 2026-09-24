@@ -280,6 +280,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 deviceToken,
                                 token);
 
+                            await _terminals.RequireTypeAsync(
+                                deviceId,
+                                new[] { "KASSE", "HANDHELD" },
+                                token);
+
                             var login =
                                 await _operatorSessions.LoginAsync(
                                     deviceId,
@@ -336,6 +341,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                             await _pairing.RequireAuthenticatedAsync(
                                 deviceId,
                                 deviceToken,
+                                token);
+
+                            await _terminals.RequireTypeAsync(
+                                deviceId,
+                                new[] { "KASSE", "HANDHELD" },
                                 token);
 
                             await _operatorSessions.LogoutAsync(
@@ -434,6 +444,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 deviceToken,
                                 token);
 
+                            await _terminals.RequireTypeAsync(
+                                deviceId,
+                                new[] { "KASSE" },
+                                token);
+
                             return Results.Ok(
                                 await _terminals.ListAsync(token));
                         }
@@ -472,6 +487,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                             await _pairing.RequireAuthenticatedAsync(
                                 deviceId,
                                 deviceToken,
+                                token);
+
+                            await _terminals.RequireTypeAsync(
+                                deviceId,
+                                new[] { "KASSE", "HANDHELD" },
                                 token);
 
                             var batch = await _sync.GetEventsAfterAsync(
