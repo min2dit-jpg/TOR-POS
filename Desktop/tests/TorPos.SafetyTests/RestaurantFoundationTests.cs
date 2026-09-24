@@ -1,4 +1,6 @@
 using Microsoft.Data.Sqlite;
+using System.Net;
+using System.Net.NetworkInformation;
 using TorPos.Application;
 using TorPos.App;
 using TorPos.Core;
@@ -42,6 +44,48 @@ internal static class RestaurantFoundationTests
                 RestaurantProductTier.RestaurantPlus,
                 RestaurantFeature.Tischplan),
             "Restaurant Plus contains Plus modules and all standard essentials");
+
+        assert(
+            RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("10.12.0.5")) &&
+            RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("172.16.0.1")) &&
+            RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("172.31.255.254")) &&
+            RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("192.168.44.10")),
+            "G-2 Restaurant API allows RFC1918 private IPv4 LAN addresses");
+
+        assert(
+            !RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("8.8.8.8")) &&
+            !RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("172.15.0.1")) &&
+            !RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Parse("172.32.0.1")) &&
+            !RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.Loopback) &&
+            !RestaurantLanBindingPolicy.IsPrivateIpv4(
+                IPAddress.IPv6Loopback),
+            "G-2 Restaurant API rejects public, loopback and non-RFC1918 addresses for LAN exposure");
+
+        assert(
+            RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Ethernet,
+                OperationalStatus.Up) &&
+            RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Wireless80211,
+                OperationalStatus.Up) &&
+            !RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Tunnel,
+                OperationalStatus.Up) &&
+            !RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Loopback,
+                OperationalStatus.Up) &&
+            !RestaurantLanBindingPolicy.IsEligibleInterface(
+                NetworkInterfaceType.Ethernet,
+                OperationalStatus.Down),
+            "G-2 Restaurant API exposes only active physical Ethernet/WLAN interfaces, never tunnel or loopback as LAN");
 
         var excessiveQuantityRejected = false;
         try
