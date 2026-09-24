@@ -18,6 +18,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
     private readonly RestaurantOperatorSessionService _operatorSessions;
     private readonly RestaurantCommandJournal _commands;
     private readonly IProductCatalog _catalog;
+    private readonly ControlledPosActionService _controlledActions;
 
     public RestaurantHandheldService(
         RestaurantEntitlementService entitlements,
@@ -29,7 +30,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         IAuthenticationService authentication,
         RestaurantOperatorSessionService operatorSessions,
         RestaurantCommandJournal commands,
-        IProductCatalog catalog)
+        IProductCatalog catalog,
+        ControlledPosActionService controlledActions)
     {
         _entitlements = entitlements;
         _restaurant = restaurant;
@@ -41,6 +43,7 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         _operatorSessions = operatorSessions;
         _commands = commands;
         _catalog = catalog;
+        _controlledActions = controlledActions;
     }
 
     public async Task<IReadOnlyList<RestaurantHandheldTableSummary>> GetTablesAsync(
@@ -613,12 +616,27 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.OperatorSessionToken,
             ct);
 
+        if (!operatorUser.Can(UserPermissions.ImmediateStorno))
+        {
+            throw new UnauthorizedAccessException(
+                "Bediener ist nicht für Restaurant-Storno freigegeben.");
+        }
+
+        var reason = (request.Reason ?? "").Trim();
+        if (reason.Length == 0)
+        {
+            throw new ArgumentException(
+                "Stornogrund ist Pflicht.",
+                nameof(request.Reason));
+        }
+
         var requestHash = CommandHash(
             "CANCEL_ITEM",
             request.SessionId,
             request.ExpectedSessionVersion.ToString(),
             request.SessionItemId.ToString(),
-            operatorUser.Username);
+            operatorUser.Username,
+            reason);
 
         var claim = await _commands.BeginAsync(
             request.DeviceId,
@@ -656,6 +674,14 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
         RestaurantFiscalVorgang? vorgang = null;
         RestaurantSessionItem? cancelled = null;
+        var actionId = CommandGuid(
+            "RESTAURANT-STORNO-AUDIT",
+            request.DeviceId,
+            request.CommandId);
+        var auditAuthorized = false;
+        var auditApplied = false;
+        long auditBeforeTotal = 0;
+        long auditAfterTotal = 0;
 
         try
         {
@@ -713,6 +739,31 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                         "Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein.");
                 }
 
+                var activeItems =
+                    await _restaurant.ListActiveItemsAsync(
+                        request.SessionId,
+                        ct);
+                auditBeforeTotal =
+                    activeItems.Sum(x => x.LineTotalCents);
+                auditAfterTotal =
+                    Math.Max(
+                        0,
+                        auditBeforeTotal - item.LineTotalCents);
+
+                await AppendRestaurantStornoAuditAsync(
+                    actionId,
+                    "AUTHORIZED",
+                    operatorUser.Username,
+                    request.DeviceId,
+                    request.SessionId,
+                    item,
+                    reason,
+                    auditBeforeTotal,
+                    auditAfterTotal,
+                    $"command_id={request.CommandId}; recovered={claim.State == RestaurantCommandClaimState.Recovered}",
+                    ct);
+                auditAuthorized = true;
+
                 vorgang = await _fiscal.BeginChangeAsync(
                     request.SessionId,
                     operatorUser.Username,
@@ -735,6 +786,32 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
 
                 vorgang = null;
             }
+
+            if (!auditAuthorized)
+            {
+                var remaining =
+                    await _restaurant.ListActiveItemsAsync(
+                        request.SessionId,
+                        ct);
+                auditAfterTotal =
+                    remaining.Sum(x => x.LineTotalCents);
+                auditBeforeTotal =
+                    auditAfterTotal + cancelled.LineTotalCents;
+            }
+
+            await AppendRestaurantStornoAuditAsync(
+                actionId,
+                "APPLIED",
+                operatorUser.Username,
+                request.DeviceId,
+                request.SessionId,
+                cancelled,
+                reason,
+                auditBeforeTotal,
+                auditAfterTotal,
+                $"command_id={request.CommandId}; recovered={claim.State == RestaurantCommandClaimState.Recovered}",
+                ct);
+            auditApplied = true;
 
             var session = await _restaurant.GetSessionAsync(
                 request.SessionId,
@@ -777,6 +854,28 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         }
         catch (Exception ex)
         {
+            if (auditAuthorized && !auditApplied && cancelled is not null)
+            {
+                try
+                {
+                    await AppendRestaurantStornoAuditAsync(
+                        actionId,
+                        "FAILED",
+                        operatorUser.Username,
+                        request.DeviceId,
+                        request.SessionId,
+                        cancelled,
+                        reason,
+                        auditBeforeTotal,
+                        auditAfterTotal,
+                        "error=" + ex.Message,
+                        CancellationToken.None);
+                }
+                catch
+                {
+                }
+            }
+
             if (vorgang is not null)
             {
                 try
@@ -865,6 +964,43 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
         return new Guid(
             hash.AsSpan(0, 16))
             .ToString("N");
+    }
+
+    private Task AppendRestaurantStornoAuditAsync(
+        string actionId,
+        string phase,
+        string actor,
+        string deviceId,
+        string sessionId,
+        RestaurantSessionItem item,
+        string reason,
+        long beforeTotalCents,
+        long afterTotalCents,
+        string details,
+        CancellationToken ct)
+    {
+        return _controlledActions.AppendAsync(
+            new PosActionLogRequest
+            {
+                ActionId = actionId,
+                Phase = phase,
+                Actor = actor,
+                RegisterId = string.IsNullOrWhiteSpace(deviceId)
+                    ? "HANDHELD"
+                    : deviceId,
+                OperationId = sessionId,
+                ActionType = "RESTAURANT_POSITION_STORNO",
+                Reason = reason,
+                EntityType = "RESTAURANT_SESSION_ITEM",
+                EntityId = item.Id.ToString(),
+                BeforeTotalCents = beforeTotalCents,
+                AfterTotalCents = afterTotalCents,
+                AmountCents = Math.Max(0, item.LineTotalCents),
+                Details =
+                    $"product_id={item.ProductId}; product={item.ProductName}; " +
+                    $"qty_milli={item.QuantityMilli}; {details}"
+            },
+            ct);
     }
 
     private async Task<AuthenticatedUser> RequireOperatorAsync(
