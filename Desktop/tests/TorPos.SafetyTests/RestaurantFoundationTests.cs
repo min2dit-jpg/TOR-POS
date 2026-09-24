@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TorPos.Application;
 using TorPos.App;
 using TorPos.Core;
 using TorPos.Infrastructure;
@@ -193,6 +194,7 @@ internal static class RestaurantFoundationTests
 
         var standardHandheld = new RestaurantHandheldService(
             standardEntitlements,
+            null!,
             null!,
             null!,
             null!,
@@ -512,6 +514,95 @@ internal static class RestaurantFoundationTests
                 authenticatedOperator.Can(
                     UserPermissions.Sale),
                 "Restaurant operator session resolves a non-admin canonical POS waiter with Sale permission");
+
+            var g1Handheld = new RestaurantHandheldService(
+                plusEntitlements,
+                null!,
+                null!,
+                null!,
+                null!,
+                pairing,
+                operatorAuth,
+                operatorSessions,
+                null!,
+                null!,
+                null!);
+
+            var unauthorizedStornoRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G1-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G1-CANCEL-0001",
+                        operatorLogin.SessionToken,
+                        "Fehlbuchung"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                unauthorizedStornoRejected = true;
+            }
+
+            assert(
+                unauthorizedStornoRejected,
+                "G-1 handheld Restaurant storno requires ImmediateStorno even with a valid paired device and operator session");
+
+            await operatorAuth.SaveStaffUserAsync(
+                new StaffUserUpdate(
+                    operatorStaff.Id,
+                    "kellner1",
+                    true,
+                    UserPermissions.Sale |
+                    UserPermissions.ImmediateStorno,
+                    "",
+                    "4826"),
+                "admin");
+
+            var stornoLogin =
+                await operatorAuth.LoginWithPinAsync(
+                    "kellner1",
+                    "4826");
+
+            assert(
+                stornoLogin.Success &&
+                stornoLogin.User is not null &&
+                stornoLogin.User.Can(
+                    UserPermissions.ImmediateStorno),
+                "G-1 Restaurant storno permission is resolved from the canonical POS operator identity");
+
+            var missingReasonRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G1-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "4826",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G1-CANCEL-0002",
+                        "",
+                        ""));
+            }
+            catch (ArgumentException ex)
+                when (ex.Message.Contains(
+                    "Stornogrund",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                missingReasonRejected = true;
+            }
+
+            assert(
+                missingReasonRejected,
+                "G-1 handheld Restaurant storno rejects a blank reason before command or repository mutation");
 
             var wrongDeviceRejected = false;
             try

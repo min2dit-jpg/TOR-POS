@@ -71,7 +71,8 @@ public sealed record RestaurantHandheldCancelItemRequest(
     string DeviceId,
     string DeviceToken,
     string CommandId = "",
-    string OperatorSessionToken = "");
+    string OperatorSessionToken = "",
+    string Reason = "");
 
 public sealed record RestaurantHandheldCommandResult(
     string SessionId,
