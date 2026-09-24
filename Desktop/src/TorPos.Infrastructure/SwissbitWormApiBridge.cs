@@ -424,8 +424,10 @@ public sealed class SwissbitWormApiBridge : ISwissbitSdkBridge, IDisposable
                 session.Context,
                 request.TimeAdminPin);
 
-            if (timeResult != WormOk)
-                return Fail("TSE-Zeit konnte nicht aktualisiert werden", timeResult);
+            if (timeResult.Code != WormOk)
+                return Fail(
+                    "TSE-Zeit konnte nicht aktualisiert werden",
+                    timeResult.Code);
 
             RefreshInfo(info.Pointer);
 
