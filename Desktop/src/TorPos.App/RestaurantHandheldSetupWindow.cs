@@ -19,6 +19,15 @@ public sealed class RestaurantHandheldSetupWindow : Window
         Text = "------"
     };
 
+    private readonly TextBlock _pairingId = new()
+    {
+        FontSize = 12,
+        TextWrapping = TextWrapping.Wrap,
+        Opacity = 0.72,
+        Text = ""
+    };
+
+
     private readonly TextBlock _pairingInfo = new()
     {
         TextWrapping = TextWrapping.Wrap,
@@ -144,6 +153,7 @@ public sealed class RestaurantHandheldSetupWindow : Window
                                     FontWeight = FontWeight.Bold
                                 },
                                 _pairingCode,
+                                _pairingId,
                                 _pairingInfo,
                                 createCode
                             }
@@ -179,13 +189,17 @@ public sealed class RestaurantHandheldSetupWindow : Window
                 TimeSpan.FromMinutes(10));
 
             _pairingCode.Text = code.Code;
+            _pairingId.Text =
+                $"Pairing-ID: {code.Id}";
             _pairingInfo.Text =
                 $"Gültig bis {code.ExpiresAt.ToLocalTime():dd.MM.yyyy HH:mm:ss}. " +
-                "Nach erfolgreicher Verbindung kann derselbe Code nicht erneut verwendet werden.";
+                "Die Pairing-ID identifiziert nur diese Pairing-Sitzung; " +
+                "der 6-stellige Code bleibt das Geheimnis. Nach fünf Fehlversuchen wird die Sitzung gesperrt.";
         }
         catch (Exception ex)
         {
             _pairingCode.Text = "------";
+            _pairingId.Text = "";
             _pairingInfo.Text = ex.Message;
         }
     }
