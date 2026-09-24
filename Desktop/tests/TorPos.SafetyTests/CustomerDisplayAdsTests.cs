@@ -161,6 +161,55 @@ public static class CustomerDisplayAdsTests
             DisplayScreenSelection.Choose(three, 4, null) == 0,
             "screen numbers 1-4 are stable: 1 is the Windows primary screen, the others follow from left to right");
 
+        // ---------- back to the advertising after a checkout ----------
+        // A TEST/simulation checkout (no TSE yet) once cleared the cart
+        // without telling the display, so it froze on the paid cart and
+        // the slides never came back.
+        var main = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
+        var display = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/CustomerDisplayWindow.cs"));
+        var clear = Body(main, "private void ClearCompletedCart()");
+        assert(
+            clear.Contains("_customerDisplayWindow?.ShowThankYou(_engine.TotalCents, null);", StringComparison.Ordinal) &&
+            clear.IndexOf("ShowThankYou", StringComparison.Ordinal) < clear.IndexOf("_engine.Clear()", StringComparison.Ordinal),
+            "every completed checkout, TEST mode included, shows the thank-you screen with the paid total, which then returns to the advertising");
+
+        var cleared = Body(display, "public void ShowCartCleared()");
+        assert(
+            main.Contains("_customerDisplayWindow?.ShowCartCleared();", StringComparison.Ordinal) &&
+            cleared.Contains("_cartPanel.IsVisible", StringComparison.Ordinal) &&
+            cleared.Contains("ShowIdle()", StringComparison.Ordinal),
+            "a cart emptied without a sale returns the customer display to the advertising, without cutting a thank-you screen short");
+
         return Task.CompletedTask;
+    }
+
+    private static string Body(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        if (start < 0)
+            return "";
+        var open = source.IndexOf('{', start);
+        var depth = 0;
+        for (var i = open; i < source.Length; i++)
+        {
+            if (source[i] == '{') depth++;
+            else if (source[i] == '}' && --depth == 0)
+                return source[open..(i + 1)];
+        }
+        return "";
+    }
+
+    private static string FindRepoFile(string relativePath)
+    {
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+        throw new FileNotFoundException(relativePath);
     }
 }

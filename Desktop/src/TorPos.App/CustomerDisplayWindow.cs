@@ -308,6 +308,17 @@ public sealed class CustomerDisplayWindow : Window
         _totalText.Text = Formatting.Money(totalCents);
     }
 
+    /// <summary>
+    /// The till's cart became empty. A cart still on screen (items removed,
+    /// Storno, parked) gives way to the idle/advertising screen; the
+    /// thank-you screen of a finished sale keeps running its own timer.
+    /// </summary>
+    public void ShowCartCleared()
+    {
+        if (_cartPanel.IsVisible)
+            ShowIdle();
+    }
+
     /// <param name="qrPayload">The digital-receipt URL, or null when no digital receipt applies to this sale.</param>
     public void ShowThankYou(long totalCents, string? qrPayload)
     {
