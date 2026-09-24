@@ -43,6 +43,62 @@ internal static class RestaurantFoundationTests
                 RestaurantFeature.Tischplan),
             "Restaurant Plus contains Plus modules and all standard essentials");
 
+        var testLanAddresses = new[]
+        {
+            System.Net.IPAddress.Parse("8.8.8.8"),
+            System.Net.IPAddress.Loopback,
+            System.Net.IPAddress.Parse("192.168.44.21"),
+            System.Net.IPAddress.Parse("10.10.0.7")
+        };
+
+        assert(
+            RestaurantLocalApiHost.ResolveLanBindAddress(
+                "AUTO_PRIVATE",
+                testLanAddresses).Equals(
+                    System.Net.IPAddress.Parse("10.10.0.7")),
+            "G-2 Restaurant API AUTO_PRIVATE selects only a private LAN IPv4 and never ListenAnyIP/public/loopback");
+
+        var nonLocalPrivateRejected = false;
+        try
+        {
+            _ = RestaurantLocalApiHost.ResolveLanBindAddress(
+                "192.168.99.10",
+                testLanAddresses);
+        }
+        catch (InvalidOperationException)
+        {
+            nonLocalPrivateRejected = true;
+        }
+
+        assert(
+            nonLocalPrivateRejected,
+            "G-2 Restaurant API rejects a private bind address that is not present on a local interface");
+
+        var unsafeBindRejected = false;
+        try
+        {
+            _ = RestaurantLocalApiHost.ResolveLanBindAddress(
+                "8.8.8.8",
+                testLanAddresses);
+        }
+        catch (InvalidOperationException)
+        {
+            try
+            {
+                _ = RestaurantLocalApiHost.ResolveLanBindAddress(
+                    "127.0.0.1",
+                    testLanAddresses);
+            }
+            catch (InvalidOperationException)
+            {
+                unsafeBindRejected = true;
+            }
+        }
+
+        assert(
+            unsafeBindRejected,
+            "G-2 Restaurant API rejects public and loopback bind addresses");
+
         var exportTime = DateTimeOffset.Parse("2026-09-22T18:00:00+02:00");
         var restaurantOrderRecord = new DsfinvkOrderRecord(
             Id: 900,
@@ -370,6 +426,7 @@ internal static class RestaurantFoundationTests
                 TimeSpan.FromMinutes(5));
 
             var paired = await pairing.PairAsync(
+                pairingCode.Id,
                 pairingCode.Code,
                 "DEVICE-001",
                 "Handheld 1");
@@ -432,6 +489,7 @@ internal static class RestaurantFoundationTests
             try
             {
                 await pairing.PairAsync(
+                    pairingCode.Id,
                     pairingCode.Code,
                     "DEVICE-002",
                     "Handheld 2");
@@ -444,6 +502,73 @@ internal static class RestaurantFoundationTests
             assert(
                 pairingReuseRejected,
                 "Restaurant handheld pairing code is one-time use");
+
+            var lockedPairingCode =
+                await pairing.CreatePairingCodeAsync(
+                    "ADMIN",
+                    TimeSpan.FromMinutes(5));
+
+            var pairingLockedAfterFive = false;
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                try
+                {
+                    await pairing.PairAsync(
+                        lockedPairingCode.Id,
+                        "000000" == lockedPairingCode.Code
+                            ? "000001"
+                            : "000000",
+                        "DEVICE-BRUTE",
+                        "Brute Test");
+                }
+                catch (InvalidOperationException)
+                {
+                    if (attempt == 5)
+                        pairingLockedAfterFive = true;
+                }
+            }
+
+            var correctCodeRejectedAfterLock = false;
+            try
+            {
+                await pairing.PairAsync(
+                    lockedPairingCode.Id,
+                    lockedPairingCode.Code,
+                    "DEVICE-BRUTE",
+                    "Brute Test");
+            }
+            catch (InvalidOperationException)
+            {
+                correctCodeRejectedAfterLock = true;
+            }
+
+            assert(
+                pairingLockedAfterFive &&
+                correctCodeRejectedAfterLock,
+                "G-2 pairing session locks durably after five wrong codes and cannot be revived with the correct code");
+
+            var overwriteCode =
+                await pairing.CreatePairingCodeAsync(
+                    "ADMIN",
+                    TimeSpan.FromMinutes(5));
+
+            var deviceOverwriteRejected = false;
+            try
+            {
+                await pairing.PairAsync(
+                    overwriteCode.Id,
+                    overwriteCode.Code,
+                    paired.DeviceId,
+                    "Hijacked Handheld");
+            }
+            catch (InvalidOperationException)
+            {
+                deviceOverwriteRejected = true;
+            }
+
+            assert(
+                deviceOverwriteRejected,
+                "G-2 pairing cannot overwrite or silently reactivate an existing Restaurant device identity");
 
             var operatorAuth =
                 new AuthenticationService(db);
@@ -525,6 +650,56 @@ internal static class RestaurantFoundationTests
                 null!,
                 null!,
                 null!);
+
+            var invalidHandheldQuantityRejected = false;
+            try
+            {
+                await g1Handheld.AddItemAsync(
+                    new RestaurantHandheldAddItemRequest(
+                        "G2-QUANTITY",
+                        1,
+                        1,
+                        1.5m,
+                        "kellner1",
+                        "",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G2-QUANTITY-0001",
+                        operatorLogin.SessionToken));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                invalidHandheldQuantityRejected = true;
+            }
+
+            assert(
+                invalidHandheldQuantityRejected,
+                "G-2 handheld rejects fractional Stück quantity before catalog or database mutation");
+
+            var excessiveHandheldQuantityRejected = false;
+            try
+            {
+                await g1Handheld.AddItemAsync(
+                    new RestaurantHandheldAddItemRequest(
+                        "G2-QUANTITY",
+                        1,
+                        1,
+                        100m,
+                        "kellner1",
+                        "",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G2-QUANTITY-0002",
+                        operatorLogin.SessionToken));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                excessiveHandheldQuantityRejected = true;
+            }
+
+            assert(
+                excessiveHandheldQuantityRejected,
+                "G-2 handheld bounds Stück quantity to 1..99 before multiplication or database mutation");
 
             var unauthorizedStornoRejected = false;
             try

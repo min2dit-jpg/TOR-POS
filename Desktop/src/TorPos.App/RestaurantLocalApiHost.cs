@@ -126,7 +126,13 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     "Restaurant-Geräte-API-Port muss zwischen 1024 und 65535 liegen.");
             }
 
+            var bindRaw = await _settings.GetAsync(
+                "restaurant.local.api.bind_address",
+                "AUTO_PRIVATE",
+                ct);
+
 #if TOR_RESTAURANT_PRODUCT
+            var bindAddress = ResolveLanBindAddress(bindRaw);
             var cert = EnsureServerCertificate();
             var builder = WebApplication.CreateSlimBuilder();
 
@@ -180,7 +186,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
             builder.WebHost.ConfigureKestrel(options =>
             {
-                options.ListenAnyIP(
+                options.Listen(
+                    bindAddress,
                     port,
                     listen => listen.UseHttps(cert));
             });
@@ -193,7 +200,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                 () => Results.Ok(new
                 {
                     product = "TOR Restaurant Plus",
-                    apiVersion = 2,
+                    apiVersion = 3,
                     secure = true,
                     heartbeatSeconds =
                         RestaurantTerminalRegistry.RecommendedHeartbeatSeconds,
@@ -209,6 +216,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                         try
                         {
                             var paired = await _pairing.PairAsync(
+                                request.PairingId,
                                 request.PairingCode,
                                 request.DeviceId,
                                 request.DisplayName,
@@ -234,7 +242,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                 paired.PairedAt,
                                 certificateSha256 =
                                     CertificateSha256(cert),
-                                apiVersion = 2,
+                                apiVersion = 3,
                                 heartbeatSeconds =
                                     RestaurantTerminalRegistry.RecommendedHeartbeatSeconds,
                                 offlineAfterSeconds =
@@ -864,10 +872,9 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
             _app = app;
             _certificate = cert;
 
-            var host = Environment.MachineName;
             Status = new(
                 true,
-                $"https://{host}:{port}",
+                $"https://{bindAddress}:{port}",
                 port,
                 CertificateSha256(cert),
                 "Restaurant-Geräte-API läuft über HTTPS.");
@@ -1020,34 +1027,6 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         return persisted;
     }
 
-    private static IEnumerable<IPAddress> GetLocalAddresses()
-    {
-        IPAddress[] addresses;
-
-        try
-        {
-            addresses = Dns.GetHostAddresses(
-                Dns.GetHostName());
-        }
-        catch
-        {
-            yield break;
-        }
-
-        foreach (var address in addresses)
-        {
-            if (IPAddress.IsLoopback(address))
-                continue;
-
-            if (address.AddressFamily is
-                AddressFamily.InterNetwork or
-                AddressFamily.InterNetworkV6)
-            {
-                yield return address;
-            }
-        }
-    }
-
     private static string CertificateSha256(
         X509Certificate2 certificate) =>
         certificate.GetCertHashString(
@@ -1115,7 +1094,97 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
     }
 #endif
 
+    public static IPAddress ResolveLanBindAddress(
+        string? configured,
+        IEnumerable<IPAddress>? availableAddresses = null)
+    {
+        var available = (availableAddresses ?? GetLocalAddresses())
+            .Where(x =>
+                x.AddressFamily == AddressFamily.InterNetwork &&
+                IsPrivateLanAddress(x))
+            .Distinct()
+            .OrderBy(x => x.ToString(), StringComparer.Ordinal)
+            .ToArray();
+
+        var raw = (configured ?? "").Trim();
+
+        if (raw.Length == 0 ||
+            string.Equals(
+                raw,
+                "AUTO_PRIVATE",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return available.FirstOrDefault()
+                ?? throw new InvalidOperationException(
+                    "Restaurant-Geräte-API: Keine private LAN-IPv4-Adresse gefunden. " +
+                    "Bitte restaurant.local.api.bind_address auf die gewünschte lokale LAN-IP setzen.");
+        }
+
+        if (!IPAddress.TryParse(raw, out var requested) ||
+            requested.AddressFamily != AddressFamily.InterNetwork ||
+            !IsPrivateLanAddress(requested))
+        {
+            throw new InvalidOperationException(
+                "Restaurant-Geräte-API darf nur an eine private lokale IPv4-Adresse (10/8, 172.16/12, 192.168/16) gebunden werden.");
+        }
+
+        if (!available.Contains(requested))
+        {
+            throw new InvalidOperationException(
+                "Restaurant-Geräte-API Bind-Adresse gehört nicht zu einer aktuell verfügbaren lokalen LAN-Schnittstelle.");
+        }
+
+        return requested;
+    }
+
+    public static bool IsPrivateLanAddress(
+        IPAddress address)
+    {
+        if (address.AddressFamily !=
+            AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        var b = address.GetAddressBytes();
+
+        return b[0] == 10 ||
+               (b[0] == 172 &&
+                b[1] is >= 16 and <= 31) ||
+               (b[0] == 192 &&
+                b[1] == 168);
+    }
+
+    private static IEnumerable<IPAddress> GetLocalAddresses()
+    {
+        IPAddress[] addresses;
+
+        try
+        {
+            addresses = Dns.GetHostAddresses(
+                Dns.GetHostName());
+        }
+        catch
+        {
+            yield break;
+        }
+
+        foreach (var address in addresses)
+        {
+            if (IPAddress.IsLoopback(address))
+                continue;
+
+            if (address.AddressFamily is
+                AddressFamily.InterNetwork or
+                AddressFamily.InterNetworkV6)
+            {
+                yield return address;
+            }
+        }
+    }
+
     public async ValueTask DisposeAsync()
+
     {
         await StopAsync();
         _gate.Dispose();
@@ -1130,6 +1199,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         string OperatorSessionToken);
 
     private sealed record PairRequest(
+        string PairingId,
         string PairingCode,
         string DeviceId,
         string DisplayName,
