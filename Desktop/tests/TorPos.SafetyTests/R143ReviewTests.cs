@@ -29,10 +29,10 @@ public static class R143ReviewTests
         var cancelled = tracker.CancelledLines.ToList();
         tracker.Release();
         assert(cancelled.Count == 2 &&
-               cancelled[0] is { ProductName: "Döner", Quantity: 2, VatRate: 19m } &&
+               cancelled[0] is { ProductName: "Döner", Quantity: 2, VatRate: 7m } &&
                cancelled[1] is { ProductName: "Cola", Quantity: 1 } &&
                tracker.CancelledLines.Count == 0,
-            "R143 a lowered quantity and a removed line are collected as cancelled positions at the rate that applied; adding is no cancellation; payment clears them");
+            "R143/R2026 lowered quantities and removed lines keep the current effective VAT snapshot; food remains 7% while adding is no cancellation");
 
         var abortTracker = new TseVorgangCartTracker();
         abortTracker.OnCartChanged(new[] { L(1, "Döner", 2, 700, 7m) }, 0, false, true, now);

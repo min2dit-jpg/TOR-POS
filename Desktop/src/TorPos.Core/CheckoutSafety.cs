@@ -324,12 +324,11 @@ public sealed record CheckoutSnapshot(
     };
     public long EffectiveCardPortionCents => TotalCents - EffectiveCashPortionCents;
 
-    // imHaus applies the Im-Haus/Außer-Haus VAT swap (ImHausVat.Effective)
-    // once, right here, while copying the live cart into an immutable
-    // snapshot - everything downstream (receipt MwSt breakdown, tax
-    // reports, TSE ProcessData VAT-class bucketing) already groups
-    // generically by CartLine.VatRate/sale_items.vat_rate, so nothing else
-    // needs to know this rule exists.
+    // imHaus applies the date-aware Im-Haus/Außer-Haus VAT policy
+    // (ImHausVat.Effective) once, right here, while copying the live cart
+    // into an immutable snapshot. In 2024/2025 the legacy 19% elevation is
+    // reproduced; from 01.01.2026 food stays reduced. Everything downstream
+    // groups generically by the snapshotted VatRate.
     public static CartLine[] CopyLines(IEnumerable<CartLine> lines, bool imHaus = false) =>
         lines.Select(x => new CartLine(x)
         {

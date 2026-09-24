@@ -44,10 +44,10 @@ public static class R150ReviewTests
 
         var inHouse = MenuVatPolicy.Analyze(menu, catalogProducts, imHaus: true);
         assert(
-            inHouse.IsValid && !inHouse.IsMixed &&
-            inHouse.Allocations.Single().VatRate == 19m &&
-            inHouse.Allocations.Single().GrossCents == 900,
-            "R150 Im-Haus rule is applied to menu components before deciding whether the menu is mixed-rate");
+            inHouse.IsValid && inHouse.IsMixed &&
+            inHouse.Allocations.Single(x => x.VatRate == 7m).GrossCents == 630 &&
+            inHouse.Allocations.Single(x => x.VatRate == 19m).GrossCents == 270,
+            "R150/R2026 Im Haus keeps food at 7% and drinks at 19%, so the menu remains mixed-rate");
 
         var promoted = MenuVatPolicy.Analyze(menu, catalogProducts, imHaus: false, menuGrossCents: 850);
         assert(
@@ -166,10 +166,10 @@ public static class R150ReviewTests
         var allowedInHouse = await inHouseService.PrepareProductionAsync(inHouseSnapshot);
         assert(
             allowedInHouse.Disposition == CheckoutApplicationDisposition.ReadyToCommit &&
-            allowedInHouse.Operation!.Snapshot.Lines.Single().VatAllocations.Length == 1 &&
-            allowedInHouse.Operation.Snapshot.Lines.Single().VatAllocations.Single().VatRate == 19m &&
-            allowedInHouse.Operation.Snapshot.Lines.Single().VatAllocations.Single().GrossCents == 900,
-            "R151 in-house menu stores one hidden 19% bucket when all effective component rates are 19%");
+            allowedInHouse.Operation!.Snapshot.Lines.Single().VatAllocations.Length == 2 &&
+            allowedInHouse.Operation.Snapshot.Lines.Single().VatAllocations.Single(x => x.VatRate == 7m).GrossCents == 630 &&
+            allowedInHouse.Operation.Snapshot.Lines.Single().VatAllocations.Single(x => x.VatRate == 19m).GrossCents == 270,
+            "R151/R2026 in-house menu keeps separate hidden 7% food and 19% drink buckets");
 
         var promotionSnapshot = snapshot with
         {

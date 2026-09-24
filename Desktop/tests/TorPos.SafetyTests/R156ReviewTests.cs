@@ -10,7 +10,7 @@ using TorPos.Infrastructure;
 // choices into one payment hub. This review locks the user-visible contract:
 // - header no longer owns these payment controls,
 // - every fresh customer starts AUSSER HAUS,
-// - IM HAUS changes only the effective VAT snapshot for that sale,
+// - IM HAUS remains a sale-type flag; from 2026 it no longer raises food from 7% to 19%,
 // - BAR / KARTE / GEMISCHT all enter the same payment hub,
 // - GEMISCHT still uses the existing cash/card split semantics,
 // - the real payment dialog is part of the multi-size UI snapshot check.
@@ -50,9 +50,9 @@ public static class R156ReviewTests
             !outside.ImHaus &&
             outside.Lines.Single().VatRate == 7m &&
             inside.ImHaus &&
-            inside.Lines.Single().VatRate == 19m &&
+            inside.Lines.Single().VatRate == 7m &&
             outside.TotalCents == inside.TotalCents,
-            "R156 AUSSER HAUS is the normal 7% food snapshot; explicit IM HAUS changes VAT to 19% without changing the customer price");
+            "R156/R2026 AUSSER HAUS and IM HAUS both keep food at 7%; the Verkaufsart flag remains distinct without changing the customer price");
 
         var mixed = new CheckoutSnapshot(
             "r156-mixed",
@@ -94,15 +94,15 @@ public static class R156ReviewTests
         var insideTse = Encoding.UTF8.GetString(FiscalProcessData.BuildKassenbeleg(insideSale));
         assert(
             outsideTse == "Beleg^0.00_7.00_0.00_0.00_0.00^7.00:Bar" &&
-            insideTse == "Beleg^7.00_0.00_0.00_0.00_0.00^7.00:Bar",
-            "R156 the payment-page Verkaufsart reaches TSE Kassenbeleg-V1: AUSSER HAUS uses the 7% bucket and IM HAUS the 19% bucket");
+            insideTse == "Beleg^0.00_7.00_0.00_0.00_0.00^7.00:Bar",
+            "R156/R2026 both Verkaufsarten put food into the 7% TSE bucket; the separate Im-Haus flag is exported independently");
 
         var outsideVat = VatSummaryCalculator.Compute(outside.Lines, outside.DiscountCents);
         var insideVat = VatSummaryCalculator.Compute(inside.Lines, inside.DiscountCents);
         assert(
             outsideVat.Count == 1 && outsideVat.Single().Rate == 7m && outsideVat.Single().GrossCents == 700 &&
-            insideVat.Count == 1 && insideVat.Single().Rate == 19m && insideVat.Single().GrossCents == 700,
-            "R156 the receipt VAT summary follows the payment-page Verkaufsart while the gross total stays 7.00 EUR");
+            insideVat.Count == 1 && insideVat.Single().Rate == 7m && insideVat.Single().GrossCents == 700,
+            "R156/R2026 the receipt VAT summary keeps food at 7% for both Verkaufsarten while the gross total stays 7.00 EUR");
 
         var exportDir = Path.Combine(root, "r156-dsfinvk");
         Directory.CreateDirectory(exportDir);
