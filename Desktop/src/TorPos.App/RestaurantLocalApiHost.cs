@@ -812,7 +812,8 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                                         deviceId,
                                         deviceToken,
                                         request.CommandId,
-                                        request.OperatorSessionToken),
+                                        request.OperatorSessionToken,
+                                        request.Reason),
                                     token);
 
                             return Results.Ok(result);
@@ -1153,6 +1154,7 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
         string OperatorName,
         string OperatorPin,
         string CommandId = "",
-        string OperatorSessionToken = "");
+        string OperatorSessionToken = "",
+        string Reason = "");
 #endif
 }
