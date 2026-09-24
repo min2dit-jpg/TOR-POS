@@ -326,7 +326,7 @@ internal static class UiTranslations
         ["DATEV Kassenarchiv Journal ist nur für Admin verfügbar."] = "DATEV Kassenarchiv günlüğü yalnızca Admin için kullanılabilir.",
         ["TSE Export nicht verfügbar - Swissbit SDK / TSE prüfen."] = "TSE dışa aktarımı kullanılamıyor - Swissbit SDK / TSE'yi kontrol edin.",
         ["TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar"] = "TSE yanıt vermiyor · USB/SDK'yı kontrol edin · kasa kullanılabilir durumda",
-        ["Swissbit TSE erkannt · Einrichtung/Status prüfen"] = "Swissbit TSE algılandı · kurulum/durumu kontrol edin",
+        ["TSE erkannt · Einrichtung/Status prüfen"] = "TSE algılandı · kurulum/durumu kontrol edin",
         // The TSE start-up warning. "TSE", "Swissbit" and "SDK" are the
         // names of the device and its driver and stay as they are in every
         // language; only the sentence around them is translated.
@@ -541,8 +541,8 @@ internal static class UiTranslations
         // stay as they are: a technician and the vendor's contract use them.
         ["Art der TSE"] = "TSE türü",
         ["Auswahl"] = "Seçim",
-        ["SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."] =
-            "SWISSBIT_USB = TSE bu kasaya USB bellek olarak takılıdır. CLOUD = bir sağlayıcının HTTPS üzerinden sunulan sertifikalı TSE'si. Değişiklik ancak yeniden başlatmadan sonra etkili olur.",
+        ["SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS - erst wählbar, wenn der Anbieter freigegeben ist. Die Umstellung wirkt erst nach einem Neustart."] =
+            "SWISSBIT_USB = TSE bu kasaya USB bellek olarak takılıdır. CLOUD = bir sağlayıcının HTTPS üzerinden sunulan sertifikalı TSE'si - yalnızca sağlayıcı onaylandığında seçilebilir. Değişiklik ancak yeniden başlatmadan sonra etkili olur.",
         ["Ein unbekannter Wert fällt auf SWISSBIT_USB zurück. Eine Kasse wird nie stillschweigend auf ein anderes Fiskalgerät umgestellt."] =
             "Bilinmeyen bir değer SWISSBIT_USB'ye düşer. Bir kasa asla sessizce başka bir fiskal cihaza geçirilmez.",
         ["Cloud-TSE"] = "Cloud-TSE",
@@ -1564,12 +1564,15 @@ internal static class UiTranslations
         ["Nur ändern, wenn ein anderes Programm diesen Port belegt."] = "Yalnızca başka bir program bu portu kullanıyorsa değiştirin.",
         ["NEUE TV-ADRESSE ERZEUGEN"] = "YENİ TV ADRESİ OLUŞTUR",
         ["So kommt die Werbung auf den TV"] = "Reklamlar TV'ye nasıl gelir",
-        ["Kasse und TV im selben WLAN/Netzwerk. Am TV den Internet-Browser öffnen (Samsung: Internet, LG: Webbrowser, Android TV: z. B. ein Kiosk-Browser) und die Adresse oben eingeben. Die Werbebilder sind dieselben wie beim Kundendisplay; Inhalt und Wechselzeit werden hier getrennt eingestellt. Beim ersten Start fragt Windows eventuell nach der Firewall: Zugriff in privaten Netzwerken erlauben. Die Seite ist nur im eigenen Netzwerk erreichbar und hat keinen Einfluss auf Bon, TSE oder Kassiervorgang."] = "Kasa ve TV aynı Wi-Fi/ağda olmalı. TV'de internet tarayıcısını açın (Samsung: Internet, LG: Web Tarayıcı, Android TV: ör. bir kiosk tarayıcı) ve yukarıdaki adresi girin. Reklam görselleri müşteri ekranındakilerle aynıdır; içerik ve değişim süresi burada ayrı ayarlanır. İlk başlatmada Windows güvenlik duvarı için soru sorabilir: özel ağlarda erişime izin verin. Sayfaya yalnızca kendi ağınızdan erişilebilir; fişi, TSE'yi ve ödeme işlemini etkilemez.",
+        ["Kasse und TV im selben WLAN/Netzwerk. Am TV den Internet-Browser öffnen (Samsung: Internet, LG: Webbrowser, Android TV: z. B. ein Kiosk-Browser) und die Adresse oben eingeben. Der Werbe-TV hat einen eigenen Bilder-Ordner, getrennt vom Kundendisplay und vom Bestellmonitor; Inhalt und Wechselzeit werden hier eingestellt. Beim ersten Start fragt Windows eventuell nach der Firewall: Zugriff in privaten Netzwerken erlauben. Die Seite ist nur im eigenen Netzwerk erreichbar und hat keinen Einfluss auf Bon, TSE oder Kassiervorgang."] = "Kasa ve TV aynı Wi-Fi/ağda olmalı. TV'de internet tarayıcısını açın (Samsung: Internet, LG: Web Tarayıcı, Android TV: ör. bir kiosk tarayıcı) ve yukarıdaki adresi girin. Reklam TV'sinin müşteri ekranından ve sipariş monitöründen ayrı kendi görsel klasörü vardır; içerik ve değişim süresi burada ayarlanır. İlk başlatmada Windows güvenlik duvarı için soru sorabilir: özel ağlarda erişime izin verin. Sayfaya yalnızca kendi ağınızdan erişilebilir; fişi, TSE'yi ve ödeme işlemini etkilemez.",
         ["Neue TV-Adresse erzeugt - am TV neu eingeben"] = "Yeni TV adresi oluşturuldu - TV'de yeniden girin",
         ["TV-Adresse konnte nicht ermittelt werden"] = "TV adresi belirlenemedi",
         ["Die TV-Adresse erscheint nach dem Einschalten und Speichern."] = "TV adresi, özellik açılıp kaydedildikten sonra görünür.",
         ["Kein lokales Netzwerk gefunden. Kasse mit dem WLAN/LAN des TVs verbinden."] = "Yerel ağ bulunamadı. Kasayı TV'nin bağlı olduğu Wi-Fi/LAN'a bağlayın.",
         ["Am TV im Browser eingeben"] = "TV'de tarayıcıya girin",
+        ["PROGRAMMFEHLER ABGEFANGEN · Kasse läuft weiter · Fehler-ID "] = "PROGRAM HATASI YAKALANDI · Kasa çalışmaya devam ediyor · Hata no. ",
+        ["TV-WERBEBILDER HINZUFÜGEN"] = "TV REKLAM GÖRSELİ EKLE",
+        ["TV-BILDER-ORDNER ÖFFNEN"] = "TV GÖRSEL KLASÖRÜNÜ AÇ",
         ["Die Adresse ist aktiv, sobald die Einstellungen geschlossen sind. Adresse mit http:// eingeben."] = "Adres, ayarlar kapatıldığında etkin olur. Adresi http:// ile girin.",
         ["WERBE-TV: Der gewählte TV-Port ist belegt oder gesperrt. In Einstellungen einen anderen TV-Port wählen."] = "REKLAM TV: Seçilen TV portu kullanımda veya engelli. Ayarlarda başka bir TV portu seçin.",
         ["KASSENABSCHLUSS NACH UPDATE NÖTIG"] = "GÜNCELLEME SONRASI KASA KAPANIŞI GEREKLİ",
@@ -2013,7 +2016,7 @@ internal static class UiTranslations
         ["DATEV Kassenarchiv Journal ist nur für Admin verfügbar."] = "DATEV Kassenarchiv journal is available to Admin only.",
         ["TSE Export nicht verfügbar - Swissbit SDK / TSE prüfen."] = "TSE export unavailable - check Swissbit SDK / TSE.",
         ["TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar"] = "TSE is not responding · check USB/SDK · till remains usable",
-        ["Swissbit TSE erkannt · Einrichtung/Status prüfen"] = "Swissbit TSE detected · check setup/status",
+        ["TSE erkannt · Einrichtung/Status prüfen"] = "TSE detected · check setup/status",
         // The TSE start-up warning. "TSE", "Swissbit" and "SDK" are the
         // names of the device and its driver and stay as they are in every
         // language; only the sentence around them is translated.
@@ -2228,8 +2231,8 @@ internal static class UiTranslations
         // stay as they are: a technician and the vendor's contract use them.
         ["Art der TSE"] = "Type of TSE",
         ["Auswahl"] = "Choice",
-        ["SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."] =
-            "SWISSBIT_USB = the TSE is plugged into this till as a USB stick. CLOUD = a vendor's certified TSE over HTTPS. The change takes effect after a restart.",
+        ["SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS - erst wählbar, wenn der Anbieter freigegeben ist. Die Umstellung wirkt erst nach einem Neustart."] =
+            "SWISSBIT_USB = the TSE is plugged into this till as a USB stick. CLOUD = a vendor's certified TSE over HTTPS - selectable only once the vendor is released. The change takes effect after a restart.",
         ["Ein unbekannter Wert fällt auf SWISSBIT_USB zurück. Eine Kasse wird nie stillschweigend auf ein anderes Fiskalgerät umgestellt."] =
             "An unknown value falls back to SWISSBIT_USB. A till is never moved onto a different fiscal device silently.",
         ["Cloud-TSE"] = "Cloud TSE",
@@ -3257,12 +3260,15 @@ internal static class UiTranslations
         ["Nur ändern, wenn ein anderes Programm diesen Port belegt."] = "Change only if another program uses this port.",
         ["NEUE TV-ADRESSE ERZEUGEN"] = "CREATE NEW TV ADDRESS",
         ["So kommt die Werbung auf den TV"] = "How the advertising gets onto the TV",
-        ["Kasse und TV im selben WLAN/Netzwerk. Am TV den Internet-Browser öffnen (Samsung: Internet, LG: Webbrowser, Android TV: z. B. ein Kiosk-Browser) und die Adresse oben eingeben. Die Werbebilder sind dieselben wie beim Kundendisplay; Inhalt und Wechselzeit werden hier getrennt eingestellt. Beim ersten Start fragt Windows eventuell nach der Firewall: Zugriff in privaten Netzwerken erlauben. Die Seite ist nur im eigenen Netzwerk erreichbar und hat keinen Einfluss auf Bon, TSE oder Kassiervorgang."] = "Till and TV on the same Wi-Fi/network. Open the internet browser on the TV (Samsung: Internet, LG: Web Browser, Android TV: e.g. a kiosk browser) and enter the address above. The advertising pictures are the same as for the customer display; content and interval are set separately here. On first start Windows may ask about the firewall: allow access on private networks. The page can only be reached from your own network and has no effect on receipts, TSE or checkout.",
+        ["Kasse und TV im selben WLAN/Netzwerk. Am TV den Internet-Browser öffnen (Samsung: Internet, LG: Webbrowser, Android TV: z. B. ein Kiosk-Browser) und die Adresse oben eingeben. Der Werbe-TV hat einen eigenen Bilder-Ordner, getrennt vom Kundendisplay und vom Bestellmonitor; Inhalt und Wechselzeit werden hier eingestellt. Beim ersten Start fragt Windows eventuell nach der Firewall: Zugriff in privaten Netzwerken erlauben. Die Seite ist nur im eigenen Netzwerk erreichbar und hat keinen Einfluss auf Bon, TSE oder Kassiervorgang."] = "Till and TV on the same Wi-Fi/network. Open the internet browser on the TV (Samsung: Internet, LG: Web Browser, Android TV: e.g. a kiosk browser) and enter the address above. The advertising TV has its own picture folder, separate from the customer display and the order monitor; content and interval are set here. On first start Windows may ask about the firewall: allow access on private networks. The page can only be reached from your own network and has no effect on receipts, TSE or checkout.",
         ["Neue TV-Adresse erzeugt - am TV neu eingeben"] = "New TV address created - enter it again on the TV",
         ["TV-Adresse konnte nicht ermittelt werden"] = "TV address could not be determined",
         ["Die TV-Adresse erscheint nach dem Einschalten und Speichern."] = "The TV address appears after switching on and saving.",
         ["Kein lokales Netzwerk gefunden. Kasse mit dem WLAN/LAN des TVs verbinden."] = "No local network found. Connect the till to the TV's Wi-Fi/LAN.",
         ["Am TV im Browser eingeben"] = "Enter in the TV's browser",
+        ["PROGRAMMFEHLER ABGEFANGEN · Kasse läuft weiter · Fehler-ID "] = "PROGRAM ERROR CAUGHT · Till keeps running · Error ID ",
+        ["TV-WERBEBILDER HINZUFÜGEN"] = "ADD TV ADVERTISING PICTURES",
+        ["TV-BILDER-ORDNER ÖFFNEN"] = "OPEN TV PICTURE FOLDER",
         ["Die Adresse ist aktiv, sobald die Einstellungen geschlossen sind. Adresse mit http:// eingeben."] = "The address is active once the settings are closed. Enter the address with http://.",
         ["WERBE-TV: Der gewählte TV-Port ist belegt oder gesperrt. In Einstellungen einen anderen TV-Port wählen."] = "ADVERTISING TV: The selected TV port is in use or blocked. Choose another TV port in Settings.",
         ["KASSENABSCHLUSS NACH UPDATE NÖTIG"] = "CLOSING REQUIRED AFTER UPDATE",

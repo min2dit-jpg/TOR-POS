@@ -57,7 +57,8 @@ public sealed class FullBackupService(
                              "ProductImages",
                              "ReceiptAssets",
                              "PrintJobs",
-                             "CustomerDisplayAds"
+                             "CustomerDisplayAds",
+                             "WerbeTvBilder"
                          })
                 {
                     var source =
@@ -148,7 +149,7 @@ public sealed class FullBackupService(
                     "Nur bei geschlossener Kasse und nach Prüfung wiederherstellen. " +
                     "Absolute Bildpfade ggf. anpassen. Windows-geschützte Zugangsdaten " +
                     "auf neuem Konto erneut einrichten. Enthalten: Datenbank, " +
-                    "ProductImages, ReceiptAssets, PrintJobs, CustomerDisplayAds. Nicht enthalten: " +
+                    "ProductImages, ReceiptAssets, PrintJobs, CustomerDisplayAds, WerbeTvBilder. Nicht enthalten: " +
                     "laufende Warenkorb-Recovery, externe Dateien, Updates. " +
                     "Offene Zahlungen/Druckaufträge nach Wiederherstellung prüfen.");
 

@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 40;
+    public const int TargetSchemaVersion = 41;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2307,6 +2307,25 @@ public sealed class SchemaMigrationService
                         BEGIN
                           SELECT RAISE(ABORT,'restaurant_self_order_order_items are immutable');
                         END;
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            // F-6: the TSE result of a finished transaction is journaled the
+            // moment the TSE returns it, so a crash before the sale record is
+            // written does not turn a signed sale into an outage on restart.
+            new(
+                41,
+                "F6_TSE_FINISH_JOURNAL",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        ALTER TABLE tse_vorgaenge
+                          ADD COLUMN finish_attempted_at TEXT NOT NULL DEFAULT '';
+                        ALTER TABLE tse_vorgaenge
+                          ADD COLUMN finish_result_json TEXT NOT NULL DEFAULT '';
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })

@@ -186,6 +186,11 @@ public static class CustomerDisplayAdsTests
             keyboard.Contains("bar.IsVisible = !AutoOpen", StringComparison.Ordinal),
             "the customer screens carry no TASTATUR bar, and the till shows it only when the keyboard does not open on touch");
 
+        assert(
+            display.Contains("internal const int ThankYouSeconds = 10;", StringComparison.Ordinal) &&
+            display.Contains("qrPayload is null ? ThankYouSeconds : ThankYouWithQrSeconds", StringComparison.Ordinal),
+            "the thank-you screen gives way to the advertising after 10 seconds, and stays longer only while a receipt QR code is shown");
+
         return Task.CompletedTask;
     }
 

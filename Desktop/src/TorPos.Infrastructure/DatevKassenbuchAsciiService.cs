@@ -295,7 +295,10 @@ public sealed class DatevKassenbuchAsciiService
                     string.Equals(r.GetString(4), "CASH", StringComparison.OrdinalIgnoreCase))
                     cashPortion = total;
 
-                if (cashPortion <= 0)
+                // V-1: a Leergut payout is a sale with a negative cash portion.
+                // The Z counts it in Bar, so the Kassenbuch must as well -
+                // skipping it made the Z/DATEV reconciliation fail.
+                if (cashPortion == 0)
                     continue;
 
                 sales.Add(new SaleCashTaxData(
@@ -329,7 +332,9 @@ public sealed class DatevKassenbuchAsciiService
                     Quantity = QuantityStorage.FromMilli(r.GetInt64(0)),
                     UnitPriceCents = r.GetInt64(1),
                     VatRate = Convert.ToDecimal(r.GetDouble(2)),
-                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(4))
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(4)),
+                    // V-1: stored line total, as on the Z and the receipt.
+                    PersistedLineTotalCents = r.GetInt64(3)
                 };
 
                 foreach (var bucket in MenuVatPolicy.LineAllocations(line))
@@ -351,7 +356,7 @@ public sealed class DatevKassenbuchAsciiService
 
             var byRate = grossBySale[sale.Id];
             var grossTotal = byRate.Values.Sum();
-            if (grossTotal <= 0)
+            if (grossTotal == 0)
                 throw new InvalidOperationException(
                     $"Bon {sale.ReceiptNumber:000000}: MwSt.-Basis für DATEV-Kassenbuch fehlt.");
 

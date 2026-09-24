@@ -13,7 +13,8 @@ public sealed record TseVorgangRecord(
     DateTimeOffset? StartLogTime,
     string StartError,
     string State,
-    long? ParkedReceiptId);
+    long? ParkedReceiptId,
+    string FinishAttemptedAt = "");
 
 /// <summary>
 /// R136: the TSE transaction of a Vorgang is started when the Vorgang begins -
@@ -113,6 +114,12 @@ public sealed class TseVorgangService
         {
             if (TryTransaction(started, out var transaction))
             {
+                // F-6: note the attempt first. If the program stops after the
+                // TSE finished but before the result is journaled, the retry
+                // on restart knows the transaction may already be closed.
+                var retryAfterCrash = started.FinishAttemptedAt.Length > 0;
+                await MarkFinishAttemptAsync(vorgangId, ct);
+
                 var (finish, _) = await _tse.FinishTransactionAsync(
                     new TseTransactionFinishRequest(started.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(processData), processType),
                     actor,
@@ -127,7 +134,15 @@ public sealed class TseVorgangService
                         finish.SignatureBase64,
                         finish.LogTime,
                         started.StartLogTime)
-                    : SaleTseResult.Outage(finish.Message);
+                    : SaleTseResult.Outage(retryAfterCrash
+                        ? $"{finish.Message} · TSE-Transaktion {transaction} wurde vor einem Programmabbruch möglicherweise bereits abgeschlossen - Signatur im TSE-Export (TAR) prüfen."
+                        : finish.Message);
+
+                // F-6: journal the TSE answer before anything else is written.
+                if (finish.Success)
+                    await JournalFinishAsync(vorgangId, result, ct);
+                else if (retryAfterCrash)
+                    await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
 
                 if (finish.Success && !result.Signed)
                     await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
@@ -338,7 +353,8 @@ public sealed class TseVorgangService
     public async Task<TseVorgangRecord?> GetAsync(string vorgangId, CancellationToken ct = default)
     {
         var rows = await QueryAsync("""
-            SELECT id,training,started_at,client_id,transaction_number,start_log_time,start_error,state,parked_receipt_id
+            SELECT id,training,started_at,client_id,transaction_number,start_log_time,start_error,state,parked_receipt_id,
+                   finish_attempted_at
             FROM tse_vorgaenge WHERE id=$id;
             """, q => q.Parameters.AddWithValue("$id", vorgangId), r => new TseVorgangRecord(
                 r.GetString(0),
@@ -349,7 +365,8 @@ public sealed class TseVorgangService
                 string.IsNullOrWhiteSpace(r.GetString(5)) ? null : DateTimeOffset.Parse(r.GetString(5), CultureInfo.InvariantCulture),
                 r.GetString(6),
                 r.GetString(7),
-                r.IsDBNull(8) ? null : r.GetInt64(8)), ct);
+                r.IsDBNull(8) ? null : r.GetInt64(8),
+                r.GetString(9)), ct);
         return rows.Count == 0 ? null : rows[0];
     }
 
@@ -364,9 +381,45 @@ public sealed class TseVorgangService
                    EXISTS (SELECT 1 FROM sale_tse_signatures t WHERE t.sale_id=o.sale_id)
             FROM tse_vorgaenge v
             JOIN checkout_operations o ON json_extract(o.snapshot,'$.TseVorgangId')=v.id
-            WHERE v.state='OPEN' AND o.sale_id IS NOT NULL
+            WHERE (v.state='OPEN' OR v.finish_result_json<>'') AND o.sale_id IS NOT NULL
             ORDER BY v.started_at;
             """, _ => { }, r => (r.GetString(0), r.GetInt64(1), r.GetInt64(2) != 0), ct);
+
+    /// <summary>F-6: the TSE result journaled for a Vorgang, if the TSE already finished it.</summary>
+    public async Task<SaleTseResult?> GetJournaledFinishAsync(string vorgangId, CancellationToken ct = default)
+    {
+        var rows = await QueryAsync(
+            "SELECT finish_result_json FROM tse_vorgaenge WHERE id=$id;",
+            q => q.Parameters.AddWithValue("$id", vorgangId),
+            r => r.GetString(0),
+            ct);
+        if (rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0]))
+            return null;
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<SaleTseResult>(rows[0]);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>F-6: the journaled result reached the sale record; nothing left to recover.</summary>
+    public Task ClearFinishJournalAsync(string vorgangId, CancellationToken ct = default) =>
+        ExecuteAsync("UPDATE tse_vorgaenge SET finish_result_json='',updated_at=$now WHERE id=$id;", q =>
+            q.Parameters.AddWithValue("$id", vorgangId), ct);
+
+    private Task MarkFinishAttemptAsync(string vorgangId, CancellationToken ct) =>
+        ExecuteAsync("UPDATE tse_vorgaenge SET finish_attempted_at=$now,updated_at=$now WHERE id=$id;", q =>
+            q.Parameters.AddWithValue("$id", vorgangId), ct);
+
+    private Task JournalFinishAsync(string vorgangId, SaleTseResult result, CancellationToken ct) =>
+        ExecuteAsync("UPDATE tse_vorgaenge SET finish_result_json=$json,updated_at=$now WHERE id=$id;", q =>
+        {
+            q.Parameters.AddWithValue("$id", vorgangId);
+            q.Parameters.AddWithValue("$json", System.Text.Json.JsonSerializer.Serialize(result));
+        }, ct);
 
     /// <summary>R136: when the Vorgang of an accepted order began (BON_START of the AVBestellung).</summary>
     public Task RecordOrderStartAsync(long parkedReceiptId, DateTimeOffset startedAt, CancellationToken ct = default) =>

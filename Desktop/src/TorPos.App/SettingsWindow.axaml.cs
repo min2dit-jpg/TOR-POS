@@ -861,7 +861,7 @@ public partial class SettingsWindow : Window
         return page;
     }
 
-    private async Task AddCustomerDisplayAdImagesAsync(TextBlock status)
+    private async Task AddCustomerDisplayAdImagesAsync(TextBlock status, string folder)
     {
         try
         {
@@ -882,7 +882,6 @@ public partial class SettingsWindow : Window
             if (files.Count == 0)
                 return;
 
-            var folder = AppPaths.CustomerDisplayAdsPath;
             Directory.CreateDirectory(folder);
             var copied = 0;
             var skipped = new List<string>();
@@ -914,8 +913,8 @@ public partial class SettingsWindow : Window
                 copied++;
             }
 
-            await _audit.WriteAsync(_currentUser.Username, "CUSTOMER_DISPLAY_ADS_ADDED", "SETTINGS", "", $"added={copied}; skipped={skipped.Count}");
-            UpdateCustomerDisplayAdStatus(status);
+            await _audit.WriteAsync(_currentUser.Username, "CUSTOMER_DISPLAY_ADS_ADDED", "SETTINGS", "", $"folder={Path.GetFileName(folder)}; added={copied}; skipped={skipped.Count}");
+            UpdateCustomerDisplayAdStatus(status, folder);
             if (skipped.Count > 0)
                 status.Text += " · " + UiLanguage.T("Nicht übernommen") + ": " + string.Join(", ", skipped);
             SettingsStatus = "Werbebilder gespeichert";
@@ -973,11 +972,10 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void OpenCustomerDisplayAdFolder(TextBlock status)
+    private void OpenCustomerDisplayAdFolder(TextBlock status, string folder)
     {
         try
         {
-            var folder = AppPaths.CustomerDisplayAdsPath;
             Directory.CreateDirectory(folder);
             System.Diagnostics.Process.Start(
                 new System.Diagnostics.ProcessStartInfo
@@ -992,11 +990,10 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private static void UpdateCustomerDisplayAdStatus(TextBlock status)
+    private static void UpdateCustomerDisplayAdStatus(TextBlock status, string folder)
     {
         try
         {
-            var folder = AppPaths.CustomerDisplayAdsPath;
             var count = Directory.Exists(folder)
                 ? Directory.EnumerateFiles(folder).Count(CustomerDisplayAds.IsSupportedImage)
                 : 0;
@@ -1269,8 +1266,8 @@ public partial class SettingsWindow : Window
         var adStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.8 };
         var addAdImages = new Button { Content = "WERBEBILDER HINZUFÜGEN", MinHeight = 46, MinWidth = 220, FontWeight = FontWeight.Bold };
         var openAdFolder = new Button { Content = "WERBEBILDER-ORDNER ÖFFNEN", MinHeight = 46, MinWidth = 220 };
-        addAdImages.Click += async (_, _) => await AddCustomerDisplayAdImagesAsync(adStatus);
-        openAdFolder.Click += (_, _) => OpenCustomerDisplayAdFolder(adStatus);
+        addAdImages.Click += async (_, _) => await AddCustomerDisplayAdImagesAsync(adStatus, AppPaths.CustomerDisplayAdsPath);
+        openAdFolder.Click += (_, _) => OpenCustomerDisplayAdFolder(adStatus, AppPaths.CustomerDisplayAdsPath);
         customerDisplaySection.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -1278,7 +1275,7 @@ public partial class SettingsWindow : Window
             Children = { addAdImages, openAdFolder }
         });
         customerDisplaySection.Children.Add(adStatus);
-        UpdateCustomerDisplayAdStatus(adStatus);
+        UpdateCustomerDisplayAdStatus(adStatus, AppPaths.CustomerDisplayAdsPath);
         customerDisplaySection.Children.Add(InfoCard("Werbung im Leerlauf",
             "Ohne Kunden wechselt das Kundendisplay zwischen den eigenen Werbebildern (JPG, PNG, BMP, WEBP; Reihenfolge nach Dateiname) und Artikeln mit Bild. " +
             "Artikelkarten zeigen den aktuellen Verkaufspreis und ein aktives Angebot genau so, wie die Kasse sie berechnet. Kein Einfluss auf Bon, TSE oder Kassiervorgang.",
@@ -1304,11 +1301,11 @@ public partial class SettingsWindow : Window
         _adTvAddress = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 20, FontWeight = FontWeight.Bold };
         adTvSection.Children.Add(_adTvAddress);
         var adTvImageStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.8 };
-        var adTvAddImages = new Button { Content = "WERBEBILDER HINZUFÜGEN", MinHeight = 46, MinWidth = 220, FontWeight = FontWeight.Bold };
-        var adTvOpenFolder = new Button { Content = "WERBEBILDER-ORDNER ÖFFNEN", MinHeight = 46, MinWidth = 220 };
+        var adTvAddImages = new Button { Content = "TV-WERBEBILDER HINZUFÜGEN", MinHeight = 46, MinWidth = 220, FontWeight = FontWeight.Bold };
+        var adTvOpenFolder = new Button { Content = "TV-BILDER-ORDNER ÖFFNEN", MinHeight = 46, MinWidth = 220 };
         var adTvNewCode = new Button { Content = "NEUE TV-ADRESSE ERZEUGEN", MinHeight = 46, MinWidth = 220 };
-        adTvAddImages.Click += async (_, _) => await AddCustomerDisplayAdImagesAsync(adTvImageStatus);
-        adTvOpenFolder.Click += (_, _) => OpenCustomerDisplayAdFolder(adTvImageStatus);
+        adTvAddImages.Click += async (_, _) => await AddCustomerDisplayAdImagesAsync(adTvImageStatus, AppPaths.AdTvImagesPath);
+        adTvOpenFolder.Click += (_, _) => OpenCustomerDisplayAdFolder(adTvImageStatus, AppPaths.AdTvImagesPath);
         adTvNewCode.Click += async (_, _) => await RenewAdTvCodeAsync();
         adTvSection.Children.Add(new WrapPanel
         {
@@ -1318,10 +1315,10 @@ public partial class SettingsWindow : Window
             Children = { adTvAddImages, adTvOpenFolder, adTvNewCode }
         });
         adTvSection.Children.Add(adTvImageStatus);
-        UpdateCustomerDisplayAdStatus(adTvImageStatus);
+        UpdateCustomerDisplayAdStatus(adTvImageStatus, AppPaths.AdTvImagesPath);
         adTvSection.Children.Add(InfoCard("So kommt die Werbung auf den TV",
             "Kasse und TV im selben WLAN/Netzwerk. Am TV den Internet-Browser öffnen (Samsung: Internet, LG: Webbrowser, Android TV: z. B. ein Kiosk-Browser) und die Adresse oben eingeben. " +
-            "Die Werbebilder sind dieselben wie beim Kundendisplay; Inhalt und Wechselzeit werden hier getrennt eingestellt. " +
+            "Der Werbe-TV hat einen eigenen Bilder-Ordner, getrennt vom Kundendisplay und vom Bestellmonitor; Inhalt und Wechselzeit werden hier eingestellt. " +
             "Beim ersten Start fragt Windows eventuell nach der Firewall: Zugriff in privaten Netzwerken erlauben. " +
             "Die Seite ist nur im eigenen Netzwerk erreichbar und hat keinen Einfluss auf Bon, TSE oder Kassiervorgang.",
             AppTheme.InfoCardBg));
@@ -2427,7 +2424,7 @@ private Control TsePage()
     var kind = Section("Art der TSE");
     kind.Children.Add(ReadOnlyRow(
         "Auswahl",
-        "SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS. Die Umstellung wirkt erst nach einem Neustart."));
+        "SWISSBIT_USB = TSE steckt als USB-Stick in dieser Kasse. CLOUD = zertifizierte TSE eines Anbieters über HTTPS - erst wählbar, wenn der Anbieter freigegeben ist. Die Umstellung wirkt erst nach einem Neustart."));
     Form(
         kind,
         "Art der TSE",
@@ -3962,6 +3959,17 @@ private Control TsePage()
                 {
                     throw new InvalidOperationException("Unbekannter E-Mail-Versandweg.");
                 }
+            }
+
+            // F-4: an unqualified cloud TSE refuses every signature, so every
+            // sale would end up as a TSE outage. It cannot be chosen until the
+            // vendor is released; saving says so instead of storing it.
+            if (TseProviderKind.Normalize(values.GetValueOrDefault(TseProviderKind.Setting, "")) == TseProviderKind.Cloud &&
+                !CloudTseRelease.IsValidated(values.GetValueOrDefault(CloudTseSettings.VendorSetting, "")))
+            {
+                throw new InvalidOperationException(
+                    CloudTseRelease.NotReleasedMessage(values.GetValueOrDefault(CloudTseSettings.VendorSetting, "")) +
+                    " Art der TSE bitte auf SWISSBIT_USB lassen.");
             }
 
             // Werbe-TV: the TV address needs its random code; create it the

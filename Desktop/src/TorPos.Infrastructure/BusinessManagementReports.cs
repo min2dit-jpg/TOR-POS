@@ -180,15 +180,8 @@ public sealed partial class BusinessManagementService
             var salesStats = new List<string> { $"Zeitraum: {ym}", "", "Artikel | Menge | Umsatz" };
             await using (var q = c.CreateCommand())
             {
-                q.CommandText = """
-                    SELECT i.product_name,
-                           COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0),
-                           COALESCE(SUM(i.line_total_cents),0)
-                    FROM sale_items i JOIN sales s ON s.id=i.sale_id
-                    WHERE COALESCE(s.transaction_type,'SALE')='SALE'
-                      AND s.created_at_utc >= $from AND s.created_at_utc < $to
-                    GROUP BY i.product_name ORDER BY SUM(i.line_total_cents) DESC;
-                    """;
+                q.CommandText = SalesStatisticsSql(
+                    "AND s.created_at_utc >= $from AND s.created_at_utc < $to", "");
                 q.Parameters.AddWithValue("$from", fromUtcText); q.Parameters.AddWithValue("$to", toUtcText);
                 await using var r = await q.ExecuteReaderAsync(ct);
                 while (await r.ReadAsync(ct)) salesStats.Add(GermanFormat.Line($"{r.GetString(0)} | {QuantityStorage.FromMilli(r.GetInt64(1)):0.###} | {Money(r.GetInt64(2))}"));

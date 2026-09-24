@@ -395,8 +395,10 @@ public partial class MainWindow:Window
             FocusScannerCaptureSoon();
         };
 
+        UiErrorGuard.ErrorCaught += OnUiErrorCaught;
         Closed += (_, _) =>
         {
+            UiErrorGuard.ErrorCaught -= OnUiErrorCaught;
             _tseWatch?.Stop();
             _tseWatch = null;
             _customerDisplayAdsTimer?.Stop();
@@ -3914,6 +3916,13 @@ public partial class MainWindow:Window
         StatusLine = $"{category} FEHLGESCHLAGEN · Fehler-ID {errorId}";
     }
 
+    // O-6: an error that escaped a button/menu handler was logged by
+    // UiErrorGuard and the till keeps running; the cashier gets the Fehler-ID.
+    private void OnUiErrorCaught(string errorId)
+    {
+        StatusLine = "PROGRAMMFEHLER ABGEFANGEN · Kasse läuft weiter · Fehler-ID " + errorId;
+    }
+
     private string ReportOperationalError(
         string category,
         string message,
@@ -5753,6 +5762,7 @@ public partial class MainWindow:Window
             if (completed != probe)
             {
                 _lastTseDevice = null;
+                FiscalRelease.SetActiveTse(_tseProvider.ProviderId, null);
                 TseCertificateWarningBadge.IsVisible = false;
                 StatusLine =
                     "TSE antwortet nicht · USB/SDK prüfen · Kasse bleibt bedienbar";
@@ -5770,6 +5780,8 @@ public partial class MainWindow:Window
 
             var result = await probe;
             _lastTseDevice = result.Device;
+            // F-3: every booking path now follows the probed TSE.
+            FiscalRelease.SetActiveTse(_tseProvider.ProviderId, result.Device);
 
             if (result.State == TseConnectionState.Ready)
             {
@@ -5788,7 +5800,7 @@ public partial class MainWindow:Window
             {
                 TseConnectionState.Connected => (
                     "TSE erkannt, aber noch nicht betriebsbereit",
-                    "Swissbit TSE erkannt · Einrichtung/Status prüfen"),
+                    "TSE erkannt · Einrichtung/Status prüfen"),
                 TseConnectionState.NotFound => (
                     "Keine TSE gefunden",
                     "Keine TSE gefunden · Kasse bleibt bedienbar · Vorgänge werden nicht signiert"),
@@ -5816,6 +5828,7 @@ public partial class MainWindow:Window
         catch(Exception ex)
         {
             _lastTseDevice = null;
+            FiscalRelease.SetActiveTse(_tseProvider.ProviderId, null);
             TseCertificateWarningBadge.IsVisible = false;
             CrashLog.WriteException("MainWindow operation", ex);
             ReportOperationalError(
@@ -6090,7 +6103,7 @@ public partial class MainWindow:Window
 
         try
         {
-            var slides = await BuildAdSlidesAsync(settings);
+            var slides = await BuildAdSlidesAsync(settings, AppPaths.CustomerDisplayAdsPath);
 
             if (generation == _customerDisplayAdsGeneration &&
                 ReferenceEquals(window, _customerDisplayWindow))
@@ -6107,9 +6120,9 @@ public partial class MainWindow:Window
     /// <summary>
     /// Builds advertising slides (own pictures and/or product cards) off the
     /// UI thread. Shared by the Kundendisplay and the Werbe-TV; each passes
-    /// its own content choice.
+    /// its own content choice and its own picture folder.
     /// </summary>
-    private async Task<IReadOnlyList<CustomerDisplaySlide>> BuildAdSlidesAsync(CustomerDisplayAdSettings settings)
+    private async Task<IReadOnlyList<CustomerDisplaySlide>> BuildAdSlidesAsync(CustomerDisplayAdSettings settings, string imageFolder)
     {
         var products = _catalog.Products.ToArray();
         return await Task.Run(async () =>
@@ -6117,9 +6130,8 @@ public partial class MainWindow:Window
             IReadOnlyList<CustomerDisplaySlide> imageSlides = Array.Empty<CustomerDisplaySlide>();
             if (settings.Source != CustomerDisplayAds.SourceProducts)
             {
-                var folder = AppPaths.CustomerDisplayAdsPath;
-                Directory.CreateDirectory(folder);
-                imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(folder));
+                Directory.CreateDirectory(imageFolder);
+                imageSlides = CustomerDisplayAds.BuildImageSlides(Directory.EnumerateFiles(imageFolder));
             }
 
             IReadOnlyList<CustomerDisplaySlide> productSlides = Array.Empty<CustomerDisplaySlide>();
@@ -6182,7 +6194,8 @@ public partial class MainWindow:Window
             return;
         try
         {
-            var slides = await BuildAdSlidesAsync(AdTv.SlideSettings(settings));
+            // Own folder: TV pictures never appear on the Kundendisplay.
+            var slides = await BuildAdSlidesAsync(AdTv.SlideSettings(settings), AppPaths.AdTvImagesPath);
             if (generation == _adTvGeneration)
                 _adTv.SetSlides(slides, settings.Interval, _settingsCache.GetText("company.name", "TOR POS"));
         }

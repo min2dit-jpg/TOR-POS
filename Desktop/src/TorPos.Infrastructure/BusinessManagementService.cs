@@ -267,10 +267,17 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
     {
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException("Importdatei wurde nicht gefunden.", sourcePath);
-        var lines = await File.ReadAllLinesAsync(sourcePath, ct);
+        // O-12: Excel on German Windows saves CSV as Windows-1252; reading it
+        // as UTF-8 turned "Döner" into "D?ner" and duplicated articles.
+        var lines = DecodeCsvText(await File.ReadAllBytesAsync(sourcePath, ct))
+            .Split('\n')
+            .Select(x => x.TrimEnd('\r'))
+            .ToArray();
         if (lines.Length < 2)
             return 0;
         var count = 0;
+        var errors = new List<string>();
+        var stockChanges = new List<string>();
         await using var c = _db.OpenConnection();
         await using var tx = await c.BeginTransactionAsync(ct);
         for (var i = 1; i < lines.Length; i++)
@@ -278,9 +285,13 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(lines[i]))
                 continue;
+            var row = i + 1;
             var cells = ParseCsvLine(lines[i]);
             if (cells.Count < 7)
+            {
+                errors.Add($"Zeile {row}: zu wenige Spalten ({cells.Count}, mindestens 7)");
                 continue;
+            }
             var group = cells.ElementAtOrDefault(0)?.Trim() ?? "Standard";
             var category = cells.ElementAtOrDefault(1)?.Trim() ?? "Import";
             var name = cells.ElementAtOrDefault(2)?.Trim() ?? "";
@@ -288,16 +299,37 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
             var barcode = cells.ElementAtOrDefault(4)?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(name))
                 continue;
-            long.TryParse(cells.ElementAtOrDefault(5), NumberStyles.Integer, CultureInfo.InvariantCulture, out var price);
-            decimal.TryParse(cells.ElementAtOrDefault(6), NumberStyles.Number, CultureInfo.InvariantCulture, out var vat);
-            long.TryParse(cells.ElementAtOrDefault(7), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pfand);
+            // O-12: an unreadable or unknown USt used to become 19 % without
+            // a word. Such a row now stops the import; nothing is written.
+            if (!long.TryParse(cells.ElementAtOrDefault(5)?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var price) || price < 0)
+            {
+                errors.Add($"Zeile {row} ({name}): PREIS_CENT \"{cells.ElementAtOrDefault(5)}\" ist kein Centbetrag");
+                continue;
+            }
+            if (!TryParseCsvVat(cells.ElementAtOrDefault(6), out var vat))
+            {
+                errors.Add($"Zeile {row} ({name}): USt \"{cells.ElementAtOrDefault(6)}\" ungültig, erlaubt sind 7 oder 19");
+                continue;
+            }
+            if (!TryParseOptionalLong(cells.ElementAtOrDefault(7), out var pfand) ||
+                !TryParseOptionalDecimal(cells.ElementAtOrDefault(10), out var stock) ||
+                !TryParseOptionalDecimal(cells.ElementAtOrDefault(11), out var minStock) ||
+                !TryParseOptionalLong(cells.ElementAtOrDefault(12), out var purchasePrice))
+            {
+                errors.Add($"Zeile {row} ({name}): PFAND, BESTAND, MINDESTBESTAND oder EINKAUFSPREIS ist keine Zahl");
+                continue;
+            }
             var unit = string.IsNullOrWhiteSpace(cells.ElementAtOrDefault(8)) ? "Stück" : cells[8].Trim();
             var active = !string.Equals(cells.ElementAtOrDefault(9)?.Trim(), "0", StringComparison.OrdinalIgnoreCase);
-            decimal.TryParse(cells.ElementAtOrDefault(10), NumberStyles.Number, CultureInfo.InvariantCulture, out var stock);
-            decimal.TryParse(cells.ElementAtOrDefault(11), NumberStyles.Number, CultureInfo.InvariantCulture, out var minStock);
-            long.TryParse(cells.ElementAtOrDefault(12), NumberStyles.Integer, CultureInfo.InvariantCulture, out var purchasePrice);
-            if (vat is not (7m or 19m))
-                vat = 19m;
+            // O-12: the Warengruppe's USt is what the checkout uses. One row
+            // used to overwrite it for every article of the group; a row that
+            // disagrees with an existing Warengruppe now stops the import.
+            var categoryVat = await ExistingCategoryVatAsync(c, (SqliteTransaction)tx, category, ct);
+            if (categoryVat is decimal existingVat && existingVat != vat)
+            {
+                errors.Add($"Zeile {row} ({name}): Warengruppe \"{category}\" hat USt {existingVat:0.##} %, die Zeile {vat:0.##} % - USt der Warengruppe in den Stammdaten ändern");
+                continue;
+            }
             // Optional 14th column (R98 follow-up). Older 13-column export
             // files simply don't have it - null means "don't touch an
             // already-existing Warengruppe's own Im-Haus choice".
@@ -305,14 +337,82 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
             bool? imHausFromCsv = string.IsNullOrEmpty(imHausCell) ? null : imHausCell != "0";
             var groupId = await EnsureGroupAsync(c, (SqliteTransaction)tx, group, ct);
             var (categoryId, categoryImHaus) = await EnsureCategoryAsync(c, (SqliteTransaction)tx, groupId, category, vat, ct, imHausFromCsv);
-            await UpsertProductAsync(c, (SqliteTransaction)tx, categoryId, name, sku, barcode, Math.Max(0, price), vat, Math.Max(0, pfand), unit, active, Math.Max(0, stock), Math.Max(0, minStock), Math.Max(0, purchasePrice), ct, categoryImHaus);
+            // O-12: a missing BESTAND column (or blank cell) keeps the
+            // counted stock instead of setting it to 0.
+            var change = await UpsertProductAsync(c, (SqliteTransaction)tx, categoryId, name, sku, barcode, price, vat, Math.Max(0, pfand ?? 0), unit, active,
+                stock is decimal s ? (decimal?)Math.Max(0m, s) : null, minStock is decimal m ? (decimal?)Math.Max(0m, m) : null, purchasePrice is long pp ? (long?)Math.Max(0L, pp) : null, ct, categoryImHaus);
+            if (change.OldStock is decimal before && change.NewStock != before)
+                stockChanges.Add($"{change.Sku} {name}: {before.ToString("0.###", CultureInfo.InvariantCulture)} -> {change.NewStock.ToString("0.###", CultureInfo.InvariantCulture)}");
             count++;
         }
 
+        if (errors.Count > 0)
+        {
+            await tx.RollbackAsync(ct);
+            throw new InvalidDataException(
+                $"Artikelimport abgebrochen, es wurde nichts geändert. {errors.Count} fehlerhafte Zeile(n):\n" +
+                string.Join("\n", errors.Take(10)) +
+                (errors.Count > 10 ? $"\n... und {errors.Count - 10} weitere" : ""));
+        }
+
         await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "ARTICLE_IMPORT_CSV", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), $"rows={count}", ct);
+        await _audit.WriteAsync(actor, "ARTICLE_IMPORT_CSV", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), $"rows={count}; stock_changes={stockChanges.Count}", ct);
+        // O-12: stock set by an import is traceable like a manual correction.
+        if (stockChanges.Count > 0)
+            await _audit.WriteAsync(actor, "ARTICLE_IMPORT_STOCK", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), string.Join("; ", stockChanges), ct);
         return count;
     });
+}
+
+internal static string DecodeCsvText(byte[] bytes)
+{
+    if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+        return new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
+    try
+    {
+        return new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes);
+    }
+    catch (DecoderFallbackException)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(1252).GetString(bytes);
+    }
+}
+
+internal static bool TryParseCsvVat(string? cell, out decimal vat)
+{
+    var text = (cell ?? "").Trim().TrimEnd('%').Trim().Replace(',', '.');
+    return decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out vat) && vat is 7m or 19m;
+}
+
+private static bool TryParseOptionalLong(string? cell, out long? value)
+{
+    value = null;
+    var text = (cell ?? "").Trim();
+    if (text.Length == 0) return true;
+    if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)) return false;
+    value = parsed;
+    return true;
+}
+
+private static bool TryParseOptionalDecimal(string? cell, out decimal? value)
+{
+    value = null;
+    var text = (cell ?? "").Trim().Replace(',', '.');
+    if (text.Length == 0) return true;
+    if (!decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) return false;
+    value = parsed;
+    return true;
+}
+
+private static async Task<decimal?> ExistingCategoryVatAsync(SqliteConnection c, SqliteTransaction tx, string category, CancellationToken ct)
+{
+    await using var q = c.CreateCommand();
+    q.Transaction = tx;
+    q.CommandText = "SELECT m.vat_rate FROM categories c JOIN category_master_data m ON m.category_id=c.id WHERE c.name=$n COLLATE NOCASE LIMIT 1;";
+    q.Parameters.AddWithValue("$n", string.IsNullOrWhiteSpace(category) ? "Import" : category.Trim());
+    var value = await q.ExecuteScalarAsync(ct);
+    return value is null or DBNull ? null : Convert.ToDecimal(value, CultureInfo.InvariantCulture);
 }public async Task<int> ImportArticlesFromDatabaseAsync(string sourceDatabasePath, string actor, CancellationToken ct = default)
 {
     return await IoQueue.RunAsync(async () =>
@@ -683,20 +783,25 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
             await using var q = c.CreateCommand();
             // R101: same cash/card split + historical-row fallback as
             // GetPeriodSummaryAsync above.
+            // V-2: Umsatz, Bar and Karte are net of BON STORNO/Teilretoure,
+            // exactly like the X/Z ("Umsatz nach Storno/Retouren"), and the
+            // period is filtered on the UTC column, not on local text.
             q.CommandText = """
-                SELECT COUNT(*),COALESCE(SUM(total_cents),0),
-                       COALESCE(SUM(CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
+                SELECT COALESCE(SUM(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1 ELSE 0 END),0),
+                       COALESCE(SUM(SIGN * total_cents),0),
+                       COALESCE(SUM(SIGN * CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN cash_portion_cents
                                          WHEN payment_method='CASH' THEN total_cents ELSE 0 END),0),
-                       COALESCE(SUM(CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN card_portion_cents
-                                         WHEN payment_method='CARD' THEN total_cents ELSE 0 END),0)
+                       COALESCE(SUM(SIGN * CASE WHEN cash_portion_cents<>0 OR card_portion_cents<>0 THEN card_portion_cents
+                                         WHEN payment_method='CARD' THEN total_cents ELSE 0 END),0),
+                       COALESCE(SUM(CASE WHEN transaction_type IN ('STORNO','RETURN') THEN total_cents ELSE 0 END),0)
                 FROM sales
-                WHERE COALESCE(transaction_type,'SALE')='SALE'
-                  AND created_at >= $from;
-                """;
-            q.Parameters.AddWithValue("$from", new DateTimeOffset(p.Item2, TimeZoneInfo.Local.GetUtcOffset(p.Item2)).ToString("O"));
+                WHERE COALESCE(transaction_type,'SALE') IN ('SALE','STORNO','RETURN')
+                  AND created_at_utc >= $from;
+                """.Replace("SIGN", SaleSignSql, StringComparison.Ordinal);
+            q.Parameters.AddWithValue("$from", ToUtcColumnText(new DateTimeOffset(p.Item2, TimeZoneInfo.Local.GetUtcOffset(p.Item2))));
             await using var r = await q.ExecuteReaderAsync(ct);
             await r.ReadAsync(ct);
-            lines.Add($"{p.Item1}: {r.GetInt64(0)} Bons | Umsatz {Money(r.GetInt64(1))} | Bar {Money(r.GetInt64(2))} | Karte {Money(r.GetInt64(3))}");
+            lines.Add($"{p.Item1}: {r.GetInt64(0)} Bons | Umsatz {Money(r.GetInt64(1))} | Bar {Money(r.GetInt64(2))} | Karte {Money(r.GetInt64(3))} | Storno/Retoure {Money(r.GetInt64(4))}");
         }
 
         return new ReportDocument("UMSATZBERICHTE", lines, DateTimeOffset.Now);
@@ -707,7 +812,7 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
     {
         var lines = new List<string>
         {
-            "Monat | Bons | Umsatz"
+            "Monat | Bons | Umsatz | Storno/Retoure"
         };
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
@@ -715,21 +820,26 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
         // scan to a 25-month-back cutoff (indexed range on created_at) cannot
         // change the output, but skips scanning older history entirely.
         var cutoffMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-25);
+        // V-2: net of STORNO/RETURN like the Z; the month is the local
+        // month the Bon was written in (created_at carries local time).
         q.CommandText = """
-            SELECT substr(created_at,1,7) AS ym,COUNT(*),COALESCE(SUM(total_cents),0)
+            SELECT substr(created_at,1,7) AS ym,
+                   COALESCE(SUM(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(SIGN * total_cents),0),
+                   COALESCE(SUM(CASE WHEN transaction_type IN ('STORNO','RETURN') THEN total_cents ELSE 0 END),0)
             FROM sales
-            WHERE COALESCE(transaction_type,'SALE')='SALE'
+            WHERE COALESCE(transaction_type,'SALE') IN ('SALE','STORNO','RETURN')
               AND created_at_utc >= $cutoff
             GROUP BY ym
             ORDER BY ym DESC
             LIMIT 24;
-            """;
+            """.Replace("SIGN", SaleSignSql, StringComparison.Ordinal);
         q.Parameters.AddWithValue(
             "$cutoff",
             ToUtcColumnText(new DateTimeOffset(cutoffMonth, TimeZoneInfo.Local.GetUtcOffset(cutoffMonth))));
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
-            lines.Add($"{r.GetString(0)} | {r.GetInt64(1)} | {Money(r.GetInt64(2))}");
+            lines.Add($"{r.GetString(0)} | {r.GetInt64(1)} | {Money(r.GetInt64(2))} | {Money(r.GetInt64(3))}");
         return new ReportDocument("MONATSUMSATZ", lines, DateTimeOffset.Now);
     });
 }
@@ -737,6 +847,27 @@ public async Task<ReportDocument> BuildTurnoverSummaryAsync(CancellationToken ct
 // the reversed lines) - without the join+filter below, a returned
 // product's quantity/revenue was counted a second time on top of its
 // original sale instead of excluded.
+// V-2: +1 for a sale, -1 for a BON STORNO/Teilretoure (their rows carry
+// positive amounts; the sign comes from the transaction type).
+private const string SaleSignSql = "(CASE WHEN COALESCE(transaction_type,'SALE')='SALE' THEN 1 ELSE -1 END)";
+
+// V-2: product statistics net of reversals. A Storno/Retoure mirrors the
+// returned lines with positive values, so they are subtracted here; fully
+// reversed articles drop out instead of showing as sold.
+internal static string SalesStatisticsSql(string periodFilter, string limit) => $"""
+    SELECT i.product_name,
+           COALESCE(SUM(CASE WHEN COALESCE(s.transaction_type,'SALE')='SALE' THEN 1 ELSE -1 END *
+               CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0) AS qty,
+           COALESCE(SUM(CASE WHEN COALESCE(s.transaction_type,'SALE')='SALE' THEN 1 ELSE -1 END * i.line_total_cents),0) AS revenue
+    FROM sale_items i
+    JOIN sales s ON s.id=i.sale_id
+    WHERE COALESCE(s.transaction_type,'SALE') IN ('SALE','STORNO','RETURN') {periodFilter}
+    GROUP BY i.product_name
+    HAVING qty<>0 OR revenue<>0
+    ORDER BY revenue DESC
+    {limit};
+    """;
+
 public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct = default)
 {
     return await IoQueue.RunAsync(async () =>
@@ -747,17 +878,7 @@ public async Task<ReportDocument> BuildSalesStatisticsAsync(CancellationToken ct
         };
         await using var c = _db.OpenConnection();
         await using var q = c.CreateCommand();
-        q.CommandText = """
-            SELECT i.product_name,
-                   COALESCE(SUM(CASE WHEN COALESCE(i.quantity_milli,0)<>0 THEN i.quantity_milli ELSE CAST(ROUND(i.quantity*1000.0) AS INTEGER) END),0),
-                   COALESCE(SUM(i.line_total_cents),0)
-            FROM sale_items i
-            JOIN sales s ON s.id=i.sale_id
-            WHERE COALESCE(s.transaction_type,'SALE')='SALE'
-            GROUP BY i.product_name
-            ORDER BY SUM(i.line_total_cents) DESC
-            LIMIT 100;
-            """;
+        q.CommandText = SalesStatisticsSql("", "LIMIT 100");
         await using var r = await q.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
             lines.Add(GermanFormat.Line($"{r.GetString(0)} | {QuantityStorage.FromMilli(r.GetInt64(1)):0.###} | {Money(r.GetInt64(2))}"));
@@ -1414,7 +1535,8 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
                     i.unit_price_cents,
                     i.vat_rate,
                     COALESCE(i.vat_allocations_json,''),
-                    COALESCE(s.transaction_type,'SALE')
+                    COALESCE(s.transaction_type,'SALE'),
+                    i.line_total_cents
                 FROM sales s
                 JOIN sale_items i ON i.sale_id=s.id
                 WHERE s.created_at_utc >= $from
@@ -1438,7 +1560,11 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
                     Quantity = Convert.ToDecimal(r.GetDouble(2)),
                     UnitPriceCents = r.GetInt64(3),
                     VatRate = Convert.ToDecimal(r.GetDouble(4)),
-                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(5))
+                    VatAllocations = VatAllocationStorage.Deserialize(r.GetString(5)),
+                    // V-1: the stored line total is what the customer paid and
+                    // the TSE signed. Recomputing quantity x unit price drifts
+                    // for weighed promotion lines and partial-return slices.
+                    PersistedLineTotalCents = r.GetInt64(7)
                 };
                 var transactionType = r.GetString(6);
 
@@ -1830,7 +1956,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         return (categoryId, imHausApplicable);
     }
 
-    private static async Task UpsertProductAsync(
+    private static async Task<(string Sku, decimal? OldStock, decimal NewStock)> UpsertProductAsync(
         SqliteConnection c,
         SqliteTransaction tx,
         long categoryId,
@@ -1842,9 +1968,9 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         long pfand,
         string unit,
         bool active,
-        decimal stock,
-        decimal minStock,
-        long purchasePrice,
+        decimal? stock,
+        decimal? minStock,
+        long? purchasePrice,
         CancellationToken ct,
         bool imHausApplicable = true)
     {
@@ -1887,14 +2013,29 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             effectiveSku = Convert.ToInt64(await seq.ExecuteScalarAsync(ct)).ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        decimal? oldStock = null;
+        if (existing is long current)
+        {
+            await using var read = c.CreateCommand();
+            read.Transaction = tx;
+            read.CommandText = "SELECT COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)) FROM products WHERE id=$id;";
+            read.Parameters.AddWithValue("$id", current);
+            oldStock = QuantityStorage.FromMilli(Convert.ToInt64(await read.ExecuteScalarAsync(ct)));
+        }
+
         await using var q = c.CreateCommand();
         q.Transaction = tx;
         if (existing is long id)
         {
+            // A null stock / minimum / purchase price (column missing or blank
+            // in the CSV) keeps the value the product already has.
             q.CommandText = """
                 UPDATE products SET category_id=$c,name=$n,sku=CASE WHEN TRIM($sku)='' THEN sku ELSE $sku END,barcode=$ean,
                   base_price_cents=$price,vat_rate=$vat,pfand_cents=$pfand,unit=$unit,
-                  is_active=$active,stock_quantity=$stock,stock_milli=$stockMilli,min_stock_quantity=$minstock,min_stock_milli=$minStockMilli,purchase_price_cents=$purchase,
+                  is_active=$active,
+                  stock_quantity=COALESCE($stock,stock_quantity),stock_milli=COALESCE($stockMilli,stock_milli),
+                  min_stock_quantity=COALESCE($minstock,min_stock_quantity),min_stock_milli=COALESCE($minStockMilli,min_stock_milli),
+                  purchase_price_cents=COALESCE($purchase,purchase_price_cents),
                   im_haus_applicable=$imHaus
                 WHERE id=$id;
                 """;
@@ -1904,7 +2045,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         {
             q.CommandText = """
                 INSERT INTO products(category_id,name,sku,barcode,base_price_cents,vat_rate,pfand_cents,unit,is_active,stock_quantity,stock_milli,min_stock_quantity,min_stock_milli,purchase_price_cents,edition_scope,im_haus_applicable)
-                VALUES($c,$n,$sku,$ean,$price,$vat,$pfand,$unit,$active,$stock,$stockMilli,$minstock,$minStockMilli,$purchase,$scope,$imHaus);
+                VALUES($c,$n,$sku,$ean,$price,$vat,$pfand,$unit,$active,COALESCE($stock,0),COALESCE($stockMilli,0),COALESCE($minstock,0),COALESCE($minStockMilli,0),COALESCE($purchase,0),$scope,$imHaus);
                 """;
         }
         q.Parameters.AddWithValue("$imHaus", imHausApplicable ? 1 : 0);
@@ -1917,13 +2058,14 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         q.Parameters.AddWithValue("$pfand", pfand);
         q.Parameters.AddWithValue("$unit", unit ?? "Stück");
         q.Parameters.AddWithValue("$active", active ? 1 : 0);
-        q.Parameters.AddWithValue("$stock", Convert.ToDouble(stock));
-        q.Parameters.AddWithValue("$stockMilli", QuantityStorage.ToMilli(stock));
-        q.Parameters.AddWithValue("$minstock", Convert.ToDouble(Math.Max(0m, minStock)));
-        q.Parameters.AddWithValue("$minStockMilli", QuantityStorage.ToMilli(Math.Max(0m, minStock)));
-        q.Parameters.AddWithValue("$purchase", Math.Max(0, purchasePrice));
+        q.Parameters.AddWithValue("$stock", stock is decimal st ? (object)Convert.ToDouble(st) : DBNull.Value);
+        q.Parameters.AddWithValue("$stockMilli", stock is decimal sm ? (object)QuantityStorage.ToMilli(sm) : DBNull.Value);
+        q.Parameters.AddWithValue("$minstock", minStock is decimal mn ? (object)Convert.ToDouble(Math.Max(0m, mn)) : DBNull.Value);
+        q.Parameters.AddWithValue("$minStockMilli", minStock is decimal mm ? (object)QuantityStorage.ToMilli(Math.Max(0m, mm)) : DBNull.Value);
+        q.Parameters.AddWithValue("$purchase", purchasePrice is long pp ? (object)Math.Max(0, pp) : DBNull.Value);
         q.Parameters.AddWithValue("$scope", CurrentEditionScope(c, tx));
         await q.ExecuteNonQueryAsync(ct);
+        return (effectiveSku, oldStock, stock ?? oldStock ?? 0m);
     }
 
     private static string CurrentEditionScope(SqliteConnection c, SqliteTransaction? tx = null)

@@ -105,7 +105,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             $"Software:          {plan.Master.SoftwareBrand} {plan.Master.SoftwareVersion}",
             $"Kasse:             {plan.Master.KasseSerial}",
             $"Zeitraum:          {DsfinvkCsv.Timestamp(from)} bis {DsfinvkCsv.Timestamp(to)}",
-            $"Fiskalfreigabe:    {(FiscalRelease.Enabled ? "ja" : "NEIN - Prüf-/Testdatensatz")}",
+            $"Fiskalfreigabe:    {(FiscalRelease.ProductionAllowed ? "ja" : "NEIN - Prüf-/Testdatensatz")}",
             "",
             "Kassenabschlüsse:",
         };
@@ -307,7 +307,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     : $"{open} Vorgänge nach dem letzten Kassenabschluss gehören noch zu keinem Z-Bericht und sind nicht enthalten.", Blocking: false));
 
             // What TOR does not record yet. Stated, not hidden.
-            if (!FiscalRelease.Enabled)
+            if (!FiscalRelease.ProductionAllowed)
                 issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
             if (withoutSnapshot.Count > 0)
                 issues.Add(new("STAMMDATEN", (withoutSnapshot.Count == 1 ? "1 Kassenabschluss stammt" : $"{withoutSnapshot.Count} Kassenabschlüsse stammen") + $" aus der Zeit vor R132 ohne eigene Stammdaten; dafür werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
@@ -557,7 +557,9 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                        CASE WHEN COALESCE(quantity_milli,0)<>0 THEN quantity_milli ELSE CAST(ROUND(quantity*1000.0) AS INTEGER) END,
                        unit_price_cents,vat_rate,pfand_cents,
                        COALESCE(list_unit_price_cents,0),COALESCE(promotion_id,0),COALESCE(promotion_name,''),
-                       COALESCE(promotion_percent,0),COALESCE(promotion_discount_unit_cents,0)
+                       COALESCE(promotion_percent,0),COALESCE(promotion_discount_unit_cents,0),
+                       line_total_cents,
+                       COALESCE(NULLIF(unit,''),(SELECT p.unit FROM products p WHERE p.id=parked_receipt_items.product_id),'Stück')
                 FROM parked_receipt_items WHERE parked_receipt_id=$id ORDER BY id;
                 """;
             q.Parameters.AddWithValue("$id", order.Order.Id);
@@ -579,6 +581,9 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                     PromotionName = r.GetString(10),
                     PromotionPercent = r.GetInt32(11),
                     PromotionDiscountUnitCents = r.GetInt64(12),
+                    // V-1/K-1: stored total and unit, as signed and printed.
+                    PersistedLineTotalCents = r.GetInt64(13),
+                    Unit = r.GetString(14),
                 });
             }
 

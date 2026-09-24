@@ -597,14 +597,14 @@ public async Task<FiscalReadinessReport> CheckAsync(CancellationToken ct = defau
                 ? "Die TSE protokolliert die Kasse unter ihrer Seriennummer."
                 : $"Die TSE-Client-ID muss {kassenSeriennummer} lauten - dieselbe Nummer steht auf dem Bon, im DSFinV-K-Export (KASSE_SERIENNR) und in der Mitteilung nach § 146a Abs. 4 AO."),
             new("COMPANY", "Bon-Firmendaten", companyReady, companyReady ? "Vollständiger Name und Anschrift vorhanden." : "Firma, Straße, PLZ und Ort müssen vollständig sein."),
-            new("TSE", "Zertifizierte TSE", tseActive, tseActive ? "Swissbit TSE ist als AKTIV erkannt." : "Swissbit SDK / reale TSE-Signierung ist noch nicht produktiv freigegeben."),
+            new("TSE", "Zertifizierte TSE", tseActive, tseActive ? "Die eingesetzte TSE ist als AKTIV erkannt." : "Die eingesetzte TSE / reale TSE-Signierung ist noch nicht produktiv freigegeben."),
             new("DSFINVK", "DSFinV-K 2.4", dsfinvkImplementedAndValidated, "Preflight/Export-Gate ist implementiert; vollständiger DSFinV-K-Prüfdatensatz bleibt bis Z-/TSE-Datenmodell und offiziellem Descriptor gesperrt."),
             new("RECEIPT", "Beleg § 6 KassenSichV", ksichvReceiptValidated, "TSE-Transaktionsnummer, Signaturzähler und Prüfwert sind noch nicht real befüllt."),
             new("PARKEN_TSE", "Parken / Bestellung", parkedOrderTseValidated, "R83: IMBISS-Bestellannahme ruft bereits einen eigenen 'Bestellung-V1' TSE-Vorgang auf; das Format ist Entwurf und real noch nicht gegen echte TSE-Hardware/DSFinV-K validiert."),
             new("PFAND", isKiosk ? "Pfand-Steuerlogik" : "IMBISS Extra-Steuerlogik", !isKiosk || pfandTaxValidated, isKiosk ? "Pfandlogik ist noch nicht fachlich/fiskal abschließend validiert." : "Pfand ist in IMBISS nicht aktiv. Extras übernehmen die MwSt. aus der Warengruppe.", isKiosk),
             new("TSE_E2E", "Physische TSE-End-to-End-Abnahme", FiscalRelease.PhysicalTseE2EValidated, "BAR-Testbon, Start/Finish, QR, Zähler, Seriennummer, TAR-Export, Ausfall und Restart-Recovery müssen mit realer zertifizierter TSE belegt sein."),
             new("INDEPENDENT_REVIEW", "Unabhängige Fiskalprüfung", FiscalRelease.IndependentFiscalReviewValidated, "Vor Produktivfreigabe muss eine dokumentierte unabhängige Prüfung der fiskalischen Kernpfade abgeschlossen sein."),
-            new("FISCAL_RELEASE", "TOR Produktivfreigabe", FiscalRelease.Enabled, FiscalRelease.Enabled ? "Alle source-controlled Release-Qualifikationen sind erfüllt." : "Fehlende Freigaben: " + string.Join(", ", FiscalRelease.MissingQualifications())),
+            new("FISCAL_RELEASE", "TOR Produktivfreigabe", FiscalRelease.ProductionAllowed, FiscalRelease.ProductionAllowed ? "Alle Release-Qualifikationen für die eingesetzte TSE sind erfüllt." : "Fehlende Freigaben: " + string.Join(", ", FiscalRelease.MissingQualificationsForActiveTse())),
             new("COMMERCIAL_LICENSE", "Kommerzielle Softwarelizenz", commercialLicense.IsActive, commercialLicense.Message)
         };
     var allowed = items.Where(x => x.Mandatory).All(x => x.Ready);

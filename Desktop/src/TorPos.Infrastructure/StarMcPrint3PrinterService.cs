@@ -55,7 +55,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             try
             {
                 var uncertain = _isolatedPrinter is null
-                    ? await _printJournal.GetUncertainAsync()
+                    ? await _printJournal.GetUncertainForMainPrinterAsync()
                     : await _printJournal.GetUncertainForPrinterAsync(
                         _isolatedPrinter);
                 _spoolerStateUncertain = uncertain.Count > 0;
@@ -63,6 +63,11 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
             catch
             {
                 _spoolerStateUncertain = true;
+            }
+            if (_isolatedPrinter is null)
+            {
+                try { await _printJournal.CleanupFinishedAsync(DateTimeOffset.Now); }
+                catch { /* cleanup is housekeeping; it never blocks printing */ }
             }
         });
         _worker = Task.Run(ProcessQueueAsync);
@@ -533,7 +538,7 @@ public sealed class StarMcPrint3PrinterService : IReceiptPrinterService
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var record=new PrintJobRecord(persistentId ?? Guid.NewGuid().ToString("N"),"QUEUED",printerName,receiptJob,errorJob,"",reportJob,kitchenJob,pickupSlipJob);
+        var record=new PrintJobRecord(persistentId ?? Guid.NewGuid().ToString("N"),"QUEUED",printerName,receiptJob,errorJob,"",reportJob,kitchenJob,pickupSlipJob,IsolatedLane:_isolatedPrinter is not null);
         await _printJournal.SaveAsync(record).ConfigureAwait(false);
         var item = new QueueItem(
             record,
@@ -1429,7 +1434,7 @@ private sealed record TaxSummary(
 
     public Task<IReadOnlyList<PrintJobRecord>> GetUncertainJobsAsync() =>
         _isolatedPrinter is null
-            ? _printJournal.GetUncertainAsync()
+            ? _printJournal.GetUncertainForMainPrinterAsync()
             : _printJournal.GetUncertainForPrinterAsync(
                 _isolatedPrinter);
 
@@ -1440,7 +1445,7 @@ private sealed record TaxSummary(
         if (string.IsNullOrWhiteSpace(evidence) || evidence.Trim().Length<8) throw new InvalidOperationException("Prüfnachweis fehlt.");
 
         var uncertain = _isolatedPrinter is null
-            ? await _printJournal.GetUncertainAsync()
+            ? await _printJournal.GetUncertainForMainPrinterAsync()
             : await _printJournal.GetUncertainForPrinterAsync(
                 _isolatedPrinter);
 
