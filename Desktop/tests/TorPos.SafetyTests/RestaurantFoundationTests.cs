@@ -202,7 +202,6 @@ internal static class RestaurantFoundationTests
             null!,
             null!,
             null!,
-            null!,
             null!);
 
         var standardHandheldRejected = false;
@@ -522,7 +521,6 @@ internal static class RestaurantFoundationTests
                 null!,
                 null!,
                 pairing,
-                operatorAuth,
                 operatorSessions,
                 null!,
                 null!,
@@ -576,34 +574,6 @@ internal static class RestaurantFoundationTests
                     UserPermissions.ImmediateStorno),
                 "G-1 Restaurant storno permission is resolved from the canonical POS operator identity");
 
-            var missingReasonRejected = false;
-            try
-            {
-                await g1Handheld.CancelItemAsync(
-                    new RestaurantHandheldCancelItemRequest(
-                        "G1-SESSION",
-                        1,
-                        1,
-                        "kellner1",
-                        "4826",
-                        paired.DeviceId,
-                        paired.DeviceToken,
-                        "G1-CANCEL-0002",
-                        "",
-                        ""));
-            }
-            catch (ArgumentException ex)
-                when (ex.Message.Contains(
-                    "Stornogrund",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                missingReasonRejected = true;
-            }
-
-            assert(
-                missingReasonRejected,
-                "G-1 handheld Restaurant storno rejects a blank reason before command or repository mutation");
-
             var wrongDeviceRejected = false;
             try
             {
@@ -639,6 +609,69 @@ internal static class RestaurantFoundationTests
             assert(
                 loggedOutRejected,
                 "Restaurant operator logout revokes the shift token immediately");
+
+            var stornoOperatorSession =
+                await operatorSessions.LoginAsync(
+                    paired.DeviceId,
+                    "kellner1",
+                    "4826");
+
+            var missingOperatorSessionRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G2A-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "4826",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G2A-CANCEL-0001",
+                        "",
+                        "Fehlbuchung"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                missingOperatorSessionRejected = true;
+            }
+
+            assert(
+                missingOperatorSessionRejected,
+                "G-2 Restaurant mutation rejects device-authenticated requests without an operator session token");
+
+            var missingReasonRejected = false;
+            try
+            {
+                await g1Handheld.CancelItemAsync(
+                    new RestaurantHandheldCancelItemRequest(
+                        "G1-SESSION",
+                        1,
+                        1,
+                        "kellner1",
+                        "",
+                        paired.DeviceId,
+                        paired.DeviceToken,
+                        "G1-CANCEL-0002",
+                        stornoOperatorSession.SessionToken,
+                        ""));
+            }
+            catch (ArgumentException ex)
+                when (ex.Message.Contains(
+                    "Stornogrund",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                missingReasonRejected = true;
+            }
+
+            assert(
+                missingReasonRejected,
+                "G-1 handheld Restaurant storno rejects a blank reason before command or repository mutation");
+
+            await operatorSessions.LogoutAsync(
+                paired.DeviceId,
+                stornoOperatorSession.SessionToken);
 
             await pairing.DeactivateAsync(
                 paired.DeviceId);
