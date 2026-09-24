@@ -956,9 +956,9 @@ public partial class SettingsWindow : Window
                 ? UiLanguage.T("Noch keine eigenen Werbebilder. Artikel mit Bild werden trotzdem gezeigt, wenn der Inhalt BEIDE oder ARTIKEL ist.")
                 : $"{count} " + UiLanguage.T("eigene Werbebilder") + " · " + folder;
         }
-        catch
+        catch (Exception ex)
         {
-            status.Text = "";
+            status.Text = UiLanguage.T("Werbebilder-Ordner konnte nicht gelesen werden") + ": " + ex.Message;
         }
     }
 
