@@ -263,9 +263,8 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
             request.OperatorSessionToken,
             ct);
 
-        if (request.Quantity <= 0m)
-            throw new ArgumentOutOfRangeException(
-                nameof(request.Quantity));
+        RestaurantOrderQuantityPolicy.ValidateRaw(
+            request.Quantity);
 
         var product = _catalog.Products
             .FirstOrDefault(x =>
@@ -275,13 +274,9 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                 "Artikel ist nicht vorhanden oder deaktiviert.");
 
         var quantityMilli =
-            (long)Math.Round(
-                request.Quantity * 1000m,
-                MidpointRounding.AwayFromZero);
-
-        if (quantityMilli <= 0)
-            throw new ArgumentOutOfRangeException(
-                nameof(request.Quantity));
+            RestaurantOrderQuantityPolicy.ToMilli(
+                product,
+                request.Quantity);
 
         var requestHash = CommandHash(
             "ADD_ITEM",
