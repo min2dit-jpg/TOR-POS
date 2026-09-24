@@ -27,8 +27,8 @@ internal static class CancelledPositionStore
                 INSERT INTO {table}(
                   {owner},product_id,product_name,variant_name,barcode,quantity,quantity_milli,unit_price_cents,vat_rate,pfand_cents,
                   list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
-                  vat_allocations_json,menu_components_json)
-                VALUES($o,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents);
+                  vat_allocations_json,menu_components_json,unit)
+                VALUES($o,$p,$n,$v,$b,$q,$qm,$u,$vat,$pfand,$list,$pid,$pname,$ppct,$punit,$vatAllocations,$menuComponents,$unit);
                 """;
             q.Parameters.AddWithValue("$o", ownerId);
             q.Parameters.AddWithValue("$p", line.ProductId);
@@ -47,6 +47,7 @@ internal static class CancelledPositionStore
             q.Parameters.AddWithValue("$punit", line.PromotionDiscountUnitCents);
             q.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
             q.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+            q.Parameters.AddWithValue("$unit", line.Unit);
             await q.ExecuteNonQueryAsync(ct);
         }
     }
@@ -62,7 +63,7 @@ internal static class CancelledPositionStore
                    list_unit_price_cents,promotion_id,promotion_name,promotion_percent,promotion_discount_unit_cents,
                    COALESCE(vat_allocations_json,''),
                    COALESCE(menu_components_json,''),
-                   COALESCE((SELECT p.unit FROM products p WHERE p.id={table}.product_id),'Stück')
+                   COALESCE(NULLIF({table}.unit,''),(SELECT p.unit FROM products p WHERE p.id={table}.product_id),'Stück')
             FROM {table} WHERE {OwnerColumn(table)}=$o ORDER BY id;
             """;
         q.Parameters.AddWithValue("$o", ownerId);
