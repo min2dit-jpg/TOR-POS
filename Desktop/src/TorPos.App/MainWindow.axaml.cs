@@ -395,8 +395,10 @@ public partial class MainWindow:Window
             FocusScannerCaptureSoon();
         };
 
+        UiErrorGuard.ErrorCaught += OnUiErrorCaught;
         Closed += (_, _) =>
         {
+            UiErrorGuard.ErrorCaught -= OnUiErrorCaught;
             _tseWatch?.Stop();
             _tseWatch = null;
             _customerDisplayAdsTimer?.Stop();
@@ -3912,6 +3914,13 @@ public partial class MainWindow:Window
         // full exception to CrashLog - no need to log it a second time here.
         var errorId = ReportOperationalError(category, ex.Message, ex, printerRelated);
         StatusLine = $"{category} FEHLGESCHLAGEN · Fehler-ID {errorId}";
+    }
+
+    // O-6: an error that escaped a button/menu handler was logged by
+    // UiErrorGuard and the till keeps running; the cashier gets the Fehler-ID.
+    private void OnUiErrorCaught(string errorId)
+    {
+        StatusLine = "PROGRAMMFEHLER ABGEFANGEN · Kasse läuft weiter · Fehler-ID " + errorId;
     }
 
     private string ReportOperationalError(

@@ -16,6 +16,9 @@ public partial class App : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // O-6: one failing UI event handler must not close the whole till.
+        UiErrorGuard.Install();
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // IMPORTANT:
