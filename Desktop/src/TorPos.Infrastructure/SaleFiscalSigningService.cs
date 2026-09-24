@@ -72,12 +72,26 @@ public sealed class SaleFiscalSigningService
             if (signed)
             {
                 await vorgaenge.CloseUnsignedAsync(vorgangId, $"SALE:{saleId}", ct);
+                await vorgaenge.ClearFinishJournalAsync(vorgangId, ct);
                 count++;
                 continue;
             }
 
             if (await _sales.GetByIdAsync(saleId, ct) is not { } sale)
                 continue;
+
+            // F-6: the TSE already finished this transaction before the
+            // program stopped - use its journaled answer instead of asking
+            // the TSE to finish it a second time (which it refuses).
+            if (await vorgaenge.GetJournaledFinishAsync(vorgangId, ct) is { } journaled)
+            {
+                await vorgaenge.CloseUnsignedAsync(vorgangId, $"SALE:{saleId}", ct);
+                await ApplyAsync(sale, journaled, ct);
+                await vorgaenge.ClearFinishJournalAsync(vorgangId, ct);
+                count++;
+                continue;
+            }
+
             await SignInVorgangAsync(sale, vorgangId, actor, ct);
             count++;
         }
@@ -113,6 +127,7 @@ public sealed class SaleFiscalSigningService
 
         var result = await vorgaenge.FinishAsync(vorgangId, FiscalProcessData.KassenbelegProcessType, processData, actor, reference, ct);
         await ApplyAsync(sale, result, ct);
+        await vorgaenge.ClearFinishJournalAsync(vorgangId, ct);
     }
 
     public async Task SignAsync(Sale sale, string actor, CancellationToken ct = default)
