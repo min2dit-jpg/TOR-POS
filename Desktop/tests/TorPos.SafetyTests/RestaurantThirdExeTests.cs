@@ -29,6 +29,42 @@ internal static class RestaurantThirdExeTests
                 "Restaurant workspace exposes master-data callback");
         }
 
+        var desktopRoot = Directory.GetCurrentDirectory();
+        var mainWindowSource = await File.ReadAllTextAsync(
+            Path.Combine(desktopRoot, "src", "TorPos.App", "MainWindow.axaml.cs"));
+        var mainWindowXaml = await File.ReadAllTextAsync(
+            Path.Combine(desktopRoot, "src", "TorPos.App", "MainWindow.axaml"));
+
+        assert(
+            !mainWindowSource.Contains(
+                "ShowDialog<RestaurantCheckoutDraft?>",
+                StringComparison.Ordinal),
+            "Restaurant startup no longer opens Tischplan as a modal checkout dialog");
+
+        assert(
+            mainWindowSource.Contains(
+                "ShowRestaurantTableWorkspaceAsync",
+                StringComparison.Ordinal) &&
+            mainWindowSource.Contains(
+                "CreateRestaurantWorkspaceControl",
+                StringComparison.Ordinal),
+            "MainWindow owns the embedded Restaurant workspace lifecycle");
+
+        assert(
+            mainWindowXaml.Contains(
+                "x:Name=\"RestaurantWorkspaceHost\"",
+                StringComparison.Ordinal),
+            "MainWindow contains a RestaurantWorkspaceHost");
+
+        assert(
+            mainWindowXaml.Contains(
+                "x:Name=\"RestaurantCounterButton\"",
+                StringComparison.Ordinal) &&
+            mainWindowXaml.Contains(
+                "Content=\"THEKE\"",
+                StringComparison.Ordinal),
+            "Restaurant header exposes THEKE inside the same MainWindow");
+
         var path = Path.Combine(Path.GetTempPath(), "restaurant-third-" + Guid.NewGuid().ToString("N") + ".db");
         var db = await SafetyDatabase.CreateCurrentAsync(path);
         var repo = new RestaurantRepository(db);
