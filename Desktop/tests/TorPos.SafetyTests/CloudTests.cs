@@ -55,6 +55,22 @@ static class CloudTests
             assert(Convert.ToInt64(q.ExecuteScalar())==1,"Sale snapshot inserts exactly one durable event in caller transaction");
         }
         await reject(()=>new SaleRepository(reopened).CommitAsync(snap),"Cloud integration cannot bypass fiscal sale gate or checkout journal");
+        // C-4: one event the Cloud refuses for good must not block the FIFO head.
+        var c4Db=await SafetyDatabase.CreateCurrentAsync(Path.Combine(root,"cloud-c4.db"));var c4State=new FakeCloudState();
+        await using(var cloud=new TorCloudSyncService(c4Db,new TestSecrets(),new FakeCloudHandler(c4State))){
+            await cloud.SaveAsync("https://cloud.example","KASSE-01","fake-device-secret",true);
+            var config=(await cloud.ConfigurationAsync())!;
+            using(var c=c4Db.OpenConnection()){using var tx=c.BeginTransaction();
+                foreach(var id in new[]{"c4-head","c4-bad","c4-tail"})TorCloudOutbox.Insert(c,tx,config,TorCloudOutbox.Event("sale.completed",new {receipt_number=1},id));
+                tx.Commit();}
+            c4State.Reject.Add("c4-bad");await cloud.SyncOnceAsync();
+            var status=await cloud.StatusAsync();
+            assert(c4State.LastPartial&&c4State.Accepted.SetEquals(["c4-head","c4-tail"]),"C-4 till asks for per-event verdicts and good events around a refused one are delivered");
+            assert(status.Contains("Wartende Ereignisse: 0")&&status.Contains("Von der Cloud abgelehnt: 1"),"C-4 refused event leaves the queue head and is shown as refused");
+            using var c2=c4Db.OpenConnection();using var q=c2.CreateCommand();
+            q.CommandText="SELECT verdict||'|'||reason||'|'||event_type FROM cloud_outbox_rejected WHERE event_id='c4-bad';";
+            assert(q.ExecuteScalar() as string=="rejected|Ungültiger Betrag|sale.completed","C-4 refused event is parked with verdict, reason and payload");
+        }
         if(OperatingSystem.IsWindows()){
             var secrets=new WindowsCloudSecretProtector();var protectedToken=secrets.Protect("roundtrip-secret");
             assert(protectedToken!="roundtrip-secret"&&secrets.Unprotect(protectedToken)=="roundtrip-secret","Windows DPAPI token roundtrip");
@@ -78,7 +94,7 @@ sealed class TestSecrets:ICloudSecretProtector
     public string Protect(string value)=>Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
     public string Unprotect(string value)=>System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value));
 }
-sealed class FakeCloudState {public bool LoseReply,Incomplete,Redirect;public int Calls;public HashSet<string> Accepted=new();}
+sealed class FakeCloudState {public bool LoseReply,Incomplete,Redirect,LastPartial;public int Calls;public HashSet<string> Accepted=new(),Reject=new();}
 sealed class FakeCloudHandler(FakeCloudState state):HttpMessageHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)
@@ -86,8 +102,11 @@ sealed class FakeCloudHandler(FakeCloudState state):HttpMessageHandler
         state.Calls++;
         if(state.Redirect)return new(HttpStatusCode.Found){Headers={Location=new Uri("https://unexpected.example")}};
         using var body=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+        state.LastPartial=body.RootElement.TryGetProperty("partial",out var partial)&&partial.ValueKind==JsonValueKind.True;
         var results=body.RootElement.GetProperty("events").EnumerateArray().Select(e=>{
-            var id=e.GetProperty("event_id").GetString()!;return new {event_id=id,status=state.Accepted.Add(id)?"accepted":"duplicate"};
+            var id=e.GetProperty("event_id").GetString()!;
+            if(state.Reject.Contains(id))return new {event_id=id,status="rejected",error="Ungültiger Betrag"};
+            return new {event_id=id,status=state.Accepted.Add(id)?"accepted":"duplicate",error=""};
         }).ToArray();
         if(state.LoseReply)throw new HttpRequestException("Lost reply; fake-device-secret must never be logged");
         var json=state.Incomplete?"{\"ok\":true,\"results\":[]}":JsonSerializer.Serialize(new {ok=true,results});

@@ -674,7 +674,8 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1400;
+// C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue.
+const int ExpectedSafetyChecks = 1403;
 
 if (checks != ExpectedSafetyChecks)
 {

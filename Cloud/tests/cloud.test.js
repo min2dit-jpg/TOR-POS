@@ -78,6 +78,24 @@ test('invalid values and HTML payment types rejected; whole batch rolls back',as
  const unknown={...event('unknown'),type:'sale.completedd'};assert.equal((await sync([unknown])).status,400);
  assert.equal((await request('/api/v1/devices/sync',{},headers)).status,400);
 });
+// C-4: with partial:true one bad event no longer blocks the whole batch.
+test('C-4 partial sync stores good events and reports bad ones per event',async()=>{
+ const invalid=event('c4-invalid');invalid.payload.total_cents=1;
+ const conflict=event('c4-conflict');assert.equal((await sync([conflict])).body.accepted,1);
+ const changed=event('c4-conflict');changed.payload.operator_name='changed';
+ const r=await request('/api/v1/devices/sync',{partial:true,events:[event('c4-before',941),invalid,changed,'not-an-object',event('c4-after',942)]},headers);
+ assert.equal(r.status,200);
+ assert.deepEqual(r.body.results.map(x=>[x.event_id,x.status]),[['c4-before','accepted'],['c4-invalid','rejected'],['c4-conflict','conflict'],['','rejected'],['c4-after','accepted']]);
+ assert.equal(r.body.accepted,2);assert.equal(r.body.rejected,3);assert.ok(r.body.results[1].error);
+ // Stored exactly once: a repeat is a duplicate, and the rejected event left nothing behind.
+ const again=await request('/api/v1/devices/sync',{partial:true,events:[event('c4-before',941),event('c4-after',942)]},headers);
+ assert.deepEqual(again.body.results.map(x=>x.status),['duplicate','duplicate']);
+ const fixed=event('c4-invalid');assert.equal((await request('/api/v1/devices/sync',{partial:true,events:[fixed]},headers)).body.results[0].status,'accepted');
+ // Without partial the old all-or-nothing contract stays.
+ const bad=event('c4-legacy');bad.payload.total_cents=1;
+ assert.equal((await sync([event('c4-legacy-good'),bad])).status,400);
+ assert.equal((await sync([event('c4-legacy-good')])).body.accepted,1);
+});
 test('snapshots replace removed products and older snapshots cannot reverse stock',async()=>{
  const stock=(id,at,items)=>({event_id:id,type:'stock.snapshot',occurred_at:at,payload:{items}});
  assert.equal((await sync([stock('new-stock','2026-09-07T15:00:00Z',[{product_key:'r41',name:'Local product',quantity:12}])])).status,200);

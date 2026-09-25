@@ -1390,16 +1390,39 @@ async function handler(req, res) {
       if(!Array.isArray(body.events)||!body.events.length) return json(res,400,{ok:false,error:'events fehlt oder leer'});
       const events = body.events;
       if (events.length > 250) return json(res, 400, {ok:false, error:'Maximal 250 Ereignisse pro Batch'});
+      // C-4: a till that sends partial:true gets a verdict per event. An event
+      // the Cloud will never accept (400) or that conflicts with a stored one
+      // (409) is reported as rejected/conflict and rolled back alone via a
+      // savepoint; the rest of the batch is stored. Before, one bad event made
+      // the whole batch 400, and because the till's outbox is FIFO it sat at
+      // the head for good and stopped all Cloud sync. Older tills that do not
+      // send partial keep the all-or-nothing answer they understand.
+      const partial = body.partial === true;
       const result = [];
       db.exec('BEGIN IMMEDIATE');
       try {
         for (const raw of events) {
-          const event = normalizeEvent(raw);
-          result.push({event_id:event.eventId, status:ingestEvent(device.register_id, event)});
+          if (!partial) {
+            const event = normalizeEvent(raw);
+            result.push({event_id:event.eventId, status:ingestEvent(device.register_id, event)});
+            continue;
+          }
+          db.exec('SAVEPOINT sync_event');
+          try {
+            const event = normalizeEvent(raw);
+            result.push({event_id:event.eventId, status:ingestEvent(device.register_id, event)});
+            db.exec('RELEASE sync_event');
+          } catch (e) {
+            db.exec('ROLLBACK TO sync_event'); db.exec('RELEASE sync_event');
+            if (e.statusCode !== 400 && e.statusCode !== 409) throw e;
+            const id = raw && typeof raw === 'object' && typeof raw.event_id === 'string' ? raw.event_id.slice(0, 120) : '';
+            result.push({event_id:id, status:e.statusCode === 409 ? 'conflict' : 'rejected', error:String(e.message || '').slice(0, 300)});
+          }
         }
         db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
-      return json(res, 200, {ok:true, accepted:result.filter(x=>x.status==='accepted').length, duplicates:result.filter(x=>x.status==='duplicate').length, results:result, server_time:nowIso()});
+      const count = status => result.filter(x=>x.status===status).length;
+      return json(res, 200, {ok:true, accepted:count('accepted'), duplicates:count('duplicate'), rejected:count('rejected')+count('conflict'), results:result, server_time:nowIso()});
     }
 
     // R145: the till publishes the customer's digital receipt after the sale is
