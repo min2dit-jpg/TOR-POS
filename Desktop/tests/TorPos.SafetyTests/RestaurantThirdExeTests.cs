@@ -9,6 +9,26 @@ internal static class RestaurantThirdExeTests
         Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "RESTAURANT");
         try
         {
+        var workspaceType = typeof(TorPos.App.MainWindow).Assembly
+            .GetType("TorPos.App.RestaurantWorkspaceControl");
+        assert(workspaceType is not null,
+            "Restaurant edition exposes an embedded RestaurantWorkspaceControl");
+        if (workspaceType is not null)
+        {
+            assert(workspaceType.GetMethod("InitializeAsync") is not null,
+                "Restaurant workspace exposes InitializeAsync");
+            assert(workspaceType.GetMethod("RefreshAsync") is not null,
+                "Restaurant workspace exposes RefreshAsync");
+            assert(workspaceType.GetProperty("IsBusy") is not null,
+                "Restaurant workspace exposes busy state");
+            assert(workspaceType.GetProperty("CheckoutRequestedAsync") is not null,
+                "Restaurant workspace exposes checkout callback");
+            assert(workspaceType.GetProperty("CounterRequestedAsync") is not null,
+                "Restaurant workspace exposes counter-mode callback");
+            assert(workspaceType.GetProperty("OpenMasterDataAsync") is not null,
+                "Restaurant workspace exposes master-data callback");
+        }
+
         var path = Path.Combine(Path.GetTempPath(), "restaurant-third-" + Guid.NewGuid().ToString("N") + ".db");
         var db = await SafetyDatabase.CreateCurrentAsync(path);
         var repo = new RestaurantRepository(db);
