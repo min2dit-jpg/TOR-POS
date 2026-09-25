@@ -342,21 +342,6 @@ public partial class MainWindow:Window
                 await TryRestoreOpenCartAsync();
 
             _cartRecoveryReady = true;
-            // R136: a TSE Vorgang left open by a crash whose cart did not come
-            // back is ended as aborted. A training login leaves them for the
-            // next regular one, which may still restore its cart.
-            // R138: but one whose sale was already booked is no abort - it is
-            // ended first with the data of that sale.
-            if (!_currentUser.IsTraining)
-            {
-                var keep = _tseVorgang.VorgangId;
-                var actor = _currentUser.Username;
-                QueueTseVorgangWork(async v =>
-                {
-                    await _fiscalSigning.FinishCommittedVorgaengeAsync(actor);
-                    await v.AbortOrphansAsync(keep, actor);
-                });
-            }
             // R126: the button states were last computed while recovery was
             // still pending (CartLocked), and nothing recomputed them once it
             // finished - C, EXTRA and SCHNELLARTIKEL stayed disabled after every
@@ -401,7 +386,25 @@ public partial class MainWindow:Window
             _tseCertificateTimer.Start();
             StartTseWatch();
             FocusScannerCaptureSoon();
+
+            // Restaurant-specific reconciliation must run before the generic
+            // orphan cleanup. A tagged OPEN Restaurant Vorgang may be the exact
+            // TSE transaction needed to repair a DB-committed merge/storno.
             await ShowRestaurantTableWorkspaceAsync();
+
+            // R136/R138 generic cleanup follows Restaurant recovery. A Vorgang
+            // that is still OPEN now has no recoverable Restaurant state and can
+            // safely become AVBelegabbruch.
+            if (!_currentUser.IsTraining)
+            {
+                var keep = _tseVorgang.VorgangId;
+                var actor = _currentUser.Username;
+                QueueTseVorgangWork(async v =>
+                {
+                    await _fiscalSigning.FinishCommittedVorgaengeAsync(actor);
+                    await v.AbortOrphansAsync(keep, actor);
+                });
+            }
         };
 
         UiErrorGuard.ErrorCaught += OnUiErrorCaught;

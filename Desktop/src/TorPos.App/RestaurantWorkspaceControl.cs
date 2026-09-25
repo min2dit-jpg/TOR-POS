@@ -165,7 +165,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
     private readonly Button _reconcileFiscal = new()
     {
         Name = "RestaurantFiscalReconcile",
-        Content = "FISKAL NACH SICHERN",
+        Content = "FISKAL NACHSICHERN",
         MinHeight = 44,
         IsVisible = false,
         IsEnabled = false
@@ -1052,6 +1052,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
 
         RestaurantFiscalVorgang? sourceFiscal = null;
         RestaurantFiscalVorgang? targetFiscal = null;
+        var mergeCommitted = false;
 
         try
         {
@@ -1095,21 +1096,30 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 targetSession.Id,
                 _user.Username);
 
+            var sourceSessionId = _selectedSession.Id;
             var merged = await _restaurant.MergeSessionsAsync(
-                _selectedSession.Id,
+                sourceSessionId,
                 _selectedSession.Version,
                 targetSession.Id,
                 targetSession.Version,
                 _user.Username,
                 Environment.MachineName);
+            mergeCommitted = true;
 
-            await _restaurantFiscal.SecureMergeAsync(
-                _selectedSession.Id,
-                targetSession.Id,
-                movedItems,
-                sourceFiscal,
-                targetFiscal,
-                _user.Username);
+            var sourceReconciled =
+                await _restaurantFiscal.ReconcileSessionAsync(
+                    sourceSessionId,
+                    _user.Username);
+            var targetReconciled =
+                await _restaurantFiscal.ReconcileSessionAsync(
+                    targetSession.Id,
+                    _user.Username);
+
+            if (!sourceReconciled || !targetReconciled)
+            {
+                throw new InvalidOperationException(
+                    "Tischzusammenlegung gespeichert, aber Bestellung/TSE-Nachsicherung ist noch nicht vollständig.");
+            }
 
             sourceFiscal = null;
             targetFiscal = null;
@@ -1120,26 +1130,36 @@ public sealed class RestaurantWorkspaceControl : UserControl
         }
         catch (Exception ex)
         {
-            if (sourceFiscal is not null)
+            // Once the DB merge is committed, keep both tagged Restaurant
+            // Vorgänge intact so ReconcileSessionAsync can finish or reuse the
+            // F-6 journal. Only a failure before the DB mutation is safe to abort.
+            if (!mergeCommitted)
             {
-                try
+                if (sourceFiscal is not null)
                 {
-                    await _restaurantFiscal.AbortChangeAsync(
-                        sourceFiscal,
-                        _user.Username);
+                    try
+                    {
+                        await _restaurantFiscal.AbortChangeAsync(
+                            sourceFiscal,
+                            _user.Username);
+                    }
+                    catch { }
                 }
-                catch { }
-            }
 
-            if (targetFiscal is not null)
-            {
-                try
+                if (targetFiscal is not null)
                 {
-                    await _restaurantFiscal.AbortChangeAsync(
-                        targetFiscal,
-                        _user.Username);
+                    try
+                    {
+                        await _restaurantFiscal.AbortChangeAsync(
+                            targetFiscal,
+                            _user.Username);
+                    }
+                    catch { }
                 }
-                catch { }
+            }
+            else
+            {
+                _selectedTable = target;
             }
 
             await ShowErrorAsync(ex.Message);
@@ -1205,6 +1225,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
             return;
 
         RestaurantFiscalVorgang? fiscal = null;
+        var cancellationCommitted = false;
         var actionId = Guid.NewGuid().ToString("N");
         var auditAuthorized = false;
         var auditApplied = false;
@@ -1254,12 +1275,15 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 selected.Id,
                 _user.Username,
                 Environment.MachineName);
+            cancellationCommitted = true;
 
-            await _restaurantFiscal.SecureCancelledItemAsync(
-                _selectedSession.Id,
-                cancelled,
-                fiscal,
-                _user.Username);
+            if (!await _restaurantFiscal.ReconcileSessionAsync(
+                    _selectedSession.Id,
+                    _user.Username))
+            {
+                throw new InvalidOperationException(
+                    "Storno gespeichert, aber Bestellung/TSE-Nachsicherung ist noch nicht vollständig.");
+            }
 
             fiscal = null;
 
@@ -1312,7 +1336,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 }
             }
 
-            if (fiscal is not null)
+            if (fiscal is not null && !cancellationCommitted)
             {
                 try
                 {

@@ -444,6 +444,21 @@ public static class RestaurantFiscalRetryTests
         string finishJson,
         string reference = "RESTAURANT-RETRY")
     {
+        var transactionNumber = "42";
+        if (!string.IsNullOrWhiteSpace(finishJson))
+        {
+            try
+            {
+                transactionNumber =
+                    JsonSerializer.Deserialize<SaleTseResult>(finishJson)
+                        ?.TransactionNumber
+                    ?? transactionNumber;
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
         await using var c = db.OpenConnection();
         await using var q = c.CreateCommand();
         q.CommandText = """
@@ -454,7 +469,7 @@ public static class RestaurantFiscalRetryTests
                 finish_attempted_at,finish_result_json)
             VALUES(
                 $id,0,$started,
-                'RETRY-CLIENT','42',$started,'',
+                'RETRY-CLIENT',$transaction,$started,'',
                 'FINISHED',NULL,$reference,$now,
                 $now,$journal);
             """;
@@ -470,6 +485,9 @@ public static class RestaurantFiscalRetryTests
         q.Parameters.AddWithValue(
             "$journal",
             finishJson);
+        q.Parameters.AddWithValue(
+            "$transaction",
+            transactionNumber);
         q.Parameters.AddWithValue(
             "$reference",
             reference);

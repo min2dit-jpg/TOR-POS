@@ -278,7 +278,7 @@ public sealed class RestaurantFiscalOrderService
             q.CommandText = """
                 SELECT id
                 FROM restaurant_sessions
-                WHERE state IN ('OPEN','CHECK_REQUESTED','CANCELLED')
+                WHERE state IN ('OPEN','CHECK_REQUESTED','CANCELLED','CLOSED')
                 ORDER BY updated_at,id;
                 """;
 
@@ -336,7 +336,7 @@ public sealed class RestaurantFiscalOrderService
                         ct)
                     ?? (
                         recovery.FinishAttempted ||
-                        recovery.State is TseVorgangService.Finished or TseVorgangService.Aborted
+                        recovery.State == TseVorgangService.Finished
                             ? SaleTseResult.Outage(
                                 "Restaurant-Änderung wurde möglicherweise bereits an der TSE beendet, " +
                                 "aber das F-6-Finish-Journal fehlt. Keine zweite TSE-Transaktion erzeugt.")
@@ -509,6 +509,7 @@ public sealed class RestaurantFiscalOrderService
                    CASE WHEN v.finish_result_json<>'' THEN 1 ELSE 0 END
             FROM tse_vorgaenge v
             WHERE v.reference=$reference
+              AND v.state IN ('OPEN','FINISHED')
               AND NOT EXISTS (
                   SELECT 1
                   FROM restaurant_bestellungen b
