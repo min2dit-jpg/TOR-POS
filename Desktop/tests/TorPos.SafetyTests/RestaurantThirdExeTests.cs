@@ -203,6 +203,23 @@ internal static class RestaurantThirdExeTests
                 StringComparison.Ordinal),
             "legacy Restaurant table-plan wrapper no longer exposes the daily SCHLIESSEN escape button");
 
+        var workflowSource = await File.ReadAllTextAsync(
+            Path.GetFullPath(
+                Path.Combine(
+                    desktopRoot,
+                    "..",
+                    ".github",
+                    "workflows",
+                    "tor-pos-ci.yml")));
+        assert(
+            workflowSource.Contains(
+                "TOR-Restaurant-Setup-DEV4-" + "$" + "{{ github.sha }}",
+                StringComparison.Ordinal) &&
+            !workflowSource.Contains(
+                "TOR-Restaurant-Setup-DEV-" + "$" + "{{ github.sha }}",
+                StringComparison.Ordinal),
+            "fourth Restaurant development installer is uploaded under the DEV4 artifact name");
+
         var path = Path.Combine(Path.GetTempPath(), "restaurant-third-" + Guid.NewGuid().ToString("N") + ".db");
         var db = await SafetyDatabase.CreateCurrentAsync(path);
         var repo = new RestaurantRepository(db);
