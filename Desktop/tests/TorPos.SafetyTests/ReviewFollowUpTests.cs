@@ -2,11 +2,11 @@ using System.Reflection;
 using TorPos.Core;
 using TorPos.Infrastructure;
 
-// Follow-up findings from the 24.09.2026 review (O-4, O-19): small fail-closed
+// Follow-up findings from the 24.09.2026 review (O-4, O-16, O-19): small fail-closed
 // corrections without their own feature area.
 public static class ReviewFollowUpTests
 {
-    public static Task Run(Action<bool, string> assert)
+    public static async Task Run(string root, Action<bool, string> assert)
     {
         // O-19: an unknown stored terminal profile used to fall back to
         // AUTO_ZVT, which is production-ready - a typo could charge cards.
@@ -64,6 +64,22 @@ public static class ReviewFollowUpTests
             !sscdDown.Success &&
             messagePending.Success,
             "O-4 ftState late-signing or SSCD failure fails the fiscal result; informational bits do not");
-        return Task.CompletedTask;
+
+        // O-16: system_identity.created_at is SQLite datetime('now'), i.e. UTC.
+        var db = await SafetyDatabase.CreateCurrentAsync(Path.Combine(root, "o16-identity.db"));
+        string raw;
+        await using (var c = db.OpenConnection())
+        {
+            await using var q = c.CreateCommand();
+            q.CommandText = "SELECT created_at FROM system_identity WHERE id=1;";
+            raw = (string)(await q.ExecuteScalarAsync())!;
+        }
+        var identity = await new SystemIdentityRepository(db).GetAsync();
+        var expectedUtc = DateTime.SpecifyKind(
+            DateTime.ParseExact(raw, "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            DateTimeKind.Utc);
+        assert(
+            identity.CreatedAt.UtcDateTime == expectedUtc,
+            "O-16 system identity creation time is read as the UTC SQLite wrote, not as local time");
     }
 }
