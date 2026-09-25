@@ -7,7 +7,7 @@ using TorPos.Infrastructure;
 
 namespace TorPos.App;
 
-public sealed class RestaurantTablePlanWindow : Window
+public sealed partial class RestaurantTablePlanWindow : Window
 {
     private readonly RestaurantRepository _restaurant;
     private readonly RestaurantFiscalOrderService _restaurantFiscal;
@@ -39,13 +39,14 @@ public sealed class RestaurantTablePlanWindow : Window
 
     private readonly ListBox _items = new()
     {
-        MinHeight = 260,
+        MinHeight = 120,
+        MaxHeight = 240,
         SelectionMode = SelectionMode.Multiple
     };
 
     private readonly ComboBox _product = new()
     {
-        MinWidth = 260,
+        MinWidth = 180,
         MinHeight = 44,
         PlaceholderText = "Artikel auswählen"
     };
@@ -162,6 +163,11 @@ public sealed class RestaurantTablePlanWindow : Window
         IsEnabled = false
     };
 
+    public bool ThekeRequested { get; private set; }
+    private readonly WrapPanel _areas = new();
+    private long? _selectedArea;
+    private bool _selectingTable;
+
     private IReadOnlyList<RestaurantTable> _tables = Array.Empty<RestaurantTable>();
     private RestaurantTable? _selectedTable;
     private RestaurantTableSession? _selectedSession;
@@ -186,10 +192,11 @@ public sealed class RestaurantTablePlanWindow : Window
         _user = user;
 
         Title = "TOR Restaurant · Tischplan";
-        Width = 1320;
-        Height = 820;
+        Width = 1280;
+        Height = 700;
         MinWidth = 1024;
-        MinHeight = 650;
+        MinHeight = 580;
+        WindowState = WindowState.Maximized;
         Background = new SolidColorBrush(Color.Parse("#0D1420"));
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
@@ -249,8 +256,12 @@ public sealed class RestaurantTablePlanWindow : Window
             });
 
         var left = new DockPanel();
-        DockPanel.SetDock(refresh, Dock.Top);
-        left.Children.Add(refresh);
+        var theke = new Button { Name = "ThekeButton", Content = "THEKE", MinHeight = 52,
+            HorizontalAlignment = HorizontalAlignment.Stretch, FontWeight = FontWeight.Bold };
+        theke.Click += (_, _) => { ThekeRequested = true; Close(); };
+        var navigation = new StackPanel { Spacing = 8, Children = { theke, refresh, _areas } };
+        DockPanel.SetDock(navigation, Dock.Top);
+        left.Children.Add(navigation);
         left.Children.Add(new ScrollViewer
         {
             Content = _tablePanel,
@@ -260,7 +271,6 @@ public sealed class RestaurantTablePlanWindow : Window
 
         var addRow = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
             Spacing = 8,
             Children =
             {
@@ -327,7 +337,6 @@ public sealed class RestaurantTablePlanWindow : Window
                     FontWeight = FontWeight.Bold
                 },
                 _tableNote,
-                _saveDetails,
                 _takeOver,
                 new TextBlock
                 {
@@ -342,9 +351,18 @@ public sealed class RestaurantTablePlanWindow : Window
             }
         };
 
+        var close = new Button { Name = "TablePlanClose", Content = "SCHLIESSEN", MinHeight = 44 };
+        close.Click += (_, _) => Close();
+        _saveDetails.Name = "TableDetailsSave";
+        var detailGrid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        detailGrid.Children.Add(new ScrollViewer { Content = right,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
+        var footer = new WrapPanel { Margin = new Thickness(12), Children = { _saveDetails, close } };
+        Grid.SetRow(footer, 1);
+        detailGrid.Children.Add(footer);
         Content = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("2*,*"),
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
             Margin = new Thickness(18),
             Children =
             {
@@ -364,7 +382,7 @@ public sealed class RestaurantTablePlanWindow : Window
                     BorderBrush = new SolidColorBrush(Color.Parse("#31526C")),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(12),
-                    Child = right
+                    Child = detailGrid
                 }
             }
         };
@@ -382,7 +400,7 @@ public sealed class RestaurantTablePlanWindow : Window
         if (current.Count > 0)
             return;
 
-        var inside = await _restaurant.SaveAreaAsync("Innenbereich", 0);
+        var inside = await _restaurant.SaveAreaAsync("Gastraum", 0);
         var terrace = await _restaurant.SaveAreaAsync("Terrasse", 1);
 
         for (var i = 1; i <= 8; i++)
@@ -409,12 +427,21 @@ public sealed class RestaurantTablePlanWindow : Window
     private async Task ReloadAsync()
     {
         _tables = await _restaurant.ListTablesAsync();
+        var areas = await _restaurant.ListAreasAsync();
+        _areas.Children.Clear();
+        foreach (var area in areas.Where(a => _tables.Any(t => t.AreaId == a.Id)))
+        {
+            var areaButton = new Button { Content = area.Name, MinHeight = 44, Margin = new Thickness(2) };
+            areaButton.Click += async (_, _) => { _selectedArea = area.Id; await ReloadAsync(); };
+            _areas.Children.Add(areaButton);
+        }
+        if (!_tables.Any(t => t.AreaId == _selectedArea)) _selectedArea = _tables.FirstOrDefault()?.AreaId;
         _tablePanel.Children.Clear();
         _targetTable.ItemsSource = _tables
             .Where(x => _selectedTable is null || x.Id != _selectedTable.Id)
             .ToArray();
 
-        foreach (var table in _tables)
+        foreach (var table in _tables.Where(t => t.AreaId == _selectedArea))
         {
             var session = await _restaurant.GetLiveSessionForTableAsync(table.Id);
             var button = CreateTableButton(table, session);
@@ -479,8 +506,18 @@ public sealed class RestaurantTablePlanWindow : Window
 
         button.Click += async (_, _) =>
         {
-            _selectedTable = table;
-            await RefreshDetailAsync();
+            if (_selectingTable) return;
+            _selectingTable = true;
+            try
+            {
+                _selectedTable = table;
+                _guestCount.Value = 1;
+                _tableNote.Text = "";
+                await RefreshDetailAsync();
+                if (_selectedSession is null && _user.Can(UserPermissions.Sale) && !_user.IsTraining)
+                    await OpenSelectedTableAsync();
+            }
+            finally { _selectingTable = false; }
         };
 
         return button;
@@ -643,7 +680,7 @@ public sealed class RestaurantTablePlanWindow : Window
 
     private async Task OpenSelectedTableAsync()
     {
-        if (_selectedTable is null)
+        if (_selectedTable is null || !_user.Can(UserPermissions.Sale) || _user.IsTraining)
             return;
 
         try
@@ -670,7 +707,7 @@ public sealed class RestaurantTablePlanWindow : Window
 
     private async Task AddSelectedProductAsync()
     {
-        if (_selectedSession is null ||
+        if (_selectedSession is null || !_user.Can(UserPermissions.Sale) || _user.IsTraining ||
             _product.SelectedItem is not Product product)
         {
             return;

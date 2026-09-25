@@ -393,6 +393,7 @@ public partial class MainWindow:Window
             _tseCertificateTimer.Start();
             StartTseWatch();
             FocusScannerCaptureSoon();
+            await OpenRestaurantTablePlanAsync();
         };
 
         UiErrorGuard.ErrorCaught += OnUiErrorCaught;
@@ -488,7 +489,11 @@ public partial class MainWindow:Window
         }
     }
 
-    private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e)
+    private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e) =>
+        await OpenRestaurantTablePlanAsync();
+
+    private bool _restaurantPlanOpen;
+    private async Task OpenRestaurantTablePlanAsync()
     {
         if (!string.Equals(
                 ProductBuild.FixedEdition,
@@ -498,21 +503,32 @@ public partial class MainWindow:Window
             return;
         }
 
-        if (_engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
+        if (_restaurantPlanOpen || CartLocked || _engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
         {
             StatusLine = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
             return;
         }
 
-        var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
-        var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
-        if (draft is null)
-            return;
-
-        _restaurantCheckoutDraft = draft;
-        _operationId = draft.OperationId;
-        _imHaus = true;
-        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
+        _restaurantPlanOpen = true;
+        try
+        {
+            var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
+            var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
+            if (draft is null)
+            {
+                if (window.ThekeRequested)
+                {
+                    ShowCategoryOverview();
+                    StatusLine = "THEKE · Direktverkauf ohne Tisch";
+                }
+                return;
+            }
+            _restaurantCheckoutDraft = draft;
+            _operationId = draft.OperationId;
+            _imHaus = true;
+            await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
+        }
+        finally { _restaurantPlanOpen = false; }
     }
 
     private string CurrentBusinessMode()

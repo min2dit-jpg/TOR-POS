@@ -17,7 +17,7 @@ public sealed record RestaurantTableLiveSummary(
     int GuestCount,
     long OpenTotalCents);
 
-public sealed class RestaurantRepository
+public sealed partial class RestaurantRepository
 {
     private readonly SqliteDatabase _db;
 
@@ -105,7 +105,11 @@ public sealed class RestaurantRepository
             q.CommandText = """
                 SELECT id,area_id,code,display_name,seats,sort_order,is_active,version
                 FROM restaurant_tables
-                WHERE is_active=1
+                WHERE (is_active=1 AND EXISTS(
+                    SELECT 1 FROM restaurant_areas a
+                    WHERE a.id=restaurant_tables.area_id AND a.is_active=1))
+                   OR EXISTS(SELECT 1 FROM restaurant_sessions s
+                    WHERE s.table_id=restaurant_tables.id AND s.state IN ('OPEN','CHECK_REQUESTED'))
                 ORDER BY area_id,sort_order,id;
                 """;
             await using var r = await q.ExecuteReaderAsync(ct);

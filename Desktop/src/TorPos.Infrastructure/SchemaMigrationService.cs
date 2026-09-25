@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 41;
+    public const int TargetSchemaVersion = 42;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2328,7 +2328,31 @@ public sealed class SchemaMigrationService
                           ADD COLUMN finish_result_json TEXT NOT NULL DEFAULT '';
                         """;
                     await q.ExecuteNonQueryAsync(ct);
-                })
+                }),
+            new(42, "RESTAURANT_RECIPES_AND_OPTIONS", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+                await using var q = c.CreateCommand();
+                q.Transaction = tx;
+                q.CommandText = """
+                    CREATE TABLE restaurant_ingredients(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        unit TEXT NOT NULL CHECK(unit IN ('g','ml','Stück')),
+                        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+                    CREATE TABLE restaurant_recipes(
+                        product_id INTEGER NOT NULL REFERENCES products(id),
+                        ingredient_id INTEGER NOT NULL REFERENCES restaurant_ingredients(id),
+                        quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                        PRIMARY KEY(product_id,ingredient_id));
+                    CREATE TABLE restaurant_order_options(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            })
         };
 
     private sealed record DatabaseMigration(

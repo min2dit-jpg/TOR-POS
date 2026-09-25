@@ -38,6 +38,8 @@ async Task RejectMessage(Func<Task> action,string mustContain,string title)
     }
     throw new Exception("FAIL: "+title);
 }
+if (args.Contains("--restaurant-third")) { await RestaurantThirdExeTests.Run(Assert); await RestaurantRecipeTests.Run(Assert); return; }
+
 var root=Path.Combine(Path.GetTempPath(),"tor-safety-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
 var db=await SafetyDatabase.CreateCurrentAsync(
     Path.Combine(root,"test.db"));
@@ -594,6 +596,8 @@ await MultiLanguageTests.Run(Assert);
 await TseLifecycleReleaseGateTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await RestaurantFoundationTests.Run(Assert);
+await RestaurantThirdExeTests.Run(Assert);
+await RestaurantRecipeTests.Run(Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
@@ -674,7 +678,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1400;
+const int ExpectedSafetyChecks = 1405;
 
 if (checks != ExpectedSafetyChecks)
 {
