@@ -27,6 +27,8 @@ public sealed class FirstRunSetupWindow : Window
     private readonly TextBox _street = new();
     private readonly TextBox _zip = new();
     private readonly TextBox _city = new();
+    private readonly TextBox _taxNo = new() { Name="CompanyTaxNo" };
+    private readonly TextBox _vatId = new() { Name="CompanyVatId" };
     private readonly ComboBox _printerName = new();
     private readonly CheckBox _printerEnabled = new() { Content = "Bondrucker verwenden", IsChecked = true };
     private readonly CheckBox _terminalEnabled = new() { Content = "Automatische Kartenterminal-Anbindung verwenden" };
@@ -75,6 +77,8 @@ public sealed class FirstRunSetupWindow : Window
         var s = await _settings.LoadAllAsync();
         _company.Text = s.GetValueOrDefault("company.name", ""); _owner.Text = s.GetValueOrDefault("company.owner", "");
         _street.Text = s.GetValueOrDefault("company.street", ""); _zip.Text = s.GetValueOrDefault("company.zip", ""); _city.Text = s.GetValueOrDefault("company.city", "");
+        _taxNo.Text = s.GetValueOrDefault("company.tax_no", "");
+        _vatId.Text = s.GetValueOrDefault("company.vat_id", "");
         var printers = _printer.GetInstalledPrinterNames().ToList();
         var configured = s.GetValueOrDefault("device.receipt_printer.name", "");
         if (!string.IsNullOrWhiteSpace(configured) && !printers.Contains(configured)) printers.Insert(0, configured);
@@ -113,7 +117,7 @@ public sealed class FirstRunSetupWindow : Window
             case 0:
                 _title.Text = "Firma & Kassenart";
                 page = Page(Info("Nur die wichtigsten Betriebsdaten. Weitere Bonangaben können später ergänzt werden."),
-                    Field("Firma", _company), Field("Inhaber / Betreiber", _owner), Field("Straße", _street), Field("PLZ", _zip), Field("Ort", _city),
+                    Field("Firma", _company), Field("Inhaber / Betreiber", _owner), Field("Straße", _street), Field("PLZ", _zip), Field("Ort", _city), Field("Steuernummer", _taxNo), Field("USt-IdNr.", _vatId),
                     Info($"Kassenart: {_edition}  ✓  (bei der Anmeldung gewählt)")); break;
             case 1:
                 _title.Text = "Bondrucker";
@@ -208,6 +212,10 @@ public sealed class FirstRunSetupWindow : Window
             ["company.street"] = street,
             ["company.zip"] = zip,
             ["company.city"] = city,
+            ["company.tax_no"] = (_taxNo.Text ?? "").Trim(),
+            ["company.vat_id"] = (_vatId.Text ?? "").Trim(),
+            [InstallationEdition.ProfileKey(_edition, "company.tax_no")] = (_taxNo.Text ?? "").Trim(),
+            [InstallationEdition.ProfileKey(_edition, "company.vat_id")] = (_vatId.Text ?? "").Trim(),
             [InstallationEdition.ProfileKey(_edition, "company.name")] = companyName,
             [InstallationEdition.ProfileKey(_edition, "company.owner")] = owner,
             [InstallationEdition.ProfileKey(_edition, "company.street")] = street,

@@ -513,6 +513,7 @@ public partial class MainWindow:Window
         try
         {
             var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
+            window.OpenMasterDataAsync = ShowRestaurantMasterDataAsync;
             var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
             if (draft is null)
             {
@@ -4639,7 +4640,10 @@ public partial class MainWindow:Window
         if (!RequirePermission(UserPermissions.ManageProducts, "STAMMDATEN"))
             return;
 
-        await new ProductEditorWindow(_repo,_catalog,_images,_management,_promotions,_currentUser,"").ShowDialog<bool>(this);
+        if (ProductBuild.FixedEdition == "RESTAURANT")
+            await ShowRestaurantMasterDataAsync(this);
+        else
+            await new ProductEditorWindow(_repo,_catalog,_images,_management,_promotions,_currentUser,"").ShowDialog<bool>(this);
         await _catalog.ReloadAsync();
         BuildCategories();
         await RefreshStockWarningAsync();

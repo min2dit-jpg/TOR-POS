@@ -10,6 +10,7 @@ namespace TorPos.App;
 public sealed partial class RestaurantTablePlanWindow : Window
 {
     private readonly RestaurantRepository _restaurant;
+    private readonly IReceiptPrinterService _receiptPrinter;
     private readonly RestaurantFiscalOrderService _restaurantFiscal;
     private readonly RestaurantKitchenOutbox _kitchen;
     private readonly RestaurantKitchenDispatcher _kitchenDispatcher;
@@ -163,6 +164,9 @@ public sealed partial class RestaurantTablePlanWindow : Window
         IsEnabled = false
     };
 
+    private readonly Button _interim = new() { Name="InterimBill",Content="ZWISCHENRECHNUNG",MinHeight=44,IsEnabled=false };
+    private readonly Button _payAll = new() { Name="TablePayAll",Content="BEZAHLEN",MinHeight=44,IsEnabled=false };
+    public Func<Window, Task>? OpenMasterDataAsync { get; set; }
     public bool ThekeRequested { get; private set; }
     private readonly WrapPanel _areas = new();
     private long? _selectedArea;
@@ -180,7 +184,8 @@ public sealed partial class RestaurantTablePlanWindow : Window
         IProductCatalog catalog,
         ISettingsRepository settings,
         ControlledPosActionService controlledActions,
-        AuthenticatedUser user)
+        AuthenticatedUser user,
+        IReceiptPrinterService receiptPrinter)
     {
         _restaurant = restaurant;
         _restaurantFiscal = restaurantFiscal;
@@ -190,6 +195,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
         _settings = settings;
         _controlledActions = controlledActions;
         _user = user;
+        _receiptPrinter = receiptPrinter;
 
         Title = "TOR Restaurant · Tischplan";
         Width = 1280;
@@ -208,6 +214,24 @@ public sealed partial class RestaurantTablePlanWindow : Window
         };
         refresh.Click += async (_, _) => await ReloadAsync();
 
+        _interim.Click += async (_, _) =>
+        {
+            if (_selectedSession is null) return;
+            _interim.IsEnabled=false;
+            try
+            {
+                var report=await _restaurant.BuildInterimBillAsync(_selectedSession.Id);
+                await new RestaurantInterimBillWindow(report,_receiptPrinter,_settings).ShowDialog(this);
+            }
+            catch(Exception ex){await ShowErrorAsync(ex.Message);}
+            finally{await ReloadAsync();}
+        };
+        _payAll.Click += async (_, _) =>
+        {
+            if (_selectedSession is null) return;
+            _items.SelectAll();
+            await CheckoutSelectedAsync();
+        };
         _open.Click += async (_, _) => await OpenSelectedTableAsync();
         _saveDetails.Click += async (_, _) => await SaveSessionDetailsAsync();
         _takeOver.Click += async (_, _) => await TakeOverSelectedSessionAsync();
@@ -259,7 +283,15 @@ public sealed partial class RestaurantTablePlanWindow : Window
         var theke = new Button { Name = "ThekeButton", Content = "THEKE", MinHeight = 52,
             HorizontalAlignment = HorizontalAlignment.Stretch, FontWeight = FontWeight.Bold };
         theke.Click += (_, _) => { ThekeRequested = true; Close(); };
-        var navigation = new StackPanel { Spacing = 8, Children = { theke, refresh, _areas } };
+        var master = new Button { Content = "STAMMDATEN", MinHeight = 44, IsVisible = _user.Can(UserPermissions.ManageProducts) };
+        master.Click += async (_, _) =>
+        {
+            if (OpenMasterDataAsync is null) return;
+            await OpenMasterDataAsync(this);
+            _product.ItemsSource = _catalog.Products.Where(p => p.IsActive).OrderBy(p => p.Name).ToArray();
+            await ReloadAsync();
+        };
+        var navigation = new StackPanel { Spacing = 8, Children = { theke, master, refresh, _areas } };
         DockPanel.SetDock(navigation, Dock.Top);
         left.Children.Add(navigation);
         left.Children.Add(new ScrollViewer
@@ -357,7 +389,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
         var detailGrid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         detailGrid.Children.Add(new ScrollViewer { Content = right,
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
-        var footer = new WrapPanel { Margin = new Thickness(12), Children = { _saveDetails, close } };
+        var footer = new WrapPanel { Margin = new Thickness(12), Children = { _interim, _payAll, _saveDetails, close } };
         Grid.SetRow(footer, 1);
         detailGrid.Children.Add(footer);
         Content = new Grid
@@ -396,7 +428,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
 
     private async Task EnsureStarterTablesAsync()
     {
-        var current = await _restaurant.ListTablesAsync();
+        var current = await _restaurant.ListAllTablesAsync();
         if (current.Count > 0)
             return;
 
@@ -426,6 +458,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
 
     private async Task ReloadAsync()
     {
+        _interim.IsEnabled=false; _payAll.IsEnabled=false;
         _tables = await _restaurant.ListTablesAsync();
         var areas = await _restaurant.ListAreasAsync();
         _areas.Children.Clear();
@@ -572,6 +605,8 @@ public sealed partial class RestaurantTablePlanWindow : Window
             $"Geöffnet: {_selectedSession.OpenedAt.ToLocalTime():dd.MM.yyyy HH:mm} · " +
             $"Version {_selectedSession.Version} · Summe {Formatting.Money(total)}";
 
+        _interim.IsEnabled=currentItems.Count>0;
+        _payAll.IsEnabled=!paymentLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
         _items.ItemsSource = currentItems;
         _guestCount.Value = _selectedSession.GuestCount;
         _tableNote.Text = _selectedSession.Note;
@@ -1133,6 +1168,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
 
     private async Task CheckoutSelectedAsync()
     {
+        if (!_user.Can(UserPermissions.Sale) || _user.IsTraining) return;
         if (_selectedSession is null)
             return;
 
@@ -1168,6 +1204,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
 
     private async Task ShowSplitCheckoutAsync()
     {
+        if (!_user.Can(UserPermissions.Sale) || _user.IsTraining) return;
         if (_selectedSession is null)
             return;
 

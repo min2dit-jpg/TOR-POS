@@ -113,7 +113,8 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<IProductCatalog>(),
             _services.GetRequiredService<ISettingsRepository>(),
             _services.GetRequiredService<ControlledPosActionService>(),
-            user);
+            user,
+            _services.GetRequiredService<IReceiptPrinterService>());
 
     public RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user) =>
