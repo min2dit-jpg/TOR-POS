@@ -65,6 +65,54 @@ internal static class RestaurantThirdExeTests
                 StringComparison.Ordinal),
             "Restaurant header exposes THEKE inside the same MainWindow");
 
+        var workspaceSource = await File.ReadAllTextAsync(
+            Path.Combine(
+                desktopRoot,
+                "src",
+                "TorPos.App",
+                "RestaurantWorkspaceControl.cs"));
+
+        assert(
+            !workspaceSource.Contains(
+                "TISCH ÖFFNEN",
+                StringComparison.Ordinal),
+            "Restaurant table selection is one tap with no mandatory TISCH ÖFFNEN step");
+
+        assert(
+            workspaceSource.Contains(
+                "SelectOrOpenTableAsync",
+                StringComparison.Ordinal),
+            "Restaurant table tiles route through one select-or-open workflow");
+
+        assert(
+            new[]
+            {
+                "RestaurantSendOrder",
+                "InterimBill",
+                "RestaurantMove",
+                "RestaurantSplit",
+                "TablePayAll"
+            }.All(name =>
+                workspaceSource.Contains(
+                    $"Name=\\"{name}\\"",
+                    StringComparison.Ordinal) ||
+                workspaceSource.Contains(
+                    $"Name = \\"{name}\\"",
+                    StringComparison.Ordinal)),
+            "Restaurant order workspace exposes the five fixed primary actions");
+
+        assert(
+            workspaceSource.Contains(
+                "SendSelectedOrderAsync",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "_kitchen.PendingAsync()",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "_kitchenDispatcher.Notify()",
+                StringComparison.Ordinal),
+            "BESTELLUNG SENDEN flushes existing kitchen outbox work without a second order model");
+
         var path = Path.Combine(Path.GetTempPath(), "restaurant-third-" + Guid.NewGuid().ToString("N") + ".db");
         var db = await SafetyDatabase.CreateCurrentAsync(path);
         var repo = new RestaurantRepository(db);
