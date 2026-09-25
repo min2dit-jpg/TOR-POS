@@ -94,10 +94,10 @@ internal static class RestaurantThirdExeTests
                 "TablePayAll"
             }.All(name =>
                 workspaceSource.Contains(
-                    $"Name=\\"{name}\\"",
+                    $"Name=\"{name}\"",
                     StringComparison.Ordinal) ||
                 workspaceSource.Contains(
-                    $"Name = \\"{name}\\"",
+                    $"Name = \"{name}\"",
                     StringComparison.Ordinal)),
             "Restaurant order workspace exposes the five fixed primary actions");
 
