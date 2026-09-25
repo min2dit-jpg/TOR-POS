@@ -113,6 +113,43 @@ internal static class RestaurantThirdExeTests
                 StringComparison.Ordinal),
             "BESTELLUNG SENDEN flushes existing kitchen outbox work without a second order model");
 
+        assert(
+            workspaceSource.Contains(
+                "RestaurantTableSession? liveSession",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "bereits geöffnet",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "GetLiveSessionForTableAsync(table.Id)",
+                StringComparison.Ordinal),
+            "one-tap table opening reloads the existing live session when a concurrent open wins");
+
+        assert(
+            workspaceSource.Contains(
+                "Bestellung gesendet",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "Bestellung bereits gesendet",
+                StringComparison.Ordinal),
+            "BESTELLUNG SENDEN reports sent versus already-sent without duplicating kitchen jobs");
+
+        var tablePlanWrapperSource = await File.ReadAllTextAsync(
+            Path.Combine(
+                desktopRoot,
+                "src",
+                "TorPos.App",
+                "RestaurantTablePlanWindow.cs"));
+
+        assert(
+            !tablePlanWrapperSource.Contains(
+                "TablePlanClose",
+                StringComparison.Ordinal) &&
+            !tablePlanWrapperSource.Contains(
+                "\"SCHLIESSEN\"",
+                StringComparison.Ordinal),
+            "legacy Restaurant table-plan wrapper no longer exposes the daily SCHLIESSEN escape button");
+
         var path = Path.Combine(Path.GetTempPath(), "restaurant-third-" + Guid.NewGuid().ToString("N") + ".db");
         var db = await SafetyDatabase.CreateCurrentAsync(path);
         var repo = new RestaurantRepository(db);

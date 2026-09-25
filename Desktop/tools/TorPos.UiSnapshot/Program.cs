@@ -211,8 +211,10 @@ async Task RunAsync()
                 new[]
                 {
                     "RestaurantCounterButton",
+                    "RestaurantSendOrder",
                     "InterimBill",
-                    "TableDetailsSave",
+                    "RestaurantMove",
+                    "RestaurantSplit",
                     "TablePayAll"
                 },
                 failures);
