@@ -365,6 +365,9 @@ function initSchema() {
       FOREIGN KEY(sale_id) REFERENCES cloud_sales(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_cloud_sale_items_sale_id ON cloud_sale_items(sale_id);
+    CREATE INDEX IF NOT EXISTS idx_cloud_sales_occurred ON cloud_sales(occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_cloud_sales_register_occurred ON cloud_sales(register_id,occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_cloud_events_type_received ON cloud_events(event_type,received_at);
     CREATE TABLE IF NOT EXISTS cash_movements(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       register_id INTEGER NOT NULL,
@@ -659,8 +662,18 @@ function requireDevice(req, res) {
   return row;
 }
 
+// Review §7: berlin_day() in WHERE forced a scan of every sale. occurred_at
+// is ISO text with an offset of at most +/-14 h, so the calendar date written
+// in it lies within one day of the Berlin day: that string range can use the
+// index, and berlin_day() keeps the exact cut.
+function dayWindow(day){
+  const d=new Date(day+'T00:00:00Z');
+  const shift=n=>new Date(d.getTime()+n*86400000).toISOString().slice(0,10);
+  return [shift(-1),shift(2)];
+}
 function dashboardSummary(businessId) {
   const today = berlinParts(new Date()).day;
+  const [fromText, toText] = dayWindow(today);
   const totals = db.prepare(`
     SELECT COALESCE(SUM(s.total_cents),0) total_cents,
            COALESCE(SUM(CASE WHEN s.transaction_type='SALE' THEN 1 ELSE 0 END),0) sale_count,
@@ -670,8 +683,8 @@ function dashboardSummary(businessId) {
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id
     JOIN branches br ON br.id=r.branch_id
-    WHERE br.business_id=? AND berlin_day(s.occurred_at)=?
-  `).get(businessId, today);
+    WHERE br.business_id=? AND s.occurred_at>=? AND s.occurred_at<? AND berlin_day(s.occurred_at)=?
+  `).get(businessId, fromText, toText, today);
 
   const recentSales = db.prepare(`
     SELECT s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.transaction_type,s.original_receipt_number,s.total_cents,s.operator_name,r.name register_name,br.name branch_name
@@ -689,9 +702,9 @@ function dashboardSummary(businessId) {
   const hourly = db.prepare(`
     SELECT berlin_hour(s.occurred_at) hour, SUM(s.total_cents) total_cents
     FROM cloud_sales s JOIN registers r ON r.id=s.register_id JOIN branches br ON br.id=r.branch_id
-    WHERE br.business_id=? AND berlin_day(s.occurred_at)=?
+    WHERE br.business_id=? AND s.occurred_at>=? AND s.occurred_at<? AND berlin_day(s.occurred_at)=?
     GROUP BY berlin_hour(s.occurred_at) ORDER BY hour
-  `).all(businessId, today);
+  `).all(businessId, fromText, toText, today);
 
   const lowStock = db.prepare(`
     SELECT st.name,st.quantity,st.min_stock_quantity,r.name register_name,br.name branch_name
@@ -741,7 +754,7 @@ function portalData(businessId, offset=0) {
 
 function receiptDetail(businessId, saleId) {
   const sale = db.prepare(`
-    SELECT s.id sale_id,s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.subtotal_cents,s.discount_cents,s.total_cents,s.operator_name,s.item_count,
+    SELECT s.id sale_id,s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.transaction_type,s.original_receipt_number,s.cash_portion_cents,s.card_portion_cents,s.subtotal_cents,s.discount_cents,s.total_cents,s.operator_name,s.item_count,
            r.name register_name,r.device_code,br.name branch_name,br.city
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id
@@ -838,7 +851,7 @@ function serveStatic(req, res, pathname) {
   if (rel === '/login') rel = '/login.html';
   if (rel === '/portal') rel = '/portal.html';
   const file = path.normalize(path.join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC)) return false;
+  if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) return false;
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
   const body = fs.readFileSync(file);
   res.writeHead(200, {
@@ -873,6 +886,23 @@ function clientIp(req){
 
 // R145: the receipt domain. Every response there says: do not index, do not
 // cache, send no referrer (the link itself is the key), no framing.
+// Review §7: the download/redirect links were built from the Host header when
+// TOR_CLOUD_PUBLIC_URL is unset. The configured URL always wins; without it only
+// a syntactically plain host[:port] is used, anything else is a 400.
+function publicOrigin(req){
+  if(CLOUD_PUBLIC_URL)return new URL(CLOUD_PUBLIC_URL+'/');
+  const host=String(req.headers.host||'');
+  if(!/^(?:[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*|\[[0-9A-Fa-f:.]+\])(?::\d{1,5})?$/.test(host))
+    throw Object.assign(new Error('Ungültiger Host-Header'),{statusCode:400});
+  return new URL(`${COOKIE_SECURE?'https':'http'}://${host}/`);
+}
+// Review §7: "Origin: null" or a malformed Origin used to throw in new URL()
+// and answer 500; it is a foreign origin and gets the 403.
+function foreignOrigin(req){
+  const origin=req.headers.origin;
+  if(!origin)return false;
+  try{return new URL(origin).host!==req.headers.host;}catch{return true;}
+}
 function requestHostname(req){
   try{return new URL(`http://${String(req.headers.host||'')}`).hostname.toLowerCase();}catch{return '';}
 }
@@ -987,7 +1017,9 @@ function loginLimited(req,email){
 function loginSucceeded(email){loginAttempts.delete('mail:'+email);}
 async function handler(req, res) {
   try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    // The base only resolves the path; a malformed Host header must not
+    // turn every request into a 500.
+    const url = new URL(req.url, 'http://localhost');
     const pathname = url.pathname;
     // R145: behind the proxy, a request that came in over plain HTTP goes to
     // HTTPS before anything else (Caddy redirects already; this is the second
@@ -995,7 +1027,7 @@ async function handler(req, res) {
     if(forwardedProto(req)==='http'){
       const onReceipt=!!RECEIPT_HOST&&requestHostname(req)===RECEIPT_HOST;
       const origin=onReceipt?(RECEIPT_HTTPS?RECEIPT_ORIGIN:''):(CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
-      if(origin){res.writeHead(308,{Location:origin+pathname,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
+      if(origin){res.writeHead(308,{Location:origin+pathname+url.search,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
     }
     // R145: the receipt domain serves receipts and nothing else; no receipt is
     // served on any other host.
@@ -1003,8 +1035,7 @@ async function handler(req, res) {
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     if(req.method==='POST' && !pathname.startsWith('/api/v1/devices/')){
-      const origin=req.headers.origin;
-      if(req.headers['sec-fetch-site']==='cross-site' || (origin && new URL(origin).host!==req.headers.host)) return json(res,403,{ok:false,error:'Fremder Ursprung nicht erlaubt'});
+      if(req.headers['sec-fetch-site']==='cross-site' || foreignOrigin(req)) return json(res,403,{ok:false,error:'Fremder Ursprung nicht erlaubt'});
       if(!String(req.headers['content-type']||'').startsWith('application/json'))return json(res,415,{ok:false,error:'JSON erforderlich'});
     }
 
@@ -1017,16 +1048,23 @@ async function handler(req, res) {
     if(req.method==='POST' && pathname==='/api/v1/devices/mail/send'){
       const device=requireDevice(req,res);if(!device)return;
       if(!TOR_MAIL_READY)return json(res,503,{ok:false,error:'TOR Mail ist auf dem Cloud-Server noch nicht konfiguriert.'});
-      const now=Date.now();
-      const hourAgo=new Date(now-60*60*1000).toISOString();
-      const dayAgo=new Date(now-24*60*60*1000).toISOString();
-      const hourly=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,hourAgo).c);
-      const daily=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,dayAgo).c);
-      if(hourly>=TOR_MAIL_HOURLY_LIMIT||daily>=TOR_MAIL_DAILY_LIMIT)
-        return json(res,429,{ok:false,error:'TOR Mail Versandlimit erreicht. Bitte später erneut versuchen.'},{'Retry-After':'3600'});
+      const overQuota=()=>{
+        const now=Date.now();
+        const hourAgo=new Date(now-60*60*1000).toISOString();
+        const dayAgo=new Date(now-24*60*60*1000).toISOString();
+        const hourly=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,hourAgo).c);
+        const daily=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,dayAgo).c);
+        return hourly>=TOR_MAIL_HOURLY_LIMIT||daily>=TOR_MAIL_DAILY_LIMIT;
+      };
+      const quotaReply=()=>json(res,429,{ok:false,error:'TOR Mail Versandlimit erreicht. Bitte später erneut versuchen.'},{'Retry-After':'3600'});
+      if(overQuota())return quotaReply();
 
       const body=await readJson(req,12*1024*1024);
       const mail=normalizeManagedMailPayload(body);
+      // Review §7: parallel requests all passed the check above while their
+      // bodies were still arriving. The recheck and the INSERT run with no
+      // await in between, so the counted row is in place before the next one looks.
+      if(overQuota())return quotaReply();
       const created=nowIso();
       const log=db.prepare(`INSERT INTO managed_mail_log(register_id,created_at,recipient_hash,subject_hash,attachment_count,total_bytes,status)
                             VALUES(?,?,?,?,?,?,'SENDING') RETURNING id`)
@@ -1194,8 +1232,7 @@ async function handler(req, res) {
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Demo-Manifest ist ungültig.'});}
       const file=path.basename(String(m.filename||''));
       if(!m.enabled||!file||!/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'TOR POS Demo Setup ist noch nicht freigegeben.'});
-      const origin=CLOUD_PUBLIC_URL?new URL(CLOUD_PUBLIC_URL.endsWith('/')?CLOUD_PUBLIC_URL:CLOUD_PUBLIC_URL+'/'):new URL(`${COOKIE_SECURE?'https':'http'}://${req.headers.host}`);
-      res.writeHead(302,{Location:new URL(`/trial/${encodeURIComponent(file)}`,origin).toString(),'Cache-Control':'no-store'});
+      res.writeHead(302,{Location:new URL(`/trial/${encodeURIComponent(file)}`,publicOrigin(req)).toString(),'Cache-Control':'no-store'});
       return res.end();
     }
 
@@ -1231,10 +1268,7 @@ async function handler(req, res) {
       if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false});
       const file=path.basename(String(m.filename||''));const full=path.join(UPDATES,file);
       if(!file || !fs.existsSync(full) || !/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'Update-Datei/Prüfsumme nicht bereit.'});
-      const publicRoot=String(process.env.TOR_CLOUD_PUBLIC_URL||'').trim();let origin;
-      if(publicRoot){origin=new URL(publicRoot.endsWith('/')?publicRoot:publicRoot+'/');}
-      else{const scheme=COOKIE_SECURE?'https':'http';origin=new URL(`${scheme}://${req.headers.host}`);}
-      const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,origin).toString();
+      const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,publicOrigin(req)).toString();
       return json(res,200,{ok:true,update_available:true,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
     }
 
@@ -1500,6 +1534,7 @@ async function handler(req, res) {
 // touched again - a session nobody returns to stayed forever, so the table only
 // ever grew. And the whole Cloud lived in one SQLite file with no backup at all.
 const CLEANUP_INTERVAL_MS=Math.max(200,Number(process.env.TOR_CLOUD_CLEANUP_INTERVAL_MS||60*60*1000));
+const HEARTBEAT_KEEP_MS=Math.max(60*60*1000,Number(process.env.TOR_CLOUD_HEARTBEAT_KEEP_HOURS||48)*60*60*1000);
 function cleanupExpired(){
   const now=nowIso();
   const sessions=Number(db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now).changes);
@@ -1508,7 +1543,15 @@ function cleanupExpired(){
   // R145: at the end of its lifetime a digital receipt is deleted entirely -
   // token hash, PDF and content. The fiscal records on the till are untouched.
   const receipts=Number(db.prepare('DELETE FROM public_receipts WHERE expires_at<=?').run(now).changes);
-  return {sessions,challenges,receipts};
+  // Review §7: a heartbeat arrives every 60 s per till and only updates the
+  // register row; keeping every one for good grew cloud_events without end.
+  const heartbeatCutoff=new Date(Date.now()-HEARTBEAT_KEEP_MS).toISOString();
+  const heartbeats=Number(db.prepare("DELETE FROM cloud_events WHERE event_type='heartbeat' AND received_at<?").run(heartbeatCutoff).changes);
+  // A crash between INSERT 'SENDING' and the SMTP answer left the row SENDING
+  // for good. After an hour nobody is waiting for it any more.
+  const staleMail=new Date(Date.now()-60*60*1000).toISOString();
+  const mails=Number(db.prepare("UPDATE managed_mail_log SET status='FAILED',last_error='Abgebrochen (Serverneustart während des Versands)' WHERE status='SENDING' AND created_at<?").run(staleMail).changes);
+  return {sessions,challenges,receipts,heartbeats,mails};
 }
 
 // Backups are off unless TOR_CLOUD_BACKUP_DIR is set, so a developer checkout

@@ -147,8 +147,11 @@ test('R149 MIXED and an older till without discount_cents are accepted; a payout
  const items=[{position_no:1,product_key:'1',name:'Cola 0,5l',quantity:2,unit_price_cents:250,line_total_cents:500,vat_rate:19}];
  assert.doesNotThrow(()=>normalizeEvent(saleEvent(purchase({payment_method:'MIXED',items,item_count:1,subtotal_cents:500,total_cents:500,cash_portion_cents:200,card_portion_cents:300,stock_consumption:[]}))));
  const older=purchase({items,item_count:1,subtotal_cents:500,total_cents:450,discount_cents:undefined,manual_discount_cents:50,stock_consumption:[]});
- delete older.discount_cents;
+ // An older till sent neither discount_cents nor the cash/card portions.
+ delete older.discount_cents;delete older.cash_portion_cents;delete older.card_portion_cents;
  assert.equal(normalizeEvent(saleEvent(older)).payload.discount_cents,50);
+ // Review §7: portions that are sent must add up to the total, for a SALE too.
+ assert.throws(()=>normalizeEvent(saleEvent(purchase({payment_method:'MIXED',items,item_count:1,subtotal_cents:500,total_cents:500,cash_portion_cents:200,card_portion_cents:200,stock_consumption:[]}))),/Bar-\/Kartenanteil/);
  assert.throws(()=>normalizeEvent(saleEvent(purchase({payment_method:'CARD'}))),/nur bar/);
  assert.throws(()=>normalizeEvent(saleEvent(purchase({total_cents:0}))),/Gesamt/);
 });

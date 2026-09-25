@@ -14,7 +14,7 @@ async function api(url, options={}) {
 
 if ($('loginForm')) {
   let challenge='';
-  api('/api/health').then(h=>{if(h.demo){$('demoCredentials').hidden=false;$('email').value='demo@torpos.local';}}).catch(()=>{});
+  api('/api/health').then(h=>{if(h.demo){$('demoCredentials').hidden=false;if($('demoNotice'))$('demoNotice').hidden=false;$('email').value='demo@torpos.local';}}).catch(()=>{});
   $('loginForm').addEventListener('submit', async e => {
     e.preventDefault(); $('loginMsg').textContent='';
     try {

@@ -675,9 +675,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-// C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue.
+// C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue;
+// one more: the Cloud heartbeat reports an open TSE outage.
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
-const int ExpectedSafetyChecks = 1409;
+const int ExpectedSafetyChecks = 1410;
 
 if (checks != ExpectedSafetyChecks)
 {

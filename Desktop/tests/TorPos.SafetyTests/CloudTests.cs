@@ -70,6 +70,11 @@ static class CloudTests
             using var c2=c4Db.OpenConnection();using var q=c2.CreateCommand();
             q.CommandText="SELECT verdict||'|'||reason||'|'||event_type FROM cloud_outbox_rejected WHERE event_id='c4-bad';";
             assert(q.ExecuteScalar() as string=="rejected|Ungültiger Betrag|sale.completed","C-4 refused event is parked with verdict, reason and payload");
+            // Review §7: the heartbeat reports an open TSE outage instead of "NICHT GEPRÜFT".
+            q.CommandText="INSERT INTO tse_outage_log(started_at,reason) VALUES('2026-09-25T10:00:00Z','Test');";q.ExecuteNonQuery();
+            await new TorCloudOutbox(c4Db).EnqueueHeartbeatAsync();
+            q.CommandText="SELECT payload FROM cloud_outbox WHERE event_type='heartbeat';";
+            assert((q.ExecuteScalar() as string ?? "").Contains("\"tse_status\":\"AUSFALL\"",StringComparison.Ordinal),"Cloud heartbeat reports an open TSE outage");
         }
         if(OperatingSystem.IsWindows()){
             var secrets=new WindowsCloudSecretProtector();var protectedToken=secrets.Protect("roundtrip-secret");

@@ -161,11 +161,22 @@ public sealed class TorCloudOutbox
         q.Parameters.Clear();q.CommandText="INSERT INTO app_settings(key,value) VALUES('cloud.configuration',$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value;";
         q.Parameters.AddWithValue("$v",JsonSerializer.Serialize(config));q.ExecuteNonQuery();tx.Commit();return Task.CompletedTask;
     });
+    // Review §7: the heartbeat always said "NICHT GEPRÜFT". It now reports what
+    // the till knows without touching the TSE: an open outage wins, otherwise
+    // the configured TSE status. The printer is still not probed for this.
+    private static string HeartbeatTseStatus(SqliteConnection c,SqliteTransaction tx){
+        using var q=c.CreateCommand();q.Transaction=tx;
+        q.CommandText="SELECT COUNT(*) FROM tse_outage_log WHERE state='OPEN';";
+        if(Convert.ToInt64(q.ExecuteScalar())>0)return "AUSFALL";
+        q.CommandText="SELECT value FROM app_settings WHERE key='tse.status';";
+        var configured=((q.ExecuteScalar() as string)??"").Trim().ToUpperInvariant();
+        return configured.Length==0?"NICHT EINGERICHTET":configured.Length>40?configured[..40]:configured;
+    }
     public Task EnqueueHeartbeatAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx);
         if(config is null||!config.Enabled)return Task.CompletedTask;
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT COUNT(*) FROM cloud_outbox WHERE event_type='heartbeat';";
-        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status="NICHT GEPRÜFT",printer_status="NICHT GEPRÜFT"}));
+        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status=HeartbeatTseStatus(c,tx),printer_status="NICHT GEPRÜFT"}));
         tx.Commit();return Task.CompletedTask;
     });
     public Task EnqueueStockAsync()=>IoQueue.RunAsync(()=>{

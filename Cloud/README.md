@@ -1,6 +1,6 @@
-# TOR POS Cloud v0.8.0 R48 · Stand R125
+# TOR POS Cloud 0.13.0 (R145) · Stand 25.09.2026
 
-Gemeinsamer Entwicklungsstand mit TOR POS Desktop R48. Lokale Demo, keine Fiskal-Produktivfreigabe.
+Serverversion: `CLOUD_VERSION` in `server.js`. Die Abschnitte „R48 …“ weiter unten sind Entwicklungshistorie. Keine Fiskal-Produktivfreigabe.
 
 Start: `START-TOR-CLOUD.bat` (Windows), oder `TOR_CLOUD_DEMO=true node server.js`.
 Node 22.13+ mit `node:sqlite`. Standard: 127.0.0.1:8787.

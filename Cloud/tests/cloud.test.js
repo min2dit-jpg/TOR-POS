@@ -341,6 +341,31 @@ test('R125 expired sessions and 2FA challenges are swept without anyone touching
  assert.equal((await request('/api/portal/data',undefined,{Cookie:cookie})).status,200,'the logged-in demo owner stays logged in');
 });
 
+// Review §7: old heartbeats and mails stuck in SENDING are swept as well.
+test('old heartbeats and mails stuck in SENDING are swept; recent ones stay',async()=>{
+ const db=new DatabaseSync(path.join(root,'db.sqlite'));db.exec('PRAGMA busy_timeout=5000;');
+ try{
+  const old='2000-01-01T00:00:00.000Z',now=new Date().toISOString();
+  const ev=db.prepare('INSERT INTO cloud_events(register_id,event_id,event_type,occurred_at,received_at,payload_json) VALUES(1,?,?,?,?,?)');
+  ev.run('hb-old','heartbeat',old,old,'{}');ev.run('hb-new','heartbeat',now,now,'{}');ev.run('sale-old-kept','note.test',old,old,'{}');
+  const mail=db.prepare("INSERT INTO managed_mail_log(register_id,created_at,recipient_hash,subject_hash,attachment_count,total_bytes,status) VALUES(1,?,'r','s',0,0,'SENDING') RETURNING id");
+  const stuck=mail.get(old).id,live=mail.get(now).id;
+  await until(()=>!db.prepare("SELECT 1 FROM cloud_events WHERE event_id='hb-old'").get(),'old heartbeat removed');
+  await until(()=>db.prepare('SELECT status FROM managed_mail_log WHERE id=?').get(stuck).status==='FAILED','stuck mail marked FAILED');
+  assert.ok(db.prepare("SELECT 1 FROM cloud_events WHERE event_id='hb-new'").get(),'a recent heartbeat stays');
+  assert.ok(db.prepare("SELECT 1 FROM cloud_events WHERE event_id='sale-old-kept'").get(),'other old events are never swept');
+  assert.equal(db.prepare('SELECT status FROM managed_mail_log WHERE id=?').get(live).status,'SENDING','a mail being sent right now is left alone');
+ }finally{db.close();}
+});
+test('Origin null and a malformed Host header are refused, not answered with 500',async()=>{
+ assert.equal((await request('/api/logout',{}, {Cookie:cookie,Origin:'null'})).status,403);
+ const http=require('node:http');const {port}=new URL(base);
+ const status=await new Promise((resolve,reject)=>{const r=http.request({host:'127.0.0.1',port,path:'/api/health',method:'GET',headers:{Host:'bad host^'}},res=>{res.resume();resolve(res.statusCode);});r.on('error',reject);r.end();});
+ assert.ok(status<500,`malformed Host answered ${status}`);
+ const check=await fetch(base+'/api/v1/updates/check?version=0.0.1&edition=KIOSK');
+ assert.equal(check.status,200,'the configured public URL is used for the download link, not the Host header');
+ assert.match((await check.json()).manifest.download_url,/^http:\/\/127\.0\.0\.1:9999\/updates\//);
+});
 test('R125 the database is backed up while running and old backups are pruned',async()=>{
  const fs=require('node:fs');
  const fresh=await until(()=>fs.readdirSync(backups).find(name=>/^tor-cloud-\d{8}T\d{6}Z\.db$/.test(name)&&!name.startsWith('tor-cloud-2020')),'startup backup');
@@ -490,6 +515,10 @@ test('R179 reversal sync restores stock and is stored as a signed counter-bookin
  assert.equal(p.body.stock.find(x=>x.product_key==='179').quantity,8);
  const row=p.body.sales.find(x=>x.receipt_number===179002);assert.ok(row);
  assert.equal(row.transaction_type,'RETURN');assert.equal(row.original_receipt_number,179001);assert.equal(row.total_cents,-300);
+ // Review §7: the receipt detail (portal modal) carries the booking type too,
+ // so a Retoure no longer shows up as "Verkauf" there.
+ const detail=(await request('/api/receipts/'+row.sale_id,undefined,{Cookie:cookie})).body.receipt;
+ assert.equal(detail.transaction_type,'RETURN');assert.equal(detail.original_receipt_number,179001);assert.equal(detail.cash_portion_cents,-300);
 });
 
 test('R179 portal labels mixed payment as Gemischt',()=>{
