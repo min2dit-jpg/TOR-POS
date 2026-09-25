@@ -1087,14 +1087,40 @@ public partial class MainWindow:Window
         // payment was submitted. NOT_CHARGED is likewise explicitly safe.
         // Any other state may have an external effect and must stay locked for
         // the existing ZAHLUNG PRÜFEN reconciliation flow.
-        if (checkout is not null &&
-            !string.Equals(
-                checkout.State,
-                "NOT_CHARGED",
-                StringComparison.Ordinal))
+        if (checkout is not null)
         {
-            _pendingCheckout = checkout;
-            return false;
+            var safePrepared =
+                string.Equals(
+                    checkout.State,
+                    "PREPARED",
+                    StringComparison.Ordinal) &&
+                !checkout.TerminalRequestSubmitted;
+
+            var alreadyNotCharged =
+                string.Equals(
+                    checkout.State,
+                    "NOT_CHARGED",
+                    StringComparison.Ordinal);
+
+            if (!safePrepared && !alreadyNotCharged)
+            {
+                _pendingCheckout = checkout;
+                return false;
+            }
+
+            if (safePrepared)
+            {
+                await _checkoutJournal.TransitionTerminalAsync(
+                    operationId,
+                    "PREPARED",
+                    "NOT_CHARGED",
+                    reason,
+                    PaymentTerminalOutcome.NotSent,
+                    requestSubmitted: false,
+                    terminalCode: "RESTAURANT_PREPARE_ABORTED",
+                    terminalMessage:
+                        "Restaurant checkout preparation failed before terminal submission.");
+            }
         }
 
         if (await _restaurant.HasPreparedPaymentReservationAsync(operationId))
@@ -1120,17 +1146,39 @@ public partial class MainWindow:Window
                  await _restaurant.ListPreparedPaymentReservationOperationIdsAsync())
         {
             var checkout = await _checkoutJournal.GetAsync(operationId);
-            if (checkout is not null &&
-                !string.Equals(
+            var safePrepared =
+                checkout is not null &&
+                string.Equals(
+                    checkout.State,
+                    "PREPARED",
+                    StringComparison.Ordinal) &&
+                !checkout.TerminalRequestSubmitted;
+            var alreadyNotCharged =
+                checkout is not null &&
+                string.Equals(
                     checkout.State,
                     "NOT_CHARGED",
-                    StringComparison.Ordinal))
-            {
+                    StringComparison.Ordinal);
+
+            if (checkout is not null && !safePrepared && !alreadyNotCharged)
                 continue;
-            }
 
             try
             {
+                if (safePrepared)
+                {
+                    await _checkoutJournal.TransitionTerminalAsync(
+                        operationId,
+                        "PREPARED",
+                        "NOT_CHARGED",
+                        "Startup recovered Restaurant payment before terminal submission",
+                        PaymentTerminalOutcome.NotSent,
+                        requestSubmitted: false,
+                        terminalCode: "RESTAURANT_STARTUP_ABORTED",
+                        terminalMessage:
+                            "Recovered orphan Restaurant payment before terminal submission.");
+                }
+
                 await _restaurant.CancelPaymentReservationAsync(operationId);
                 await _audit.WriteAsync(
                     _currentUser.Username,
@@ -3690,7 +3738,7 @@ public partial class MainWindow:Window
                 await _restaurant.PreparePaymentReservationAsync(restaurantDraft);
             }
 
-            CheckoutApplicationResult prepared;
+            TorPos.Application.CheckoutApplicationResult prepared;
             try
             {
                 prepared =
