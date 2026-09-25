@@ -68,6 +68,19 @@ public sealed record RestaurantSessionItem(
     public long? PersistedLineTotalCents { get; init; }
     public long PaidCents { get; init; }
 
+    // R-3: immutable commercial/fiscal snapshot. Never re-read variant/menu
+    // details from today's Artikelstamm when paying, reversing or reconciling.
+    public string Unit { get; init; } = "Stück";
+    public long ListUnitPriceCents { get; init; }
+    public bool ImHausApplicable { get; init; } = true;
+    public MenuVatAllocation[] VatAllocations { get; init; } =
+        Array.Empty<MenuVatAllocation>();
+    public MenuComponentSnapshot[] MenuComponents { get; init; } =
+        Array.Empty<MenuComponentSnapshot>();
+
+    public long EffectiveListUnitPriceCents =>
+        ListUnitPriceCents > 0 ? ListUnitPriceCents : UnitPriceCents;
+
     public long LineTotalCents =>
         PersistedLineTotalCents is long persisted
             ? Math.Max(0L, persisted - PaidCents)
@@ -130,7 +143,10 @@ public static class RestaurantSplitCalculator
             if (selection.QuantityMilli <= 0 || selection.QuantityMilli > item.QuantityMilli)
                 throw new InvalidOperationException("Ungültige Teilmenge für Splitrechnung.");
 
-            if (item.QuantityMilli % 1000 == 0 &&
+            if (string.Equals(
+                    item.Unit,
+                    "Stück",
+                    StringComparison.OrdinalIgnoreCase) &&
                 selection.QuantityMilli % 1000 != 0)
             {
                 throw new InvalidOperationException(

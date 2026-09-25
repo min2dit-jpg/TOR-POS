@@ -177,17 +177,10 @@ public sealed class RestaurantFiscalOrderService
         }
 
         var original = ToCartLine(cancelledItem);
-        var reversal = new CartLine
+        var reversal = new CartLine(original)
         {
-            ProductId = original.ProductId,
-            ProductName = original.ProductName,
-            VariantName = original.VariantName,
             Quantity = -original.Quantity,
-            Unit = original.Unit,
-            UnitPriceCents = original.UnitPriceCents,
-            ListUnitPriceCents = original.ListUnitPriceCents,
-            VatRate = original.VatRate,
-            PfandCents = original.PfandCents
+            PersistedLineTotalCents = -original.LineTotalCents
         };
 
         var result = await _vorgaenge.FinishAsync(
@@ -221,17 +214,10 @@ public sealed class RestaurantFiscalOrderService
             throw new InvalidOperationException("Keine offenen Positionen zum Zusammenlegen.");
 
         var positive = movedItems.Select(ToCartLine).ToArray();
-        var negative = positive.Select(line => new CartLine
+        var negative = positive.Select(line => new CartLine(line)
         {
-            ProductId = line.ProductId,
-            ProductName = line.ProductName,
-            VariantName = line.VariantName,
             Quantity = -line.Quantity,
-            Unit = line.Unit,
-            UnitPriceCents = line.UnitPriceCents,
-            ListUnitPriceCents = line.ListUnitPriceCents,
-            VatRate = line.VatRate,
-            PfandCents = line.PfandCents
+            PersistedLineTotalCents = -line.LineTotalCents
         }).ToArray();
 
         var sourceResult = await _vorgaenge.FinishAsync(
@@ -384,10 +370,10 @@ public sealed class RestaurantFiscalOrderService
         CancellationToken ct)
     {
         var current =
-            new Dictionary<string, (CartLine Line, long QuantityMilli)>(
+            new Dictionary<string, (CartLine Line, long QuantityMilli, long AmountCents)>(
                 StringComparer.Ordinal);
         var secured =
-            new Dictionary<string, (CartLine Line, long QuantityMilli)>(
+            new Dictionary<string, (CartLine Line, long QuantityMilli, long AmountCents)>(
                 StringComparer.Ordinal);
 
         await using var c = _db.OpenReadConnection();
@@ -395,64 +381,58 @@ public sealed class RestaurantFiscalOrderService
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-                SELECT product_id,product_name,unit_price_cents,vat_rate,pfand_cents,
-                       SUM(quantity_milli)
+                SELECT product_id,product_name,variant_name,unit_price_cents,
+                       list_unit_price_cents,vat_rate,pfand_cents,unit,
+                       im_haus_applicable,vat_allocations_json,menu_components_json,
+                       SUM(quantity_milli),
+                       SUM(CASE WHEN line_total_cents>=0
+                           THEN line_total_cents-paid_cents
+                           ELSE CAST(ROUND((quantity_milli*unit_price_cents)/1000.0) AS INTEGER)
+                       END)
                 FROM restaurant_session_items
                 WHERE session_id=$session
                   AND state IN ('ACTIVE','PAID')
-                GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents
+                GROUP BY product_id,product_name,variant_name,unit_price_cents,
+                         list_unit_price_cents,vat_rate,pfand_cents,unit,
+                         im_haus_applicable,vat_allocations_json,menu_components_json
                 HAVING SUM(quantity_milli)<>0;
                 """;
             q.Parameters.AddWithValue("$session", sessionId);
-
             await using var r = await q.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
             {
-                var line = ReconciliationLine(
-                    r.GetInt64(0),
-                    r.GetString(1),
-                    r.GetInt64(2),
-                    Convert.ToDecimal(r.GetDouble(3)),
-                    r.GetInt64(4));
-                current[Key(
-                    line.ProductId,
-                    line.ProductName,
-                    line.UnitPriceCents,
-                    line.VatRate,
-                    line.PfandCents)] =
-                    (line, r.GetInt64(5));
+                var line = ReadReconciliationLine(r);
+                current[RestaurantLineSnapshot.IdentityKey(line)] =
+                    (line, r.GetInt64(11), r.GetInt64(12));
             }
         }
 
         await using (var q = c.CreateCommand())
         {
             q.CommandText = """
-                SELECT i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents,
-                       SUM(i.quantity_milli)
+                SELECT i.product_id,i.product_name,i.variant_name,i.unit_price_cents,
+                       i.list_unit_price_cents,i.vat_rate,i.pfand_cents,i.unit,
+                       i.im_haus_applicable,i.vat_allocations_json,i.menu_components_json,
+                       SUM(i.quantity_milli),
+                       SUM(CASE WHEN i.line_total_cents>=0
+                           THEN i.line_total_cents
+                           ELSE CAST(ROUND((i.quantity_milli*i.unit_price_cents)/1000.0) AS INTEGER)
+                       END)
                 FROM restaurant_bestellung_items i
                 JOIN restaurant_bestellungen b ON b.id=i.bestellung_id
                 WHERE b.session_id=$session
-                GROUP BY i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents
+                GROUP BY i.product_id,i.product_name,i.variant_name,i.unit_price_cents,
+                         i.list_unit_price_cents,i.vat_rate,i.pfand_cents,i.unit,
+                         i.im_haus_applicable,i.vat_allocations_json,i.menu_components_json
                 HAVING SUM(i.quantity_milli)<>0;
                 """;
             q.Parameters.AddWithValue("$session", sessionId);
-
             await using var r = await q.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
             {
-                var line = ReconciliationLine(
-                    r.GetInt64(0),
-                    r.GetString(1),
-                    r.GetInt64(2),
-                    Convert.ToDecimal(r.GetDouble(3)),
-                    r.GetInt64(4));
-                secured[Key(
-                    line.ProductId,
-                    line.ProductName,
-                    line.UnitPriceCents,
-                    line.VatRate,
-                    line.PfandCents)] =
-                    (line, r.GetInt64(5));
+                var line = ReadReconciliationLine(r);
+                secured[RestaurantLineSnapshot.IdentityKey(line)] =
+                    (line, r.GetInt64(11), r.GetInt64(12));
             }
         }
 
@@ -464,32 +444,46 @@ public sealed class RestaurantFiscalOrderService
         var result = new List<CartLine>();
         foreach (var key in keys)
         {
-            var currentQuantity =
-                current.TryGetValue(key, out var currentValue)
-                    ? currentValue.QuantityMilli
-                    : 0L;
-            var securedQuantity =
-                secured.TryGetValue(key, out var securedValue)
-                    ? securedValue.QuantityMilli
-                    : 0L;
-            var difference = currentQuantity - securedQuantity;
-            if (difference == 0)
+            var cq = current.TryGetValue(key, out var cv) ? cv.QuantityMilli : 0L;
+            var sq = secured.TryGetValue(key, out var sv) ? sv.QuantityMilli : 0L;
+            var ca = current.TryGetValue(key, out cv) ? cv.AmountCents : 0L;
+            var sa = secured.TryGetValue(key, out sv) ? sv.AmountCents : 0L;
+            var dq = cq - sq;
+            var da = ca - sa;
+
+            if (dq == 0 && da == 0)
                 continue;
+            if (dq == 0)
+                throw new InvalidOperationException(
+                    "Restaurant-Fiskalabgleich hat einen Geldbetrag ohne Mengenänderung. Manuelle Prüfung erforderlich.");
 
-            var template =
-                current.TryGetValue(key, out currentValue)
-                    ? currentValue.Line
-                    : securedValue.Line;
-
-            result.Add(
-                new CartLine(template)
-                {
-                    Quantity = QuantityStorage.FromMilli(difference)
-                });
+            var template = current.TryGetValue(key, out cv) ? cv.Line : sv.Line;
+            result.Add(new CartLine(template)
+            {
+                Quantity = QuantityStorage.FromMilli(dq),
+                PersistedLineTotalCents = da
+            });
         }
 
         return result;
     }
+
+    private static CartLine ReadReconciliationLine(Microsoft.Data.Sqlite.SqliteDataReader r) =>
+        new()
+        {
+            ProductId = r.GetInt64(0),
+            ProductName = r.GetString(1),
+            VariantName = r.GetString(2),
+            Quantity = 0m,
+            UnitPriceCents = r.GetInt64(3),
+            ListUnitPriceCents = r.GetInt64(4),
+            VatRate = Convert.ToDecimal(r.GetDouble(5)),
+            PfandCents = r.GetInt64(6),
+            Unit = r.GetString(7),
+            ImHausApplicable = r.GetInt64(8) != 0,
+            VatAllocations = VatAllocationStorage.Deserialize(r.GetString(9)),
+            MenuComponents = MenuComponentStorage.Deserialize(r.GetString(10))
+        };
 
     private async Task<RestaurantFiscalRecoveryVorgang?> FindRecoveryVorgangAsync(
         string sessionId,
@@ -554,24 +548,6 @@ public sealed class RestaurantFiscalOrderService
             await q.ExecuteNonQueryAsync(ct);
         });
 
-    private static CartLine ReconciliationLine(
-        long productId,
-        string productName,
-        long unitPriceCents,
-        decimal vatRate,
-        long pfandCents) =>
-        new()
-        {
-            ProductId = productId,
-            ProductName = productName,
-            Quantity = 0m,
-            Unit = "Stück",
-            UnitPriceCents = unitPriceCents,
-            ListUnitPriceCents = unitPriceCents,
-            VatRate = vatRate,
-            PfandCents = pfandCents
-        };
-
     private sealed record RestaurantFiscalRecoveryVorgang(
         string Id,
         DateTimeOffset StartedAt,
@@ -605,68 +581,9 @@ public sealed class RestaurantFiscalOrderService
                 }
             }
 
-            var open = new Dictionary<string,long>(StringComparer.Ordinal);
-            await using (var q = c.CreateCommand())
-            {
-                q.CommandText = """
-                    SELECT product_id,product_name,unit_price_cents,vat_rate,pfand_cents,
-                           SUM(quantity_milli)
-                    FROM restaurant_session_items
-                    WHERE session_id=$session AND state IN ('ACTIVE','PAID')
-                    GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents
-                    HAVING SUM(quantity_milli)<>0;
-                    """;
-                q.Parameters.AddWithValue("$session", sessionId);
-                await using var r = await q.ExecuteReaderAsync(ct);
-                while (await r.ReadAsync(ct))
-                {
-                    open[Key(
-                        r.GetInt64(0),
-                        r.GetString(1),
-                        r.GetInt64(2),
-                        Convert.ToDecimal(r.GetDouble(3)),
-                        r.GetInt64(4))] = r.GetInt64(5);
-                }
-            }
-
-            var secured = new Dictionary<string,long>(StringComparer.Ordinal);
-            await using (var q = c.CreateCommand())
-            {
-                q.CommandText = """
-                    SELECT i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents,
-                           SUM(i.quantity_milli)
-                    FROM restaurant_bestellung_items i
-                    JOIN restaurant_bestellungen b ON b.id=i.bestellung_id
-                    WHERE b.session_id=$session
-                    GROUP BY i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents
-                    HAVING SUM(i.quantity_milli)<>0;
-                    """;
-                q.Parameters.AddWithValue("$session", sessionId);
-                await using var r = await q.ExecuteReaderAsync(ct);
-                while (await r.ReadAsync(ct))
-                {
-                    secured[Key(
-                        r.GetInt64(0),
-                        r.GetString(1),
-                        r.GetInt64(2),
-                        Convert.ToDecimal(r.GetDouble(3)),
-                        r.GetInt64(4))] = r.GetInt64(5);
-                }
-            }
-
-            if (open.Count != secured.Count)
-                return false;
-
-            foreach (var pair in open)
-            {
-                if (!secured.TryGetValue(pair.Key, out var quantity) ||
-                    quantity != pair.Value)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return (await BuildReconciliationDeltaAsync(
+                    sessionId,
+                    ct)).Count == 0;
         });
     }
 
@@ -769,17 +686,30 @@ public sealed class RestaurantFiscalOrderService
                 item.Transaction = tx;
                 item.CommandText = """
                     INSERT INTO restaurant_bestellung_items(
-                        bestellung_id,product_id,product_name,quantity_milli,
-                        unit_price_cents,vat_rate,pfand_cents)
-                    VALUES($bestellung,$product,$name,$quantity,$price,$vat,$pfand);
+                        bestellung_id,product_id,product_name,variant_name,quantity_milli,
+                        unit_price_cents,vat_rate,pfand_cents,
+                        unit,list_unit_price_cents,im_haus_applicable,
+                        vat_allocations_json,menu_components_json,line_total_cents)
+                    VALUES(
+                        $bestellung,$product,$name,$variant,$quantity,
+                        $price,$vat,$pfand,
+                        $unit,$listPrice,$imHaus,
+                        $vatAllocations,$menuComponents,$lineTotal);
                     """;
                 item.Parameters.AddWithValue("$bestellung", id);
                 item.Parameters.AddWithValue("$product", line.ProductId);
                 item.Parameters.AddWithValue("$name", line.ProductName);
+                item.Parameters.AddWithValue("$variant", line.VariantName);
                 item.Parameters.AddWithValue("$quantity", QuantityStorage.ToMilli(line.Quantity));
                 item.Parameters.AddWithValue("$price", line.UnitPriceCents);
                 item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                 item.Parameters.AddWithValue("$pfand", line.PfandCents);
+                item.Parameters.AddWithValue("$unit", line.Unit);
+                item.Parameters.AddWithValue("$listPrice", line.EffectiveListUnitPriceCents);
+                item.Parameters.AddWithValue("$imHaus", line.ImHausApplicable ? 1 : 0);
+                item.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+                item.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+                item.Parameters.AddWithValue("$lineTotal", line.LineTotalCents);
                 await item.ExecuteNonQueryAsync(ct);
             }
 
@@ -912,17 +842,30 @@ public sealed class RestaurantFiscalOrderService
                     item.Transaction = tx;
                     item.CommandText = """
                         INSERT INTO restaurant_bestellung_items(
-                            bestellung_id,product_id,product_name,quantity_milli,
-                            unit_price_cents,vat_rate,pfand_cents)
-                        VALUES($bestellung,$product,$name,$quantity,$price,$vat,$pfand);
+                            bestellung_id,product_id,product_name,variant_name,quantity_milli,
+                            unit_price_cents,vat_rate,pfand_cents,
+                            unit,list_unit_price_cents,im_haus_applicable,
+                            vat_allocations_json,menu_components_json,line_total_cents)
+                        VALUES(
+                            $bestellung,$product,$name,$variant,$quantity,
+                            $price,$vat,$pfand,
+                            $unit,$listPrice,$imHaus,
+                            $vatAllocations,$menuComponents,$lineTotal);
                         """;
                     item.Parameters.AddWithValue("$bestellung", id);
                     item.Parameters.AddWithValue("$product", line.ProductId);
                     item.Parameters.AddWithValue("$name", line.ProductName);
+                    item.Parameters.AddWithValue("$variant", line.VariantName);
                     item.Parameters.AddWithValue("$quantity", QuantityStorage.ToMilli(line.Quantity));
                     item.Parameters.AddWithValue("$price", line.UnitPriceCents);
                     item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                     item.Parameters.AddWithValue("$pfand", line.PfandCents);
+                    item.Parameters.AddWithValue("$unit", line.Unit);
+                    item.Parameters.AddWithValue("$listPrice", line.EffectiveListUnitPriceCents);
+                    item.Parameters.AddWithValue("$imHaus", line.ImHausApplicable ? 1 : 0);
+                    item.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+                    item.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+                    item.Parameters.AddWithValue("$lineTotal", line.LineTotalCents);
                     await item.ExecuteNonQueryAsync(ct);
                 }
             }
@@ -979,31 +922,7 @@ public sealed class RestaurantFiscalOrderService
     }
 
     private static CartLine ToCartLine(RestaurantSessionItem item) =>
-        new()
-        {
-            ProductId = item.ProductId,
-            ProductName = item.ProductName,
-            VariantName = item.VariantName,
-            Quantity = item.Quantity,
-            Unit = "Stück",
-            UnitPriceCents = item.UnitPriceCents,
-            ListUnitPriceCents = item.UnitPriceCents,
-            VatRate = item.VatRate,
-            PfandCents = item.PfandCents
-        };
+        RestaurantLineSnapshot.ToCartLine(item);
 
-    private static string Key(
-        long productId,
-        string name,
-        long unitPriceCents,
-        decimal vatRate,
-        long pfandCents) =>
-        string.Join(
-            "|",
-            productId,
-            name,
-            unitPriceCents,
-            vatRate.ToString(
-                System.Globalization.CultureInfo.InvariantCulture),
-            pfandCents);
+
 }

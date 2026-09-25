@@ -535,7 +535,7 @@ public sealed partial class RestaurantRepository
                 read.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version,line_total_cents,paid_cents
+                           added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json
                     FROM restaurant_session_items
                     WHERE id=$item
                       AND session_id=$session
@@ -600,7 +600,8 @@ public sealed partial class RestaurantRepository
         string operatorName,
         string deviceId = "",
         CancellationToken ct = default,
-        string orderOptions = "")
+        string orderOptions = "",
+        CartLine? lineSnapshot = null)
     {
         var mutation = await AddItemWithLineTokenAsync(
             sessionId,
@@ -611,7 +612,8 @@ public sealed partial class RestaurantRepository
             Guid.NewGuid().ToString("N"),
             deviceId,
             ct,
-            orderOptions);
+            orderOptions,
+            lineSnapshot);
 
         return mutation.Item;
     }
@@ -625,7 +627,8 @@ public sealed partial class RestaurantRepository
         string lineToken,
         string deviceId = "",
         CancellationToken ct = default,
-        string orderOptions = "")
+        string orderOptions = "",
+        CartLine? lineSnapshot = null)
     {
         orderOptions=(orderOptions??"").Trim();
         if(orderOptions.Length>500 || orderOptions.Any(char.IsControl))
@@ -641,9 +644,6 @@ public sealed partial class RestaurantRepository
             throw new ArgumentOutOfRangeException(nameof(expectedSessionVersion));
         if (product.Id <= 0)
             throw new ArgumentException("Artikel fehlt.", nameof(product));
-        if (product.IsWeighted || product.IsCombo || product.Variants.Count > 0)
-            throw new InvalidOperationException(
-                "Dieser Artikel benötigt einen erweiterten Restaurant-Snapshot und ist in dieser Foundation noch gesperrt.");
         if (quantity <= 0m)
             throw new ArgumentOutOfRangeException(nameof(quantity));
         if (lineToken.Length is < 8 or > 160)
@@ -664,6 +664,68 @@ public sealed partial class RestaurantRepository
             imHaus: true,
             product.ImHausApplicable);
 
+        CartLine capture;
+        if (lineSnapshot is null)
+        {
+            if (product.IsWeighted || product.IsCombo || product.Variants.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "Dieser Artikel benötigt einen unveränderlichen Restaurant-Snapshot.");
+            }
+
+            capture = new CartLine
+            {
+                ProductId = product.Id,
+                ProductName = displayName,
+                VariantName = "",
+                Quantity = quantity,
+                Unit = string.IsNullOrWhiteSpace(product.Unit) ? "Stück" : product.Unit,
+                UnitPriceCents = product.BasePriceCents + product.PfandCents,
+                ListUnitPriceCents = product.BasePriceCents + product.PfandCents,
+                VatRate = effectiveVatRate,
+                ImHausApplicable = product.ImHausApplicable,
+                PfandCents = product.PfandCents
+            };
+        }
+        else
+        {
+            if (lineSnapshot.ProductId != product.Id ||
+                lineSnapshot.Quantity != quantity)
+            {
+                throw new InvalidOperationException(
+                    "Restaurant-Snapshot stimmt nicht mit Artikel oder Menge überein.");
+            }
+
+            if (product.IsWeighted &&
+                !string.Equals(lineSnapshot.Unit, "kg", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Gewichtsartikel muss als kg-Snapshot gespeichert werden.");
+            }
+
+            if (product.IsCombo && lineSnapshot.MenuComponents.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "Menü benötigt einen unveränderlichen Komponenten-Snapshot.");
+            }
+
+            if (product.Variants.Count > 0 &&
+                string.IsNullOrWhiteSpace(lineSnapshot.VariantName))
+            {
+                throw new InvalidOperationException(
+                    "Variantenartikel benötigt einen ausgewählten Varianten-Snapshot.");
+            }
+
+            capture = new CartLine(lineSnapshot)
+            {
+                ProductName = displayName,
+                Quantity = quantity,
+                PersistedLineTotalCents =
+                    lineSnapshot.PersistedLineTotalCents ??
+                    lineSnapshot.LineTotalCents
+            };
+        }
+
         return await IoQueue.RunAsync(async () =>
         {
             await using var c = _db.OpenConnection();
@@ -675,7 +737,7 @@ public sealed partial class RestaurantRepository
                 existing.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version,line_total_cents,paid_cents,order_options
+                           added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json,order_options
                     FROM restaurant_session_items
                     WHERE line_token=$token
                     LIMIT 1;
@@ -693,7 +755,13 @@ public sealed partial class RestaurantRepository
                             StringComparison.Ordinal) ||
                         item.ProductId != product.Id ||
                         item.QuantityMilli != quantityMilli ||
-                        r.GetString(16) != orderOptions)
+                        item.LineTotalCents != capture.LineTotalCents ||
+                        !string.Equals(
+                            RestaurantLineSnapshot.IdentityKey(
+                                RestaurantLineSnapshot.ToCartLine(item)),
+                            RestaurantLineSnapshot.IdentityKey(capture),
+                            StringComparison.Ordinal) ||
+                        r.GetString(21) != orderOptions)
                     {
                         throw new InvalidOperationException(
                             "Restaurant-Zeilenkennung wurde bereits für eine andere Position verwendet.");
@@ -735,11 +803,11 @@ public sealed partial class RestaurantRepository
                     INSERT INTO restaurant_session_items(
                         session_id,line_token,product_id,product_name,variant_name,
                         quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        fiscal_state,added_by,added_at,version,line_total_cents,paid_cents,order_options)
+                        fiscal_state,added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json,order_options)
                     VALUES(
-                        $session,$token,$product,$name,'',
+                        $session,$token,$product,$name,$variant,
                         $quantity,$price,$vat,$pfand,'ACTIVE',
-                        'PENDING',$operator,$now,1,$lineTotal,0,$options)
+                        'PENDING',$operator,$now,1,$lineTotal,0,$unit,$listPrice,$imHaus,$vatAllocations,$menuComponents,$options)
                     RETURNING id;
                     """;
                 insert.Parameters.AddWithValue("$session", sessionId);
@@ -748,20 +816,18 @@ public sealed partial class RestaurantRepository
                 insert.Parameters.AddWithValue("$name", displayName);
                 insert.Parameters.AddWithValue("$options",orderOptions);
                 insert.Parameters.AddWithValue("$quantity", quantityMilli);
-                var unitPriceCents =
-                    product.BasePriceCents + product.PfandCents;
-                var lineTotalCents =
-                    (long)Math.Round(
-                        quantity * unitPriceCents,
-                        MidpointRounding.AwayFromZero);
-                insert.Parameters.AddWithValue(
-                    "$price",
-                    unitPriceCents);
-                insert.Parameters.AddWithValue(
-                    "$lineTotal",
-                    lineTotalCents);
-                insert.Parameters.AddWithValue("$vat", effectiveVatRate);
-                insert.Parameters.AddWithValue("$pfand", product.PfandCents);
+                var unitPriceCents = capture.UnitPriceCents;
+                var lineTotalCents = capture.LineTotalCents;
+                insert.Parameters.AddWithValue("$variant", capture.VariantName);
+                insert.Parameters.AddWithValue("$price", unitPriceCents);
+                insert.Parameters.AddWithValue("$lineTotal", lineTotalCents);
+                insert.Parameters.AddWithValue("$vat", capture.VatRate);
+                insert.Parameters.AddWithValue("$pfand", capture.PfandCents);
+                insert.Parameters.AddWithValue("$unit", capture.Unit);
+                insert.Parameters.AddWithValue("$listPrice", capture.EffectiveListUnitPriceCents);
+                insert.Parameters.AddWithValue("$imHaus", capture.ImHausApplicable ? 1 : 0);
+                insert.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(capture));
+                insert.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(capture));
                 insert.Parameters.AddWithValue("$operator", operatorName);
                 insert.Parameters.AddWithValue("$now", now);
                 itemId = Convert.ToInt64(
@@ -782,8 +848,9 @@ public sealed partial class RestaurantRepository
                     productName = displayName,
                     orderOptions,
                     quantityMilli,
-                    unitPriceCents =
-                        product.BasePriceCents + product.PfandCents
+                    unitPriceCents = capture.UnitPriceCents,
+                    variantName = capture.VariantName,
+                    unit = capture.Unit
                 }),
                 now,
                 ct);
@@ -797,22 +864,23 @@ public sealed partial class RestaurantRepository
                     lineToken,
                     product.Id,
                     displayName,
-                    "",
+                    capture.VariantName,
                     quantityMilli,
-                    product.BasePriceCents + product.PfandCents,
-                    effectiveVatRate,
-                    product.PfandCents,
+                    capture.UnitPriceCents,
+                    capture.VatRate,
+                    capture.PfandCents,
                     RestaurantSessionItemState.Active,
                     operatorName,
                     DateTimeOffset.Parse(now),
                     1)
                 {
-                    PersistedLineTotalCents =
-                        (long)Math.Round(
-                            quantity *
-                            (product.BasePriceCents + product.PfandCents),
-                            MidpointRounding.AwayFromZero),
-                    PaidCents = 0
+                    PersistedLineTotalCents = capture.LineTotalCents,
+                    PaidCents = 0,
+                    Unit = capture.Unit,
+                    ListUnitPriceCents = capture.EffectiveListUnitPriceCents,
+                    ImHausApplicable = capture.ImHausApplicable,
+                    VatAllocations = capture.VatAllocations.ToArray(),
+                    MenuComponents = capture.MenuComponents.ToArray()
                 },
                 Created: true);
         });
@@ -940,7 +1008,7 @@ public sealed partial class RestaurantRepository
             q.CommandText = """
                 SELECT id,session_id,line_token,product_id,product_name,variant_name,
                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                       added_by,added_at,version,line_total_cents,paid_cents
+                       added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json
                 FROM restaurant_session_items
                 WHERE id=$item
                   AND session_id=$session
@@ -972,7 +1040,7 @@ public sealed partial class RestaurantRepository
             q.CommandText = """
                 SELECT id,session_id,line_token,product_id,product_name,variant_name,
                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                       added_by,added_at,version,line_total_cents,paid_cents
+                       added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json
                 FROM restaurant_session_items
                 WHERE line_token=$token
                 LIMIT 1;
@@ -1003,7 +1071,7 @@ public sealed partial class RestaurantRepository
             q.CommandText = """
                 SELECT id,session_id,line_token,product_id,product_name,variant_name,
                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                       added_by,added_at,version,line_total_cents,paid_cents
+                       added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json
                 FROM restaurant_session_items
                 WHERE session_id=$session
                   AND state='ACTIVE'
@@ -1402,7 +1470,7 @@ public sealed partial class RestaurantRepository
                 q.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version,line_total_cents,paid_cents
+                           added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json
                     FROM restaurant_session_items
                     WHERE id=$id AND session_id=$session AND state='ACTIVE';
                     """;
@@ -1421,9 +1489,6 @@ public sealed partial class RestaurantRepository
                     throw new InvalidOperationException("Ungültige Teilmenge für Splitrechnung.");
                 }
 
-                if (!string.IsNullOrWhiteSpace(item.VariantName))
-                    throw new InvalidOperationException("Varianten werden in der Restaurant-Zahlung erst nach vollständigem Snapshot-Support freigegeben.");
-
                 items.Add(item);
             }
 
@@ -1437,22 +1502,11 @@ public sealed partial class RestaurantRepository
                 var split = byId[item.Id];
                 var qty = selected.QuantityMilli / 1000m;
 
-                // The Restaurant foundation currently accepts only simple item
-                // snapshots. Menu/variant/weighted snapshots will be enabled
-                // only after their immutable component metadata is persisted.
-                cartLines.Add(new CartLine
-                {
-                    ProductId = item.ProductId,
-                    ProductName = item.ProductName,
-                    VariantName = item.VariantName,
-                    Quantity = qty,
-                    Unit = "Stück",
-                    UnitPriceCents = item.UnitPriceCents,
-                    ListUnitPriceCents = item.UnitPriceCents,
-                    VatRate = item.VatRate,
-                    PfandCents = item.PfandCents,
-                    PersistedLineTotalCents = split.AmountCents
-                });
+                cartLines.Add(
+                    RestaurantLineSnapshot.ToCartLine(
+                        item,
+                        qty,
+                        split.AmountCents));
 
                 if (cartLines[^1].LineTotalCents != split.AmountCents)
                     throw new InvalidOperationException("Splitbetrag stimmt nicht mit der fiskalen Positionssumme überein.");
@@ -1507,7 +1561,7 @@ public sealed partial class RestaurantRepository
                 q.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version,line_total_cents,paid_cents
+                           added_by,added_at,version,line_total_cents,paid_cents,unit,list_unit_price_cents,im_haus_applicable,vat_allocations_json,menu_components_json
                     FROM restaurant_session_items
                     WHERE id=$id AND session_id=$session AND state='ACTIVE';
                     """;
@@ -1727,7 +1781,12 @@ public sealed partial class RestaurantRepository
             r.GetInt64(13))
         {
             PersistedLineTotalCents = persisted,
-            PaidCents = r.GetInt64(15)
+            PaidCents = r.GetInt64(15),
+            Unit = r.GetString(16),
+            ListUnitPriceCents = r.GetInt64(17),
+            ImHausApplicable = r.GetInt64(18) != 0,
+            VatAllocations = VatAllocationStorage.Deserialize(r.GetString(19)),
+            MenuComponents = MenuComponentStorage.Deserialize(r.GetString(20))
         };
     }
 

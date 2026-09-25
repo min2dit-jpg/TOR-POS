@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 44;
+    public const int TargetSchemaVersion = 45;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2381,6 +2381,54 @@ public sealed class SchemaMigrationService
                         CAST(ROUND((quantity_milli * unit_price_cents) / 1000.0) AS INTEGER),
                         paid_cents=0
                     WHERE line_total_cents<0;
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(45, "RESTAURANT_IMMUTABLE_LINE_SNAPSHOTS", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN unit TEXT NOT NULL DEFAULT 'Stück';
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN list_unit_price_cents INTEGER NOT NULL DEFAULT 0;
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN im_haus_applicable INTEGER NOT NULL DEFAULT 1
+                      CHECK(im_haus_applicable IN (0,1));
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN vat_allocations_json TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN variant_name TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN unit TEXT NOT NULL DEFAULT 'Stück';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN list_unit_price_cents INTEGER NOT NULL DEFAULT 0;
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN im_haus_applicable INTEGER NOT NULL DEFAULT 1
+                      CHECK(im_haus_applicable IN (0,1));
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN vat_allocations_json TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN line_total_cents INTEGER NOT NULL DEFAULT -1;
+
+                    UPDATE restaurant_session_items
+                    SET list_unit_price_cents=unit_price_cents
+                    WHERE list_unit_price_cents<=0;
+
+                    UPDATE restaurant_bestellung_items
+                    SET list_unit_price_cents=unit_price_cents,
+                        line_total_cents=
+                            CAST(ROUND((quantity_milli * unit_price_cents) / 1000.0) AS INTEGER)
+                    WHERE list_unit_price_cents<=0 OR line_total_cents<0;
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             })

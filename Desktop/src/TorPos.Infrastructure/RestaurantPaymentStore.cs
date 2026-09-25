@@ -211,11 +211,15 @@ internal static class RestaurantPaymentStore
                     INSERT INTO restaurant_session_items(
                         session_id,line_token,product_id,product_name,variant_name,
                         quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        added_by,added_at,version,line_total_cents,paid_cents)
+                        added_by,added_at,version,line_total_cents,paid_cents,
+                        unit,list_unit_price_cents,im_haus_applicable,
+                        vat_allocations_json,menu_components_json)
                     SELECT
                         session_id,$token,product_id,product_name,variant_name,
                         $paid,unit_price_cents,vat_rate,pfand_cents,'PAID',
-                        added_by,$now,1,$paidAmount,0
+                        added_by,$now,1,$paidAmount,0,
+                        unit,list_unit_price_cents,im_haus_applicable,
+                        vat_allocations_json,menu_components_json
                     FROM restaurant_session_items
                     WHERE id=$item AND session_id=$session;
                     """;
