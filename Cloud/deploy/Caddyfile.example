@@ -33,11 +33,12 @@ api.torpos.de {
 		-Server
 	}
 
-	# Limits what clients may SEND (sync batches, logins, receipts), not downloads
-	# such as installers. server.js rejects JSON bodies over 1 MB itself (413);
-	# this just stops an oversized upload at the edge before it reaches Node.
+	# Limits what clients may SEND, not downloads such as installers. Normal JSON
+	# routes stay capped at 1 MB in server.js; TOR Mail intentionally accepts up to
+	# 12 MB so up to 8 MB of decoded PDF/CSV attachments still fit after Base64/JSON
+	# overhead. Keep Caddy aligned with that route-specific application limit.
 	request_body {
-		max_size 2MB
+		max_size 12MB
 	}
 }
 
