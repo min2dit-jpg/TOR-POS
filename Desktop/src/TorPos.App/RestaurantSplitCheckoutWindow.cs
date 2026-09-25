@@ -191,6 +191,9 @@ public sealed class RestaurantSplitCheckoutWindow : Window
             Maximum = item.Quantity,
             Value = 0m,
             Increment = item.QuantityMilli % 1000 == 0 ? 1m : 0.001m,
+            // R-9.1: whole-piece positions show and accept whole pieces only;
+            // the calculator refuses fractions of them anyway.
+            FormatString = item.QuantityMilli % 1000 == 0 ? "0" : "0.###",
             Width = 110,
             MinHeight = 42
         };

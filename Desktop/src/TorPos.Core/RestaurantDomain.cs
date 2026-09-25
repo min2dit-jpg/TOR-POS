@@ -101,14 +101,30 @@ public static class RestaurantSplitCalculator
     {
         var source = openItems.ToDictionary(x => x.Id);
         var lines = new List<RestaurantSplitLine>();
+        var seen = new HashSet<long>();
 
         foreach (var selection in selections)
         {
             if (!source.TryGetValue(selection.SessionItemId, out var item))
                 throw new InvalidOperationException("Ausgewählte Position gehört nicht zum offenen Tischvorgang.");
 
+            // R-6: the same position selected twice used to surface as .NET's
+            // "Sequence contains more than one matching element" further down.
+            if (!seen.Add(selection.SessionItemId))
+                throw new InvalidOperationException(
+                    $"Position \"{item.ProductName}\" ist mehrfach ausgewählt. Jede Position nur einmal auswählen und die Menge dort anpassen.");
+
             if (selection.QuantityMilli <= 0 || selection.QuantityMilli > item.QuantityMilli)
                 throw new InvalidOperationException("Ungültige Teilmenge für Splitrechnung.");
+
+            // R-9.1: each partial slice is rounded on its own and the remainder
+            // is priced again as quantity x unit price, so splitting one 9,99 EUR
+            // position into halves charged 5,00 + 5,00. Until the remainder
+            // carries its own cents (R-9.2), a position counted in whole pieces
+            // is split in whole pieces only.
+            if (item.QuantityMilli % 1000 == 0 && selection.QuantityMilli % 1000 != 0)
+                throw new InvalidOperationException(
+                    $"\"{item.ProductName}\" wird in ganzen Stück geführt und kann nur in ganzen Stück geteilt werden.");
 
             var amount = AllocateCents(
                 item.LineTotalCents,
