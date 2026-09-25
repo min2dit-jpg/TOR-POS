@@ -156,9 +156,8 @@ public sealed class RestaurantFiscalOrderService
             new[] { line },
             result,
             ct,
+            consumedVorgangId: vorgang.Id,
             securedItemId: item.Id);
-
-        await _vorgaenge.ClearFinishJournalAsync(vorgang.Id, ct);
     }
 
     public async Task SecureCancelledItemAsync(
@@ -205,9 +204,8 @@ public sealed class RestaurantFiscalOrderService
             actor,
             new[] { reversal },
             result,
-            ct);
-
-        await _vorgaenge.ClearFinishJournalAsync(vorgang.Id, ct);
+            ct,
+            consumedVorgangId: vorgang.Id);
     }
 
     public async Task SecureMergeAsync(
@@ -255,6 +253,8 @@ public sealed class RestaurantFiscalOrderService
         await InsertMergeRecordsAsync(
             sourceSessionId,
             targetSessionId,
+            sourceVorgang.Id,
+            targetVorgang.Id,
             sourceVorgang.StartedAt,
             targetVorgang.StartedAt,
             actor,
@@ -263,9 +263,6 @@ public sealed class RestaurantFiscalOrderService
             sourceResult,
             targetResult,
             ct);
-
-        await _vorgaenge.ClearFinishJournalAsync(sourceVorgang.Id, ct);
-        await _vorgaenge.ClearFinishJournalAsync(targetVorgang.Id, ct);
     }
 
     public async Task<IReadOnlyList<string>> ListUnsecuredSessionIdsAsync(
@@ -371,11 +368,8 @@ public sealed class RestaurantFiscalOrderService
                 delta,
                 result,
                 ct,
+                consumedVorgangId: vorgang.Id,
                 securePendingSessionItems: true);
-
-            await _vorgaenge.ClearFinishJournalAsync(
-                vorgang.Id,
-                ct);
 
             return await IsCurrentStateSecuredAsync(sessionId, ct);
         }
@@ -707,6 +701,7 @@ public sealed class RestaurantFiscalOrderService
         IReadOnlyList<CartLine> lines,
         SaleTseResult result,
         CancellationToken ct,
+        string consumedVorgangId,
         long? securedItemId = null,
         bool securePendingSessionItems = false)
     {
@@ -824,6 +819,13 @@ public sealed class RestaurantFiscalOrderService
                 await securePending.ExecuteNonQueryAsync(ct);
             }
 
+            await ConsumeRestaurantVorgangAsync(
+                c,
+                tx,
+                consumedVorgangId,
+                sessionId,
+                ct);
+
             await tx.CommitAsync(ct);
         });
     }
@@ -831,6 +833,8 @@ public sealed class RestaurantFiscalOrderService
     private async Task InsertMergeRecordsAsync(
         string sourceSessionId,
         string targetSessionId,
+        string sourceVorgangId,
+        string targetVorgangId,
         DateTimeOffset sourceStartedAt,
         DateTimeOffset targetStartedAt,
         string actor,
@@ -922,8 +926,53 @@ public sealed class RestaurantFiscalOrderService
 
             await InsertOne(sourceSessionId, sourceStartedAt, sourceLines, sourceResult);
             await InsertOne(targetSessionId, targetStartedAt, targetLines, targetResult);
+
+            await ConsumeRestaurantVorgangAsync(
+                c,
+                tx,
+                sourceVorgangId,
+                sourceSessionId,
+                ct);
+            await ConsumeRestaurantVorgangAsync(
+                c,
+                tx,
+                targetVorgangId,
+                targetSessionId,
+                ct);
+
             await tx.CommitAsync(ct);
         });
+    }
+
+    private static async Task ConsumeRestaurantVorgangAsync(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        string vorgangId,
+        string sessionId,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = """
+            UPDATE tse_vorgaenge
+            SET finish_result_json='',
+                reference=$reference,
+                updated_at=$now
+            WHERE id=$id;
+            """;
+        q.Parameters.AddWithValue("$id", vorgangId);
+        q.Parameters.AddWithValue(
+            "$reference",
+            $"RESTAURANT-COMMITTED:{sessionId}");
+        q.Parameters.AddWithValue(
+            "$now",
+            DateTimeOffset.Now.ToString("O"));
+
+        if (await q.ExecuteNonQueryAsync(ct) != 1)
+        {
+            throw new InvalidOperationException(
+                "Restaurant-TSE-Vorgang konnte nicht atomar als verarbeitet markiert werden.");
+        }
     }
 
     private static CartLine ToCartLine(RestaurantSessionItem item) =>

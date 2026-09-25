@@ -128,6 +128,10 @@ public static class RestaurantFiscalRetryTests
                 await ReadLatestSignatureAsync(
                     db,
                     session.Id);
+            var firstVorgangState =
+                await ReadVorgangConsumptionAsync(
+                    db,
+                    firstVorgangId);
 
             assert(
                 firstState == "SECURED" &&
@@ -135,6 +139,12 @@ public static class RestaurantFiscalRetryTests
                 firstSignature.TransactionNumber == "42" &&
                 !firstSignature.Outage,
                 "Restaurant fiscal retry reuses the journaled TSE Finish exactly once and a replay of an already-SECURED line creates no duplicate Bestellung");
+
+            assert(
+                firstVorgangState.Reference ==
+                    $"RESTAURANT-COMMITTED:{session.Id}" &&
+                firstVorgangState.FinishJournal.Length == 0,
+                "Restaurant Bestellung commit atomically consumes the F-6 journal and removes the Vorgang from future recovery candidates");
 
             var current =
                 await repo.GetSessionAsync(session.Id)
@@ -492,6 +502,25 @@ public static class RestaurantFiscalRetryTests
             "$reference",
             reference);
         await q.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<(string Reference, string FinishJournal)>
+        ReadVorgangConsumptionAsync(
+            SqliteDatabase db,
+            string vorgangId)
+    {
+        await using var c = db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT reference,finish_result_json
+            FROM tse_vorgaenge
+            WHERE id=$id;
+            """;
+        q.Parameters.AddWithValue("$id", vorgangId);
+        await using var r = await q.ExecuteReaderAsync();
+        if (!await r.ReadAsync())
+            throw new InvalidOperationException("Restaurant retry Vorgang missing.");
+        return (r.GetString(0), r.GetString(1));
     }
 
     private static async Task<string> ReadItemFiscalStateAsync(
