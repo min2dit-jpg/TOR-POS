@@ -875,8 +875,17 @@ public async Task InitializeAsync(CancellationToken ct = default)
         await EnsureLegacyEditionScopeAsync(c, ct);
         // Sonstiges category migration v0.6.7:
         // Existing test products are preserved by moving them to Schnellwahl.
+        // O-9: this ran on EVERY start, so a customer who re-activated or
+        // re-created "Sonstiges" lost it again at the next start and its
+        // products were moved away. It now runs once and leaves a marker.
         await using (var migrate = c.CreateCommand())
         {
+            migrate.CommandText = """
+                SELECT COUNT(*) FROM app_settings WHERE key='migration.sonstiges_v067.done';
+                """;
+            if (Convert.ToInt64(await migrate.ExecuteScalarAsync(ct)) > 0)
+                return;
+
             migrate.CommandText = """
                 UPDATE products
                 SET category_id = (
@@ -896,6 +905,9 @@ public async Task InitializeAsync(CancellationToken ct = default)
                 UPDATE categories
                 SET is_active=0
                 WHERE name='Sonstiges';
+
+                INSERT OR IGNORE INTO app_settings(key,value)
+                VALUES('migration.sonstiges_v067.done',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
                 """;
             await migrate.ExecuteNonQueryAsync(ct);
         }
@@ -1066,18 +1078,20 @@ public async Task InitializeAsync(CancellationToken ct = default)
         // R51: keep the two editions visually separate without deleting customer data.
         // Old KIOSK demo groups no longer appear on the IMBISS cashier screen.
         // Getränke stays shared because both editions use it; only the old demo Cola is KIOSK-only.
+        // O-9: SQLite's UPPER() folds ASCII only - UPPER('Döner') is 'DöNER',
+        // so 'DöNER' is listed next to 'DÖNER' (an all-caps name stays 'DÖNER').
         await using var q = c.CreateCommand();
         q.CommandText = """
             UPDATE categories
             SET edition_scope='IMBISS'
-            WHERE UPPER(name) IN ('DÖNER','BURGER','FINGERFOOD','PIZZA')
+            WHERE UPPER(name) IN ('DÖNER','DöNER','BURGER','FINGERFOOD','PIZZA')
               AND UPPER(COALESCE(edition_scope,'ALL'))='ALL';
 
             UPDATE products
             SET edition_scope='IMBISS'
             WHERE category_id IN (
                 SELECT id FROM categories
-                WHERE UPPER(name) IN ('DÖNER','BURGER','FINGERFOOD','PIZZA')
+                WHERE UPPER(name) IN ('DÖNER','DöNER','BURGER','FINGERFOOD','PIZZA')
             )
               AND UPPER(COALESCE(edition_scope,'ALL'))='ALL';
 
@@ -1464,11 +1478,47 @@ public async Task DeactivateProductAsync(long productId, string actor, Cancellat
         await using var c = _db.OpenConnection();
         await using var tx = await c.BeginTransactionAsync(ct);
         var now = DateTimeOffset.Now.ToString("O");
+
+        // O-10: deactivating an article that is a component of a menu used to
+        // delete that menu's recipe rows silently - the menu then sold without
+        // the component. It is refused now, naming the menus, as is deactivating
+        // an article (or menu) that still sits in an open order, the same lock
+        // the menu editor already applies.
+        var usedIn = new List<string>();
+        await using (var menus = c.CreateCommand())
+        {
+            menus.Transaction = (SqliteTransaction)tx;
+            menus.CommandText = """
+                SELECT DISTINCT m.name
+                FROM product_combo_items ci
+                JOIN products m ON m.id=ci.product_id
+                WHERE ci.component_product_id=$id AND m.is_active=1 AND m.id<>$id
+                ORDER BY m.name;
+                """;
+            menus.Parameters.AddWithValue("$id", productId);
+            await using var r = await menus.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) usedIn.Add(r.GetString(0));
+        }
+        if (usedIn.Count > 0)
+            throw new InvalidOperationException(
+                "Artikel ist Bestandteil aktiver Menüs und kann nicht deaktiviert werden: " +
+                string.Join(", ", usedIn.Take(5)) + (usedIn.Count > 5 ? " …" : "") +
+                ". Zuerst aus diesen Menüs entfernen.");
+
+        await using (var pending = c.CreateCommand())
+        {
+            pending.Transaction = (SqliteTransaction)tx;
+            pending.CommandText = "SELECT COUNT(*) FROM parked_receipt_items i JOIN parked_receipts p ON p.id=i.parked_receipt_id WHERE i.product_id=$id AND p.status='OPEN';";
+            pending.Parameters.AddWithValue("$id", productId);
+            if (Convert.ToInt64(await pending.ExecuteScalarAsync(ct)) > 0)
+                throw new InvalidOperationException("Artikel steht in offenen Bestellungen. Diese zuerst abschließen oder stornieren.");
+        }
+
         await using var q = c.CreateCommand();
         q.Transaction = (SqliteTransaction)tx;
         q.CommandText = """
             UPDATE products SET is_active=0 WHERE id=$id;
-            DELETE FROM product_combo_items WHERE product_id=$id OR component_product_id=$id;
+            DELETE FROM product_combo_items WHERE product_id=$id;
             INSERT INTO audit_log(created_at,actor,event_type,entity_type,entity_id,details)
             VALUES($at,$actor,'MASTERDATA_PRODUCT_DEACTIVATED','PRODUCT',$id,'Artikel deaktiviert');
             """;
@@ -2903,16 +2953,18 @@ public async Task<ReturnQuote> QuoteReturnAsync(
                     request.Quantity));
         }
 
-        var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
+        // O-17: prorate against the goods only (see ReturnProrationBase).
+        var prorationBase = ReturnProrationBase.Of(
+            original.Lines, original.TotalCents, original.EffectiveCashPortionCents);
         var prior = await PriorReturnAllocationAsync(c, null, originalSaleId, ct);
         var allocation = CumulativeReturnProration.Allocate(
             prior.RawCents,
             rawTotal,
             prior.TotalCents,
             prior.CashCents,
-            originalSubtotal,
-            original.TotalCents,
-            original.EffectiveCashPortionCents);
+            prorationBase.SubtotalCents,
+            prorationBase.TotalCents,
+            prorationBase.CashCents);
 
         return new ReturnQuote(
             allocation.RawCents,
@@ -3027,7 +3079,9 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
         // MainWindow.OnPartialReturnClick (which needs the same discounted
         // amount to know how much to refund at the terminal) via
         // DiscountProration, not two independent copies of this formula.
-        var originalSubtotal = original.Lines.Sum(x => x.LineTotalCents);
+        // O-17: prorate against the goods only (see ReturnProrationBase).
+        var prorationBase = ReturnProrationBase.Of(
+            original.Lines, original.TotalCents, originalCashPortion);
         var prior = await PriorReturnAllocationAsync(
             c,
             (SqliteTransaction)tx,
@@ -3038,9 +3092,9 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
             totalCents,
             prior.TotalCents,
             prior.CashCents,
-            originalSubtotal,
-            original.TotalCents,
-            originalCashPortion);
+            prorationBase.SubtotalCents,
+            prorationBase.TotalCents,
+            prorationBase.CashCents);
         var discountedTotalCents = allocation.TotalCents;
         var returnDiscountCents = allocation.DiscountCents;
 

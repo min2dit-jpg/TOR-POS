@@ -321,7 +321,7 @@ public sealed class BackupEncryptionService
             }
             catch (CryptographicException)
             {
-                throw new InvalidOperationException("Kurtarma kodu falsch oder Sicherung beschädigt.");
+                throw new InvalidOperationException("Wiederherstellungscode falsch oder Sicherung beschädigt.");
             }
         }
 
