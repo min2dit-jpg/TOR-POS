@@ -508,8 +508,11 @@ public sealed class RestaurantFiscalOrderService
                   SELECT 1
                   FROM restaurant_bestellungen b
                   WHERE b.session_id=$session
-                    AND v.transaction_number<>''
-                    AND b.transaction_number=v.transaction_number)
+                    AND (
+                        (v.transaction_number<>'' AND
+                         b.transaction_number=v.transaction_number)
+                        OR b.started_at=v.started_at
+                    ))
             ORDER BY v.updated_at DESC,v.started_at DESC
             LIMIT 1;
             """;

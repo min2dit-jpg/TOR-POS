@@ -103,8 +103,27 @@ internal static class RestaurantThirdExeTests
                 StringComparison.Ordinal) &&
             workspaceSource.Contains(
                 "BESTELLUNG/TSE · PRÜFUNG ERFORDERLICH",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "ReconcileFiscalIssuesAsync",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "_fiscalRecoveryOutstanding",
                 StringComparison.Ordinal),
-            "Restaurant workspace automatically retries unsecured sessions and exposes an admin fiscal-reconcile action");
+            "Restaurant workspace automatically retries all unsecured sessions and exposes a global admin fiscal-reconcile action");
+
+        var zRestaurantRecovery =
+            mainWindowSource.IndexOf(
+                "ReconcileRestaurantFiscalBeforeClosingAsync",
+                StringComparison.Ordinal);
+        var zOrphanCleanup =
+            mainWindowSource.IndexOf(
+                "AbortOrphansAsync(null",
+                StringComparison.Ordinal);
+        assert(
+            zRestaurantRecovery >= 0 &&
+            zOrphanCleanup > zRestaurantRecovery,
+            "Z-Bericht reconciles Restaurant fiscal/payment locks before generic TSE orphan cleanup");
 
         assert(
             !workspaceSource.Contains(

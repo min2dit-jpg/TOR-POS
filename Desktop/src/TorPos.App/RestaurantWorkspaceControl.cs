@@ -171,6 +171,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
         IsEnabled = false
     };
     private string _fiscalRecoveryStatus = "";
+    private bool _fiscalRecoveryOutstanding;
     public Func<Task>? OpenMasterDataAsync { get; set; }
     public Func<RestaurantCheckoutDraft, Task>? CheckoutRequestedAsync { get; set; }
     public Func<Task>? CounterRequestedAsync { get; set; }
@@ -259,7 +260,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
             await CheckoutSelectedAsync();
         };
         _sendOrder.Click += async (_, _) => await SendSelectedOrderAsync();
-        _reconcileFiscal.Click += async (_, _) => await ReconcileSelectedSessionAsync();
+        _reconcileFiscal.Click += async (_, _) => await ReconcileFiscalIssuesAsync();
         _saveDetails.Click += async (_, _) => await SaveSessionDetailsAsync();
         _takeOver.Click += async (_, _) => await TakeOverSelectedSessionAsync();
         _add.Click += async (_, _) => await AddSelectedProductAsync();
@@ -437,9 +438,13 @@ public sealed class RestaurantWorkspaceControl : UserControl
             }
         }
 
+        var remaining =
+            await _restaurantFiscal.ListUnsecuredSessionIdsAsync();
+        _fiscalRecoveryOutstanding = remaining.Count > 0;
+
         _fiscalRecoveryStatus =
-            failed > 0
-                ? $"FISKALISCHE PRÜFUNG ERFORDERLICH · {failed} Tischvorgang/-vorgänge nicht automatisch repariert."
+            _fiscalRecoveryOutstanding
+                ? $"FISKALISCHE PRÜFUNG ERFORDERLICH · {remaining.Count} Tischvorgang/-vorgänge nicht automatisch repariert."
                 : repaired > 0
                     ? $"FISKAL NACHGESICHERT · {repaired} Tischvorgang/-vorgänge wieder konsistent."
                     : "";
@@ -486,6 +491,8 @@ public sealed class RestaurantWorkspaceControl : UserControl
     private async Task ReloadAsync()
     {
         _sendOrder.IsEnabled=false; _interim.IsEnabled=false; _payAll.IsEnabled=false;
+        _fiscalRecoveryOutstanding =
+            (await _restaurantFiscal.ListUnsecuredSessionIdsAsync()).Count > 0;
         _tables = await _restaurant.ListTablesAsync();
         var areas = await _restaurant.ListAreasAsync();
         _areas.Children.Clear();
@@ -534,8 +541,10 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _saveDetails.IsEnabled = false;
             _takeOver.IsVisible = false;
             _takeOver.IsEnabled = false;
-            _reconcileFiscal.IsVisible = false;
-            _reconcileFiscal.IsEnabled = false;
+            _reconcileFiscal.IsVisible =
+                _fiscalRecoveryOutstanding && _user.IsAdmin;
+            _reconcileFiscal.IsEnabled =
+                _fiscalRecoveryOutstanding && _user.IsAdmin;
             _guestCount.Value = 1;
             _tableNote.Text = "";
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
@@ -672,6 +681,10 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _saveDetails.IsEnabled = false;
             _takeOver.IsVisible = false;
             _takeOver.IsEnabled = false;
+            _reconcileFiscal.IsVisible =
+                _fiscalRecoveryOutstanding && _user.IsAdmin;
+            _reconcileFiscal.IsEnabled =
+                _fiscalRecoveryOutstanding && _user.IsAdmin;
             if (_guestCount.Value is null || _guestCount.Value < 1)
                 _guestCount.Value = 1;
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
@@ -714,8 +727,12 @@ public sealed class RestaurantWorkspaceControl : UserControl
         _guestCount.IsEnabled = !mutationLocked;
         _tableNote.IsEnabled = !mutationLocked;
         _saveDetails.IsEnabled = !mutationLocked;
-        _reconcileFiscal.IsVisible = !fiscalSecured && _user.IsAdmin;
-        _reconcileFiscal.IsEnabled = !fiscalSecured && _user.IsAdmin;
+        _reconcileFiscal.IsVisible =
+            _user.IsAdmin &&
+            (_fiscalRecoveryOutstanding || !fiscalSecured);
+        _reconcileFiscal.IsEnabled =
+            _user.IsAdmin &&
+            (_fiscalRecoveryOutstanding || !fiscalSecured);
 
         var belongsToCurrentUser = string.Equals(
             _selectedSession.AssignedWaiter,
@@ -729,29 +746,53 @@ public sealed class RestaurantWorkspaceControl : UserControl
             : $"TISCH ÜBERNEHMEN · {_selectedSession.AssignedWaiter}";
     }
 
-    private async Task ReconcileSelectedSessionAsync()
+    private async Task ReconcileFiscalIssuesAsync()
     {
-        if (_selectedSession is null || !_user.IsAdmin)
+        if (!_user.IsAdmin)
             return;
 
         _reconcileFiscal.IsEnabled = false;
+        var repaired = 0;
+
         try
         {
-            var secured =
-                await _restaurantFiscal.ReconcileSessionAsync(
-                    _selectedSession.Id,
-                    _user.Username);
+            foreach (var sessionId in
+                     await _restaurantFiscal.ListUnsecuredSessionIdsAsync())
+            {
+                try
+                {
+                    if (await _restaurantFiscal.ReconcileSessionAsync(
+                            sessionId,
+                            _user.Username))
+                    {
+                        repaired++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException(
+                        "Restaurant manual fiscal reconciliation " + sessionId,
+                        ex);
+                }
+            }
+
+            var remaining =
+                await _restaurantFiscal.ListUnsecuredSessionIdsAsync();
+            _fiscalRecoveryOutstanding = remaining.Count > 0;
 
             _fiscalRecoveryStatus =
-                secured
-                    ? "FISKAL NACHGESICHERT · Tischvorgang ist wieder konsistent."
-                    : "FISKALISCHE PRÜFUNG ERFORDERLICH · Nachsicherung nicht vollständig.";
-        }
-        catch (Exception ex)
-        {
-            _fiscalRecoveryStatus =
-                "FISKALISCHE PRÜFUNG ERFORDERLICH · " + ex.Message;
-            await ShowErrorAsync(_fiscalRecoveryStatus);
+                _fiscalRecoveryOutstanding
+                    ? $"FISKALISCHE PRÜFUNG ERFORDERLICH · {remaining.Count} Tischvorgang/-vorgänge bleiben offen."
+                    : repaired > 0
+                        ? $"FISKAL NACHGESICHERT · {repaired} Tischvorgang/-vorgänge wieder konsistent."
+                        : "FISKALPRÜFUNG · kein offener Nachsicherungsfall.";
+
+            if (_fiscalRecoveryOutstanding)
+            {
+                await ShowErrorAsync(
+                    _fiscalRecoveryStatus +
+                    " Zahlung/Storno/Z-Abschluss erst nach Klärung fortsetzen.");
+            }
         }
         finally
         {

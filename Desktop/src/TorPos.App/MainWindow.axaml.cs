@@ -3210,6 +3210,60 @@ public partial class MainWindow:Window
         return await _dailyClosingGuard.CheckAsync();
     }
 
+    private async Task<bool> ReconcileRestaurantFiscalBeforeClosingAsync()
+    {
+        if (!IsRestaurantEdition())
+            return true;
+
+        var preparedPayments =
+            await _restaurant.ListPreparedPaymentReservationOperationIdsAsync();
+        if (preparedPayments.Count > 0)
+        {
+            const string paymentMessage =
+                "Offene Restaurant-Zahlung zuerst über ZAHLUNG PRÜFEN klären.";
+            StatusLine = "Z-BERICHT GESPERRT · " + paymentMessage;
+            await new ZReportInfoWindow(
+                "Z-BERICHT GESPERRT",
+                paymentMessage,
+                false).ShowDialog<bool>(this);
+            return false;
+        }
+
+        foreach (var sessionId in
+                 await _restaurantFiscal.ListUnsecuredSessionIdsAsync())
+        {
+            try
+            {
+                await _restaurantFiscal.ReconcileSessionAsync(
+                    sessionId,
+                    _currentUser.Username);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException(
+                    "Restaurant fiscal reconciliation before Z " + sessionId,
+                    ex);
+            }
+        }
+
+        var remaining =
+            await _restaurantFiscal.ListUnsecuredSessionIdsAsync();
+        if (remaining.Count == 0)
+            return true;
+
+        var message =
+            $"{remaining.Count} Restaurant-Tischvorgang/-vorgänge sind fiskalisch noch nicht nachgesichert. " +
+            "Z-Abschluss bleibt gesperrt; FISKAL NACHSICHERN ausführen und Ursache prüfen.";
+
+        StatusLine =
+            "Z-BERICHT GESPERRT · Restaurant-Fiskalprüfung erforderlich";
+        await new ZReportInfoWindow(
+            "Z-BERICHT GESPERRT",
+            message,
+            false).ShowDialog<bool>(this);
+        return false;
+    }
+
     private async void OnZReportClick(object? sender, RoutedEventArgs e)
     {
         if (!RequirePermission(UserPermissions.ZReport, "Z-BERICHT") ||
@@ -3224,6 +3278,9 @@ public partial class MainWindow:Window
             StatusLine = "Z-BERICHT: Aktuellen Vorgang zuerst kassieren, parken oder mit C leeren.";
             return;
         }
+
+        if (!await ReconcileRestaurantFiscalBeforeClosingAsync())
+            return;
 
         await _tseVorgangWork;
         if (Vorgaenge is { } openVorgaenge)
