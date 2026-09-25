@@ -675,8 +675,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-// Restaurant split rules add 3 checks: R-6 double selection, R-9.1 whole pieces.
-const int ExpectedSafetyChecks = 1403;
+// Restaurant split rules add 3 checks: R-6 double selection, R-9.1 whole pieces;
+// 3 more for R-4 (B) split by persons with whole positions.
+const int ExpectedSafetyChecks = 1406;
 
 if (checks != ExpectedSafetyChecks)
 {
