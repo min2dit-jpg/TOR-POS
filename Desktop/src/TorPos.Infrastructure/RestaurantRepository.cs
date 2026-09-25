@@ -807,7 +807,11 @@ public sealed partial class RestaurantRepository
                     DateTimeOffset.Parse(now),
                     1)
                 {
-                    PersistedLineTotalCents = lineTotalCents,
+                    PersistedLineTotalCents =
+                        (long)Math.Round(
+                            quantity *
+                            (product.BasePriceCents + product.PfandCents),
+                            MidpointRounding.AwayFromZero),
                     PaidCents = 0
                 },
                 Created: true);
@@ -1699,7 +1703,7 @@ public sealed partial class RestaurantRepository
     private static RestaurantSessionItem ReadRestaurantItem(
         SqliteDataReader r)
     {
-        var persisted =
+        long? persisted =
             r.IsDBNull(14) || r.GetInt64(14) < 0
                 ? null
                 : r.GetInt64(14);
