@@ -23,6 +23,9 @@ public interface IAppWindowFactory
     RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
         AuthenticatedUser user);
 
+    RestaurantWorkspaceControl CreateRestaurantWorkspaceControl(
+        AuthenticatedUser user);
+
     RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user);
 
@@ -104,6 +107,19 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             initialPage);
 
     public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
+        AuthenticatedUser user) =>
+        new(
+            _services.GetRequiredService<RestaurantRepository>(),
+            _services.GetRequiredService<RestaurantFiscalOrderService>(),
+            _services.GetRequiredService<RestaurantKitchenOutbox>(),
+            _services.GetRequiredService<RestaurantKitchenDispatcher>(),
+            _services.GetRequiredService<IProductCatalog>(),
+            _services.GetRequiredService<ISettingsRepository>(),
+            _services.GetRequiredService<ControlledPosActionService>(),
+            user,
+            _services.GetRequiredService<IReceiptPrinterService>());
+
+    public RestaurantWorkspaceControl CreateRestaurantWorkspaceControl(
         AuthenticatedUser user) =>
         new(
             _services.GetRequiredService<RestaurantRepository>(),
