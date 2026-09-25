@@ -2198,6 +2198,76 @@ internal static class RestaurantFoundationTests
                 !string.IsNullOrWhiteSpace(partialCheckoutDraft.OperationId),
                 "Restaurant item split produces a real partial checkout draft without mutating the open table");
 
+            var fractionalMoneyLine =
+                new RestaurantSessionItem(
+                    99001,
+                    "R9-2",
+                    "R9-2-LINE",
+                    99001,
+                    "Gewichtstest",
+                    "",
+                    999,
+                    999,
+                    7m,
+                    0,
+                    RestaurantSessionItemState.Active,
+                    "TEST",
+                    DateTimeOffset.UtcNow,
+                    1)
+                {
+                    PersistedLineTotalCents = 998,
+                    PaidCents = 0
+                };
+
+            var firstThird =
+                RestaurantSplitCalculator.ByItems(
+                    new[] { fractionalMoneyLine },
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            fractionalMoneyLine.Id,
+                            333)
+                    });
+            var afterFirst =
+                fractionalMoneyLine with
+                {
+                    QuantityMilli = 666,
+                    PaidCents = firstThird.TotalCents
+                };
+            var secondThird =
+                RestaurantSplitCalculator.ByItems(
+                    new[] { afterFirst },
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            afterFirst.Id,
+                            333)
+                    });
+            var afterSecond =
+                afterFirst with
+                {
+                    QuantityMilli = 333,
+                    PaidCents =
+                        firstThird.TotalCents +
+                        secondThird.TotalCents
+                };
+            var finalThird =
+                RestaurantSplitCalculator.ByItems(
+                    new[] { afterSecond },
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            afterSecond.Id,
+                            afterSecond.QuantityMilli)
+                    });
+
+            assert(
+                firstThird.TotalCents +
+                secondThird.TotalCents +
+                finalThird.TotalCents == 998 &&
+                finalThird.TotalCents == 332,
+                "Restaurant partial payments allocate from persisted remaining cents and the final slice absorbs the rounding remainder");
+
             var equalShares = RestaurantSplitCalculator.EqualShares(1000, 3);
             assert(
                 equalShares.SequenceEqual(new long[] { 334, 333, 333 }) &&
@@ -2391,6 +2461,23 @@ internal static class RestaurantFoundationTests
                         payable.Id,
                         payable.QuantityMilli)
                 });
+
+            await using (var exactCents = db.OpenReadConnection())
+            await using (var exactQuery = exactCents.CreateCommand())
+            {
+                exactQuery.CommandText =
+                    "SELECT line_total_cents,paid_cents FROM restaurant_session_items WHERE id=$id;";
+                exactQuery.Parameters.AddWithValue("$id", payable.Id);
+                await using var exactReader = await exactQuery.ExecuteReaderAsync();
+                if (!await exactReader.ReadAsync())
+                    throw new InvalidOperationException(
+                        "Restaurant exact-cent item row missing.");
+
+                assert(
+                    exactReader.GetInt64(0) >= 0 &&
+                    exactReader.GetInt64(1) >= 0,
+                    "Restaurant schema persists exact line total and paid cents for crash-safe partial payments");
+            }
 
             var lockedVersion = await repo.PreparePaymentReservationAsync(
                 paymentDraft);

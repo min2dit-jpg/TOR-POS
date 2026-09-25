@@ -535,7 +535,7 @@ public sealed partial class RestaurantRepository
                 read.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version
+                           added_by,added_at,version,line_total_cents,paid_cents
                     FROM restaurant_session_items
                     WHERE id=$item
                       AND session_id=$session
@@ -548,21 +548,7 @@ public sealed partial class RestaurantRepository
                     throw new InvalidOperationException(
                         "Restaurant-Position ist nicht mehr offen.");
 
-                item = new RestaurantSessionItem(
-                    r.GetInt64(0),
-                    r.GetString(1),
-                    r.GetString(2),
-                    r.GetInt64(3),
-                    r.GetString(4),
-                    r.GetString(5),
-                    r.GetInt64(6),
-                    r.GetInt64(7),
-                    Convert.ToDecimal(r.GetDouble(8)),
-                    r.GetInt64(9),
-                    RestaurantSessionItemState.Active,
-                    r.GetString(11),
-                    DateTimeOffset.Parse(r.GetString(12)),
-                    r.GetInt64(13));
+                item = ReadRestaurantItem(r);
             }
 
             await using (var cancel = c.CreateCommand())
@@ -689,7 +675,7 @@ public sealed partial class RestaurantRepository
                 existing.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version,order_options
+                           added_by,added_at,version,line_total_cents,paid_cents,order_options
                     FROM restaurant_session_items
                     WHERE line_token=$token
                     LIMIT 1;
@@ -699,23 +685,7 @@ public sealed partial class RestaurantRepository
                 await using var r = await existing.ExecuteReaderAsync(ct);
                 if (await r.ReadAsync(ct))
                 {
-                    var item = new RestaurantSessionItem(
-                        r.GetInt64(0),
-                        r.GetString(1),
-                        r.GetString(2),
-                        r.GetInt64(3),
-                        r.GetString(4),
-                        r.GetString(5),
-                        r.GetInt64(6),
-                        r.GetInt64(7),
-                        Convert.ToDecimal(r.GetDouble(8)),
-                        r.GetInt64(9),
-                        Enum.Parse<RestaurantSessionItemState>(
-                            r.GetString(10),
-                            ignoreCase: true),
-                        r.GetString(11),
-                        DateTimeOffset.Parse(r.GetString(12)),
-                        r.GetInt64(13));
+                    var item = ReadRestaurantItem(r);
 
                     if (!string.Equals(
                             item.SessionId,
@@ -723,7 +693,7 @@ public sealed partial class RestaurantRepository
                             StringComparison.Ordinal) ||
                         item.ProductId != product.Id ||
                         item.QuantityMilli != quantityMilli ||
-                        r.GetString(14) != orderOptions)
+                        r.GetString(16) != orderOptions)
                     {
                         throw new InvalidOperationException(
                             "Restaurant-Zeilenkennung wurde bereits für eine andere Position verwendet.");
@@ -765,11 +735,11 @@ public sealed partial class RestaurantRepository
                     INSERT INTO restaurant_session_items(
                         session_id,line_token,product_id,product_name,variant_name,
                         quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        fiscal_state,added_by,added_at,version,order_options)
+                        fiscal_state,added_by,added_at,version,line_total_cents,paid_cents,order_options)
                     VALUES(
                         $session,$token,$product,$name,'',
                         $quantity,$price,$vat,$pfand,'ACTIVE',
-                        'PENDING',$operator,$now,1,$options)
+                        'PENDING',$operator,$now,1,$lineTotal,0,$options)
                     RETURNING id;
                     """;
                 insert.Parameters.AddWithValue("$session", sessionId);
@@ -778,9 +748,18 @@ public sealed partial class RestaurantRepository
                 insert.Parameters.AddWithValue("$name", displayName);
                 insert.Parameters.AddWithValue("$options",orderOptions);
                 insert.Parameters.AddWithValue("$quantity", quantityMilli);
+                var unitPriceCents =
+                    product.BasePriceCents + product.PfandCents;
+                var lineTotalCents =
+                    (long)Math.Round(
+                        quantity * unitPriceCents,
+                        MidpointRounding.AwayFromZero);
                 insert.Parameters.AddWithValue(
                     "$price",
-                    product.BasePriceCents + product.PfandCents);
+                    unitPriceCents);
+                insert.Parameters.AddWithValue(
+                    "$lineTotal",
+                    lineTotalCents);
                 insert.Parameters.AddWithValue("$vat", effectiveVatRate);
                 insert.Parameters.AddWithValue("$pfand", product.PfandCents);
                 insert.Parameters.AddWithValue("$operator", operatorName);
@@ -826,7 +805,11 @@ public sealed partial class RestaurantRepository
                     RestaurantSessionItemState.Active,
                     operatorName,
                     DateTimeOffset.Parse(now),
-                    1),
+                    1)
+                {
+                    PersistedLineTotalCents = lineTotalCents,
+                    PaidCents = 0
+                },
                 Created: true);
         });
     }
@@ -953,7 +936,7 @@ public sealed partial class RestaurantRepository
             q.CommandText = """
                 SELECT id,session_id,line_token,product_id,product_name,variant_name,
                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                       added_by,added_at,version
+                       added_by,added_at,version,line_total_cents,paid_cents
                 FROM restaurant_session_items
                 WHERE id=$item
                   AND session_id=$session
@@ -966,23 +949,7 @@ public sealed partial class RestaurantRepository
             if (!await r.ReadAsync(ct))
                 return null;
 
-            return new RestaurantSessionItem(
-                r.GetInt64(0),
-                r.GetString(1),
-                r.GetString(2),
-                r.GetInt64(3),
-                r.GetString(4),
-                r.GetString(5),
-                r.GetInt64(6),
-                r.GetInt64(7),
-                Convert.ToDecimal(r.GetDouble(8)),
-                r.GetInt64(9),
-                Enum.Parse<RestaurantSessionItemState>(
-                    r.GetString(10),
-                    ignoreCase: true),
-                r.GetString(11),
-                DateTimeOffset.Parse(r.GetString(12)),
-                r.GetInt64(13));
+            return ReadRestaurantItem(r);
         });
     }
 
@@ -1001,7 +968,7 @@ public sealed partial class RestaurantRepository
             q.CommandText = """
                 SELECT id,session_id,line_token,product_id,product_name,variant_name,
                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                       added_by,added_at,version
+                       added_by,added_at,version,line_total_cents,paid_cents
                 FROM restaurant_session_items
                 WHERE line_token=$token
                 LIMIT 1;
@@ -1012,23 +979,7 @@ public sealed partial class RestaurantRepository
             if (!await r.ReadAsync(ct))
                 return null;
 
-            return new RestaurantSessionItem(
-                r.GetInt64(0),
-                r.GetString(1),
-                r.GetString(2),
-                r.GetInt64(3),
-                r.GetString(4),
-                r.GetString(5),
-                r.GetInt64(6),
-                r.GetInt64(7),
-                Convert.ToDecimal(r.GetDouble(8)),
-                r.GetInt64(9),
-                Enum.Parse<RestaurantSessionItemState>(
-                    r.GetString(10),
-                    ignoreCase: true),
-                r.GetString(11),
-                DateTimeOffset.Parse(r.GetString(12)),
-                r.GetInt64(13));
+            return ReadRestaurantItem(r);
         });
     }
 
@@ -1048,7 +999,7 @@ public sealed partial class RestaurantRepository
             q.CommandText = """
                 SELECT id,session_id,line_token,product_id,product_name,variant_name,
                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                       added_by,added_at,version
+                       added_by,added_at,version,line_total_cents,paid_cents
                 FROM restaurant_session_items
                 WHERE session_id=$session
                   AND state='ACTIVE'
@@ -1058,21 +1009,7 @@ public sealed partial class RestaurantRepository
             await using var r = await q.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
             {
-                result.Add(new RestaurantSessionItem(
-                    r.GetInt64(0),
-                    r.GetString(1),
-                    r.GetString(2),
-                    r.GetInt64(3),
-                    r.GetString(4),
-                    r.GetString(5),
-                    r.GetInt64(6),
-                    r.GetInt64(7),
-                    Convert.ToDecimal(r.GetDouble(8)),
-                    r.GetInt64(9),
-                    RestaurantSessionItemState.Active,
-                    r.GetString(11),
-                    DateTimeOffset.Parse(r.GetString(12)),
-                    r.GetInt64(13)));
+                result.Add(ReadRestaurantItem(r));
             }
 
             return (IReadOnlyList<RestaurantSessionItem>)result;
@@ -1461,7 +1398,7 @@ public sealed partial class RestaurantRepository
                 q.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version
+                           added_by,added_at,version,line_total_cents,paid_cents
                     FROM restaurant_session_items
                     WHERE id=$id AND session_id=$session AND state='ACTIVE';
                     """;
@@ -1472,21 +1409,7 @@ public sealed partial class RestaurantRepository
                 if (!await r.ReadAsync(ct))
                     throw new InvalidOperationException("Ausgewählte Tischposition ist nicht mehr offen.");
 
-                var item = new RestaurantSessionItem(
-                    r.GetInt64(0),
-                    r.GetString(1),
-                    r.GetString(2),
-                    r.GetInt64(3),
-                    r.GetString(4),
-                    r.GetString(5),
-                    r.GetInt64(6),
-                    r.GetInt64(7),
-                    Convert.ToDecimal(r.GetDouble(8)),
-                    r.GetInt64(9),
-                    RestaurantSessionItemState.Active,
-                    r.GetString(11),
-                    DateTimeOffset.Parse(r.GetString(12)),
-                    r.GetInt64(13));
+                var item = ReadRestaurantItem(r);
 
                 if (selection.QuantityMilli <= 0 ||
                     selection.QuantityMilli > item.QuantityMilli)
@@ -1523,7 +1446,8 @@ public sealed partial class RestaurantRepository
                     UnitPriceCents = item.UnitPriceCents,
                     ListUnitPriceCents = item.UnitPriceCents,
                     VatRate = item.VatRate,
-                    PfandCents = item.PfandCents
+                    PfandCents = item.PfandCents,
+                    PersistedLineTotalCents = split.AmountCents
                 });
 
                 if (cartLines[^1].LineTotalCents != split.AmountCents)
@@ -1579,7 +1503,7 @@ public sealed partial class RestaurantRepository
                 q.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version
+                           added_by,added_at,version,line_total_cents,paid_cents
                     FROM restaurant_session_items
                     WHERE id=$id AND session_id=$session AND state='ACTIVE';
                     """;
@@ -1589,12 +1513,7 @@ public sealed partial class RestaurantRepository
                 if (!await r.ReadAsync(ct))
                     throw new InvalidOperationException("Ausgewählte Tischposition ist nicht mehr offen.");
 
-                quoteItems.Add(new RestaurantSessionItem(
-                    r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
-                    r.GetString(4), r.GetString(5), r.GetInt64(6), r.GetInt64(7),
-                    Convert.ToDecimal(r.GetDouble(8)), r.GetInt64(9),
-                    RestaurantSessionItemState.Active, r.GetString(11),
-                    DateTimeOffset.Parse(r.GetString(12)), r.GetInt64(13)));
+                quoteItems.Add(ReadRestaurantItem(r));
             }
 
             var quote = RestaurantSplitCalculator.ByItems(quoteItems, draft.Selections);
@@ -1775,6 +1694,37 @@ public sealed partial class RestaurantRepository
 
             await tx.CommitAsync(ct);
         });
+    }
+
+    private static RestaurantSessionItem ReadRestaurantItem(
+        SqliteDataReader r)
+    {
+        var persisted =
+            r.IsDBNull(14) || r.GetInt64(14) < 0
+                ? null
+                : r.GetInt64(14);
+
+        return new RestaurantSessionItem(
+            r.GetInt64(0),
+            r.GetString(1),
+            r.GetString(2),
+            r.GetInt64(3),
+            r.GetString(4),
+            r.GetString(5),
+            r.GetInt64(6),
+            r.GetInt64(7),
+            Convert.ToDecimal(r.GetDouble(8)),
+            r.GetInt64(9),
+            Enum.Parse<RestaurantSessionItemState>(
+                r.GetString(10),
+                ignoreCase: true),
+            r.GetString(11),
+            DateTimeOffset.Parse(r.GetString(12)),
+            r.GetInt64(13))
+        {
+            PersistedLineTotalCents = persisted,
+            PaidCents = r.GetInt64(15)
+        };
     }
 
     private static RestaurantTableSession ReadSession(SqliteDataReader r)

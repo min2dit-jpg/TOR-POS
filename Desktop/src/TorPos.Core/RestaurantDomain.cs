@@ -62,10 +62,18 @@ public sealed record RestaurantSessionItem(
 {
     public decimal Quantity => QuantityMilli / 1000m;
 
+    // R-9.2: immutable original gross cents plus the cents already removed
+    // from the still-active logical line. Paid slices are normalised back to
+    // PaidCents=0. Legacy/in-memory rows fall back to quantity × unit price.
+    public long? PersistedLineTotalCents { get; init; }
+    public long PaidCents { get; init; }
+
     public long LineTotalCents =>
-        (long)Math.Round(
-            Quantity * UnitPriceCents,
-            MidpointRounding.AwayFromZero);
+        PersistedLineTotalCents is long persisted
+            ? Math.Max(0L, persisted - PaidCents)
+            : (long)Math.Round(
+                Quantity * UnitPriceCents,
+                MidpointRounding.AwayFromZero);
 }
 
 

@@ -119,11 +119,13 @@ internal static class RestaurantPaymentStore
         foreach (var reserved in reservations)
         {
             long currentQuantity;
+            long currentLineTotalCents;
+            long currentPaidCents;
             await using (var read = c.CreateCommand())
             {
                 read.Transaction = tx;
                 read.CommandText = """
-                    SELECT quantity_milli
+                    SELECT quantity_milli,line_total_cents,paid_cents
                     FROM restaurant_session_items
                     WHERE id=$item
                       AND session_id=$session
@@ -131,11 +133,26 @@ internal static class RestaurantPaymentStore
                     """;
                 read.Parameters.AddWithValue("$item", reserved.ItemId);
                 read.Parameters.AddWithValue("$session", sessionId);
-                var raw = await read.ExecuteScalarAsync(ct);
-                if (raw is null)
+                await using var row = await read.ExecuteReaderAsync(ct);
+                if (!await row.ReadAsync(ct))
                     throw new InvalidOperationException(
                         "Restaurant-Zahlungsposition ist nicht mehr offen.");
-                currentQuantity = Convert.ToInt64(raw);
+                currentQuantity = row.GetInt64(0);
+                currentLineTotalCents = row.GetInt64(1);
+                currentPaidCents = row.GetInt64(2);
+            }
+
+            var remainingCents =
+                currentLineTotalCents >= 0
+                    ? currentLineTotalCents - currentPaidCents
+                    : reserved.AmountCents;
+
+            if (remainingCents < 0 ||
+                reserved.AmountCents <= 0 ||
+                reserved.AmountCents > remainingCents)
+            {
+                throw new InvalidOperationException(
+                    "Restaurant-Zahlbetrag überschreitet den offenen Positionsbetrag.");
             }
 
             if (reserved.QuantityMilli <= 0 ||
@@ -153,6 +170,8 @@ internal static class RestaurantPaymentStore
                 update.CommandText = """
                     UPDATE restaurant_session_items
                     SET state='PAID',
+                        line_total_cents=$paidAmount,
+                        paid_cents=0,
                         version=version+1
                     WHERE id=$item
                       AND session_id=$session
@@ -165,6 +184,7 @@ internal static class RestaurantPaymentStore
                 update.CommandText = """
                     UPDATE restaurant_session_items
                     SET quantity_milli=quantity_milli-$paid,
+                        paid_cents=paid_cents+$paidAmount,
                         version=version+1
                     WHERE id=$item
                       AND session_id=$session
@@ -177,6 +197,7 @@ internal static class RestaurantPaymentStore
             update.Parameters.AddWithValue("$item", reserved.ItemId);
             update.Parameters.AddWithValue("$session", sessionId);
             update.Parameters.AddWithValue("$expected", currentQuantity);
+            update.Parameters.AddWithValue("$paidAmount", reserved.AmountCents);
 
             if (await update.ExecuteNonQueryAsync(ct) != 1)
                 throw new InvalidOperationException(
@@ -190,16 +211,17 @@ internal static class RestaurantPaymentStore
                     INSERT INTO restaurant_session_items(
                         session_id,line_token,product_id,product_name,variant_name,
                         quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        added_by,added_at,version)
+                        added_by,added_at,version,line_total_cents,paid_cents)
                     SELECT
                         session_id,$token,product_id,product_name,variant_name,
                         $paid,unit_price_cents,vat_rate,pfand_cents,'PAID',
-                        added_by,$now,1
+                        added_by,$now,1,$paidAmount,0
                     FROM restaurant_session_items
                     WHERE id=$item AND session_id=$session;
                     """;
                 paidSlice.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
                 paidSlice.Parameters.AddWithValue("$paid", reserved.QuantityMilli);
+                paidSlice.Parameters.AddWithValue("$paidAmount", reserved.AmountCents);
                 paidSlice.Parameters.AddWithValue("$now", now);
                 paidSlice.Parameters.AddWithValue("$item", reserved.ItemId);
                 paidSlice.Parameters.AddWithValue("$session", sessionId);

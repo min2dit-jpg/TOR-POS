@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 43;
+    public const int TargetSchemaVersion = 44;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2359,6 +2359,29 @@ public sealed class SchemaMigrationService
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
                 await using var q=c.CreateCommand();q.Transaction=tx;
                 q.CommandText="ALTER TABLE restaurant_session_items ADD COLUMN order_options TEXT NOT NULL DEFAULT '';";
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(44, "RESTAURANT_EXACT_PARTIAL_PAYMENT_CENTS", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN line_total_cents INTEGER NOT NULL DEFAULT -1
+                      CHECK(line_total_cents>=-1);
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN paid_cents INTEGER NOT NULL DEFAULT 0
+                      CHECK(paid_cents>=0);
+
+                    UPDATE restaurant_session_items
+                    SET line_total_cents=
+                        CAST(ROUND((quantity_milli * unit_price_cents) / 1000.0) AS INTEGER),
+                        paid_cents=0
+                    WHERE line_total_cents<0;
+                    """;
                 await q.ExecuteNonQueryAsync(ct);
             })
         };
