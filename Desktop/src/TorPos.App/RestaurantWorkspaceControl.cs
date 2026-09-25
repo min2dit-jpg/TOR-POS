@@ -98,13 +98,6 @@ public sealed class RestaurantWorkspaceControl : UserControl
         IsVisible = false
     };
 
-    private readonly Button _open = new()
-    {
-        Content = "TISCH ÖFFNEN",
-        MinHeight = 48,
-        FontWeight = FontWeight.Bold
-    };
-
     private readonly Button _add = new()
     {
         Content = "POSITION HINZUFÜGEN",
@@ -122,6 +115,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
 
     private readonly Button _move = new()
     {
+        Name = "RestaurantMove",
         Content = "UMBUCHEN",
         MinHeight = 44,
         IsEnabled = false
@@ -143,7 +137,8 @@ public sealed class RestaurantWorkspaceControl : UserControl
 
     private readonly Button _split = new()
     {
-        Content = "RECHNUNG TEILEN",
+        Name = "RestaurantSplit",
+        Content = "TEILEN",
         MinHeight = 44,
         FontWeight = FontWeight.Bold,
         IsEnabled = false
@@ -164,16 +159,18 @@ public sealed class RestaurantWorkspaceControl : UserControl
         IsEnabled = false
     };
 
+    private readonly Button _sendOrder = new() { Name="RestaurantSendOrder",Content="BESTELLUNG SENDEN",MinHeight=44,IsEnabled=false };
     private readonly Button _interim = new() { Name="InterimBill",Content="ZWISCHENRECHNUNG",MinHeight=44,IsEnabled=false };
     private readonly Button _payAll = new() { Name="TablePayAll",Content="BEZAHLEN",MinHeight=44,IsEnabled=false };
     public Func<Task>? OpenMasterDataAsync { get; set; }
     public Func<RestaurantCheckoutDraft, Task>? CheckoutRequestedAsync { get; set; }
     public Func<Task>? CounterRequestedAsync { get; set; }
-    public bool IsBusy => _addingProduct || _selectingTable;
+    public bool IsBusy => _addingProduct || _selectingTable || _sendingOrder;
     private readonly WrapPanel _areas = new();
     private long? _selectedArea;
     private bool _selectingTable;
     private bool _addingProduct;
+    private bool _sendingOrder;
     private readonly WrapPanel _categoryTiles = new();
     private readonly WrapPanel _productTiles = new();
     private long? _selectedCategory;
@@ -252,7 +249,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _items.SelectAll();
             await CheckoutSelectedAsync();
         };
-        _open.Click += async (_, _) => await OpenSelectedTableAsync();
+        _sendOrder.Click += async (_, _) => await SendSelectedOrderAsync();
         _saveDetails.Click += async (_, _) => await SaveSessionDetailsAsync();
         _takeOver.Click += async (_, _) => await TakeOverSelectedSessionAsync();
         _add.Click += async (_, _) => await AddSelectedProductAsync();
@@ -337,28 +334,18 @@ public sealed class RestaurantWorkspaceControl : UserControl
                     FontWeight = FontWeight.Bold
                 },
                 _targetTable,
-                new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children = { _move, _merge }
-                },
-                new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children = { _split, _closeEmpty }
-                },
+                _merge,
+                _closeEmpty,
                 _checkoutSelected,
                 _cancelItem
             }
         };
 
         var details = new StackPanel { Spacing=8,Children={
-            new TextBlock { Text="Gäste" },_guestCount,new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,_takeOver,tableActions} };
+            new TextBlock { Text="Gäste" },_guestCount,new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,_saveDetails,_takeOver,tableActions} };
         var right = new StackPanel
         {
-            Spacing=10,Margin=new Thickness(18),Children={_detailTitle,_detailStatus,_open,
+            Spacing=10,Margin=new Thickness(18),Children={_detailTitle,_detailStatus,
                 new TextBlock { Text="Warengruppe",FontWeight=FontWeight.Bold },_categoryTiles,
                 new ScrollViewer { Content=_productTiles,MaxHeight=240,VerticalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Auto },
                 new TextBlock { Text="Menge für den nächsten Artikel" },_quantity,new TextBlock { Text="Offene Positionen",FontWeight=FontWeight.Bold },_items,
@@ -369,7 +356,18 @@ public sealed class RestaurantWorkspaceControl : UserControl
         var detailGrid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         detailGrid.Children.Add(new ScrollViewer { Content = right,
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
-        var footer = new WrapPanel { Margin = new Thickness(12), Children = { _interim, _payAll, _saveDetails } };
+        var footer = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*"),
+            ColumnSpacing = 8,
+            Margin = new Thickness(12)
+        };
+        var primaryActions = new Control[] { _sendOrder, _interim, _move, _split, _payAll };
+        for (var column = 0; column < primaryActions.Length; column++)
+        {
+            Grid.SetColumn(primaryActions[column], column);
+            footer.Children.Add(primaryActions[column]);
+        }
         Grid.SetRow(footer, 1);
         detailGrid.Children.Add(footer);
         Content = new Grid
@@ -445,7 +443,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
 
     private async Task ReloadAsync()
     {
-        _interim.IsEnabled=false; _payAll.IsEnabled=false;
+        _sendOrder.IsEnabled=false; _interim.IsEnabled=false; _payAll.IsEnabled=false;
         _tables = await _restaurant.ListTablesAsync();
         var areas = await _restaurant.ListAreasAsync();
         _areas.Children.Clear();
@@ -478,7 +476,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _selectedSession=null;
             _detailTitle.Text = "Tisch auswählen";
             _detailStatus.Text = "Links einen Tisch wählen.";
-            _open.IsEnabled = false;
+            _sendOrder.IsEnabled = false;
             _add.IsEnabled = false;
             _move.IsEnabled = false;
             _merge.IsEnabled = false;
@@ -526,23 +524,35 @@ public sealed class RestaurantWorkspaceControl : UserControl
             CornerRadius = new CornerRadius(10)
         };
 
-        button.Click += async (_, _) =>
-        {
-            if (_selectingTable) return;
-            _selectingTable = true;
-            try
-            {
-                _selectedTable = table;
-                _guestCount.Value = 1;
-                _tableNote.Text = "";
-                await RefreshDetailAsync();
-                if (_selectedSession is null && _user.Can(UserPermissions.Sale) && !_user.IsTraining)
-                    await OpenSelectedTableAsync();
-            }
-            finally { _selectingTable = false; }
-        };
+        button.Click += async (_, _) => await SelectOrOpenTableAsync(table);
 
         return button;
+    }
+
+    private async Task SelectOrOpenTableAsync(RestaurantTable table)
+    {
+        if (_selectingTable)
+            return;
+
+        _selectingTable = true;
+        try
+        {
+            _selectedTable = table;
+            _guestCount.Value = 1;
+            _tableNote.Text = "";
+            await RefreshDetailAsync();
+
+            if (_selectedSession is null &&
+                _user.Can(UserPermissions.Sale) &&
+                !_user.IsTraining)
+            {
+                await OpenSelectedTableAsync();
+            }
+        }
+        finally
+        {
+            _selectingTable = false;
+        }
     }
 
     private async Task RefreshDetailAsync()
@@ -561,8 +571,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _detailStatus.Text =
                 $"FREI · {_selectedTable.Seats} Plätze\n" +
                 "Noch kein offener Tischvorgang.";
-            _open.IsVisible = true;
-            _open.IsEnabled = true;
+            _sendOrder.IsEnabled = false;
             _add.IsEnabled = false;
             _move.IsEnabled = false;
             _merge.IsEnabled = false;
@@ -595,14 +604,13 @@ public sealed class RestaurantWorkspaceControl : UserControl
             $"Geöffnet: {_selectedSession.OpenedAt.ToLocalTime():dd.MM.yyyy HH:mm} · " +
             $"Version {_selectedSession.Version} · Summe {Formatting.Money(total)}";
 
+        _sendOrder.IsEnabled=!paymentLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
         _interim.IsEnabled=currentItems.Count>0;
         _payAll.IsEnabled=!paymentLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
         _items.ItemsSource = currentItems;
         _guestCount.Value = _selectedSession.GuestCount;
         _tableNote.Text = _selectedSession.Note;
 
-        _open.IsVisible = false;
-        _open.IsEnabled = false;
         _add.IsEnabled = !paymentLocked;
         _move.IsEnabled = !paymentLocked;
         _merge.IsEnabled = !paymentLocked;
@@ -700,6 +708,44 @@ public sealed class RestaurantWorkspaceControl : UserControl
         {
             await ShowErrorAsync(ex.Message);
             await ReloadAsync();
+        }
+    }
+
+    private async Task SendSelectedOrderAsync()
+    {
+        if (_selectedSession is null ||
+            !_user.Can(UserPermissions.Sale) ||
+            _user.IsTraining ||
+            _sendingOrder)
+        {
+            return;
+        }
+
+        _sendingOrder = true;
+        _sendOrder.IsEnabled = false;
+        try
+        {
+            var pending = await _kitchen.PendingAsync();
+            if (pending.Any(x => string.Equals(
+                    x.SessionId,
+                    _selectedSession.Id,
+                    StringComparison.Ordinal)))
+            {
+                _kitchenDispatcher.Notify();
+            }
+
+            _selectedTable = null;
+            _selectedSession = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
+        }
+        finally
+        {
+            _sendingOrder = false;
         }
     }
 
