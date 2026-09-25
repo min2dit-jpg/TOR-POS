@@ -595,6 +595,7 @@ await TseLifecycleReleaseGateTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await RestaurantFoundationTests.Run(Assert);
 await RestaurantSplitRulesTests.Run(Assert);
+await RestaurantWaiterSettlementTests.Run(root, Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
@@ -676,8 +677,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
 // Restaurant split rules add 3 checks: R-6 double selection, R-9.1 whole pieces;
-// 3 more for R-4 (B) split by persons with whole positions.
-const int ExpectedSafetyChecks = 1406;
+// 3 more for R-4 (B) split by persons with whole positions;
+// 3 for R-5.1 read-only Kellnerabrechnung.
+const int ExpectedSafetyChecks = 1409;
 
 if (checks != ExpectedSafetyChecks)
 {
