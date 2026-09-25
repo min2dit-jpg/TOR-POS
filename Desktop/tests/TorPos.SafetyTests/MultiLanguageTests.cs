@@ -573,6 +573,8 @@ public static class MultiLanguageTests
             "BEZAHLEN: Ein anderer Vorgang ist noch geschützt oder offen.",
             "RESTAURANT ZAHLUNG: Tisch bleibt gesperrt · ",
             "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein",
+            "Z-BERICHT GESPERRT · ",
+            "Z-BERICHT GESPERRT · Restaurant-Fiskalprüfung erforderlich",
             "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen",
             "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen"
         ];
