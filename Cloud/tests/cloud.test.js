@@ -14,7 +14,7 @@ const backups=path.join(root,'backups');
 const headers={'X-Device-Code':'DEMO-KASSE-01','X-Device-Token':'tor-demo-device-token-2026'};
 const BASE32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 function base32Decode(text){const clean=String(text||'').toUpperCase().replace(/[^A-Z2-7]/g,'');let bits=0,value=0;const out=[];for(const ch of clean){const idx=BASE32.indexOf(ch);value=(value<<5)|idx;bits+=5;if(bits>=8){out.push((value>>>(bits-8))&255);bits-=8;}}return Buffer.from(out);}
-function totp(secret){const counter=BigInt(Math.floor(Date.now()/30000)),msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest(),off=h[h.length-1]&15,bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
+function totp(secret,offsetMs=0){const counter=BigInt(Math.floor((Date.now()+offsetMs)/30000)),msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest(),off=h[h.length-1]&15,bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
 async function request(route,body,extra={}){
  const r=await fetch(base+route,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...extra},body:body===undefined?undefined:JSON.stringify(body)});
  return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};
@@ -257,8 +257,41 @@ test('R45 TOTP enrollment and challenge login',async()=>{
  await request('/api/logout',{}, {Cookie:otherCookie});
  const login=await request('/api/login',{email:'other@test.local',password:'test-password'});assert.equal(login.status,200);assert.equal(login.body.requires_2fa,true);assert.ok(login.body.challenge);
  assert.equal((await request('/api/login/2fa',{challenge:login.body.challenge,code:'000000'})).status,401);
- const ok=await request('/api/login/2fa',{challenge:login.body.challenge,code:totp(start.body.secret)});assert.equal(ok.status,200);assert.ok(ok.cookie);
+ // G-5: the confirm code is burnt; the next login needs the following code.
+ const ok=await request('/api/login/2fa',{challenge:login.body.challenge,code:totp(start.body.secret,30000)});assert.equal(ok.status,200);assert.ok(ok.cookie);
  otherCookie=ok.cookie;
+});
+// G-5: a stolen session must not be able to swap the authenticator, a TOTP code
+// is good for one use only, and successful logins do not feed the lockout.
+async function awayFromTotpBoundary(){const left=30000-Date.now()%30000;if(left<5000)await new Promise(r=>setTimeout(r,left+200));}
+test('G-5 authenticator swap needs password and a fresh code; TOTP codes cannot be replayed',async()=>{
+ const db=new DatabaseSync(path.join(root,'db.sqlite'));db.exec('PRAGMA busy_timeout=5000;');
+ const salt='g5-salt',hash=crypto.scryptSync('test-password',salt,64).toString('hex');
+ db.prepare('INSERT INTO users(business_id,email,display_name,role,password_salt,password_hash,created_at) VALUES(2,?,?,?,?,?,?)').run('g5@test.local','G5','OWNER',salt,hash,'2026-09-07');db.close();
+ await awayFromTotpBoundary();
+ const c=(await request('/api/login',{email:'g5@test.local',password:'test-password'})).cookie;
+ const s1=(await request('/api/2fa/setup/start',{},{Cookie:c})).body.secret;
+ assert.equal((await request('/api/2fa/setup/confirm',{code:totp(s1)},{Cookie:c})).status,200);
+ const bare=await request('/api/2fa/setup/start',{},{Cookie:c});assert.equal(bare.status,401);assert.equal(bare.body.code,'REAUTH_REQUIRED');assert.equal(bare.body.secret,undefined);
+ assert.equal((await request('/api/2fa/setup/start',{password:'test-password',code:totp(s1)},{Cookie:c})).status,401,'the confirm code is already used');
+ assert.equal((await request('/api/2fa/setup/start',{password:'wrong-password',code:totp(s1,30000)},{Cookie:c})).status,401);
+ const swap=await request('/api/2fa/setup/start',{password:'test-password',code:totp(s1,30000)},{Cookie:c});assert.equal(swap.status,200);
+ const s2=swap.body.secret;assert.notEqual(s2,s1);
+ assert.equal((await request('/api/2fa/setup/confirm',{code:totp(s2)},{Cookie:c})).status,200);
+ const login=async()=>(await request('/api/login',{email:'g5@test.local',password:'test-password'})).body.challenge;
+ let challenge=await login();
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s2)})).status,401,'confirm code replayed at login');
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s1,30000)})).status,401,'old authenticator no longer works');
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s2,30000)})).status,200);
+ challenge=await login();
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s2,30000)})).status,401,'login code replayed');
+});
+test('G-5 successful logins do not count toward the per-mail lockout',async()=>{
+ const attempt=password=>request('/api/login',{email:'viewer@test.local',password});
+ for(let i=0;i<9;i++)assert.equal((await attempt('wrong')).status,401);
+ assert.equal((await attempt('test-password')).status,200);
+ for(let i=0;i<9;i++)assert.equal((await attempt('wrong')).status,401,'counter must restart after a successful login');
+ assert.equal((await attempt('test-password')).status,200);
 });
 test('credential and browser-origin protection',async()=>{
  assert.equal((await sync([event('forbidden')],{'X-Device-Code':'OTHER-01','X-Device-Token':'tor-demo-device-token-2026'})).status,403);

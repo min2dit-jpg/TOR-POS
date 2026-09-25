@@ -90,6 +90,19 @@ Revisionsabschnitt überführt.
   neun Zeilen der Startprüfung sind gemeldet, drei bleiben offen - zwei davon,
   bis das Swissbit SDK vorliegt.
 
+### TOR Cloud (C-1, C-3, G-5)
+
+- **C-1:** Caddy begrenzt `/api/v1/devices/mail/send` jetzt auf 12 MiB statt
+  pauschal 2 MB; TOR-Mail-Berichte und DATEV-Anhänge bis 8 MB kommen wieder an.
+  Alle anderen Routen bleiben bei 2 MB. Mit Caddy 2.10.2 geprüft.
+- **C-3:** `/updates/*` und `/trial/*` hashen den Installer per Stream und
+  merken sich das Ergebnis pro Dateiidentität; die Event-Loop blockiert nicht
+  mehr. Die Prüfung gegen das Manifest bleibt bei jedem Download.
+- **G-5:** Ist 2FA aktiv, verlangt ein Wechsel der Authenticator-App Passwort
+  und aktuellen Code. Jeder TOTP-Code gilt nur einmal. Erfolgreiche Anmeldungen
+  zählen nicht mehr zur Sperre pro E-Mail, und eine unbekannte E-Mail läuft
+  durch dasselbe scrypt wie eine bekannte.
+
 Safety-Baseline: **1287** Checks.
 
 ## Release-Historie

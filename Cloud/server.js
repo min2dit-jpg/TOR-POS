@@ -110,6 +110,14 @@ function timingSafeEqualText(a, b) {
   const bb = Buffer.from(String(b));
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
+// G-5: an unknown e-mail runs the same scrypt as a known one, so the response
+// time does not tell whether an account exists.
+const DUMMY_PASSWORD_SALT = crypto.randomBytes(16).toString('hex');
+const DUMMY_PASSWORD_HASH = crypto.scryptSync(crypto.randomBytes(16), DUMMY_PASSWORD_SALT, 64).toString('hex');
+async function verifyUserPassword(user, password) {
+  const ok = await verifyPassword(password, user ? user.password_salt : DUMMY_PASSWORD_SALT, user ? user.password_hash : DUMMY_PASSWORD_HASH);
+  return !!user && ok;
+}
 async function verifyPassword(password, salt, expected) {
   const actual = (await new Promise((resolve,reject)=>crypto.scrypt(password,salt,64,(error,key)=>error?reject(error):resolve(key)))).toString('hex');
   return timingSafeEqualText(actual, expected);
@@ -117,8 +125,14 @@ async function verifyPassword(password, salt, expected) {
 const BASE32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 function base32Encode(buffer){let bits=0,value=0,out='';for(const byte of buffer){value=(value<<8)|byte;bits+=8;while(bits>=5){out+=BASE32[(value>>>(bits-5))&31];bits-=5;}}if(bits>0)out+=BASE32[(value<<(5-bits))&31];return out;}
 function base32Decode(text){const clean=String(text||'').toUpperCase().replace(/[^A-Z2-7]/g,'');let bits=0,value=0;const out=[];for(const ch of clean){const idx=BASE32.indexOf(ch);if(idx<0)continue;value=(value<<5)|idx;bits+=5;if(bits>=8){out.push((value>>>(bits-8))&255);bits-=8;}}return Buffer.from(out);}
-function totpCode(secret,timeMs=Date.now()){const counter=BigInt(Math.floor(timeMs/30000));const msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest();const off=h[h.length-1]&15;const bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
-function verifyTotp(secret,code){const c=String(code||'').replace(/\s/g,'');if(!/^\d{6}$/.test(c))return false;const now=Date.now();return [-30000,0,30000].some(delta=>timingSafeEqualText(totpCode(secret,now+delta),c));}
+function totpCode(secret,timeMs=Date.now()){return totpAtStep(secret,Math.floor(timeMs/30000));}
+function totpAtStep(secret,step){const counter=BigInt(step);const msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest();const off=h[h.length-1]&15;const bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
+// G-5: returns the matching 30 s step (0 = no match). Only steps after
+// `notBefore` count, so a code that was already accepted once cannot be
+// replayed while it is still inside the +/-30 s window.
+function totpStep(secret,code,notBefore=0){const c=String(code||'').replace(/\s/g,'');if(!secret||!/^\d{6}$/.test(c))return 0;const now=Math.floor(Date.now()/30000);for(const step of [now-1,now,now+1])if(step>notBefore&&timingSafeEqualText(totpAtStep(secret,step),c))return step;return 0;}
+// Accepts the code for this user and burns its step; false on mismatch or replay.
+function consumeTotp(userId,secret,lastStep,code){const step=totpStep(secret,code,Number(lastStep||0));if(!step)return false;return db.prepare('UPDATE users SET totp_last_step=? WHERE id=? AND totp_last_step<?').run(step,userId,step).changes===1;}
 function recoveryCode(){const raw=base32Encode(crypto.randomBytes(8)).slice(0,12);return raw.match(/.{1,4}/g).join('-');}
 function protectTotpSecret(secret){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',TOTP_KEY,iv);const enc=Buffer.concat([cipher.update(String(secret),'utf8'),cipher.final()]);const tag=cipher.getAuthTag();return ['v1',iv.toString('base64url'),tag.toString('base64url'),enc.toString('base64url')].join(':');}
 function unprotectTotpSecret(value){const text=String(value||'');if(!text)return '';if(!text.startsWith('v1:'))return text;const parts=text.split(':');if(parts.length!==4)throw new Error('2FA-Schlüssel ist beschädigt.');const iv=Buffer.from(parts[1],'base64url'),tag=Buffer.from(parts[2],'base64url'),enc=Buffer.from(parts[3],'base64url');const dec=crypto.createDecipheriv('aes-256-gcm',TOTP_KEY,iv);dec.setAuthTag(tag);return Buffer.concat([dec.update(enc),dec.final()]).toString('utf8');}
@@ -537,6 +551,7 @@ ensureColumn('users','totp_enabled','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','totp_pending_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','recovery_hashes',"TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('users','totp_last_step','INTEGER NOT NULL DEFAULT 0');
 // R128: set by tools/provision.js for a one-time password; cleared when the
 // owner chooses their own. Existing accounts default to 0 and are unaffected.
 ensureColumn('users','must_change_password','INTEGER NOT NULL DEFAULT 0');
@@ -966,6 +981,10 @@ function loginLimited(req,email){
   for(const key of keys){const v=loginAttempts.get(key)||{count:0,until:now+15*60*1000};v.count++;loginAttempts.set(key,v);if(v.count>(key.startsWith('ip:')?100:10))limited=true;}
   return limited;
 }
+// G-5: the per-mail counter used to count successful logins as well, so an
+// owner who simply logged in often enough locked themselves out and an attacker
+// needed fewer wrong guesses to do it for them. Only failures accumulate now.
+function loginSucceeded(email){loginAttempts.delete('mail:'+email);}
 async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -1247,14 +1266,14 @@ async function handler(req, res) {
       const body=await readJson(req);const email=String(body.email||'').trim().toLowerCase();const password=String(body.password||'');
       if(loginLimited(req,email))return json(res,429,{ok:false,error:'Zu viele Anmeldeversuche. Bitte 15 Minuten warten.'});
       const user=db.prepare('SELECT * FROM users WHERE email=? AND is_active=1').get(email);
-      if(!user || !await verifyPassword(password,user.password_salt,user.password_hash))return json(res,401,{ok:false,error:'E-Mail oder Passwort ist falsch.'});
+      if(!await verifyUserPassword(user,password))return json(res,401,{ok:false,error:'E-Mail oder Passwort ist falsch.'});
       if(user.totp_enabled){
         const challenge=randomId(24),expires=new Date(Date.now()+5*60*1000).toISOString();
         db.prepare('DELETE FROM login_challenges WHERE user_id=? OR expires_at<=?').run(user.id,nowIso());
         db.prepare('INSERT INTO login_challenges(id,user_id,created_at,expires_at) VALUES(?,?,?,?)').run(challenge,user.id,nowIso(),expires);
         return json(res,200,{ok:true,requires_2fa:true,challenge});
       }
-      createSession(res,user);
+      loginSucceeded(email);createSession(res,user);
       return json(res,200,{ok:true,requires_2fa:false,user:{display_name:user.display_name,role:user.role},two_factor_setup_required:REQUIRE_OWNER_2FA&&user.role==='OWNER'});
     }
 
@@ -1263,10 +1282,10 @@ async function handler(req, res) {
       const row=db.prepare(`SELECT c.id,c.user_id,c.expires_at,c.attempts,u.* FROM login_challenges c JOIN users u ON u.id=c.user_id WHERE c.id=? AND u.is_active=1`).get(challenge);
       if(!row || Date.parse(row.expires_at)<=Date.now()){if(row)db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);return json(res,401,{ok:false,error:'2FA-Anmeldung ist abgelaufen. Bitte erneut anmelden.'});}
       if(row.attempts>=5){db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);return json(res,429,{ok:false,error:'Zu viele 2FA-Versuche. Bitte erneut anmelden.'});}
-      let valid=verifyTotp(unprotectTotpSecret(row.totp_secret),code),usedRecovery=false;
+      let valid=consumeTotp(row.user_id,unprotectTotpSecret(row.totp_secret),row.totp_last_step,code),usedRecovery=false;
       if(!valid){let hashes=[];try{hashes=JSON.parse(row.recovery_hashes||'[]');}catch{}const h=hashToken(code.replace(/-/g,''));const idx=hashes.findIndex(x=>timingSafeEqualText(x,h));if(idx>=0){valid=true;usedRecovery=true;hashes.splice(idx,1);db.prepare('UPDATE users SET recovery_hashes=? WHERE id=?').run(JSON.stringify(hashes),row.user_id);}}
       if(!valid){db.prepare('UPDATE login_challenges SET attempts=attempts+1 WHERE id=?').run(challenge);return json(res,401,{ok:false,error:'Sicherheitscode ist ungültig.'});}
-      db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);createSession(res,row);
+      db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);loginSucceeded(row.email);createSession(res,row);
       return json(res,200,{ok:true,user:{display_name:row.display_name,role:row.role},used_recovery_code:usedRecovery});
     }
 
@@ -1298,6 +1317,7 @@ async function handler(req, res) {
       if(problem)return json(res,400,{ok:false,error:problem});
       const secret=hashPassword(next);
       db.prepare('UPDATE users SET password_salt=?,password_hash=?,must_change_password=0 WHERE id=?').run(secret.salt,secret.hash,user.user_id);
+      loginSucceeded(user.email);
       // Whoever knew the old password must not stay logged in elsewhere; the
       // session that made the change continues.
       const ended=Number(db.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').run(user.user_id,parseCookies(req).tor_session||'').changes);
@@ -1306,6 +1326,17 @@ async function handler(req, res) {
 
     if(req.method==='POST' && pathname==='/api/2fa/setup/start'){
       const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;
+      // G-5: with 2FA already on, a session alone must not be enough to swap
+      // the authenticator - a stolen session could otherwise lock the owner out.
+      // Re-enrolment needs the password and a current code, like disabling.
+      if(user.totp_enabled){
+        const body=await readJson(req);
+        if(loginLimited(req,user.email))return json(res,429,{ok:false,error:'Zu viele Versuche. Bitte 15 Minuten warten.'});
+        const row=db.prepare('SELECT * FROM users WHERE id=?').get(user.user_id);
+        if(!await verifyUserPassword(row,String(body.password||''))||!consumeTotp(row.id,unprotectTotpSecret(row.totp_secret),row.totp_last_step,String(body.code||'')))
+          return json(res,401,{ok:false,code:'REAUTH_REQUIRED',error:'Passwort oder Sicherheitscode ist falsch.'});
+        loginSucceeded(user.email);
+      }
       const secret=base32Encode(crypto.randomBytes(20));
       db.prepare('UPDATE users SET totp_pending_secret=? WHERE id=?').run(protectTotpSecret(secret),user.user_id);
       const label=encodeURIComponent(`TOR POS Cloud:${user.email}`);const issuer=encodeURIComponent('TOR POS Cloud');
@@ -1316,19 +1347,22 @@ async function handler(req, res) {
       const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;const body=await readJson(req);
       const row=db.prepare('SELECT totp_pending_secret FROM users WHERE id=?').get(user.user_id);const secret=unprotectTotpSecret(row?.totp_pending_secret||'');
       if(!secret)return json(res,400,{ok:false,error:'2FA-Einrichtung wurde noch nicht gestartet.'});
-      if(!verifyTotp(secret,String(body.code||'')))return json(res,400,{ok:false,error:'Sicherheitscode passt nicht. Uhrzeit am Telefon prüfen und erneut versuchen.'});
+      const step=totpStep(secret,String(body.code||''));
+      if(!step)return json(res,400,{ok:false,error:'Sicherheitscode passt nicht. Uhrzeit am Telefon prüfen und erneut versuchen.'});
       const recovery=Array.from({length:8},()=>recoveryCode());const hashes=recovery.map(x=>hashToken(x.replace(/-/g,'')));
-      db.prepare("UPDATE users SET totp_enabled=1,totp_secret=?,totp_pending_secret='',recovery_hashes=? WHERE id=?").run(protectTotpSecret(secret),JSON.stringify(hashes),user.user_id);
+      db.prepare("UPDATE users SET totp_enabled=1,totp_secret=?,totp_pending_secret='',recovery_hashes=?,totp_last_step=? WHERE id=?").run(protectTotpSecret(secret),JSON.stringify(hashes),step,user.user_id);
       db.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').run(user.user_id,parseCookies(req).tor_session||'');
       return json(res,200,{ok:true,recovery_codes:recovery});
     }
 
     if(req.method==='POST' && pathname==='/api/2fa/disable'){
       const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;const body=await readJson(req);
+      if(loginLimited(req,user.email))return json(res,429,{ok:false,error:'Zu viele Versuche. Bitte 15 Minuten warten.'});
       const row=db.prepare('SELECT * FROM users WHERE id=?').get(user.user_id);
-      if(!row || !await verifyPassword(String(body.password||''),row.password_salt,row.password_hash) || !verifyTotp(unprotectTotpSecret(row.totp_secret),String(body.code||'')))return json(res,401,{ok:false,error:'Passwort oder Sicherheitscode ist falsch.'});
+      if(!await verifyUserPassword(row,String(body.password||'')) || !consumeTotp(row.id,unprotectTotpSecret(row.totp_secret),row.totp_last_step,String(body.code||'')))return json(res,401,{ok:false,error:'Passwort oder Sicherheitscode ist falsch.'});
       if(REQUIRE_OWNER_2FA && row.role==='OWNER')return json(res,409,{ok:false,error:'2FA ist für Inhaber in diesem Cloud-Betrieb verpflichtend.'});
       db.prepare("UPDATE users SET totp_enabled=0,totp_secret='',totp_pending_secret='',recovery_hashes='[]' WHERE id=?").run(user.user_id);
+      loginSucceeded(user.email);
       return json(res,200,{ok:true});
     }
 

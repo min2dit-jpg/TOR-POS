@@ -110,7 +110,11 @@ if ($('logoutBtn')) {
     $('twoFactorState').innerHTML=`${statusLine('Zwei-Faktor',sec.totp_enabled?'Aktiv':'Nicht aktiv',['AKTIV'])}${statusLine('Inhaber-Richtlinie',sec.setup_required?'Einrichtung erforderlich':'Erfüllt',['ERFÜLLT'])}`;
     // R128: while the one-time password is still active the server refuses
     // 2FA enrolment anyway, so the button would only produce an error.
-    $('twoFactorStart').hidden=!!sec.totp_enabled||!!sec.password_change_required;
+    $('twoFactorStart').hidden=!!sec.password_change_required;
+    // G-5: with 2FA on, the button switches the authenticator and the server
+    // wants the password and a current code for that.
+    $('twoFactorStart').textContent=sec.totp_enabled?'AUTHENTICATOR WECHSELN':'2FA EINRICHTEN';
+    $('twoFactorReauth').hidden=!sec.totp_enabled;
     $('twoFactorDisablePanel').hidden=!sec.totp_enabled;
     $('passwordHint').textContent=sec.password_change_required
       ?'Sie sind mit einem Einmal-Passwort angemeldet. Bitte jetzt ein eigenes Passwort festlegen (mindestens 12 Zeichen) – vorher werden keine Geschäftsdaten angezeigt.'
@@ -131,7 +135,8 @@ if ($('logoutBtn')) {
   });
   if($('twoFactorStart')) $('twoFactorStart').addEventListener('click',async()=>{
     $('twoFactorSetupMsg').textContent='';
-    try{const r=await api('/api/2fa/setup/start',{method:'POST',body:'{}'});$('twoFactorSecret').textContent=r.secret;$('twoFactorSetup').hidden=false;$('twoFactorConfirmCode').focus();}
+    const reauth=!$('twoFactorReauth').hidden?{password:$('twoFactorReauthPassword').value,code:$('twoFactorReauthCode').value}:{};
+    try{const r=await api('/api/2fa/setup/start',{method:'POST',body:JSON.stringify(reauth)});$('twoFactorReauthPassword').value='';$('twoFactorReauthCode').value='';$('twoFactorSecret').textContent=r.secret;$('twoFactorSetup').hidden=false;$('twoFactorConfirmCode').focus();}
     catch(err){$('twoFactorSetupMsg').textContent=err.message;$('twoFactorSetup').hidden=false;}
   });
   if($('twoFactorConfirm')) $('twoFactorConfirm').addEventListener('click',async()=>{
