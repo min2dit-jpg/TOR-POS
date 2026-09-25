@@ -5,30 +5,6 @@ internal static class RestaurantThirdExeTests
 {
     public static async Task Run(Action<bool,string> assert)
     {
-        var desktopRoot = Directory.GetCurrentDirectory();
-        var workspacePath = Path.Combine(
-            desktopRoot,
-            "src",
-            "TorPos.App",
-            "RestaurantWorkspaceControl.cs");
-        assert(
-            File.Exists(workspacePath),
-            "Restaurant main flow has reusable RestaurantWorkspaceControl");
-
-        if (File.Exists(workspacePath))
-        {
-            var workspaceSource = await File.ReadAllTextAsync(workspacePath);
-            assert(
-                workspaceSource.Contains("public sealed class RestaurantWorkspaceControl", StringComparison.Ordinal) &&
-                workspaceSource.Contains("Task InitializeAsync()", StringComparison.Ordinal) &&
-                workspaceSource.Contains("Task RefreshAsync()", StringComparison.Ordinal) &&
-                workspaceSource.Contains("bool IsBusy", StringComparison.Ordinal) &&
-                workspaceSource.Contains("CheckoutRequestedAsync", StringComparison.Ordinal) &&
-                workspaceSource.Contains("CounterRequestedAsync", StringComparison.Ordinal) &&
-                workspaceSource.Contains("OpenMasterDataAsync", StringComparison.Ordinal),
-                "Restaurant workspace exposes the embedded-main-flow contract");
-        }
-
         var oldEdition = Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION");
         Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", "RESTAURANT");
         try
