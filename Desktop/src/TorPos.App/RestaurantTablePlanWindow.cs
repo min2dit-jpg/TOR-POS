@@ -68,24 +68,7 @@ public sealed class RestaurantTablePlanWindow : Window
             return Task.CompletedTask;
         };
 
-        var close = new Button
-        {
-            Name = "TablePlanClose",
-            Content = "SCHLIESSEN",
-            MinHeight = 44,
-            Margin = new Thickness(18, 0, 18, 12),
-            HorizontalAlignment = HorizontalAlignment.Right
-        };
-        close.Click += (_, _) => Close();
-
-        var root = new Grid
-        {
-            RowDefinitions = new RowDefinitions("*,Auto")
-        };
-        root.Children.Add(_workspace);
-        Grid.SetRow(close, 1);
-        root.Children.Add(close);
-        Content = root;
+        Content = _workspace;
 
         Opened += async (_, _) => await _workspace.InitializeAsync();
         Closing += (_, e) =>

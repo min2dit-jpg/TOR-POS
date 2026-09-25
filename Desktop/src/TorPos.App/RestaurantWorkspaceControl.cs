@@ -524,12 +524,15 @@ public sealed class RestaurantWorkspaceControl : UserControl
             CornerRadius = new CornerRadius(10)
         };
 
-        button.Click += async (_, _) => await SelectOrOpenTableAsync(table);
+        button.Click += async (_, _) =>
+            await SelectOrOpenTableAsync(table, session);
 
         return button;
     }
 
-    private async Task SelectOrOpenTableAsync(RestaurantTable table)
+    private async Task SelectOrOpenTableAsync(
+        RestaurantTable table,
+        RestaurantTableSession? liveSession)
     {
         if (_selectingTable)
             return;
@@ -538,16 +541,54 @@ public sealed class RestaurantWorkspaceControl : UserControl
         try
         {
             _selectedTable = table;
-            _guestCount.Value = 1;
-            _tableNote.Text = "";
-            await RefreshDetailAsync();
+            _guestCount.Value = liveSession?.GuestCount ?? 1;
+            _tableNote.Text = liveSession?.Note ?? "";
 
-            if (_selectedSession is null &&
-                _user.Can(UserPermissions.Sale) &&
-                !_user.IsTraining)
+            if (liveSession is not null)
             {
-                await OpenSelectedTableAsync();
+                _selectedSession = liveSession;
+                await RefreshDetailAsync();
+                return;
             }
+
+            if (!_user.Can(UserPermissions.Sale) || _user.IsTraining)
+            {
+                await RefreshDetailAsync();
+                return;
+            }
+
+            var guests = Math.Clamp(
+                Convert.ToInt32(_guestCount.Value ?? 1m),
+                1,
+                999);
+
+            try
+            {
+                _selectedSession = await _restaurant.OpenTableAsync(
+                    table.Id,
+                    _user.Username,
+                    guestCount: guests,
+                    note: _tableNote.Text ?? "",
+                    deviceId: Environment.MachineName);
+            }
+            catch (InvalidOperationException ex)
+                when (ex.Message.Contains(
+                    "bereits geöffnet",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _selectedSession =
+                    await _restaurant.GetLiveSessionForTableAsync(table.Id);
+
+                if (_selectedSession is null)
+                    throw;
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(ex.Message);
+            await ReloadAsync();
         }
         finally
         {
@@ -726,17 +767,21 @@ public sealed class RestaurantWorkspaceControl : UserControl
         try
         {
             var pending = await _kitchen.PendingAsync();
-            if (pending.Any(x => string.Equals(
-                    x.SessionId,
-                    _selectedSession.Id,
-                    StringComparison.Ordinal)))
-            {
+            var hasPending = pending.Any(x => string.Equals(
+                x.SessionId,
+                _selectedSession.Id,
+                StringComparison.Ordinal));
+
+            if (hasPending)
                 _kitchenDispatcher.Notify();
-            }
 
             _selectedTable = null;
             _selectedSession = null;
             await ReloadAsync();
+
+            _detailStatus.Text = hasPending
+                ? "Bestellung gesendet. Tisch auswählen."
+                : "Bestellung bereits gesendet. Tisch auswählen.";
         }
         catch (Exception ex)
         {
@@ -746,33 +791,6 @@ public sealed class RestaurantWorkspaceControl : UserControl
         finally
         {
             _sendingOrder = false;
-        }
-    }
-
-    private async Task OpenSelectedTableAsync()
-    {
-        if (_selectedTable is null || !_user.Can(UserPermissions.Sale) || _user.IsTraining)
-            return;
-
-        try
-        {
-            var guests = Math.Clamp(
-                Convert.ToInt32(_guestCount.Value ?? 1m),
-                1,
-                999);
-
-            _selectedSession = await _restaurant.OpenTableAsync(
-                _selectedTable.Id,
-                _user.Username,
-                guestCount: guests,
-                note: _tableNote.Text ?? "",
-                deviceId: Environment.MachineName);
-
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            await ShowErrorAsync(ex.Message);
         }
     }
 
