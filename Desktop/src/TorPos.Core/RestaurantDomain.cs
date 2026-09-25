@@ -100,6 +100,18 @@ public static class RestaurantSplitCalculator
         IReadOnlyList<RestaurantSplitSelection> selections)
     {
         var source = openItems.ToDictionary(x => x.Id);
+
+        var duplicateSelection =
+            selections
+                .GroupBy(x => x.SessionItemId)
+                .FirstOrDefault(x => x.Count() > 1);
+
+        if (duplicateSelection is not null)
+        {
+            throw new InvalidOperationException(
+                "Position mehrfach ausgewählt. Jede Tischposition darf nur einmal in einer Teilrechnung vorkommen.");
+        }
+
         var lines = new List<RestaurantSplitLine>();
 
         foreach (var selection in selections)
@@ -109,6 +121,13 @@ public static class RestaurantSplitCalculator
 
             if (selection.QuantityMilli <= 0 || selection.QuantityMilli > item.QuantityMilli)
                 throw new InvalidOperationException("Ungültige Teilmenge für Splitrechnung.");
+
+            if (item.QuantityMilli % 1000 == 0 &&
+                selection.QuantityMilli % 1000 != 0)
+            {
+                throw new InvalidOperationException(
+                    "Diese Position kann nur in ganzen Stückzahlen geteilt werden.");
+            }
 
             var amount = AllocateCents(
                 item.LineTotalCents,

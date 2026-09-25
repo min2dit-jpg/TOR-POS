@@ -2114,6 +2114,58 @@ internal static class RestaurantFoundationTests
                 "K-4 aborted PENDING Restaurant item can be compensated without leaving the table permanently inconsistent");
 
             var splitItems = await repo.ListActiveItemsAsync(session.Id);
+
+            var duplicateSplitRejected = false;
+            try
+            {
+                RestaurantSplitCalculator.ByItems(
+                    splitItems,
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            splitItems.Single().Id,
+                            1000),
+                        new RestaurantSplitSelection(
+                            splitItems.Single().Id,
+                            1000)
+                    });
+            }
+            catch (InvalidOperationException ex)
+            {
+                duplicateSplitRejected =
+                    ex.Message.Contains(
+                        "mehrfach ausgewählt",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                duplicateSplitRejected,
+                "Restaurant split rejects the same table position twice with an operator-readable message");
+
+            var fractionalPieceRejected = false;
+            try
+            {
+                RestaurantSplitCalculator.ByItems(
+                    splitItems,
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            splitItems.Single().Id,
+                            500)
+                    });
+            }
+            catch (InvalidOperationException ex)
+            {
+                fractionalPieceRejected =
+                    ex.Message.Contains(
+                        "ganzen Stückzahlen",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                fractionalPieceRejected,
+                "Restaurant split rejects fractional quantities for whole-piece items so cent rounding cannot leak");
+
             var splitQuote = RestaurantSplitCalculator.ByItems(
                 splitItems,
                 new[]
