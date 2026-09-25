@@ -577,6 +577,7 @@ await O6UiErrorGuardTests.Run(Assert);
 await F3F4FiscalGateTests.Run(Assert);
 await F6TseFinishJournalTests.Run(root, Assert);
 await G3UpdateHelperTests.Run(Assert);
+await ReviewFollowUpTests.Run(Assert);
 await O1PrintJournalTests.Run(root, Assert);
 await O12CsvImportTests.Run(root, Assert);
 await K3FactoryAdminSecurityTests.Run(root, Assert);
@@ -675,7 +676,8 @@ await BarTestBonPreparationTests.Run(Assert);
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
 // C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue.
-const int ExpectedSafetyChecks = 1403;
+// O-19/O-4 add 5 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState.
+const int ExpectedSafetyChecks = 1408;
 
 if (checks != ExpectedSafetyChecks)
 {

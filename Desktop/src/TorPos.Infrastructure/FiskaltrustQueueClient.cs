@@ -43,6 +43,18 @@ public static class FiskaltrustDeCases
     public const long SignatureStartTime = 0x4445000000000019L;
     public const long SignatureLogTime = 0x444500000000001AL;
     public const long SignatureValue = 0x444500000000001DL;
+
+    // O-4: ftState bits that mean the receipt was NOT signed by a working TSE
+    // (queue out of service, SSCD temporarily/permanently out of service,
+    // late-signing mode). Informational bits such as "message pending" or
+    // "daily closing due" do not block.
+    public const long StateOutOfService = 0x0001L;
+    public const long StateSscdTemporaryFailure = 0x0002L;
+    public const long StateSscdPermanentFailure = 0x0004L;
+    public const long StateLateSigning = 0x0008L;
+    public const long StateUnsignedMask =
+        StateOutOfService | StateSscdTemporaryFailure |
+        StateSscdPermanentFailure | StateLateSigning;
     public const long SignatureTseSerial = 0x4445000000000023L;
 
     public static long ChargeForVat(decimal vatRate) => vatRate switch
@@ -265,6 +277,7 @@ public sealed class FiskaltrustQueueClient : IDisposable
     private readonly Uri _signEndpoint;
 
     public FiskaltrustLocalQueueConfiguration Configuration { get; }
+    public static readonly TimeSpan DefaultSignTimeout = TimeSpan.FromSeconds(10);
 
     public FiskaltrustQueueClient(
         FiskaltrustLocalQueueConfiguration configuration,
@@ -291,7 +304,10 @@ public sealed class FiskaltrustQueueClient : IDisposable
             configuration.QueueEndpoint,
             "json/v1/Sign");
 
-        _http = httpClient ?? new HttpClient();
+        // O-4: HttpClient's default 100 s timeout froze the payment dialog
+        // when the local queue hung. A local middleware answers a Sign in
+        // well under a second; 10 s is the ceiling before the sale fails.
+        _http = httpClient ?? new HttpClient { Timeout = DefaultSignTimeout };
         _ownsHttp = httpClient is null;
     }
 
@@ -388,6 +404,9 @@ public sealed class FiskaltrustQueueClient : IDisposable
             Signature(FiskaltrustDeCases.SignatureLogTime));
 
         var missing = new List<string>();
+        var unsignedState = response.FtState & FiskaltrustDeCases.StateUnsignedMask;
+        if (unsignedState != 0)
+            missing.Add($"TSE-Status ftState=0x{response.FtState:X16}");
         if (!ulong.TryParse(
                 transactionText,
                 NumberStyles.None,
