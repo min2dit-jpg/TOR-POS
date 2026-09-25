@@ -35,6 +35,26 @@ internal static class RestaurantRecipeTests
             try { await recipes.SaveIngredientAsync(new(meat,"Fleisch","ml",true)); }
             catch(InvalidOperationException){ rejected=true; }
             assert(rejected, "Referenced ingredient unit cannot silently change recipe quantities");
+            await recipes.SaveOptionAsync(new(0,"ohne Zwiebeln",true));
+            assert((await new RestaurantRecipeRepository(db).ListOptionsAsync()).Any(o=>o.Name=="ohne Zwiebeln"),
+                "Customer order options persist separately from ingredients");
+            var orders=new RestaurantRepository(db);
+            var area=await orders.SaveAreaAsync("Gastraum");
+            var table=await orders.SaveTableAsync(area,"G1","Tisch 1",4);
+            var session=await orders.OpenTableAsync(table,"Kellner");
+            var added=await orders.AddItemWithLineTokenAsync(session.Id,session.Version,product,2m,"Kellner","options-test",orderOptions:"ohne Zwiebeln");
+            var retry=await orders.AddItemWithLineTokenAsync(session.Id,session.Version,product,2m,"Kellner","options-test",orderOptions:"ohne Zwiebeln");
+            assert(added.Item.Id==retry.Item.Id && added.Item.ProductName=="Burger (ohne Zwiebeln)" && added.Item.UnitPriceCents==1200,
+                "Option snapshot is price-neutral and retry-idempotent");
+            rejected=false;
+            try { await orders.AddItemWithLineTokenAsync(session.Id,session.Version,product,2m,"Kellner","options-test",orderOptions:"extra Käse"); }
+            catch(InvalidOperationException){ rejected=true; }
+            assert(rejected,"Retry cannot replace a persisted customer option");
+            session=(await orders.GetSessionAsync(session.Id))!;
+            var draft=await orders.BuildCheckoutDraftAsync(session.Id,session.Version,new[]{new RestaurantSplitSelection(added.Item.Id,1000)});
+            assert(draft.Lines.Single().ProductName=="Burger (ohne Zwiebeln)" && draft.Lines.Single().LineTotalCents==1200,
+                "Split checkout retains option snapshot and unchanged fiscal amount");
+
         }
         finally { Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION",oldEdition); }
     }

@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 42;
+    public const int TargetSchemaVersion = 43;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2351,6 +2351,14 @@ public sealed class SchemaMigrationService
                         name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                         is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
                     """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(43, "RESTAURANT_ORDER_OPTION_SNAPSHOT", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+                await using var q=c.CreateCommand();q.Transaction=tx;
+                q.CommandText="ALTER TABLE restaurant_session_items ADD COLUMN order_options TEXT NOT NULL DEFAULT '';";
                 await q.ExecuteNonQueryAsync(ct);
             })
         };

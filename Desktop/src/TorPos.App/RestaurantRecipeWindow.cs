@@ -13,12 +13,13 @@ public sealed class RestaurantRecipeWindow : Window
         var ingredient=new ComboBox { MinHeight=44 };
         var quantity=new NumericUpDown { Minimum=0.001m,Maximum=1000000,Increment=1,Value=1,FormatString="0.###",MinHeight=44 };
         var status=RestaurantEditorLayout.Label("");
+        var loaded=false;
         var ingredients=Array.Empty<RestaurantIngredient>(); var recipe=new List<RestaurantRecipeLine>();
         void Refresh()=>rows.ItemsSource=recipe.Select(x=>new Row(x,ingredients.First(i=>i.Id==x.IngredientId))).ToArray();
         var add=RestaurantEditorLayout.Button("ZUTAT ÜBERNEHMEN");
         add.Click+=(_,_)=>
         {
-            if(ingredient.SelectedItem is not Choice choice)return;
+            if(!loaded || ingredient.SelectedItem is not Choice choice)return;
             recipe.RemoveAll(x=>x.IngredientId==choice.Item.Id);
             recipe.Add(new(choice.Item.Id,quantity.Value??1));Refresh();
         };
@@ -29,10 +30,12 @@ public sealed class RestaurantRecipeWindow : Window
             quantity.Value=row.Line.Quantity;
         };
         var remove=RestaurantEditorLayout.Button("ZUTAT ENTFERNEN");
-        remove.Click+=(_,_)=>{if(rows.SelectedItem is Row row){recipe.Remove(row.Line);Refresh();}};
-        var save=RestaurantEditorLayout.Button("REZEPTUR SPEICHERN"); save.Name="EditorSave";
+        remove.Click+=(_,_)=>{if(loaded && rows.SelectedItem is Row row){recipe.Remove(row.Line);Refresh();}};
+        var save=RestaurantEditorLayout.Button("REZEPTUR SPEICHERN"); save.Name="EditorSave"; save.IsEnabled=false;
+        ingredient.IsEnabled=quantity.IsEnabled=add.IsEnabled=remove.IsEnabled=false;
         save.Click+=async (_,_)=>
         {
+            if(!loaded)return;
             save.IsEnabled=false;
             try{await repository.SaveRecipeAsync(product.Id,recipe);Close();}
             catch(Exception ex){status.Text=ex.Message;}
@@ -47,6 +50,8 @@ public sealed class RestaurantRecipeWindow : Window
                 ingredients=(await repository.ListIngredientsAsync()).ToArray();
                 ingredient.ItemsSource=ingredients.Where(x=>x.IsActive).Select(x=>new Choice(x)).ToArray();
                 recipe=(await repository.LoadRecipeAsync(product.Id)).ToList();Refresh();
+                loaded=true;
+                save.IsEnabled=ingredient.IsEnabled=quantity.IsEnabled=add.IsEnabled=remove.IsEnabled=true;
             }
             catch(Exception ex){status.Text=ex.Message;}
         };

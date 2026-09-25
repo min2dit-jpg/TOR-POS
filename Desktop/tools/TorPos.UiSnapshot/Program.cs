@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -148,6 +149,15 @@ async Task RunAsync()
     UiLanguage.Set(language);
     await InstallationEdition.EnforceAsync(settings, snapshotEdition);
     await new ImbissStarterCatalogService(db).EnsureAsync(snapshotEdition);
+    if(snapshotEdition=="RESTAURANT")
+    {
+        var group=await repo.SaveGroupAsync(new(0,"Speisekarte"));
+        var food=await repo.SaveCategoryAsync(new(0,group,"Snapshot Speisen",7m));
+        var drinks=await repo.SaveCategoryAsync(new(0,group,"Snapshot Getränke",19m));
+        await repo.SaveAsync(new Product { CategoryId=food,Name="Burger",BasePriceCents=1200,VatRate=7m });
+        await repo.SaveAsync(new Product { CategoryId=food,Name="Pommes",BasePriceCents=400,VatRate=7m });
+        await repo.SaveAsync(new Product { CategoryId=drinks,Name="Cola",BasePriceCents=350,VatRate=19m });
+    }
     await catalog.ReloadAsync();
     await tseOutages.OpenAsync("UI-Snapshot: TSE nicht erreichbar", "snapshot");
 
@@ -190,7 +200,7 @@ async Task RunAsync()
             if (plan is null) throw new InvalidOperationException("Restaurant startup did not open Tischplan.");
             plan.WindowState = WindowState.Normal; plan.Width = width; plan.Height = height;
             await Task.Delay(150); Dispatcher.UIThread.RunJobs();
-            CheckNamedActions(plan, new[] { "ThekeButton", "TableDetailsSave", "TablePlanClose" }, failures);
+            CheckNamedActions(plan, new[] { "ThekeButton", "TableDetailsSave", "TablePlanClose", "InterimBill", "TablePayAll" }, failures);
             plan.CaptureRenderedFrame()!.Save(Path.Combine(output, $"restaurant-plan-{width}x{height}.png"), new PngBitmapEncoderOptions());
             var tableButton=plan.GetVisualDescendants().OfType<Button>().First(b=>b.Tag is RestaurantTable);
             var table=(RestaurantTable)tableButton.Tag!;
@@ -198,6 +208,7 @@ async Task RunAsync()
             await Task.Delay(250); Dispatcher.UIThread.RunJobs();
             var opened=await restaurantRepository.GetLiveSessionForTableAsync(table.Id);
             if(opened is null) throw new InvalidOperationException("Table tap did not open an order.");
+            plan.CaptureRenderedFrame()!.Save(Path.Combine(output,$"restaurant-order-{width}x{height}.png"),new PngBitmapEncoderOptions());
             var sameButton=plan.GetVisualDescendants().OfType<Button>().First(b=>b.Tag is RestaurantTable t && t.Id==table.Id);
             sameButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             await Task.Delay(100); Dispatcher.UIThread.RunJobs();
@@ -257,6 +268,29 @@ async Task RunAsync()
         CheckNamedActions(tableSettings,new[]{"EditorSave","EditorClose"},failures);
         tableSettings.CaptureRenderedFrame()!.Save(Path.Combine(output,"restaurant-table-settings-1366x768.png"),new PngBitmapEncoderOptions());
         tableSettings.Close();
+        var recipeProduct=catalog.Products.First();
+        var recipeEditor=new RestaurantRecipeWindow(restaurantRepository.Recipes,recipeProduct);
+        var recipeSave=recipeEditor.GetLogicalDescendants().OfType<Button>().Single(b=>b.Name=="EditorSave");
+        if(recipeSave.IsEnabled) throw new InvalidOperationException("Recipe save enabled before load.");
+        recipeEditor.Show();await Task.Delay(150);Dispatcher.UIThread.RunJobs();
+        if(!recipeSave.IsEnabled) throw new InvalidOperationException("Loaded recipe cannot be saved.");
+        recipeEditor.Close();
+        using(var c=db.OpenConnection())using(var q=c.CreateCommand())
+        {q.CommandText="ALTER TABLE restaurant_recipes RENAME TO recipe_load_failure_fixture;";await q.ExecuteNonQueryAsync();}
+        try
+        {
+            var failedEditor=new RestaurantRecipeWindow(restaurantRepository.Recipes,recipeProduct);
+            failedEditor.Show();await Task.Delay(150);Dispatcher.UIThread.RunJobs();
+            if(failedEditor.GetVisualDescendants().OfType<Button>().Single(b=>b.Name=="EditorSave").IsEnabled)
+                throw new InvalidOperationException("Failed recipe load permits destructive save.");
+            failedEditor.Close();
+        }
+        finally
+        {
+            using var c=db.OpenConnection();using var q=c.CreateCommand();
+            q.CommandText="ALTER TABLE recipe_load_failure_fixture RENAME TO restaurant_recipes;";await q.ExecuteNonQueryAsync();
+        }
+        Console.WriteLine("RECIPE LOAD/SAVE GUARD PASSED");
     }
 
     var setup=new FirstRunSetupWindow(settings,receiptPrinter,tseProvider,paymentTerminal,snapshotEdition);

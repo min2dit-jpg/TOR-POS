@@ -78,7 +78,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
         MaxLength = 500,
         AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap,
-        Watermark = "z. B. ohne Zwiebeln, Geburtstag, Kinderstuhl …",
+        PlaceholderText = "z. B. Geburtstag, Kinderstuhl …",
         IsEnabled = false
     };
 
@@ -171,6 +171,29 @@ public sealed partial class RestaurantTablePlanWindow : Window
     private readonly WrapPanel _areas = new();
     private long? _selectedArea;
     private bool _selectingTable;
+    private bool _addingProduct;
+    private readonly WrapPanel _categoryTiles = new();
+    private readonly WrapPanel _productTiles = new();
+    private long? _selectedCategory;
+
+    private void ShowProductTiles(long? categoryId = null)
+    {
+        _selectedCategory=categoryId;
+        _categoryTiles.Children.Clear(); _productTiles.Children.Clear();
+        foreach(var category in _catalog.Categories.Where(c=>_catalog.Products.Any(p=>p.IsActive && p.CategoryId==c.Id)))
+        {
+            var button=new Button { Content=category.Name,MinHeight=42,Margin=new Thickness(3) };
+            button.Click+=(_,_)=>ShowProductTiles(category.Id);_categoryTiles.Children.Add(button);
+        }
+        foreach(var product in _catalog.Products.Where(p=>p.IsActive && (categoryId is null || p.CategoryId==categoryId)))
+        {
+            var button=new Button { Content=new TextBlock { Text=product.Name+"\n"+Formatting.Money(product.BasePriceCents+product.PfandCents),TextWrapping=TextWrapping.Wrap },
+                Width=150,MinHeight=62,Margin=new Thickness(3),IsEnabled=_selectedSession?.State==RestaurantTableSessionState.Open && !_user.IsTraining && _user.Can(UserPermissions.Sale) };
+            button.Click+=async (_,_)=> { _product.SelectedItem=product; await AddSelectedProductAsync(); };
+            _productTiles.Children.Add(button);
+        }
+    }
+
 
     private IReadOnlyList<RestaurantTable> _tables = Array.Empty<RestaurantTable>();
     private RestaurantTable? _selectedTable;
@@ -283,6 +306,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
         var theke = new Button { Name = "ThekeButton", Content = "THEKE", MinHeight = 52,
             HorizontalAlignment = HorizontalAlignment.Stretch, FontWeight = FontWeight.Bold };
         theke.Click += (_, _) => { ThekeRequested = true; Close(); };
+        Closing += (_, e) => { if (_addingProduct) e.Cancel=true; };
         var master = new Button { Content = "STAMMDATEN", MinHeight = 44, IsVisible = _user.Can(UserPermissions.ManageProducts) };
         master.Click += async (_, _) =>
         {
@@ -300,17 +324,6 @@ public sealed partial class RestaurantTablePlanWindow : Window
             Margin = new Thickness(0, 12, 0, 0),
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         });
-
-        var addRow = new StackPanel
-        {
-            Spacing = 8,
-            Children =
-            {
-                _product,
-                _quantity,
-                _add
-            }
-        };
 
         var tableActions = new StackPanel
         {
@@ -341,46 +354,15 @@ public sealed partial class RestaurantTablePlanWindow : Window
             }
         };
 
+        var details = new StackPanel { Spacing=8,Children={
+            new TextBlock { Text="Gäste" },_guestCount,new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,_takeOver,tableActions} };
         var right = new StackPanel
         {
-            Spacing = 12,
-            Margin = new Thickness(18),
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "TISCHVORGANG",
-                    Foreground = new SolidColorBrush(Color.Parse("#53E0C0")),
-                    FontSize = 11,
-                    FontWeight = FontWeight.Bold
-                },
-                _detailTitle,
-                _detailStatus,
-                _open,
-                new TextBlock
-                {
-                    Text = "Gäste",
-                    FontWeight = FontWeight.Bold
-                },
-                _guestCount,
-                new TextBlock
-                {
-                    Text = "Tischnotiz / Küchenhinweis",
-                    FontWeight = FontWeight.Bold
-                },
-                _tableNote,
-                _takeOver,
-                new TextBlock
-                {
-                    Text = "Positionen",
-                    FontSize = 18,
-                    FontWeight = FontWeight.Bold,
-                    Margin = new Thickness(0, 8, 0, 0)
-                },
-                _items,
-                addRow,
-                tableActions
-            }
+            Spacing=10,Margin=new Thickness(18),Children={_detailTitle,_detailStatus,_open,
+                new TextBlock { Text="Warengruppe",FontWeight=FontWeight.Bold },_categoryTiles,
+                new ScrollViewer { Content=_productTiles,MaxHeight=240,VerticalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Auto },
+                new TextBlock { Text="Menge für den nächsten Artikel" },_quantity,new TextBlock { Text="Offene Positionen",FontWeight=FontWeight.Bold },_items,
+                new Expander { Header="Tischdetails / Umbuchen / Rechnung teilen",Content=details }}
         };
 
         var close = new Button { Name = "TablePlanClose", Content = "SCHLIESSEN", MinHeight = 44 };
@@ -488,6 +470,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
         }
         else
         {
+            _selectedSession=null;
             _detailTitle.Text = "Tisch auswählen";
             _detailStatus.Text = "Links einen Tisch wählen.";
             _open.IsEnabled = false;
@@ -507,6 +490,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
             _tableNote.Text = "";
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
         }
+        ShowProductTiles(_selectedCategory);
     }
 
     private Button CreateTableButton(
@@ -563,6 +547,7 @@ public sealed partial class RestaurantTablePlanWindow : Window
 
         _selectedSession = await _restaurant.GetLiveSessionForTableAsync(
             _selectedTable.Id);
+        ShowProductTiles(_selectedCategory);
 
         _detailTitle.Text = _selectedTable.DisplayName;
 
@@ -748,6 +733,9 @@ public sealed partial class RestaurantTablePlanWindow : Window
             return;
         }
 
+        if (_addingProduct) return;
+        _addingProduct=true;
+        if (Content is Control content) content.IsEnabled=false;
         RestaurantFiscalVorgang? fiscalVorgang = null;
         RestaurantSessionItem? pendingItem = null;
         RestaurantSessionItem? addedItem = null;
@@ -766,6 +754,21 @@ public sealed partial class RestaurantTablePlanWindow : Window
             }
 
             var quantity = Convert.ToDecimal(_quantity.Value ?? 1m);
+            var options=(await _restaurant.Recipes.ListOptionsAsync()).Where(x=>x.IsActive).ToArray();
+            var optionText="";
+            if(options.Length>0)
+            {
+                var ingredients=await _restaurant.Recipes.ListIngredientsAsync();
+                var recipe=await _restaurant.Recipes.LoadRecipeAsync(product.Id);
+                var recipeText=string.Join("\n",recipe.Select(r=>
+                {
+                    var ingredient=ingredients.First(i=>i.Id==r.IngredientId);
+                    return $"{r.Quantity:0.###} {ingredient.Unit} {ingredient.Name}";
+                }));
+                var choice=await new RestaurantOrderOptionsWindow(product,options,recipeText).ShowDialog<string?>(this);
+                if(choice is null) return;
+                optionText=choice;
+            }
 
             fiscalVorgang = await _restaurantFiscal.BeginChangeAsync(
                 _selectedSession.Id,
@@ -777,7 +780,8 @@ public sealed partial class RestaurantTablePlanWindow : Window
                 product,
                 quantity,
                 _user.Username,
-                Environment.MachineName);
+                Environment.MachineName,
+                orderOptions: optionText);
             addedItem = pendingItem;
 
             await _restaurantFiscal.SecureAddedItemAsync(
@@ -854,6 +858,11 @@ public sealed partial class RestaurantTablePlanWindow : Window
 
             await ShowErrorAsync(ex.Message);
             await ReloadAsync();
+        }
+        finally
+        {
+            _addingProduct=false;
+            if (Content is Control restoredContent) restoredContent.IsEnabled=true;
         }
     }
 

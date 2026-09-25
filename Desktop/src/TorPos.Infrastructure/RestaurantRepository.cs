@@ -613,7 +613,8 @@ public sealed partial class RestaurantRepository
         decimal quantity,
         string operatorName,
         string deviceId = "",
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string orderOptions = "")
     {
         var mutation = await AddItemWithLineTokenAsync(
             sessionId,
@@ -623,7 +624,8 @@ public sealed partial class RestaurantRepository
             operatorName,
             Guid.NewGuid().ToString("N"),
             deviceId,
-            ct);
+            ct,
+            orderOptions);
 
         return mutation.Item;
     }
@@ -636,8 +638,13 @@ public sealed partial class RestaurantRepository
         string operatorName,
         string lineToken,
         string deviceId = "",
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string orderOptions = "")
     {
+        orderOptions=(orderOptions??"").Trim();
+        if(orderOptions.Length>500 || orderOptions.Any(char.IsControl))
+            throw new ArgumentException("Bestelloptionen sind zu lang oder enthalten Steuerzeichen.",nameof(orderOptions));
+        var displayName=product.Name+(orderOptions.Length==0?"":" ("+orderOptions+")");
         sessionId = (sessionId ?? "").Trim();
         operatorName = (operatorName ?? "").Trim();
         lineToken = (lineToken ?? "").Trim();
@@ -682,7 +689,7 @@ public sealed partial class RestaurantRepository
                 existing.CommandText = """
                     SELECT id,session_id,line_token,product_id,product_name,variant_name,
                            quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                           added_by,added_at,version
+                           added_by,added_at,version,order_options
                     FROM restaurant_session_items
                     WHERE line_token=$token
                     LIMIT 1;
@@ -715,7 +722,8 @@ public sealed partial class RestaurantRepository
                             sessionId,
                             StringComparison.Ordinal) ||
                         item.ProductId != product.Id ||
-                        item.QuantityMilli != quantityMilli)
+                        item.QuantityMilli != quantityMilli ||
+                        r.GetString(14) != orderOptions)
                     {
                         throw new InvalidOperationException(
                             "Restaurant-Zeilenkennung wurde bereits für eine andere Position verwendet.");
@@ -757,17 +765,18 @@ public sealed partial class RestaurantRepository
                     INSERT INTO restaurant_session_items(
                         session_id,line_token,product_id,product_name,variant_name,
                         quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        fiscal_state,added_by,added_at,version)
+                        fiscal_state,added_by,added_at,version,order_options)
                     VALUES(
                         $session,$token,$product,$name,'',
                         $quantity,$price,$vat,$pfand,'ACTIVE',
-                        'PENDING',$operator,$now,1)
+                        'PENDING',$operator,$now,1,$options)
                     RETURNING id;
                     """;
                 insert.Parameters.AddWithValue("$session", sessionId);
                 insert.Parameters.AddWithValue("$token", lineToken);
                 insert.Parameters.AddWithValue("$product", product.Id);
-                insert.Parameters.AddWithValue("$name", product.Name);
+                insert.Parameters.AddWithValue("$name", displayName);
+                insert.Parameters.AddWithValue("$options",orderOptions);
                 insert.Parameters.AddWithValue("$quantity", quantityMilli);
                 insert.Parameters.AddWithValue(
                     "$price",
@@ -791,7 +800,8 @@ public sealed partial class RestaurantRepository
                 {
                     lineToken,
                     productId = product.Id,
-                    productName = product.Name,
+                    productName = displayName,
+                    orderOptions,
                     quantityMilli,
                     unitPriceCents =
                         product.BasePriceCents + product.PfandCents
@@ -807,7 +817,7 @@ public sealed partial class RestaurantRepository
                     sessionId,
                     lineToken,
                     product.Id,
-                    product.Name,
+                    displayName,
                     "",
                     quantityMilli,
                     product.BasePriceCents + product.PfandCents,

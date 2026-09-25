@@ -38,7 +38,20 @@ async Task RejectMessage(Func<Task> action,string mustContain,string title)
     }
     throw new Exception("FAIL: "+title);
 }
-if (args.Contains("--restaurant-third")) { await RestaurantThirdExeTests.Run(Assert); await RestaurantRecipeTests.Run(Assert); await RestaurantInterimBillTests.Run(Assert); return; }
+if (args.Contains("--restaurant-third"))
+{
+    await RestaurantThirdExeTests.Run(Assert);
+    await RestaurantRecipeTests.Run(Assert);
+    await RestaurantInterimBillTests.Run(Assert);
+    await MultiLanguageTests.Run(Assert);
+    await AdTvTests.Run(Assert);
+    // Existing display fixtures use Windows paths. The complete Windows CI
+    // suite below always executes them; a Linux targeted run cannot validate those paths.
+    if (OperatingSystem.IsWindows()) await CustomerDisplayAdsTests.Run(Assert);
+    else Console.WriteLine("Windows-path customer-display fixtures require Windows CI.");
+    Console.WriteLine($"RESTAURANT TARGETED CHECKS PASSED: {checks}");
+    return;
+}
 
 var root=Path.Combine(Path.GetTempPath(),"tor-safety-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
 var db=await SafetyDatabase.CreateCurrentAsync(
@@ -679,7 +692,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1413;
+const int ExpectedSafetyChecks = 1417;
 
 if (checks != ExpectedSafetyChecks)
 {

@@ -8,7 +8,7 @@ public partial class MainWindow
 {
     private async Task ShowRestaurantMasterDataAsync(Window owner)
     {
-        if(ProductBuild.FixedEdition!="RESTAURANT" || !_currentUser.Can(UserPermissions.ManageProducts)) return;
+        if(!string.Equals(ProductBuild.FixedEdition,"RESTAURANT",StringComparison.Ordinal) || !_currentUser.Can(UserPermissions.ManageProducts)) return;
         var menu=new Window();var content=new StackPanel { Spacing=6 };
         var status=RestaurantEditorLayout.Label("");
         void Add(string label,Func<Task> action,bool adminOnly=false)

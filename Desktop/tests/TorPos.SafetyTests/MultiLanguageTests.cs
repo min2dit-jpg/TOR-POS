@@ -165,7 +165,12 @@ public static class MultiLanguageTests
             "RestaurantKdsWindow",
             "RestaurantReservationsWindow",
             "RestaurantTablePlanWindow",
-            "RestaurantSplitCheckoutWindow"
+            "RestaurantSplitCheckoutWindow",
+            "RestaurantIngredientsWindow",
+            "RestaurantRecipeWindow",
+            "RestaurantTableSettingsWindow",
+            "RestaurantInterimBillWindow",
+            "RestaurantOrderOptionsWindow"
         ];
 
         string[] germanOnlyWindowFiles =
@@ -174,7 +179,8 @@ public static class MultiLanguageTests
             "RestaurantKdsWindow.cs",
             "RestaurantReservationsWindow.cs",
             "RestaurantTablePlanWindow.cs",
-            "RestaurantSplitCheckoutWindow.cs"
+            "RestaurantSplitCheckoutWindow.cs",
+            "MainWindow.Restaurant.cs" // Restaurant-only Stammdaten menu.
         ];
         var windows = 0;
         var unrendered = new List<string>();
@@ -560,6 +566,7 @@ public static class MultiLanguageTests
         [
             "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.",
             "RESTAURANT · TISCHPLAN UND DIREKTVERKAUF BEREIT",
+            "THEKE · Direktverkauf ohne Tisch",
             "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein",
             "TEST · Restaurant-Zahlung simuliert · Tischpositionen bleiben offen",
             "KEINE BELASTUNG MANUELL BESTÄTIGT · Restaurant-Tisch wieder offen"
