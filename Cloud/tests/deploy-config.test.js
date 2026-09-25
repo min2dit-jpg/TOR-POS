@@ -32,3 +32,17 @@ test('C-1 Caddy lets a full TOR Mail request through and keeps 2 MB elsewhere',(
  assert.ok(serverMax>=worstCase,'server.js mail limit is below the worst-case request');
  assert.ok(mail.max<=serverMax,'Caddy should not let through more than server.js reads anyway');
 });
+
+// C-1: the one-step server patch turns the old catch-all into the example's
+// two limits, touches nothing else, and a second run is a no-op.
+test('C-1 server patch rewrites only the api request_body and is idempotent',()=>{
+ const {patch}=require('../deploy/c1-caddy-patch');
+ const old=caddy.replace(/\t# C-1:[\s\S]*?request_body @notTorMail \{\n\t\tmax_size 2MB\n\t\}/,'\trequest_body {\n\t\tmax_size 2MB\n\t}');
+ assert.ok(!old.includes('@torMail'),'fixture is the pre-C-1 file');
+ const first=patch(old);assert.equal(first.status,'CHANGED');
+ const limits=requestBodies(first.text.slice(first.text.indexOf('api.torpos.de {'),first.text.indexOf('\nbon.torpos.de {')));
+ assert.deepEqual(limits.map(l=>[l.matcher,l.max]),[['@torMail',12*1024**2],['@notTorMail',2e6]]);
+ assert.equal(first.text.slice(first.text.indexOf('\nbon.torpos.de {')),old.slice(old.indexOf('\nbon.torpos.de {')),'the receipt site is untouched');
+ assert.equal(patch(first.text).status,'ALREADY');
+ assert.throws(()=>patch(old,'shop.'),/Kein Block/);
+});
