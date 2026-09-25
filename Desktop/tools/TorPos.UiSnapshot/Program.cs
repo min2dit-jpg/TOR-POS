@@ -499,6 +499,8 @@ sealed class NoWindows(Func<RestaurantTablePlanWindow> createTablePlan) : IAppWi
     public RestaurantTablePlanWindow? TablePlan { get; private set; }
     public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
         AuthenticatedUser user) => TablePlan = createTablePlan();
+    public RestaurantWorkspaceControl CreateRestaurantWorkspaceControl(
+        AuthenticatedUser user) => throw new NotSupportedException();
     public RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
     public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(
