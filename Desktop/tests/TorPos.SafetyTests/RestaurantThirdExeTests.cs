@@ -51,6 +51,21 @@ internal static class RestaurantThirdExeTests
             "MainWindow owns the embedded Restaurant workspace lifecycle");
 
         assert(
+            mainWindowSource.Contains(
+                "RecoverOrphanedRestaurantPaymentReservationsAsync",
+                StringComparison.Ordinal) &&
+            mainWindowSource.Contains(
+                "ReleaseRestaurantPaymentReservationIfSafeAsync",
+                StringComparison.Ordinal) &&
+            mainWindowSource.Contains(
+                "\"NOT_CHARGED\"",
+                StringComparison.Ordinal) &&
+            mainWindowSource.Contains(
+                "_pendingCheckout = checkout",
+                StringComparison.Ordinal),
+            "Restaurant payment recovery only auto-releases proven no-charge reservations and preserves ambiguous payments for reconciliation");
+
+        assert(
             mainWindowXaml.Contains(
                 "x:Name=\"RestaurantWorkspaceHost\"",
                 StringComparison.Ordinal),

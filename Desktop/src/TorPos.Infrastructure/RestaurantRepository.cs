@@ -1678,6 +1678,29 @@ public sealed partial class RestaurantRepository
         });
     }
 
+    public async Task<IReadOnlyList<string>> ListPreparedPaymentReservationOperationIdsAsync(
+        CancellationToken ct = default)
+    {
+        return await IoQueue.RunAsync<IReadOnlyList<string>>(async () =>
+        {
+            var result = new List<string>();
+            await using var c = _db.OpenReadConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT operation_id
+                FROM restaurant_payment_reservations
+                WHERE state='PREPARED'
+                ORDER BY created_at,operation_id;
+                """;
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                result.Add(r.GetString(0));
+
+            return result;
+        });
+    }
+
     public async Task CancelPaymentReservationAsync(
         string operationId,
         CancellationToken ct = default)

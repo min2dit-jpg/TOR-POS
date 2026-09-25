@@ -2270,8 +2270,10 @@ internal static class RestaurantFoundationTests
                 lockedSession is not null &&
                 lockedSession.State == RestaurantTableSessionState.CheckRequested &&
                 lockedSession.Version == lockedVersion &&
-                await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
-                "Prepared Restaurant payment durably locks the table before external payment");
+                await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId) &&
+                (await repo.ListPreparedPaymentReservationOperationIdsAsync())
+                    .Contains(paymentDraft.OperationId, StringComparer.Ordinal),
+                "Prepared Restaurant payment durably locks the table and is discoverable for crash recovery");
 
             var writeWhilePaymentRejected = false;
             try
@@ -2299,8 +2301,10 @@ internal static class RestaurantFoundationTests
             assert(
                 reopenedAfterCancel is not null &&
                 reopenedAfterCancel.State == RestaurantTableSessionState.Open &&
-                !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
-                "No-charge cancellation reopens the Restaurant table and clears the payment lock");
+                !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId) &&
+                !(await repo.ListPreparedPaymentReservationOperationIdsAsync())
+                    .Contains(paymentDraft.OperationId, StringComparer.Ordinal),
+                "No-charge cancellation reopens the Restaurant table and removes it from startup recovery");
 
             var laneJournal = new PrintJobJournal(
                 Path.Combine(root, "restaurant-printer-lanes"));

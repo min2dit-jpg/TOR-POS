@@ -1074,12 +1074,88 @@ public partial class MainWindow:Window
         }
     }
 
+    private async Task<bool> ReleaseRestaurantPaymentReservationIfSafeAsync(
+        string operationId,
+        string reason)
+    {
+        if (!IsRestaurantEdition() || string.IsNullOrWhiteSpace(operationId))
+            return true;
+
+        var checkout = await _checkoutJournal.GetAsync(operationId);
+
+        // No checkout journal means no durable evidence that an external
+        // payment was submitted. NOT_CHARGED is likewise explicitly safe.
+        // Any other state may have an external effect and must stay locked for
+        // the existing ZAHLUNG PRÜFEN reconciliation flow.
+        if (checkout is not null &&
+            !string.Equals(
+                checkout.State,
+                "NOT_CHARGED",
+                StringComparison.Ordinal))
+        {
+            _pendingCheckout = checkout;
+            return false;
+        }
+
+        if (await _restaurant.HasPreparedPaymentReservationAsync(operationId))
+        {
+            await _restaurant.CancelPaymentReservationAsync(operationId);
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "RESTAURANT_PAYMENT_RESERVATION_RECOVERED",
+                "CHECKOUT",
+                operationId,
+                $"{reason}; journal_state={(checkout?.State ?? "MISSING")}");
+        }
+
+        return true;
+    }
+
+    private async Task RecoverOrphanedRestaurantPaymentReservationsAsync()
+    {
+        if (!IsRestaurantEdition())
+            return;
+
+        foreach (var operationId in
+                 await _restaurant.ListPreparedPaymentReservationOperationIdsAsync())
+        {
+            var checkout = await _checkoutJournal.GetAsync(operationId);
+            if (checkout is not null &&
+                !string.Equals(
+                    checkout.State,
+                    "NOT_CHARGED",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            try
+            {
+                await _restaurant.CancelPaymentReservationAsync(operationId);
+                await _audit.WriteAsync(
+                    _currentUser.Username,
+                    "RESTAURANT_PAYMENT_RESERVATION_STARTUP_RECOVERED",
+                    "CHECKOUT",
+                    operationId,
+                    $"startup; journal_state={(checkout?.State ?? "MISSING")}");
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException(
+                    "Restaurant orphan payment reservation recovery",
+                    ex);
+            }
+        }
+    }
+
     private async Task TryRestoreOpenCartAsync()
     {
         if (_currentUser.IsTraining) return;
         var path=OpenCartRecoveryPath();
         try
         {
+            await RecoverOrphanedRestaurantPaymentReservationsAsync();
+
             var pending=await _checkoutJournal.GetOpenAsync();
             _pendingCheckout=pending.FirstOrDefault();
             if (_pendingCheckout is not null)
@@ -3614,9 +3690,40 @@ public partial class MainWindow:Window
                 await _restaurant.PreparePaymentReservationAsync(restaurantDraft);
             }
 
-            var prepared =
-                await _checkoutApplication.PrepareProductionAsync(
-                    snapshot);
+            CheckoutApplicationResult prepared;
+            try
+            {
+                prepared =
+                    await _checkoutApplication.PrepareProductionAsync(
+                        snapshot);
+            }
+            catch (Exception)
+            {
+                if (restaurantDraft is not null)
+                {
+                    try
+                    {
+                        var released =
+                            await ReleaseRestaurantPaymentReservationIfSafeAsync(
+                                restaurantDraft.OperationId,
+                                "PrepareProductionAsync failed");
+
+                        if (released)
+                        {
+                            _restaurantCheckoutDraft = null;
+                            _operationId = Guid.NewGuid().ToString("N");
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        CrashLog.WriteException(
+                            "Restaurant payment reservation cleanup after prepare failure",
+                            cleanupEx);
+                    }
+                }
+
+                throw;
+            }
 
             if(prepared.Timings.FiscalPreflightMs is double fiscalMs)
                 _perf.RecordElapsed("checkout.fiscal_preflight",fiscalMs);
