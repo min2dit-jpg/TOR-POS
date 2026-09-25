@@ -1260,7 +1260,15 @@ public sealed partial class RestaurantRepository
                 closeSource.Transaction = tx;
                 closeSource.CommandText = """
                     UPDATE restaurant_sessions
-                    SET state='CANCELLED',
+                    SET state=CASE
+                            WHEN EXISTS(
+                                SELECT 1
+                                FROM restaurant_session_items
+                                WHERE session_id=$id
+                                  AND state='PAID')
+                                THEN 'CLOSED'
+                            ELSE 'CANCELLED'
+                        END,
                         closed_at=$now,
                         updated_at=$now,
                         version=version+1

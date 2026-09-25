@@ -2194,12 +2194,90 @@ internal static class RestaurantFoundationTests
                 "KASSE-1");
 
             var mergedItems = await repo.ListActiveItemsAsync(merged.Id);
+            var unpaidMergedSource = await repo.GetSessionAsync(moved.Id);
             assert(
                 merged.GuestCount == moved.GuestCount + targetSession.GuestCount &&
                 mergedItems.Count == 1 &&
                 mergedItems.Single().LineTotalCents == 2580 &&
-                await repo.GetLiveSessionForTableAsync(secondTableId) is null,
-                "Tische zusammenlegen moves open positions and releases the source table");
+                await repo.GetLiveSessionForTableAsync(secondTableId) is null &&
+                unpaidMergedSource?.State == RestaurantTableSessionState.Cancelled,
+                "Tische zusammenlegen moves open positions, releases the source table and keeps an unpaid source CANCELLED");
+
+            var paidMergeSourceTableId = await repo.SaveTableAsync(
+                areaId,
+                "T04PAID-S",
+                "Tisch 4 bezahlt Quelle",
+                seats: 2,
+                sortOrder: 40);
+            var paidMergeTargetTableId = await repo.SaveTableAsync(
+                areaId,
+                "T04PAID-T",
+                "Tisch 4 bezahlt Ziel",
+                seats: 2,
+                sortOrder: 41);
+            var paidMergeSource = await repo.OpenTableAsync(
+                paidMergeSourceTableId,
+                "KELLNER-4",
+                guestCount: 1,
+                deviceId: "KASSE-1");
+            var paidMergeItem = await repo.AddItemAsync(
+                paidMergeSource.Id,
+                paidMergeSource.Version,
+                product,
+                2m,
+                "KELLNER-4",
+                "KASSE-1");
+            var paidMergeSourceCurrent = await repo.GetSessionAsync(
+                paidMergeSource.Id)
+                ?? throw new InvalidOperationException(
+                    "Paid merge source missing.");
+            var paidMergeTarget = await repo.OpenTableAsync(
+                paidMergeTargetTableId,
+                "KELLNER-4",
+                guestCount: 1,
+                deviceId: "KASSE-1");
+
+            await using (var c = db.OpenConnection())
+            {
+                await using var partialPaid = c.CreateCommand();
+                partialPaid.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET quantity_milli=1000,version=version+1
+                    WHERE id=$item AND session_id=$session AND state='ACTIVE';
+
+                    INSERT INTO restaurant_session_items(
+                        session_id,line_token,product_id,product_name,variant_name,
+                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                        added_by,added_at,version,fiscal_state)
+                    VALUES(
+                        $session,$token,$product,$name,'',
+                        1000,$price,$vat,0,'PAID',
+                        'TEST',$now,1,'SECURED');
+                    """;
+                partialPaid.Parameters.AddWithValue("$item", paidMergeItem.Id);
+                partialPaid.Parameters.AddWithValue("$session", paidMergeSource.Id);
+                partialPaid.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
+                partialPaid.Parameters.AddWithValue("$product", product.Id);
+                partialPaid.Parameters.AddWithValue("$name", product.Name);
+                partialPaid.Parameters.AddWithValue("$price", product.BasePriceCents);
+                partialPaid.Parameters.AddWithValue("$vat", (double)product.VatRate);
+                partialPaid.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                await partialPaid.ExecuteNonQueryAsync();
+            }
+
+            await repo.MergeSessionsAsync(
+                paidMergeSource.Id,
+                paidMergeSourceCurrent.Version,
+                paidMergeTarget.Id,
+                paidMergeTarget.Version,
+                "ADMIN",
+                "KASSE-1");
+
+            var paidMergedSource = await repo.GetSessionAsync(
+                paidMergeSource.Id);
+            assert(
+                paidMergedSource?.State == RestaurantTableSessionState.Closed,
+                "Tische zusammenlegen closes a source with already PAID positions instead of reporting it as CANCELLED");
 
             await InsertRestaurantBestellungAsync(
                 db,
