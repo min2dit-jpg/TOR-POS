@@ -228,6 +228,25 @@ test('R48 update manifest and download endpoint',async()=>{
  const current=await request('/api/v1/updates/check?version=0.7.33.48&edition=KIOSK');assert.equal(current.body.update_available,false);
  const du=new URL(check.body.manifest.download_url);const r=await fetch(base+du.pathname);assert.equal(r.status,200);assert.equal(Buffer.from(await r.arrayBuffer()).toString(),'TOR POS fake setup for updater test');
 });
+// C-2: the restaurant edition gets its own installer; the others keep the shared one.
+test('C-2 per-edition update channel serves the restaurant its own setup',async()=>{
+ const updates=path.join(root,'updates'),file='TOR-Restaurant-Setup-TEST.exe',setup=Buffer.from('TOR Restaurant fake setup');
+ writeFileSync(path.join(updates,file),setup);
+ const sha=crypto.createHash('sha256').update(setup).digest('hex').toUpperCase();
+ writeFileSync(path.join(updates,'manifest-RESTAURANT.json'),JSON.stringify({enabled:true,version:'0.7.33.900',revision:'R-REST',published_at:'2026-09-25T00:00:00Z',editions:['RESTAURANT'],filename:file,sha256:sha,signer_thumbprint:'',release_notes:'Restaurant'}));
+ try{
+  const rest=await request('/api/v1/updates/check?version=0.7.33.46&edition=RESTAURANT');
+  assert.equal(rest.body.update_available,true);assert.equal(rest.body.manifest.revision,'R-REST');
+  const dl=await fetch(base+new URL(rest.body.manifest.download_url).pathname);assert.equal(dl.status,200);
+  assert.equal(Buffer.from(await dl.arrayBuffer()).toString(),'TOR Restaurant fake setup');
+  const kiosk=await request('/api/v1/updates/check?version=0.7.33.46&edition=KIOSK');
+  assert.equal(kiosk.body.manifest.revision,'R48-Test','KIOSK stays on the shared manifest');
+  assert.equal((await fetch(base+'/updates/not-in-any-manifest.exe')).status,404);
+  assert.equal((await fetch(base+'/updates/%E0%A4%A')).status,404,'a malformed escape is a 404, not a 500');
+ }finally{rmSync(path.join(updates,'manifest-RESTAURANT.json'),{force:true});}
+ const gone=await request('/api/v1/updates/check?version=0.7.33.46&edition=RESTAURANT');
+ assert.equal(gone.body.update_available,false,'without its own manifest RESTAURANT is not offered the KIOSK/IMBISS setup');
+});
 // R120: the publishing script checks Authenticode, but nothing re-checked the
 // bytes at serve time - so anything able to write into the updates directory
 // bypassed that gate. The download now verifies the file against the manifest
@@ -430,7 +449,7 @@ test('R125 provisioning creates a customer whose owner and till work against the
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM businesses WHERE customer_number='TOR-R125-002'").get().n,0,'a refused customer leaves no business row behind');
   assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'Kasse 1',name:'X'}),/Gerätecode/,'a code the till would reject is refused here too');
   assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'R125-KASSE-01',name:'X'}),/bereits vergeben/);
-  assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'R125-KASSE-02',name:'X',edition:'TISCH'}),/KIOSK oder IMBISS/);
+  assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'R125-KASSE-02',name:'X',edition:'TISCH'}),/KIOSK, IMBISS oder RESTAURANT/);
  }finally{db.close();}
 
  const lines=[];

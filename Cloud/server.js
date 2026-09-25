@@ -41,6 +41,8 @@ const TOTP_KEY = crypto.createHash('sha256').update(TOTP_KEY_MATERIAL || 'disabl
 // A short-lived QR pairing is completed in the user's phone browser. The Cloud keeps only
 // an encrypted refresh token and returns short-lived access tokens to the authenticated POS.
 const CLOUD_PUBLIC_URL = String(process.env.TOR_CLOUD_PUBLIC_URL || '').trim().replace(/\/$/, '');
+// C-2: editions that may have their own update channel (manifest-<EDITION>.json).
+const UPDATE_EDITIONS = ['KIOSK', 'IMBISS', 'RESTAURANT'];
 const GOOGLE_OAUTH_CLIENT_ID = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_ID || '').trim();
 const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
 const GOOGLE_TOKEN_KEY_MATERIAL = String(process.env.TOR_CLOUD_GOOGLE_TOKEN_KEY || '').trim();
@@ -1262,7 +1264,11 @@ async function handler(req, res) {
 
     if(req.method==='GET' && pathname==='/api/v1/updates/check'){
       const current=String(url.searchParams.get('version')||'0'),edition=String(url.searchParams.get('edition')||'KIOSK').toUpperCase();
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false});
+      // C-2: a product with its own published channel gets its own installer;
+      // otherwise the shared manifest.json and its editions list decide.
+      const editionManifest=UPDATE_EDITIONS.includes(edition)?path.join(UPDATES,`manifest-${edition}.json`):'';
+      const manifestPath=editionManifest&&fs.existsSync(editionManifest)?editionManifest:path.join(UPDATES,'manifest.json');
+      if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false});
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Update-Manifest ist ungültig.'});}
       const allowed=Array.isArray(m.editions)?m.editions.map(x=>String(x).toUpperCase()):['KIOSK','IMBISS'];
       if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false});
@@ -1273,10 +1279,18 @@ async function handler(req, res) {
     }
 
     if(req.method==='GET' && pathname.startsWith('/updates/')){
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return text(res,404,'Nicht gefunden');
-      let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return text(res,404,'Nicht gefunden');}
-      const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/updates/'.length));
-      if(!m.enabled || requested!==expected || requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+      // C-2: the requested file must be the one an enabled manifest names -
+      // the shared manifest.json or one of the per-edition manifests.
+      let requested='';try{requested=decodeURIComponent(pathname.slice('/updates/'.length));}catch{}
+      if(!requested||requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+      let m=null;
+      for(const name of ['manifest.json',...UPDATE_EDITIONS.map(e=>`manifest-${e}.json`)]){
+        const manifestPath=path.join(UPDATES,name);if(!fs.existsSync(manifestPath))continue;
+        let candidate;try{candidate=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{continue;}
+        if(candidate.enabled&&path.basename(String(candidate.filename||''))===requested){m=candidate;break;}
+      }
+      if(!m)return text(res,404,'Nicht gefunden');
+      const expected=requested;
       const full=path.join(UPDATES,expected);
       // R120: verify the bytes actually being served against the manifest
       // hash. The publishing script checks Authenticode, but nothing checked

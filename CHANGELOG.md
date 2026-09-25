@@ -90,6 +90,26 @@ Revisionsabschnitt überführt.
   neun Zeilen der Startprüfung sind gemeldet, drei bleiben offen - zwei davon,
   bis das Swissbit SDK vorliegt.
 
+### TOR Cloud und Kasse: Prüfbericht vom 24.09.2026
+
+- **C-4:** Ein von der Cloud abgelehntes Ereignis blockiert die Synchronisation
+  nicht mehr. Die Kasse fragt ein Urteil pro Ereignis an (`partial`), parkt
+  Abgelehntes in `cloud_outbox_rejected` (Migration 42) und zeigt die Anzahl im
+  Cloud-Status. Ältere Kassen bekommen weiter die Alles-oder-nichts-Antwort.
+- **C-2:** Eigener Update-Kanal pro Produkt (`PUBLISH-UPDATE.ps1 -Edition`,
+  `manifest-<EDITION>.json`); RESTAURANT bekommt nie das gemeinsame Setup.
+  Provisionierung kennt RESTAURANT.
+- **O-19:** Unbekanntes Terminalprofil ist gesperrt statt AUTO_ZVT.
+- **O-4:** fiskaltrust Sign bricht nach 10 s ab; ftState-Ausfallbits lassen
+  das Ergebnis scheitern.
+- **O-5:** fiskaly-Client behält nur die letzten 256 abgeschlossenen Vorgänge.
+- **O-7:** Abgebrochene Tisch-Zahlung blockiert den Tischplan nicht mehr.
+- **O-16:** Erstellzeit der Systemidentität wird als UTC gelesen.
+- **Cloud §7:** Bon-Detail mit Buchungstyp, Bar/Karte-Summenprüfung, Indizes,
+  Heartbeat- und Mail-Aufräumen, Mail-Quote ohne Wettlauf, Origin/Host ohne 500,
+  Umleitung mit Query, Demo-Hinweis nur im Demo-Betrieb. Der Heartbeat der Kasse
+  meldet eine offene TSE-Störung.
+
 ### TOR Cloud (C-1, C-3, G-5)
 
 - **C-1:** Caddy begrenzt `/api/v1/devices/mail/send` jetzt auf 12 MiB statt
@@ -103,7 +123,7 @@ Revisionsabschnitt überführt.
   zählen nicht mehr zur Sperre pro E-Mail, und eine unbekannte E-Mail läuft
   durch dasselbe scrypt wie eine bekannte.
 
-Safety-Baseline: **1287** Checks.
+Safety-Baseline: **1410** Checks.
 
 ## Release-Historie
 
