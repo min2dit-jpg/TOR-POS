@@ -88,6 +88,25 @@ internal static class RestaurantThirdExeTests
                 "RestaurantWorkspaceControl.cs"));
 
         assert(
+            typeof(RestaurantFiscalOrderService).GetMethod(
+                "ReconcileSessionAsync") is not null &&
+            typeof(TseVorgangService).GetMethod(
+                "TagReferenceAsync") is not null,
+            "Restaurant fiscal recovery exposes a session reconciliation path and tags TSE changes before DB mutation");
+
+        assert(
+            workspaceSource.Contains(
+                "RestaurantFiscalReconcile",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "ListUnsecuredSessionIdsAsync",
+                StringComparison.Ordinal) &&
+            workspaceSource.Contains(
+                "BESTELLUNG/TSE · PRÜFUNG ERFORDERLICH",
+                StringComparison.Ordinal),
+            "Restaurant workspace automatically retries unsecured sessions and exposes an admin fiscal-reconcile action");
+
+        assert(
             !workspaceSource.Contains(
                 "TISCH ÖFFNEN",
                 StringComparison.Ordinal),

@@ -410,6 +410,24 @@ public sealed class TseVorgangService
         ExecuteAsync("UPDATE tse_vorgaenge SET finish_result_json='',updated_at=$now WHERE id=$id;", q =>
             q.Parameters.AddWithValue("$id", vorgangId), ct);
 
+    /// <summary>
+    /// Tags a started Vorgang with its owning business object before any
+    /// Restaurant DB mutation. Recovery can then associate an F-6 finish
+    /// journal with the exact table session even after a process crash.
+    /// </summary>
+    public Task TagReferenceAsync(
+        string vorgangId,
+        string reference,
+        CancellationToken ct = default) =>
+        ExecuteAsync(
+            "UPDATE tse_vorgaenge SET reference=$ref,updated_at=$now WHERE id=$id;",
+            q =>
+            {
+                q.Parameters.AddWithValue("$id", vorgangId);
+                q.Parameters.AddWithValue("$ref", (reference ?? "").Trim());
+            },
+            ct);
+
     private Task MarkFinishAttemptAsync(string vorgangId, CancellationToken ct) =>
         ExecuteAsync("UPDATE tse_vorgaenge SET finish_attempted_at=$now,updated_at=$now WHERE id=$id;", q =>
             q.Parameters.AddWithValue("$id", vorgangId), ct);

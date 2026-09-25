@@ -199,6 +199,234 @@ public static class RestaurantFiscalRetryTests
                     "Keine zweite TSE-Transaktion",
                     StringComparison.Ordinal),
                 "Restaurant fiscal recovery fails closed when a terminal Vorgang has no finish journal and never creates a second TSE transaction");
+
+            var beforeCancel =
+                await repo.GetSessionAsync(session.Id)
+                ?? throw new InvalidOperationException(
+                    "Retry Restaurant session missing before cancellation.");
+            await repo.CancelItemAsync(
+                session.Id,
+                beforeCancel.Version,
+                firstItem.Id,
+                "RETRY-TEST",
+                "KASSE-RETRY");
+
+            var cancelRecoveryId =
+                "restaurant-retry-cancel-" +
+                Guid.NewGuid().ToString("N");
+            var cancelStarted =
+                DateTimeOffset.UtcNow.AddMilliseconds(-500);
+            var cancelSigned =
+                SaleTseResult.SignedResult(
+                    "RETRY-CLIENT",
+                    "43",
+                    "8",
+                    "RETRY-SERIAL",
+                    "RETRY-CANCEL-SIGNATURE",
+                    DateTimeOffset.UtcNow,
+                    cancelStarted);
+
+            await SeedFinishedVorgangAsync(
+                db,
+                cancelRecoveryId,
+                cancelStarted,
+                JsonSerializer.Serialize(cancelSigned),
+                $"RESTAURANT:{session.Id}");
+
+            var cancelReconciled =
+                await fiscal.ReconcileSessionAsync(
+                    session.Id,
+                    "RETRY-TEST");
+
+            var afterCancelRows =
+                await CountBestellungenAsync(
+                    db,
+                    session.Id);
+            var afterCancelSignature =
+                await ReadLatestSignatureAsync(
+                    db,
+                    session.Id);
+
+            assert(
+                cancelReconciled &&
+                await fiscal.IsCurrentStateSecuredAsync(session.Id) &&
+                afterCancelRows == 3 &&
+                afterCancelSignature.TransactionNumber == "43",
+                "Restaurant cancellation reconciliation reuses the journaled TSE result and restores a payable secured table without a second TSE");
+
+            var mergeArea =
+                await repo.SaveAreaAsync(
+                    "Merge Retry",
+                    2);
+            var sourceTable =
+                await repo.SaveTableAsync(
+                    mergeArea,
+                    "MR-S",
+                    "Merge Quelle",
+                    2,
+                    1);
+            var targetTable =
+                await repo.SaveTableAsync(
+                    mergeArea,
+                    "MR-T",
+                    "Merge Ziel",
+                    2,
+                    2);
+            var source =
+                await repo.OpenTableAsync(
+                    sourceTable,
+                    "RETRY-TEST");
+            var target =
+                await repo.OpenTableAsync(
+                    targetTable,
+                    "RETRY-TEST");
+
+            var sourceItem =
+                await repo.AddItemAsync(
+                    source.Id,
+                    source.Version,
+                    new Product
+                    {
+                        Id = 940010,
+                        Name = "Merge Quelle Artikel",
+                        BasePriceCents = 700,
+                        VatRate = 7m,
+                        Unit = "Stück",
+                        IsActive = true
+                    },
+                    1m,
+                    "RETRY-TEST");
+            var sourceAfterAdd =
+                await repo.GetSessionAsync(source.Id)
+                ?? throw new InvalidOperationException("Merge source missing.");
+            var targetItem =
+                await repo.AddItemAsync(
+                    target.Id,
+                    target.Version,
+                    new Product
+                    {
+                        Id = 940011,
+                        Name = "Merge Ziel Artikel",
+                        BasePriceCents = 600,
+                        VatRate = 19m,
+                        Unit = "Stück",
+                        IsActive = true
+                    },
+                    1m,
+                    "RETRY-TEST");
+            var targetAfterAdd =
+                await repo.GetSessionAsync(target.Id)
+                ?? throw new InvalidOperationException("Merge target missing.");
+
+            async Task SecureSeededAsync(
+                RestaurantTableSession owner,
+                RestaurantSessionItem item,
+                string tx)
+            {
+                var id =
+                    "restaurant-retry-seed-" +
+                    Guid.NewGuid().ToString("N");
+                var started =
+                    DateTimeOffset.UtcNow.AddSeconds(-2);
+                var result =
+                    SaleTseResult.SignedResult(
+                        "RETRY-CLIENT",
+                        tx,
+                        tx,
+                        "RETRY-SERIAL",
+                        "SEED-" + tx,
+                        DateTimeOffset.UtcNow,
+                        started);
+                await SeedFinishedVorgangAsync(
+                    db,
+                    id,
+                    started,
+                    JsonSerializer.Serialize(result),
+                    $"RESTAURANT:{owner.Id}");
+                await fiscal.SecureAddedItemAsync(
+                    owner.Id,
+                    item,
+                    new RestaurantFiscalVorgang(id, started),
+                    "RETRY-TEST");
+            }
+
+            await SecureSeededAsync(
+                sourceAfterAdd,
+                sourceItem,
+                "50");
+            await SecureSeededAsync(
+                targetAfterAdd,
+                targetItem,
+                "51");
+
+            sourceAfterAdd =
+                await repo.GetSessionAsync(source.Id)
+                ?? throw new InvalidOperationException("Merge source missing after secure.");
+            targetAfterAdd =
+                await repo.GetSessionAsync(target.Id)
+                ?? throw new InvalidOperationException("Merge target missing after secure.");
+
+            await repo.MergeSessionsAsync(
+                source.Id,
+                sourceAfterAdd.Version,
+                target.Id,
+                targetAfterAdd.Version,
+                "RETRY-TEST",
+                "KASSE-RETRY");
+
+            var sourceRecoveryId =
+                "restaurant-retry-merge-source-" +
+                Guid.NewGuid().ToString("N");
+            var targetRecoveryId =
+                "restaurant-retry-merge-target-" +
+                Guid.NewGuid().ToString("N");
+            var mergeStarted =
+                DateTimeOffset.UtcNow.AddMilliseconds(-250);
+
+            await SeedFinishedVorgangAsync(
+                db,
+                sourceRecoveryId,
+                mergeStarted,
+                JsonSerializer.Serialize(
+                    SaleTseResult.SignedResult(
+                        "RETRY-CLIENT",
+                        "52",
+                        "52",
+                        "RETRY-SERIAL",
+                        "MERGE-SOURCE",
+                        DateTimeOffset.UtcNow,
+                        mergeStarted)),
+                $"RESTAURANT:{source.Id}");
+            await SeedFinishedVorgangAsync(
+                db,
+                targetRecoveryId,
+                mergeStarted,
+                JsonSerializer.Serialize(
+                    SaleTseResult.SignedResult(
+                        "RETRY-CLIENT",
+                        "53",
+                        "53",
+                        "RETRY-SERIAL",
+                        "MERGE-TARGET",
+                        DateTimeOffset.UtcNow,
+                        mergeStarted)),
+                $"RESTAURANT:{target.Id}");
+
+            var sourceRecovered =
+                await fiscal.ReconcileSessionAsync(
+                    source.Id,
+                    "RETRY-TEST");
+            var targetRecovered =
+                await fiscal.ReconcileSessionAsync(
+                    target.Id,
+                    "RETRY-TEST");
+
+            assert(
+                sourceRecovered &&
+                targetRecovered &&
+                await fiscal.IsCurrentStateSecuredAsync(source.Id) &&
+                await fiscal.IsCurrentStateSecuredAsync(target.Id),
+                "Restaurant merge reconciliation repairs both DB-committed sessions from journaled TSE results without duplicate TSE transactions");
         }
         finally
         {
@@ -213,7 +441,8 @@ public static class RestaurantFiscalRetryTests
         SqliteDatabase db,
         string id,
         DateTimeOffset startedAt,
-        string finishJson)
+        string finishJson,
+        string reference = "RESTAURANT-RETRY")
     {
         await using var c = db.OpenConnection();
         await using var q = c.CreateCommand();
@@ -226,7 +455,7 @@ public static class RestaurantFiscalRetryTests
             VALUES(
                 $id,0,$started,
                 'RETRY-CLIENT','42',$started,'',
-                'FINISHED',NULL,'RESTAURANT-RETRY',$now,
+                'FINISHED',NULL,$reference,$now,
                 $now,$journal);
             """;
         q.Parameters.AddWithValue(
@@ -241,6 +470,9 @@ public static class RestaurantFiscalRetryTests
         q.Parameters.AddWithValue(
             "$journal",
             finishJson);
+        q.Parameters.AddWithValue(
+            "$reference",
+            reference);
         await q.ExecuteNonQueryAsync();
     }
 

@@ -17,6 +17,7 @@ public sealed class RestaurantFiscalOrderService
 {
     private readonly SqliteDatabase _db;
     private readonly TseVorgangService _vorgaenge;
+    private readonly SemaphoreSlim _reconcileGate = new(1, 1);
 
     public RestaurantFiscalOrderService(
         SqliteDatabase db,
@@ -42,6 +43,11 @@ public sealed class RestaurantFiscalOrderService
             training: false,
             startedAt,
             actor,
+            ct);
+
+        await _vorgaenge.TagReferenceAsync(
+            id,
+            $"RESTAURANT:{sessionId}",
             ct);
 
         return new RestaurantFiscalVorgang(id, startedAt);
@@ -151,6 +157,8 @@ public sealed class RestaurantFiscalOrderService
             result,
             ct,
             securedItemId: item.Id);
+
+        await _vorgaenge.ClearFinishJournalAsync(vorgang.Id, ct);
     }
 
     public async Task SecureCancelledItemAsync(
@@ -198,6 +206,8 @@ public sealed class RestaurantFiscalOrderService
             new[] { reversal },
             result,
             ct);
+
+        await _vorgaenge.ClearFinishJournalAsync(vorgang.Id, ct);
     }
 
     public async Task SecureMergeAsync(
@@ -253,7 +263,323 @@ public sealed class RestaurantFiscalOrderService
             sourceResult,
             targetResult,
             ct);
+
+        await _vorgaenge.ClearFinishJournalAsync(sourceVorgang.Id, ct);
+        await _vorgaenge.ClearFinishJournalAsync(targetVorgang.Id, ct);
     }
+
+    public async Task<IReadOnlyList<string>> ListUnsecuredSessionIdsAsync(
+        CancellationToken ct = default)
+    {
+        var candidates = new List<string>();
+        await using (var c = _db.OpenReadConnection())
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT id
+                FROM restaurant_sessions
+                WHERE state IN ('OPEN','CHECK_REQUESTED','CANCELLED')
+                ORDER BY updated_at,id;
+                """;
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                candidates.Add(r.GetString(0));
+        }
+
+        var result = new List<string>();
+        foreach (var sessionId in candidates)
+        {
+            if (!await IsCurrentStateSecuredAsync(sessionId, ct))
+                result.Add(sessionId);
+        }
+
+        return result;
+    }
+
+    public async Task<bool> ReconcileSessionAsync(
+        string sessionId,
+        string actor,
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+        if (sessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+
+        await _reconcileGate.WaitAsync(ct);
+        try
+        {
+            if (await IsCurrentStateSecuredAsync(sessionId, ct))
+                return true;
+
+            var delta = await BuildReconciliationDeltaAsync(sessionId, ct);
+            if (delta.Count == 0)
+            {
+                await MarkPendingSessionItemsSecuredAsync(sessionId, ct);
+                return await IsCurrentStateSecuredAsync(sessionId, ct);
+            }
+
+            var recovery = await FindRecoveryVorgangAsync(sessionId, ct);
+            RestaurantFiscalVorgang vorgang;
+            SaleTseResult result;
+
+            if (recovery is not null)
+            {
+                vorgang = new RestaurantFiscalVorgang(
+                    recovery.Id,
+                    recovery.StartedAt);
+
+                result =
+                    await _vorgaenge.GetJournaledFinishAsync(
+                        recovery.Id,
+                        ct)
+                    ?? (
+                        recovery.FinishAttempted ||
+                        recovery.State is TseVorgangService.Finished or TseVorgangService.Aborted
+                            ? SaleTseResult.Outage(
+                                "Restaurant-Änderung wurde möglicherweise bereits an der TSE beendet, " +
+                                "aber das F-6-Finish-Journal fehlt. Keine zweite TSE-Transaktion erzeugt.")
+                            : await _vorgaenge.FinishAsync(
+                                recovery.Id,
+                                FiscalProcessData.BestellungProcessType,
+                                FiscalProcessData.BestellungText(delta),
+                                actor,
+                                $"RESTAURANT:{sessionId}",
+                                ct));
+            }
+            else
+            {
+                vorgang = await BeginChangeAsync(
+                    sessionId,
+                    actor,
+                    ct);
+
+                result = await _vorgaenge.FinishAsync(
+                    vorgang.Id,
+                    FiscalProcessData.BestellungProcessType,
+                    FiscalProcessData.BestellungText(delta),
+                    actor,
+                    $"RESTAURANT:{sessionId}",
+                    ct);
+            }
+
+            await InsertRecordAsync(
+                sessionId,
+                vorgang.StartedAt,
+                actor,
+                delta,
+                result,
+                ct,
+                securePendingSessionItems: true);
+
+            await _vorgaenge.ClearFinishJournalAsync(
+                vorgang.Id,
+                ct);
+
+            return await IsCurrentStateSecuredAsync(sessionId, ct);
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<CartLine>> BuildReconciliationDeltaAsync(
+        string sessionId,
+        CancellationToken ct)
+    {
+        var current =
+            new Dictionary<string, (CartLine Line, long QuantityMilli)>(
+                StringComparer.Ordinal);
+        var secured =
+            new Dictionary<string, (CartLine Line, long QuantityMilli)>(
+                StringComparer.Ordinal);
+
+        await using var c = _db.OpenReadConnection();
+
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT product_id,product_name,unit_price_cents,vat_rate,pfand_cents,
+                       SUM(quantity_milli)
+                FROM restaurant_session_items
+                WHERE session_id=$session
+                  AND state IN ('ACTIVE','PAID')
+                GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents
+                HAVING SUM(quantity_milli)<>0;
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                var line = ReconciliationLine(
+                    r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetInt64(2),
+                    Convert.ToDecimal(r.GetDouble(3)),
+                    r.GetInt64(4));
+                current[Key(
+                    line.ProductId,
+                    line.ProductName,
+                    line.UnitPriceCents,
+                    line.VatRate,
+                    line.PfandCents)] =
+                    (line, r.GetInt64(5));
+            }
+        }
+
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents,
+                       SUM(i.quantity_milli)
+                FROM restaurant_bestellung_items i
+                JOIN restaurant_bestellungen b ON b.id=i.bestellung_id
+                WHERE b.session_id=$session
+                GROUP BY i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents
+                HAVING SUM(i.quantity_milli)<>0;
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                var line = ReconciliationLine(
+                    r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetInt64(2),
+                    Convert.ToDecimal(r.GetDouble(3)),
+                    r.GetInt64(4));
+                secured[Key(
+                    line.ProductId,
+                    line.ProductName,
+                    line.UnitPriceCents,
+                    line.VatRate,
+                    line.PfandCents)] =
+                    (line, r.GetInt64(5));
+            }
+        }
+
+        var keys = current.Keys
+            .Concat(secured.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal);
+
+        var result = new List<CartLine>();
+        foreach (var key in keys)
+        {
+            var currentQuantity =
+                current.TryGetValue(key, out var currentValue)
+                    ? currentValue.QuantityMilli
+                    : 0L;
+            var securedQuantity =
+                secured.TryGetValue(key, out var securedValue)
+                    ? securedValue.QuantityMilli
+                    : 0L;
+            var difference = currentQuantity - securedQuantity;
+            if (difference == 0)
+                continue;
+
+            var template =
+                current.TryGetValue(key, out currentValue)
+                    ? currentValue.Line
+                    : securedValue.Line;
+
+            result.Add(
+                new CartLine(template)
+                {
+                    Quantity = QuantityStorage.FromMilli(difference)
+                });
+        }
+
+        return result;
+    }
+
+    private async Task<RestaurantFiscalRecoveryVorgang?> FindRecoveryVorgangAsync(
+        string sessionId,
+        CancellationToken ct)
+    {
+        await using var c = _db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT v.id,v.started_at,v.state,
+                   CASE WHEN v.finish_attempted_at<>'' THEN 1 ELSE 0 END,
+                   CASE WHEN v.finish_result_json<>'' THEN 1 ELSE 0 END
+            FROM tse_vorgaenge v
+            WHERE v.reference=$reference
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM restaurant_bestellungen b
+                  WHERE b.session_id=$session
+                    AND v.transaction_number<>''
+                    AND b.transaction_number=v.transaction_number)
+            ORDER BY v.updated_at DESC,v.started_at DESC
+            LIMIT 1;
+            """;
+        q.Parameters.AddWithValue(
+            "$reference",
+            $"RESTAURANT:{sessionId}");
+        q.Parameters.AddWithValue(
+            "$session",
+            sessionId);
+
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct))
+            return null;
+
+        return new RestaurantFiscalRecoveryVorgang(
+            r.GetString(0),
+            DateTimeOffset.Parse(r.GetString(1)),
+            r.GetString(2),
+            r.GetInt64(3) == 1,
+            r.GetInt64(4) == 1);
+    }
+
+    private Task MarkPendingSessionItemsSecuredAsync(
+        string sessionId,
+        CancellationToken ct) =>
+        IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE restaurant_session_items
+                SET fiscal_state='SECURED',
+                    version=version+1
+                WHERE session_id=$session
+                  AND state IN ('ACTIVE','PAID')
+                  AND fiscal_state='PENDING';
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+            await q.ExecuteNonQueryAsync(ct);
+        });
+
+    private static CartLine ReconciliationLine(
+        long productId,
+        string productName,
+        long unitPriceCents,
+        decimal vatRate,
+        long pfandCents) =>
+        new()
+        {
+            ProductId = productId,
+            ProductName = productName,
+            Quantity = 0m,
+            Unit = "Stück",
+            UnitPriceCents = unitPriceCents,
+            ListUnitPriceCents = unitPriceCents,
+            VatRate = vatRate,
+            PfandCents = pfandCents
+        };
+
+    private sealed record RestaurantFiscalRecoveryVorgang(
+        string Id,
+        DateTimeOffset StartedAt,
+        string State,
+        bool FinishAttempted,
+        bool HasJournal);
 
     public async Task<bool> IsCurrentStateSecuredAsync(
         string sessionId,
@@ -380,7 +706,8 @@ public sealed class RestaurantFiscalOrderService
         IReadOnlyList<CartLine> lines,
         SaleTseResult result,
         CancellationToken ct,
-        long? securedItemId = null)
+        long? securedItemId = null,
+        bool securePendingSessionItems = false)
     {
         await IoQueue.RunAsync(async () =>
         {
@@ -478,6 +805,22 @@ public sealed class RestaurantFiscalOrderService
                     throw new InvalidOperationException(
                         "Restaurant-Position konnte nicht atomar als fiskalisch gesichert markiert werden.");
                 }
+            }
+
+            if (securePendingSessionItems)
+            {
+                await using var securePending = c.CreateCommand();
+                securePending.Transaction = tx;
+                securePending.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET fiscal_state='SECURED',
+                        version=version+1
+                    WHERE session_id=$session
+                      AND state IN ('ACTIVE','PAID')
+                      AND fiscal_state='PENDING';
+                    """;
+                securePending.Parameters.AddWithValue("$session", sessionId);
+                await securePending.ExecuteNonQueryAsync(ct);
             }
 
             await tx.CommitAsync(ct);

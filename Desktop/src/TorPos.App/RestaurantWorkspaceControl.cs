@@ -162,6 +162,15 @@ public sealed class RestaurantWorkspaceControl : UserControl
     private readonly Button _sendOrder = new() { Name="RestaurantSendOrder",Content="BESTELLUNG SENDEN",MinHeight=44,IsEnabled=false };
     private readonly Button _interim = new() { Name="InterimBill",Content="ZWISCHENRECHNUNG",MinHeight=44,IsEnabled=false };
     private readonly Button _payAll = new() { Name="TablePayAll",Content="BEZAHLEN",MinHeight=44,IsEnabled=false };
+    private readonly Button _reconcileFiscal = new()
+    {
+        Name = "RestaurantFiscalReconcile",
+        Content = "FISKAL NACH SICHERN",
+        MinHeight = 44,
+        IsVisible = false,
+        IsEnabled = false
+    };
+    private string _fiscalRecoveryStatus = "";
     public Func<Task>? OpenMasterDataAsync { get; set; }
     public Func<RestaurantCheckoutDraft, Task>? CheckoutRequestedAsync { get; set; }
     public Func<Task>? CounterRequestedAsync { get; set; }
@@ -250,6 +259,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
             await CheckoutSelectedAsync();
         };
         _sendOrder.Click += async (_, _) => await SendSelectedOrderAsync();
+        _reconcileFiscal.Click += async (_, _) => await ReconcileSelectedSessionAsync();
         _saveDetails.Click += async (_, _) => await SaveSessionDetailsAsync();
         _takeOver.Click += async (_, _) => await TakeOverSelectedSessionAsync();
         _add.Click += async (_, _) => await AddSelectedProductAsync();
@@ -342,7 +352,8 @@ public sealed class RestaurantWorkspaceControl : UserControl
         };
 
         var details = new StackPanel { Spacing=8,Children={
-            new TextBlock { Text="Gäste" },_guestCount,new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,_saveDetails,_takeOver,tableActions} };
+            new TextBlock { Text="Gäste" },_guestCount,new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,
+            _saveDetails,_takeOver,_reconcileFiscal,tableActions} };
         var right = new StackPanel
         {
             Spacing=10,Margin=new Thickness(18),Children={_detailTitle,_detailStatus,
@@ -402,6 +413,37 @@ public sealed class RestaurantWorkspaceControl : UserControl
     public async Task InitializeAsync()
     {
         await EnsureStarterTablesAsync();
+
+        var repaired = 0;
+        var failed = 0;
+        foreach (var sessionId in
+                 await _restaurantFiscal.ListUnsecuredSessionIdsAsync())
+        {
+            try
+            {
+                if (await _restaurantFiscal.ReconcileSessionAsync(
+                        sessionId,
+                        _user.Username))
+                    repaired++;
+                else
+                    failed++;
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                CrashLog.WriteException(
+                    "Restaurant fiscal startup reconciliation",
+                    ex);
+            }
+        }
+
+        _fiscalRecoveryStatus =
+            failed > 0
+                ? $"FISKALISCHE PRÜFUNG ERFORDERLICH · {failed} Tischvorgang/-vorgänge nicht automatisch repariert."
+                : repaired > 0
+                    ? $"FISKAL NACHGESICHERT · {repaired} Tischvorgang/-vorgänge wieder konsistent."
+                    : "";
+
         await ReloadAsync();
     }
 
@@ -475,7 +517,10 @@ public sealed class RestaurantWorkspaceControl : UserControl
         {
             _selectedSession=null;
             _detailTitle.Text = "Tisch auswählen";
-            _detailStatus.Text = "Links einen Tisch wählen.";
+            _detailStatus.Text =
+                string.IsNullOrWhiteSpace(_fiscalRecoveryStatus)
+                    ? "Links einen Tisch wählen."
+                    : _fiscalRecoveryStatus + "\nLinks einen Tisch wählen.";
             _sendOrder.IsEnabled = false;
             _add.IsEnabled = false;
             _move.IsEnabled = false;
@@ -489,6 +534,8 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _saveDetails.IsEnabled = false;
             _takeOver.IsVisible = false;
             _takeOver.IsEnabled = false;
+            _reconcileFiscal.IsVisible = false;
+            _reconcileFiscal.IsEnabled = false;
             _guestCount.Value = 1;
             _tableNote.Text = "";
             _items.ItemsSource = Array.Empty<RestaurantSessionItem>();
@@ -637,31 +684,38 @@ public sealed class RestaurantWorkspaceControl : UserControl
         var total = currentItems.Sum(x => x.LineTotalCents);
         var paymentLocked =
             _selectedSession.State == RestaurantTableSessionState.CheckRequested;
+        var fiscalSecured =
+            await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                _selectedSession.Id);
+        var mutationLocked = paymentLocked || !fiscalSecured;
 
         _detailStatus.Text =
             (paymentLocked ? "ZAHLUNG OFFEN / PRÜFUNG ERFORDERLICH\n" : "") +
+            (!fiscalSecured ? "BESTELLUNG/TSE · PRÜFUNG ERFORDERLICH\n" : "") +
             $"BELEGT · {_selectedSession.GuestCount} Gäste · " +
             $"Kellner: {_selectedSession.AssignedWaiter}\n" +
             $"Geöffnet: {_selectedSession.OpenedAt.ToLocalTime():dd.MM.yyyy HH:mm} · " +
             $"Version {_selectedSession.Version} · Summe {Formatting.Money(total)}";
 
-        _sendOrder.IsEnabled=!paymentLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
+        _sendOrder.IsEnabled=!mutationLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
         _interim.IsEnabled=currentItems.Count>0;
-        _payAll.IsEnabled=!paymentLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
+        _payAll.IsEnabled=!mutationLocked && currentItems.Count>0 && _user.Can(UserPermissions.Sale) && !_user.IsTraining;
         _items.ItemsSource = currentItems;
         _guestCount.Value = _selectedSession.GuestCount;
         _tableNote.Text = _selectedSession.Note;
 
-        _add.IsEnabled = !paymentLocked;
-        _move.IsEnabled = !paymentLocked;
-        _merge.IsEnabled = !paymentLocked;
-        _closeEmpty.IsEnabled = !paymentLocked && currentItems.Count == 0;
-        _split.IsEnabled = !paymentLocked && currentItems.Count > 0;
-        _checkoutSelected.IsEnabled = !paymentLocked && currentItems.Count > 0;
+        _add.IsEnabled = !mutationLocked;
+        _move.IsEnabled = !mutationLocked;
+        _merge.IsEnabled = !mutationLocked;
+        _closeEmpty.IsEnabled = !mutationLocked && currentItems.Count == 0;
+        _split.IsEnabled = !mutationLocked && currentItems.Count > 0;
+        _checkoutSelected.IsEnabled = !mutationLocked && currentItems.Count > 0;
         _cancelItem.IsEnabled = false;
-        _guestCount.IsEnabled = !paymentLocked;
-        _tableNote.IsEnabled = !paymentLocked;
-        _saveDetails.IsEnabled = !paymentLocked;
+        _guestCount.IsEnabled = !mutationLocked;
+        _tableNote.IsEnabled = !mutationLocked;
+        _saveDetails.IsEnabled = !mutationLocked;
+        _reconcileFiscal.IsVisible = !fiscalSecured && _user.IsAdmin;
+        _reconcileFiscal.IsEnabled = !fiscalSecured && _user.IsAdmin;
 
         var belongsToCurrentUser = string.Equals(
             _selectedSession.AssignedWaiter,
@@ -669,10 +723,40 @@ public sealed class RestaurantWorkspaceControl : UserControl
             StringComparison.OrdinalIgnoreCase);
 
         _takeOver.IsVisible = !belongsToCurrentUser;
-        _takeOver.IsEnabled = !paymentLocked && !belongsToCurrentUser;
+        _takeOver.IsEnabled = !mutationLocked && !belongsToCurrentUser;
         _takeOver.Content = belongsToCurrentUser
             ? "IHR TISCH"
             : $"TISCH ÜBERNEHMEN · {_selectedSession.AssignedWaiter}";
+    }
+
+    private async Task ReconcileSelectedSessionAsync()
+    {
+        if (_selectedSession is null || !_user.IsAdmin)
+            return;
+
+        _reconcileFiscal.IsEnabled = false;
+        try
+        {
+            var secured =
+                await _restaurantFiscal.ReconcileSessionAsync(
+                    _selectedSession.Id,
+                    _user.Username);
+
+            _fiscalRecoveryStatus =
+                secured
+                    ? "FISKAL NACHGESICHERT · Tischvorgang ist wieder konsistent."
+                    : "FISKALISCHE PRÜFUNG ERFORDERLICH · Nachsicherung nicht vollständig.";
+        }
+        catch (Exception ex)
+        {
+            _fiscalRecoveryStatus =
+                "FISKALISCHE PRÜFUNG ERFORDERLICH · " + ex.Message;
+            await ShowErrorAsync(_fiscalRecoveryStatus);
+        }
+        finally
+        {
+            await ReloadAsync();
+        }
     }
 
     private async Task TakeOverSelectedSessionAsync()
