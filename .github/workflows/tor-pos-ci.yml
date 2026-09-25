@@ -289,7 +289,7 @@ jobs:
       - name: TOR Restaurant Setup EXE sakla (gelistirme)
         uses: actions/upload-artifact@v7
         with:
-          name: TOR-Restaurant-Setup-DEV-${{ github.sha }}
+          name: TOR-Restaurant-Setup-DEV4-${{ github.sha }}
           path: Desktop/installer-output/TOR-Restaurant-Setup.exe
           if-no-files-found: error
           retention-days: 14
