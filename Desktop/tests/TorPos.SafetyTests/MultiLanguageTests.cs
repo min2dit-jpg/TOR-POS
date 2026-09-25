@@ -179,6 +179,7 @@ public static class MultiLanguageTests
             "RestaurantKdsWindow.cs",
             "RestaurantReservationsWindow.cs",
             "RestaurantTablePlanWindow.cs",
+            "RestaurantWorkspaceControl.cs",
             "RestaurantSplitCheckoutWindow.cs",
             "MainWindow.Restaurant.cs" // Restaurant-only Stammdaten menu.
         ];
