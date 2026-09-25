@@ -218,6 +218,29 @@ async function readBody(req, maxBytes = 1024 * 1024) {
   }
   return Buffer.concat(chunks);
 }
+// C-3: /updates/* and /trial/* are public and re-check the installer against its
+// manifest hash on every download (R120). Hashing used to be readFileSync on the
+// whole exe per request, which blocked the event loop - a handful of parallel
+// downloads froze the server. The hash is now streamed and remembered per file
+// identity; any rewrite changes size, mtime, ctime or inode and forces a fresh
+// hash. Concurrent requests share one in-flight computation.
+const installerHashCache = new Map();
+async function installerSha256(full) {
+  const stat = await fs.promises.stat(full);
+  if (!stat.isFile()) throw Object.assign(new Error('Nicht gefunden'), { code: 'ENOENT' });
+  const key = `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.ino}`;
+  let entry = installerHashCache.get(full);
+  if (!entry || entry.key !== key) {
+    const hash = new Promise((resolve, reject) => {
+      const h = crypto.createHash('sha256');
+      fs.createReadStream(full).on('error', reject).on('data', c => h.update(c)).on('end', () => resolve(h.digest('hex').toUpperCase()));
+    });
+    entry = { key, hash };
+    installerHashCache.set(full, entry);
+    hash.catch(() => { if (installerHashCache.get(full) === entry) installerHashCache.delete(full); });
+  }
+  return { sha256: await entry.hash, size: stat.size };
+}
 async function readJson(req, maxBytes = 1024 * 1024) {
   const raw = await readBody(req, maxBytes);
   if (!raw.length) return {};
@@ -1164,16 +1187,14 @@ async function handler(req, res) {
       const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/trial/'.length));
       if(!m.enabled||requested!==expected||requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
       const full=path.join(UPDATES,expected);
-      if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');
-      const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
-      if(served!==String(m.sha256||'').toUpperCase()){
+      let served;try{served=await installerSha256(full);}catch{return text(res,404,'Nicht gefunden');}
+      if(served.sha256!==String(m.sha256||'').toUpperCase()){
         console.error('Demo download refused: sha256 of',expected,'does not match manifest');
         return text(res,409,'Demo-Datei stimmt nicht mit dem Manifest überein.');
       }
-      const stat=fs.statSync(full);
       res.writeHead(200,{
         'Content-Type':'application/vnd.microsoft.portable-executable',
-        'Content-Length':stat.size,
+        'Content-Length':served.size,
         'Content-Disposition':'attachment; filename="TOR-POS-Demo-Setup.exe"',
         'Cache-Control':'no-store',
         'X-Content-Type-Options':'nosniff'
@@ -1203,18 +1224,18 @@ async function handler(req, res) {
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return text(res,404,'Nicht gefunden');}
       const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/updates/'.length));
       if(!m.enabled || requested!==expected || requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
-      const full=path.join(UPDATES,expected);if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');const stat=fs.statSync(full);
+      const full=path.join(UPDATES,expected);
       // R120: verify the bytes actually being served against the manifest
       // hash. The publishing script checks Authenticode, but nothing checked
       // the file again at serve time - so anything that could write into the
-      // updates directory bypassed that gate completely. Cheap enough here:
-      // this endpoint is hit once per update, not per request.
-      const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
-      if(served!==String(m.sha256||'').toUpperCase()){
+      // updates directory bypassed that gate completely. C-3: the hash is
+      // streamed and cached per file identity (installerSha256).
+      let served;try{served=await installerSha256(full);}catch{return text(res,404,'Nicht gefunden');}
+      if(served.sha256!==String(m.sha256||'').toUpperCase()){
         console.error('Update refused: sha256 of',expected,'does not match manifest');
         return text(res,409,'Update-Datei stimmt nicht mit dem Manifest überein.');
       }
-      res.writeHead(200,{'Content-Type':'application/vnd.microsoft.portable-executable','Content-Length':stat.size,'Content-Disposition':`attachment; filename="${expected}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+      res.writeHead(200,{'Content-Type':'application/vnd.microsoft.portable-executable','Content-Length':served.size,'Content-Disposition':`attachment; filename="${expected}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       // R120: an aborted download used to raise an unhandled 'error' on the
       // stream and take the whole server process down with it.
       const stream=fs.createReadStream(full);

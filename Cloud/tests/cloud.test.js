@@ -2,7 +2,7 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
-const {mkdtempSync,rmSync,mkdirSync,writeFileSync,readFileSync}=require('node:fs');
+const {mkdtempSync,rmSync,mkdirSync,writeFileSync,readFileSync,statSync,utimesSync}=require('node:fs');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
@@ -226,6 +226,30 @@ test('R120 a tampered installer is refused at download time',async()=>{
  }
  const restored=await fetch(base+'/updates/TOR-POS-Pro-Setup.exe');
  assert.equal(restored.status,200);
+});
+// C-3: the hash is cached per file identity. A same-size rewrite that even puts
+// the old mtime back must still miss the cache (ctime/inode change).
+test('C-3 cached installer hash still catches a same-size tamper with restored mtime',async()=>{
+ const target=path.join(root,'updates','TOR-POS-Pro-Setup.exe');
+ const original=readFileSync(target),{atime,mtime}=statSync(target);
+ assert.equal((await fetch(base+'/updates/TOR-POS-Pro-Setup.exe')).status,200);
+ try{
+  const forged=Buffer.from(original);forged[0]^=1;writeFileSync(target,forged);utimesSync(target,atime,mtime);
+  assert.equal((await fetch(base+'/updates/TOR-POS-Pro-Setup.exe')).status,409);
+ } finally { writeFileSync(target,original); }
+ assert.equal((await fetch(base+'/updates/TOR-POS-Pro-Setup.exe')).status,200);
+});
+test('C-3 parallel downloads of a large installer share one hash and all succeed',async()=>{
+ const updates=path.join(root,'updates'),target=path.join(updates,'TOR-POS-Pro-Setup.exe'),manifestPath=path.join(updates,'manifest.json');
+ const original=readFileSync(target),manifest=readFileSync(manifestPath);
+ const big=crypto.randomBytes(24*1024*1024);
+ try{
+  writeFileSync(target,big);
+  writeFileSync(manifestPath,JSON.stringify({...JSON.parse(manifest),sha256:crypto.createHash('sha256').update(big).digest('hex').toUpperCase()}));
+  const downloads=Array.from({length:6},()=>fetch(base+'/updates/TOR-POS-Pro-Setup.exe').then(async r=>({status:r.status,body:Buffer.from(await r.arrayBuffer())})));
+  assert.equal((await fetch(base+'/api/health')).status,200);
+  for(const d of await Promise.all(downloads)){assert.equal(d.status,200);assert.ok(d.body.equals(big));}
+ } finally { writeFileSync(target,original);writeFileSync(manifestPath,manifest); }
 });
 test('R45 TOTP enrollment and challenge login',async()=>{
  const start=await request('/api/2fa/setup/start',{}, {Cookie:otherCookie});assert.equal(start.status,200);assert.match(start.body.secret,/^[A-Z2-7]+$/);
