@@ -169,7 +169,7 @@ async Task RunAsync()
     await using var kitchenDispatcher = new RestaurantKitchenDispatcher(kitchen, settings, kitchenRouter, printJournal);
     foreach (var (width, height) in sizes)
     {
-        var windowFactory = new NoWindows(() => new RestaurantTablePlanWindow(
+        var windowFactory = new NoWindows(() => new RestaurantWorkspaceControl(
             restaurantRepository, restaurantFiscal, kitchen, kitchenDispatcher, catalog, settings,
             new ControlledPosActionService(db), admin, receiptPrinter));
         var window = new MainWindow(
@@ -196,32 +196,93 @@ async Task RunAsync()
 
         if (snapshotEdition == "RESTAURANT")
         {
-            var plan = windowFactory.TablePlan;
-            if (plan is null) throw new InvalidOperationException("Restaurant startup did not open Tischplan.");
-            plan.WindowState = WindowState.Normal; plan.Width = width; plan.Height = height;
-            await Task.Delay(150); Dispatcher.UIThread.RunJobs();
-            CheckNamedActions(plan, new[] { "ThekeButton", "TableDetailsSave", "TablePlanClose", "InterimBill", "TablePayAll" }, failures);
-            plan.CaptureRenderedFrame()!.Save(Path.Combine(output, $"restaurant-plan-{width}x{height}.png"), new PngBitmapEncoderOptions());
-            var tableButton=plan.GetVisualDescendants().OfType<Button>().First(b=>b.Tag is RestaurantTable);
-            var table=(RestaurantTable)tableButton.Tag!;
-            tableButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await Task.Delay(250); Dispatcher.UIThread.RunJobs();
-            var opened=await restaurantRepository.GetLiveSessionForTableAsync(table.Id);
-            if(opened is null) throw new InvalidOperationException("Table tap did not open an order.");
-            plan.CaptureRenderedFrame()!.Save(Path.Combine(output,$"restaurant-order-{width}x{height}.png"),new PngBitmapEncoderOptions());
-            var sameButton=plan.GetVisualDescendants().OfType<Button>().First(b=>b.Tag is RestaurantTable t && t.Id==table.Id);
-            sameButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await Task.Delay(100); Dispatcher.UIThread.RunJobs();
-            if((await restaurantRepository.GetLiveSessionForTableAsync(table.Id))?.Id!=opened.Id)
-                throw new InvalidOperationException("Second table tap replaced an open order.");
-            await restaurantRepository.CloseEmptySessionAsync(opened.Id,opened.Version,admin.Username,"snapshot");
-            plan.GetVisualDescendants().OfType<Button>().Single(b=>b.Name=="ThekeButton")
-                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await Task.Delay(100); Dispatcher.UIThread.RunJobs();
-            if(!plan.ThekeRequested || !window.IsEnabled) throw new InvalidOperationException("THEKE did not return to direct sale.");
-            Console.WriteLine("RESTAURANT STARTUP/TABLE/THEKE CHECK PASSED");
+            var workspace = windowFactory.Workspace;
+            if (workspace is null)
+                throw new InvalidOperationException(
+                    "Restaurant startup did not create the embedded workspace.");
+
+            var host = window.FindControl<Control>("RestaurantWorkspaceHost");
+            if (host is null || !host.IsVisible)
+                throw new InvalidOperationException(
+                    "Restaurant startup did not show the embedded Tischplan.");
+
+            CheckNamedActions(
+                window,
+                new[]
+                {
+                    "RestaurantCounterButton",
+                    "InterimBill",
+                    "TableDetailsSave",
+                    "TablePayAll"
+                },
+                failures);
+
+            window.CaptureRenderedFrame()!.Save(
+                Path.Combine(output, $"restaurant-main-{width}x{height}.png"),
+                new PngBitmapEncoderOptions());
+
+            var tableButton = workspace
+                .GetVisualDescendants()
+                .OfType<Button>()
+                .First(b => b.Tag is RestaurantTable);
+            var table = (RestaurantTable)tableButton.Tag!;
+            tableButton.RaiseEvent(
+                new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(250);
+            Dispatcher.UIThread.RunJobs();
+
+            var opened =
+                await restaurantRepository.GetLiveSessionForTableAsync(table.Id);
+            if (opened is null)
+                throw new InvalidOperationException(
+                    "Table tap did not open an order.");
+
+            window.CaptureRenderedFrame()!.Save(
+                Path.Combine(output, $"restaurant-order-{width}x{height}.png"),
+                new PngBitmapEncoderOptions());
+
+            var sameButton = workspace
+                .GetVisualDescendants()
+                .OfType<Button>()
+                .First(b => b.Tag is RestaurantTable t && t.Id == table.Id);
+            sameButton.RaiseEvent(
+                new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+
+            if ((await restaurantRepository.GetLiveSessionForTableAsync(table.Id))?.Id != opened.Id)
+                throw new InvalidOperationException(
+                    "Second table tap replaced an open order.");
+
+            var currentOpen =
+                await restaurantRepository.GetLiveSessionForTableAsync(table.Id)
+                ?? throw new InvalidOperationException(
+                    "Opened table disappeared before cleanup.");
+            await restaurantRepository.CloseEmptySessionAsync(
+                currentOpen.Id,
+                currentOpen.Version,
+                admin.Username,
+                "snapshot");
+
+            window.FindControl<Button>("RestaurantCounterButton")!
+                .RaiseEvent(
+                    new Avalonia.Interactivity.RoutedEventArgs(
+                        Button.ClickEvent));
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+
+            if (host.IsVisible)
+                throw new InvalidOperationException(
+                    "THEKE did not switch the embedded Restaurant workspace back to direct sale.");
+
+            Console.WriteLine(
+                "RESTAURANT EMBEDDED STARTUP/TABLE/THEKE CHECK PASSED");
         }
-        else if(windowFactory.TablePlan is not null) throw new InvalidOperationException("Restaurant UI leaked into another edition.");
+        else if (windowFactory.Workspace is not null)
+        {
+            throw new InvalidOperationException(
+                "Restaurant UI leaked into another edition.");
+        }
         if (check) CheckLayout(window, width, height, failures);
 
         var frame = window.CaptureRenderedFrame()
@@ -492,15 +553,15 @@ static void CheckNamedActions(Window window, string[] names, List<string> failur
     }
 }
 
-sealed class NoWindows(Func<RestaurantTablePlanWindow> createTablePlan) : IAppWindowFactory
+sealed class NoWindows(Func<RestaurantWorkspaceControl> createRestaurantWorkspace) : IAppWindowFactory
 {
     public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
     public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
-    public RestaurantTablePlanWindow? TablePlan { get; private set; }
+    public RestaurantWorkspaceControl? Workspace { get; private set; }
     public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
-        AuthenticatedUser user) => TablePlan = createTablePlan();
-    public RestaurantWorkspaceControl CreateRestaurantWorkspaceControl(
         AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantWorkspaceControl CreateRestaurantWorkspaceControl(
+        AuthenticatedUser user) => Workspace = createRestaurantWorkspace();
     public RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
     public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(

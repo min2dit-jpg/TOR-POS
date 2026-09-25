@@ -116,6 +116,8 @@ public partial class MainWindow:Window
     private TorUpdateManifest? _availableUpdate;
     private long _quickItemSequence = -9_100_000;
     private RestaurantCheckoutDraft? _restaurantCheckoutDraft;
+    private RestaurantWorkspaceControl? _restaurantWorkspace;
+    private bool _restaurantWorkspaceInitialized;
     private OrderCustomerDisplayWindow? _orderDisplayWindow;
     private string _orderDisplaySignature = "";
     // R104: genuine customer-facing display (e.g. HP L7010t) - distinct
@@ -247,6 +249,12 @@ public partial class MainWindow:Window
                 ProductBuild.FixedEdition,
                 "RESTAURANT",
                 StringComparison.Ordinal);
+
+        RestaurantCounterButton.IsVisible =
+            RestaurantTablesButton.IsVisible;
+
+        CashMenuButton.IsVisible =
+            !RestaurantTablesButton.IsVisible;
 
         RestaurantKdsButton.IsVisible =
             RestaurantTablesButton.IsVisible &&
@@ -393,7 +401,7 @@ public partial class MainWindow:Window
             _tseCertificateTimer.Start();
             StartTseWatch();
             FocusScannerCaptureSoon();
-            await OpenRestaurantTablePlanAsync();
+            await ShowRestaurantTableWorkspaceAsync();
         };
 
         UiErrorGuard.ErrorCaught += OnUiErrorCaught;
@@ -490,46 +498,187 @@ public partial class MainWindow:Window
     }
 
     private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e) =>
-        await OpenRestaurantTablePlanAsync();
+        await ShowRestaurantTableWorkspaceAsync();
 
-    private bool _restaurantPlanOpen;
-    private async Task OpenRestaurantTablePlanAsync()
+    private void OnRestaurantCounterClick(object? sender, RoutedEventArgs e) =>
+        ShowRestaurantCounterWorkspace();
+
+    private bool IsRestaurantEdition() =>
+        string.Equals(
+            ProductBuild.FixedEdition,
+            "RESTAURANT",
+            StringComparison.Ordinal);
+
+    private bool CanSwitchRestaurantWorkspace(string target)
     {
-        if (!string.Equals(
-                ProductBuild.FixedEdition,
-                "RESTAURANT",
-                StringComparison.Ordinal))
+        if (!IsRestaurantEdition())
+            return false;
+
+        if (CartLocked ||
+            _engine.Cart.Count > 0 ||
+            _restaurantCheckoutDraft is not null ||
+            (_restaurantWorkspace?.IsBusy ?? false))
         {
-            return;
+            StatusLine =
+                $"{target}: Zuerst den aktuellen Vorgang abschließen oder leeren.";
+            return false;
         }
 
-        if (_restaurantPlanOpen || CartLocked || _engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
-        {
-            StatusLine = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
-            return;
-        }
+        return true;
+    }
 
-        _restaurantPlanOpen = true;
+    private RestaurantWorkspaceControl EnsureRestaurantWorkspace()
+    {
+        if (_restaurantWorkspace is not null)
+            return _restaurantWorkspace;
+
+        var workspace =
+            _windowFactory.CreateRestaurantWorkspaceControl(_currentUser);
+
+        workspace.OpenMasterDataAsync =
+            () => ShowRestaurantMasterDataAsync(this);
+        workspace.CounterRequestedAsync =
+            HandleRestaurantCounterRequestedAsync;
+        workspace.CheckoutRequestedAsync =
+            HandleRestaurantCheckoutAsync;
+
+        _restaurantWorkspace = workspace;
+        RestaurantWorkspaceContent.Content = workspace;
+        return workspace;
+    }
+
+    private async Task ShowRestaurantTableWorkspaceAsync()
+    {
+        if (!CanSwitchRestaurantWorkspace("TISCHPLAN"))
+            return;
+
+        var workspace = EnsureRestaurantWorkspace();
+
         try
         {
-            var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
-            window.OpenMasterDataAsync = ShowRestaurantMasterDataAsync;
-            var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
-            if (draft is null)
+            if (!_restaurantWorkspaceInitialized)
             {
-                if (window.ThekeRequested)
-                {
-                    ShowCategoryOverview();
-                    StatusLine = "THEKE · Direktverkauf ohne Tisch";
-                }
-                return;
+                await workspace.InitializeAsync();
+                _restaurantWorkspaceInitialized = true;
             }
-            _restaurantCheckoutDraft = draft;
-            _operationId = draft.OperationId;
-            _imHaus = true;
+            else
+            {
+                await workspace.RefreshAsync();
+            }
+
+            MenuHubOverlay.IsVisible = false;
+            RestaurantWorkspaceHost.IsEnabled = true;
+            RestaurantWorkspaceHost.IsVisible = true;
+            StatusLine = "TISCHPLAN · Tisch auswählen";
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Restaurant workspace startup", ex);
+            StatusLine = "TISCHPLAN konnte nicht geöffnet werden: " + ex.Message;
+        }
+    }
+
+    private Task HandleRestaurantCounterRequestedAsync()
+    {
+        ShowRestaurantCounterWorkspace();
+        return Task.CompletedTask;
+    }
+
+    private void ShowRestaurantCounterWorkspace()
+    {
+        if (!CanSwitchRestaurantWorkspace("THEKE"))
+            return;
+
+        MenuHubOverlay.IsVisible = false;
+        RestaurantWorkspaceHost.IsVisible = false;
+        RestaurantWorkspaceHost.IsEnabled = true;
+        ShowCategoryOverview();
+        StatusLine = "THEKE · Direktverkauf ohne Tisch";
+        FocusScannerCaptureSoon();
+    }
+
+    private async Task HandleRestaurantCheckoutAsync(
+        RestaurantCheckoutDraft draft)
+    {
+        if (!IsRestaurantEdition())
+            return;
+
+        if (CartLocked || _restaurantCheckoutDraft is not null)
+        {
+            StatusLine =
+                "BEZAHLEN: Ein anderer Vorgang ist noch geschützt oder offen.";
+            return;
+        }
+
+        _restaurantCheckoutDraft = draft;
+        _operationId = draft.OperationId;
+        _imHaus = true;
+        RestaurantWorkspaceHost.IsEnabled = false;
+
+        try
+        {
             await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
         }
-        finally { _restaurantPlanOpen = false; }
+        finally
+        {
+            var sameDraft =
+                string.Equals(
+                    _restaurantCheckoutDraft?.OperationId,
+                    draft.OperationId,
+                    StringComparison.Ordinal);
+
+            if (sameDraft &&
+                _pendingCheckout is null &&
+                !_recoveryFault)
+            {
+                var releaseDraft = true;
+                try
+                {
+                    if (await _restaurant.HasPreparedPaymentReservationAsync(
+                            draft.OperationId))
+                    {
+                        await _restaurant.CancelPaymentReservationAsync(
+                            draft.OperationId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    releaseDraft = false;
+                    CrashLog.WriteException(
+                        "Restaurant payment reservation release",
+                        ex);
+                    StatusLine =
+                        "RESTAURANT ZAHLUNG: Tisch bleibt gesperrt · " +
+                        ex.Message;
+                }
+
+                if (releaseDraft)
+                {
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                }
+            }
+
+            if (_restaurantWorkspace is not null)
+            {
+                try
+                {
+                    await _restaurantWorkspace.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException(
+                        "Restaurant workspace refresh after payment",
+                        ex);
+                }
+            }
+
+            RestaurantWorkspaceHost.IsVisible = true;
+            RestaurantWorkspaceHost.IsEnabled =
+                _pendingCheckout is null &&
+                !_recoveryFault &&
+                _restaurantCheckoutDraft is null;
+        }
     }
 
     private string CurrentBusinessMode()
