@@ -2447,6 +2447,40 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
             await q.ExecuteScalarAsync(ct)) == 1;
     }
 
+    /// <summary>
+    /// O-8: Storno and Teilretoure were allowed on the sale's calendar day only,
+    /// so the evening trade of a business open past midnight could not be
+    /// corrected after 00:00, although that sale still belongs to the open
+    /// Z period (R117). The rule is now the Z period: a Bon cashed after the last
+    /// Tagesabschluss can be reversed; one inside a closed Z period cannot.
+    /// </summary>
+    internal static async Task<bool> IsInOpenZPeriodAsync(
+        SqliteConnection c,
+        SqliteTransaction? tx,
+        DateTimeOffset createdAt,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = "SELECT closed_at FROM daily_closings ORDER BY id DESC LIMIT 1;";
+        var raw = await q.ExecuteScalarAsync(ct) as string;
+        return raw is null ||
+               !DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var lastClosing) ||
+               createdAt > lastClosing;
+    }
+
+    public async Task<DateTimeOffset?> GetOpenZPeriodStartAsync(CancellationToken ct = default) =>
+        await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = "SELECT closed_at FROM daily_closings ORDER BY id DESC LIMIT 1;";
+            return await q.ExecuteScalarAsync(ct) is string raw &&
+                   DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var at)
+                ? at
+                : (DateTimeOffset?)null;
+        });
+
     private static async Task<Sale?> LoadSaleAsync(
         SqliteConnection c,
         long saleId,
@@ -2621,8 +2655,8 @@ public async Task<string?> CheckReversalAllowedAsync(long originalSaleId, bool f
         var original = await LoadSaleAsync(c, originalSaleId, ct);
         if (original is null)
             return "Ursprungsbon wurde nicht gefunden.";
-        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
-            return "BON STORNO / TEILRETOURE ist nur am Verkaufstag möglich.";
+        if (!await IsInOpenZPeriodAsync(c, null, original.CreatedAt, ct))
+            return "BON STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich.";
 
         bool hasStorno, hasReturn;
         await using (var q = c.CreateCommand())
@@ -2658,8 +2692,8 @@ public async Task<Sale> RecordStornoAsync(long originalSaleId, string actor, str
 
         if (original.TransactionType != "SALE")
             throw new InvalidOperationException("Nur ein regulärer Verkauf kann storniert werden; dieser Bon ist selbst bereits eine Gegenbuchung.");
-        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
-            throw new InvalidOperationException("BON STORNO ist nur am Verkaufstag möglich.");
+        if (!await IsInOpenZPeriodAsync(c, (SqliteTransaction)tx, original.CreatedAt, ct))
+            throw new InvalidOperationException("BON STORNO ist nur für Bons seit dem letzten Tagesabschluss möglich.");
 
         var originalCashPortion = original.EffectiveCashPortionCents;
         var originalCardPortion = original.EffectiveCardPortionCents;
@@ -2901,8 +2935,8 @@ public async Task<ReturnQuote> QuoteReturnAsync(
 
         if (original.TransactionType != "SALE")
             throw new InvalidOperationException("Nur ein regulärer Verkauf kann teilweise retourniert werden.");
-        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
-            throw new InvalidOperationException("TEILRETOURE ist nur am Verkaufstag möglich.");
+        if (!await IsInOpenZPeriodAsync(c, null, original.CreatedAt, ct))
+            throw new InvalidOperationException("TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich.");
 
         await using (var existingStorno = c.CreateCommand())
         {
@@ -2994,8 +3028,8 @@ public async Task<Sale> RecordReturnAsync(long originalSaleId, IReadOnlyList<Ret
 
         if (original.TransactionType != "SALE")
             throw new InvalidOperationException("Nur ein regulärer Verkauf kann teilweise retourniert werden.");
-        if (original.CreatedAt.Date != DateTimeOffset.Now.Date)
-            throw new InvalidOperationException("TEILRETOURE ist nur am Verkaufstag möglich.");
+        if (!await IsInOpenZPeriodAsync(c, (SqliteTransaction)tx, original.CreatedAt, ct))
+            throw new InvalidOperationException("TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich.");
 
         // R107: a fully storno'd sale has already had its ENTIRE amount
         // refunded - a Teilretoure against it afterward would refund

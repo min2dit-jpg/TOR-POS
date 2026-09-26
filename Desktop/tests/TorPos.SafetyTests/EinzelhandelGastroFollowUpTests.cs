@@ -110,6 +110,36 @@ public static class EinzelhandelGastroFollowUpTests
                refund.TotalCents == 500 && refund.CardCents == 200 && refund.CashCents == 300 && refund.DiscountCents == 0,
             "O-17 returning the Cola from 'Cola 5,00 + Leergut -3,00' refunds 5,00: 2,00 to the card, the 3,00 bottle credit in cash");
 
+        // O-8: a Bon cashed before midnight but after the last Tagesabschluss
+        // (the evening trade of an Imbiss) can still be reversed after 00:00.
+        var nightDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(dir, "o8-night.db"));
+        var nightSales = new SaleRepository(nightDb);
+        var yesterday = DateTimeOffset.Now.Date.AddDays(-1);
+        long lateId, earlyId;
+        await using (var c = nightDb.OpenConnection())
+        {
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents) VALUES(81001,$early,'CASH',500,500);
+                INSERT INTO daily_closings(closed_at,operator_name) VALUES($closed,'o8');
+                INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents) VALUES(81002,$late,'CASH',700,700);
+                """;
+            q.Parameters.AddWithValue("$early", new DateTimeOffset(yesterday.AddHours(12)).ToString("O"));
+            q.Parameters.AddWithValue("$closed", new DateTimeOffset(yesterday.AddHours(20)).ToString("O"));
+            q.Parameters.AddWithValue("$late", new DateTimeOffset(yesterday.AddHours(23).AddMinutes(30)).ToString("O"));
+            await q.ExecuteNonQueryAsync();
+            q.CommandText = "SELECT id FROM sales WHERE receipt_number=81002;";
+            lateId = Convert.ToInt64(await q.ExecuteScalarAsync());
+            q.CommandText = "SELECT id FROM sales WHERE receipt_number=81001;";
+            earlyId = Convert.ToInt64(await q.ExecuteScalarAsync());
+        }
+        var lateReason = await nightSales.CheckReversalAllowedAsync(lateId, forFullStorno: true);
+        var earlyReason = await nightSales.CheckReversalAllowedAsync(earlyId, forFullStorno: true);
+        assert(
+            lateReason is null && earlyReason?.Contains("Tagesabschluss", StringComparison.Ordinal) == true &&
+            await nightSales.GetOpenZPeriodStartAsync() is { } periodStart && periodStart.Date == yesterday,
+            $"O-8 yesterday's 23:30 Bon after the last Tagesabschluss stays reversible; the one before it does not (late='{lateReason}', early='{earlyReason}')");
+
         // §6: PDF text is WinAnsi (cp1252); Turkish letters outside it are transliterated, never "?".
         var pdf = SimplePdfWriter.PdfTextBytes("Dürüm … „Şiş“ Ağa İlık");
         var cp1252 = System.Text.Encoding.GetEncoding(1252);

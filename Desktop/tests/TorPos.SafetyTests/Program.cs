@@ -426,19 +426,35 @@ Assert(
     (await sales.SearchHistoryAsync(historyDay.AddDays(-1), historyDay.AddDays(-1))).Count == 205,
     "Bon-Historie loads every receipt of a single day without a search/pagination step");
 
-var oldOriginal = (await sales.SearchHistoryAsync(historyDay, historyDay, 91001)).Single();
-var oldReversalReason = await sales.CheckReversalAllowedAsync(oldOriginal.Id, forFullStorno: true);
+// O-8: the reversal window is the open Z period (since the last Tagesabschluss),
+// no longer the calendar day. A receipt inside a CLOSED Z period stays blocked.
+// Checked on its own database: daily_closings cannot be deleted again and a
+// closing here would move the open period of every later check in this file.
+var closedPeriodDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(root, "o8-closed-period.db"));
+var closedPeriodSales = new SaleRepository(closedPeriodDb);
+long oldOriginalId;
+using (var c = closedPeriodDb.OpenConnection())
+{
+    using var q = c.CreateCommand();
+    q.CommandText = """
+        INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents) VALUES(91001,'2025-03-30T21:00:00+02:00','CASH',500,500);
+        INSERT INTO daily_closings(closed_at,operator_name) VALUES('2025-03-31T02:00:00+02:00','tester');
+        SELECT id FROM sales WHERE receipt_number=91001;
+        """;
+    oldOriginalId = Convert.ToInt64(q.ExecuteScalar());
+}
+var oldReversalReason = await closedPeriodSales.CheckReversalAllowedAsync(oldOriginalId, forFullStorno: true);
 Assert(
-    oldReversalReason?.Contains("Verkaufstag", StringComparison.OrdinalIgnoreCase) == true,
-    "BON STORNO / Teilretoure pre-check blocks receipts from a previous day before any terminal refund");
+    oldReversalReason?.Contains("Tagesabschluss", StringComparison.OrdinalIgnoreCase) == true,
+    "BON STORNO / Teilretoure pre-check blocks receipts of a closed Z period before any terminal refund");
 await RejectMessage(
-    () => sales.RecordStornoAsync(oldOriginal.Id, "tester", "test"),
-    "Verkaufstag",
-    "Authoritative BON STORNO repository gate rejects a previous-day receipt");
+    () => closedPeriodSales.RecordStornoAsync(oldOriginalId, "tester", "test"),
+    "Tagesabschluss",
+    "Authoritative BON STORNO repository gate rejects a receipt of a closed Z period");
 await RejectMessage(
-    () => sales.RecordReturnAsync(oldOriginal.Id, new[] { new ReturnLineRequest(999999, 1m) }, "tester", "test"),
-    "Verkaufstag",
-    "Authoritative Teilretoure repository gate rejects a previous-day receipt");
+    () => closedPeriodSales.RecordReturnAsync(oldOriginalId, new[] { new ReturnLineRequest(999999, 1m) }, "tester", "test"),
+    "Tagesabschluss",
+    "Authoritative Teilretoure repository gate rejects a receipt of a closed Z period");
 
 using (var c=db.OpenConnection())
 {
@@ -678,9 +694,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
 // C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue;
 // one more: the Cloud heartbeat reports an open TSE outage.
-// Einzelhandel/Gastro follow-ups add 9 checks: O-9, O-10, O-13, O-14, O-17 and PDF text.
+// Einzelhandel/Gastro follow-ups add 10 checks: O-8, O-9, O-10, O-13, O-14, O-17 and PDF text.
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
-const int ExpectedSafetyChecks = 1419;
+const int ExpectedSafetyChecks = 1420;
 
 if (checks != ExpectedSafetyChecks)
 {
