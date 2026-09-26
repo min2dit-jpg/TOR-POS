@@ -603,6 +603,8 @@ await BarTestBonPreparationTests.Run(Assert);
 await GermanFiscalPrepTests.Run(root, Assert);
 FiscalPropertyTests.Run(Assert);
 await RetailGastroFollowUpTests.Run(root, Assert);
+ProviderResponsePropertyTests.Run(Assert);
+InvoiceRequestContractTests.Run(Assert);
 // German fiscal prep, counted separately from ExpectedSafetyChecks so parallel
 // branches that raise that baseline merge without conflict:
 // 33 checks lock the append-only TSE-Wechsel journal and its notification
@@ -613,7 +615,9 @@ await RetailGastroFollowUpTests.Run(root, Assert);
 // V-3 export off the write queue, O-3 probe cache, receipt policy in the
 // checkout, TSE-Wechselprotokoll window, 3 load checks, 2 seeded EAN/scale
 // checks, G-4 licence/trial hardening (4) and the O-15 split-data warning.
-const int GermanFiscalPrepChecks = 57;
+// Provider answers (2 seeded: card terminal outcomes, fiskaltrust signatures)
+// and the E-Rechnung request boundary (3).
+const int GermanFiscalPrepChecks = 62;
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,

@@ -107,6 +107,8 @@ Ergänzend zu PR #97 (O-4/5/7/8/9/10/13/14/16/17/19), ohne diese zu wiederholen:
 | TSE-Wechselprotokoll | Fenster in den TSE-Einstellungen; nur Admin pflegt den Meldestatus (manuelle ELSTER-Mitteilung mit Transferticket). |
 | Last/Eingaben | Zahlungsjournal-Wettlauf, 80 parallele Wiederholungen unter SQLite-Sperre + Export, langsame/fehlerhafte TSE; EAN-13- und Waagen-Property-Tests. |
 | G-4 | Lizenz-Deaktivierung zusätzlich als Tombstone in ProgramData und Registry (HKCU); Ablauf gegen die höchste je gesehene Uhrzeit (max. 400 Tage Vorlauf vertraut); Demo-Cache nur plausibel (≤ 7 Tage ab Start, Start ≤ letzter Serverkontakt). |
+| Anbieter-Antworten | Property-Tests: fehlgeschlagene Kartenzahlung wird nie „Approved“, unlesbarer gespeicherter Status nie „bezahlt“; fiskaltrust-Antwort ist nur mit vollständigen TSE-Daten eine Signatur. |
+| E-Rechnung-Grenze | `InvoiceRequest` (Format `TOR-POS-INVOICE-REQUEST-1`): Vorgangsreferenz, Empfänger, Positionen und centgenaue USt-Gruppen als JSON für TOR E-Rechnung. Nur für fiskal abgeschlossene Verkäufe, nicht für Storno/Retoure; keine XRechnung/ZUGFeRD-Erzeugung in TOR POS. |
 | O-15 | Startprüfung warnt, wenn Kassendaten desselben Produkts in einem anderen Windows-Benutzerprofil liegen. |
 
 **Bewusst nicht umgesetzt (Begründung):**
