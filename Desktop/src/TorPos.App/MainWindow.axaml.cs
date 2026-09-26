@@ -116,6 +116,7 @@ public partial class MainWindow:Window
     private TorUpdateManifest? _availableUpdate;
     private long _quickItemSequence = -9_100_000;
     private RestaurantCheckoutDraft? _restaurantCheckoutDraft;
+    private bool _printerCheckedForPayment;
     private OrderCustomerDisplayWindow? _orderDisplayWindow;
     private string _orderDisplaySignature = "";
     // R104: genuine customer-facing display (e.g. HP L7010t) - distinct
@@ -3155,74 +3156,98 @@ public partial class MainWindow:Window
         if (CartLocked || !hasCheckoutLines || !CanCompleteSale())
             return;
 
-        var allowImHaus = restaurantDraft is null && IsImbissBusiness();
-        var paymentTotal = restaurantDraft?.TotalCents ?? _engine.TotalCents;
-        var choice = await new PaymentChoiceWindow(
-                _cashEnabledBySettings,
-                _cardEnabledBySettings,
-                allowImHaus,
-                allowImHaus && _imHaus,
-                totalCents: paymentTotal,
-                simulation: IsSimulation)
-            .ShowDialog<PaymentChoiceResult?>(this);
-
-        if (choice is null)
+        // The printer question comes BEFORE the payment page. On that page the
+        // cashier enters GEGEBEN and usually has the customer's cash in hand;
+        // an ABBRECHEN after it left money taken with no sale booked.
+        _printerCheckedForPayment = false;
+        if (!await EnsureReceiptPrinterReadyForCheckoutAsync())
         {
-            // O-7: a cancelled restaurant payment used to leave the invisible
-            // draft behind, and the table plan then refused to open ("Zuerst
-            // Kassenbon abschließen") with nothing on screen to finish.
             if (restaurantDraft is not null)
-                DiscardRestaurantCheckoutDraft("TISCH-ZAHLUNG ABGEBROCHEN · Tisch bleibt unverändert offen");
+                DiscardRestaurantCheckoutDraft("ZAHLUNG NICHT GESTARTET · Bondrucker nicht erkannt · Tisch bleibt unverändert offen");
+            else
+                StatusLine = "ZAHLUNG NICHT GESTARTET · Bondrucker nicht erkannt · noch kein Geld annehmen";
             return;
         }
+        _printerCheckedForPayment = true;
 
-        if (restaurantDraft is not null && !IsSimulation)
+        try
         {
-            var secured =
-                await _restaurantFiscal.IsCurrentStateSecuredAsync(
-                    restaurantDraft.SessionId);
+            var allowImHaus = restaurantDraft is null && IsImbissBusiness();
+            var paymentTotal = restaurantDraft?.TotalCents ?? _engine.TotalCents;
+            var choice = await new PaymentChoiceWindow(
+                    _cashEnabledBySettings,
+                    _cardEnabledBySettings,
+                    allowImHaus,
+                    allowImHaus && _imHaus,
+                    totalCents: paymentTotal,
+                    simulation: IsSimulation)
+                .ShowDialog<PaymentChoiceResult?>(this);
 
-            if (!secured)
+            if (choice is null)
             {
-                StatusLine =
-                    "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein";
-                _restaurantCheckoutDraft = null;
-                _operationId = Guid.NewGuid().ToString("N");
-                return;
-            }
-        }
-
-        _imHaus = restaurantDraft is not null
-            ? true
-            : allowImHaus && choice.ImHaus;
-
-        // R168: Verkaufsart, BAR/KARTE/GEMISCHT and BAR/GEMISCHT amount entry
-        // all live in this one payment page. No second cash/mixed/test-card page.
-        UpdateCart();
-
-        CashPaymentResult? pageCash = null;
-        if (choice.Method == PaymentMethod.Cash && paymentTotal > 0)
-        {
-            if (choice.CashTenderedCents < paymentTotal)
-            {
+                // O-7: a cancelled restaurant payment used to leave the invisible
+                // draft behind, and the table plan then refused to open ("Zuerst
+                // Kassenbon abschließen") with nothing on screen to finish.
                 if (restaurantDraft is not null)
-                    DiscardRestaurantCheckoutDraft("BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag. Tisch bleibt offen.");
-                else
-                    StatusLine = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
+                    DiscardRestaurantCheckoutDraft("TISCH-ZAHLUNG ABGEBROCHEN · Tisch bleibt unverändert offen");
                 return;
             }
 
-            pageCash = new CashPaymentResult(
-                choice.CashTenderedCents,
-                choice.CashTenderedCents - paymentTotal);
-        }
+            if (restaurantDraft is not null && !IsSimulation)
+            {
+                var secured =
+                    await _restaurantFiscal.IsCurrentStateSecuredAsync(
+                        restaurantDraft.SessionId);
 
-        await CheckoutAsync(
-            choice.Method,
-            invokedByQuickCheckout,
-            choice.CashPortionCents,
-            pageCash,
-            cardConfirmedOnPaymentPage: true);
+                if (!secured)
+                {
+                    StatusLine =
+                        "RESTAURANT PRODUKTIVZAHLUNG GESPERRT · Bestellung/TSE-Stand stimmt nicht mit dem Tisch überein";
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                    return;
+                }
+            }
+
+            _imHaus = restaurantDraft is not null
+                ? true
+                : allowImHaus && choice.ImHaus;
+
+            // R168: Verkaufsart, BAR/KARTE/GEMISCHT and BAR/GEMISCHT amount entry
+            // all live in this one payment page. No second cash/mixed/test-card page.
+            UpdateCart();
+
+            CashPaymentResult? pageCash = null;
+            if (choice.Method == PaymentMethod.Cash && paymentTotal > 0)
+            {
+                if (choice.CashTenderedCents < paymentTotal)
+                {
+                    if (restaurantDraft is not null)
+                        DiscardRestaurantCheckoutDraft("BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag. Tisch bleibt offen.");
+                    else
+                        StatusLine = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
+                    return;
+                }
+
+                pageCash = new CashPaymentResult(
+                    choice.CashTenderedCents,
+                    choice.CashTenderedCents - paymentTotal);
+            }
+
+            await CheckoutAsync(
+                choice.Method,
+                invokedByQuickCheckout,
+                choice.CashPortionCents,
+                pageCash,
+                cardConfirmedOnPaymentPage: true);
+        }
+        finally
+        {
+            // One answer per payment attempt: a cancelled page does not carry
+            // "ohne Drucker" over to the next one.
+            _printerCheckedForPayment = false;
+            _checkoutWithoutPrinterAccepted = false;
+        }
     }
 
     // O-7: the draft is only a payment attempt for a table; the table's
@@ -3312,7 +3337,9 @@ public partial class MainWindow:Window
             // R67.2: Measure only technical printer I/O inside
             // EnsureReceiptPrinterReadyForCheckoutAsync. The time an operator
             // spends reading/answering the warning dialog is NOT system latency.
-            var printerReady = await EnsureReceiptPrinterReadyForCheckoutAsync();
+            // Asked before the payment page (OpenPaymentWindowAsync); only a
+            // checkout that did not come through that page asks here.
+            var printerReady = _printerCheckedForPayment || await EnsureReceiptPrinterReadyForCheckoutAsync();
 
             if (!printerReady)
             {

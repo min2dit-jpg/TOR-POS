@@ -592,6 +592,7 @@ await V1V2ReportTests.Run(root, Assert);
 await O6UiErrorGuardTests.Run(Assert);
 await F3F4FiscalGateTests.Run(Assert);
 await F6TseFinishJournalTests.Run(root, Assert);
+PrinterBeforeCashTests.Run(Assert);
 await G3UpdateHelperTests.Run(Assert);
 await ReviewFollowUpTests.Run(root, Assert);
 await EinzelhandelGastroFollowUpTests.Run(root, Assert);
@@ -723,7 +724,8 @@ const int CloudAlignmentChecks = 7;
 // second finish call; an abort retried before its journal names the transaction.
 // F-6 for BON STORNO / TEILRETOURE adds 4 checks: signature kept after a crash, a started
 // transaction finished at start-up, a reversal booked before signing documented as outage, normal path clean.
-const int ExpectedSafetyChecks = 1429;
+// Printer question before the payment page adds 1 check.
+const int ExpectedSafetyChecks = 1430;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {
