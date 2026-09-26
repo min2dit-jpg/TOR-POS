@@ -106,10 +106,23 @@ public sealed class RestaurantHandheldPairingService
         string pairingCode,
         string deviceId,
         string displayName,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? terminalType = null)
     {
         _entitlements.Require(
             TorPos.Core.RestaurantFeature.HandheldBestellung);
+
+        // With a terminal type the terminal is registered in the pairing
+        // transaction: either the code is used and the device is a known
+        // terminal of that type, or nothing changed and the code still works.
+        if (terminalType is not null)
+        {
+            terminalType = terminalType.Trim().ToUpperInvariant();
+            if (terminalType is not ("KASSE" or "HANDHELD" or "KDS"))
+                throw new ArgumentException(
+                    "Terminaltyp muss KASSE, HANDHELD oder KDS sein.",
+                    nameof(terminalType));
+        }
 
         pairingId = (pairingId ?? "").Trim();
         pairingCode = (pairingCode ?? "").Trim();
@@ -258,6 +271,26 @@ public sealed class RestaurantHandheldPairingService
                 }
             }
 
+            if (terminalType is not null)
+            {
+                await using var knownTerminal = c.CreateCommand();
+                knownTerminal.Transaction = tx;
+                knownTerminal.CommandText = """
+                    SELECT terminal_type
+                    FROM restaurant_terminals
+                    WHERE terminal_id=$id
+                    LIMIT 1;
+                    """;
+                knownTerminal.Parameters.AddWithValue("$id", deviceId);
+                var knownType = Convert.ToString(await knownTerminal.ExecuteScalarAsync(ct));
+                if (!string.IsNullOrWhiteSpace(knownType) &&
+                    !string.Equals(knownType, terminalType, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Terminaltyp ist für dieses Gerät bereits festgelegt.");
+                }
+            }
+
             await using (var consume = c.CreateCommand())
             {
                 consume.Transaction = tx;
@@ -311,6 +344,31 @@ public sealed class RestaurantHandheldPairingService
                     "$actor",
                     pairedBy ?? "");
                 await device.ExecuteNonQueryAsync(ct);
+            }
+
+            if (terminalType is not null)
+            {
+                await using var terminal = c.CreateCommand();
+                terminal.Transaction = tx;
+                terminal.CommandText = """
+                    INSERT INTO restaurant_terminals(
+                        terminal_id,display_name,terminal_type,last_seen_at,
+                        app_version,machine_name,is_active)
+                    VALUES($id,$name,$type,$now,$version,$machine,1)
+                    ON CONFLICT(terminal_id) DO UPDATE SET
+                        display_name=excluded.display_name,
+                        last_seen_at=excluded.last_seen_at,
+                        app_version=excluded.app_version,
+                        machine_name=excluded.machine_name,
+                        is_active=1;
+                    """;
+                terminal.Parameters.AddWithValue("$id", deviceId);
+                terminal.Parameters.AddWithValue("$name", displayName);
+                terminal.Parameters.AddWithValue("$type", terminalType);
+                terminal.Parameters.AddWithValue("$now", now.ToString("O"));
+                terminal.Parameters.AddWithValue("$version", TorPos.Core.TorRelease.Version);
+                terminal.Parameters.AddWithValue("$machine", Environment.MachineName);
+                await terminal.ExecuteNonQueryAsync(ct);
             }
 
             await tx.CommitAsync(ct);

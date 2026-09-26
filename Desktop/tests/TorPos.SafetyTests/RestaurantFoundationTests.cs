@@ -639,6 +639,54 @@ internal static class RestaurantFoundationTests
                 deviceOverwriteRejected,
                 "G-2 pairing cannot overwrite or silently reactivate an existing Restaurant device identity");
 
+            // Pairing checks the terminal type before it uses the code and
+            // registers the terminal in the same transaction: a refused type
+            // (unknown, or another type already fixed for this id) consumes
+            // nothing, and the same code then pairs the device correctly.
+            var typedPairing = new RestaurantTerminalRegistry(db, plusEntitlements);
+            await typedPairing.RegisterOrHeartbeatAsync("DEVICE-KDS-1", "Küche", "KDS", "test", "test");
+            var typeCode = await pairing.CreatePairingCodeAsync("ADMIN", TimeSpan.FromMinutes(5));
+            async Task<bool> PairRefused(string deviceId, string type)
+            {
+                try { await pairing.PairAsync(typeCode.Id, typeCode.Code, deviceId, "Typ Test", default, type); return false; }
+                catch (ArgumentException) { return true; }
+                catch (InvalidOperationException) { return true; }
+            }
+            var unknownTypeRefused = await PairRefused("DEVICE-TYPE-1", "DRUCKER");
+            var fixedTypeRefused = await PairRefused("DEVICE-KDS-1", "HANDHELD");
+            long orphanDevices;
+            await using (var orphanRead = db.OpenConnection())
+            {
+                await using var q = orphanRead.CreateCommand();
+                q.CommandText = "SELECT COUNT(*) FROM restaurant_handheld_devices WHERE device_id IN ('DEVICE-TYPE-1','DEVICE-KDS-1');";
+                orphanDevices = Convert.ToInt64(await q.ExecuteScalarAsync());
+            }
+            var typedPaired = await pairing.PairAsync(typeCode.Id, typeCode.Code, "DEVICE-TYPE-1", "Handheld Typ", default, "HANDHELD");
+            await typedPairing.RequireTypeAsync(typedPaired.DeviceId, new[] { "HANDHELD" });
+            assert(
+                unknownTypeRefused && fixedTypeRefused && orphanDevices == 0,
+                "Restaurant pairing: an unknown terminal type or a type that differs from the one already fixed for the id is refused before the code is used - no orphaned device, and the same code then pairs the device registered as HANDHELD in one step");
+
+            // Table, order and catalog endpoints are for order-taking devices:
+            // a paired KDS is refused although its token is valid.
+            var apiHost = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/RestaurantLocalApiHost.cs"));
+            var guarded = new[] { "\"/api/v1/tables\",", "\"/api/v1/catalog\",", "\"/api/v1/tables/open\",", "\"/api/v1/sessions/{sessionId}/items\",", "\"/api/v1/items\",", "\"/api/v1/items/cancel\"," }
+                .All(route =>
+                {
+                    var start = apiHost.IndexOf(route, StringComparison.Ordinal);
+                    var next = start < 0 ? -1 : apiHost.IndexOf(".RequireRateLimiting(", start, StringComparison.Ordinal);
+                    var body = start < 0 || next < 0 ? "" : apiHost[start..next];
+                    var guard = body.IndexOf("await RequireHandheldTerminalAsync(", StringComparison.Ordinal);
+                    var work = body.IndexOf("await _handheld.", StringComparison.Ordinal);
+                    return guard > 0 && work > guard;
+                });
+            var pairBody = apiHost[apiHost.IndexOf("\"/api/v1/pair\",", StringComparison.Ordinal)..];
+            assert(
+                guarded &&
+                apiHost.Contains("OrderTerminalTypes = { \"KASSE\", \"HANDHELD\" }", StringComparison.Ordinal) &&
+                pairBody.IndexOf("NormalizeTerminalType(", StringComparison.Ordinal) < pairBody.IndexOf("_pairing.PairAsync(", StringComparison.Ordinal),
+                "Restaurant local API: tables, catalog, table open, session items, add and cancel item check the terminal type (KASSE/HANDHELD) before any data - a KDS token is refused; pairing validates the type first");
+
             var operatorAuth =
                 new AuthenticationService(db);
             await operatorAuth.InitializeAsync();
@@ -2927,5 +2975,19 @@ internal static class RestaurantFoundationTests
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=$name;";
         q.Parameters.AddWithValue("$name", name);
         return Convert.ToInt32(q.ExecuteScalar()) == 1;
+    }
+
+    private static string FindRepoFile(string relativePath)
+    {
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, relativePath);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+        throw new FileNotFoundException(relativePath);
     }
 }

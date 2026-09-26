@@ -735,7 +735,8 @@ const int CloudAlignmentChecks = 7;
 // Article imports commit their audit rows with the articles: 2 checks.
 // Restaurant: failed Storno printout stays on the KDS (1), no overlapping table reservations (1),
 // no party larger than the table's seats (1).
-const int ExpectedSafetyChecks = 1446;
+// Restaurant local API: atomic typed pairing (1), KDS refused on order data (1).
+const int ExpectedSafetyChecks = 1448;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {

@@ -215,24 +215,20 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
                     {
                         try
                         {
+                            // The type is checked before the code is used, and
+                            // the terminal is registered in the pairing
+                            // transaction: a refused pairing consumes nothing.
+                            var terminalType =
+                                NormalizeTerminalType(
+                                    request.TerminalType);
+
                             var paired = await _pairing.PairAsync(
                                 request.PairingId,
                                 request.PairingCode,
                                 request.DeviceId,
                                 request.DisplayName,
-                                token);
-
-                            var terminalType =
-                                NormalizeTerminalType(
-                                    request.TerminalType);
-
-                            await _terminals.RegisterOrHeartbeatAsync(
-                                paired.DeviceId,
-                                paired.DisplayName,
-                                terminalType,
-                                TorRelease.Version,
-                                Environment.MachineName,
-                                token);
+                                token,
+                                terminalType);
 
                             return Results.Ok(new
                             {
@@ -544,6 +540,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
                         try
                         {
+                            await RequireHandheldTerminalAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
                             var tables =
                                 await _handheld.GetTablesAsync(
                                     deviceId,
@@ -580,6 +581,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
                         try
                         {
+                            await RequireHandheldTerminalAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
                             var catalog =
                                 await _handheld.GetCatalogAsync(
                                     deviceId,
@@ -619,6 +625,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
                         try
                         {
+                            await RequireHandheldTerminalAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
                             var result =
                                 await _handheld.OpenTableAsync(
                                     new RestaurantHandheldOpenTableRequest(
@@ -727,6 +738,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
                         try
                         {
+                            await RequireHandheldTerminalAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
                             var items =
                                 await _handheld.GetItemsAsync(
                                     sessionId,
@@ -774,6 +790,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
                         try
                         {
+                            await RequireHandheldTerminalAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
                             var result =
                                 await _handheld.AddItemAsync(
                                     new RestaurantHandheldAddItemRequest(
@@ -829,6 +850,11 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
 
                         try
                         {
+                            await RequireHandheldTerminalAsync(
+                                deviceId,
+                                deviceToken,
+                                token);
+
                             var result =
                                 await _handheld.CancelItemAsync(
                                     new RestaurantHandheldCancelItemRequest(
@@ -1048,6 +1074,26 @@ public sealed class RestaurantLocalApiHost : IAsyncDisposable
             currentSessionVersion = session?.Version,
             sessionState = session?.State.ToString().ToUpperInvariant()
         });
+    }
+
+    // Table, order and catalog data is for order-taking devices only; a KDS
+    // (or any other paired type) is refused although its token is valid.
+    private static readonly string[] OrderTerminalTypes = { "KASSE", "HANDHELD" };
+
+    private async Task RequireHandheldTerminalAsync(
+        string deviceId,
+        string deviceToken,
+        CancellationToken token)
+    {
+        await _pairing.RequireAuthenticatedAsync(
+            deviceId,
+            deviceToken,
+            token);
+
+        await _terminals.RequireTypeAsync(
+            deviceId,
+            OrderTerminalTypes,
+            token);
     }
 
     private static string NormalizeTerminalType(
