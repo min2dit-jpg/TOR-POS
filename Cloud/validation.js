@@ -50,7 +50,10 @@ function normalizeEvent(raw){
     if(receiptTotal(p.subtotal_cents,p.discount_cents)!==p.total_cents)fail('Zwischensumme, Rabatt und Gesamt stimmen nicht überein');
     if(p.cash_portion_cents!=null)cents(p.cash_portion_cents,'cash_portion_cents');
     if(p.card_portion_cents!=null)cents(p.card_portion_cents,'card_portion_cents');
-    if(p.transaction_type!=='SALE' &&
+    // Review §7: a SALE that carries cash/card portions (every current till
+    // does) must add up as well; older tills without portions stay accepted.
+    const hasPortions=p.cash_portion_cents!=null||p.card_portion_cents!=null;
+    if((p.transaction_type!=='SALE'||hasPortions) &&
        ((p.cash_portion_cents??0)+(p.card_portion_cents??0)!==p.total_cents))
       fail('Bar-/Kartenanteil stimmt nicht mit Gesamt überein');
     if(p.total_cents<0&&p.payment_method!=='CASH')fail('Eine Pfand-Auszahlung ist nur bar möglich');
@@ -93,6 +96,11 @@ function normalizeEvent(raw){
     }
   }else if(type==='heartbeat'){
     for(const key of ['software_version','tse_status','printer_status'])text(p[key],key,100,true);
+    // Kasse: edition, test/production mode, sync backlog and TSE certificate end.
+    if(p.edition!=null&&p.edition!==''&&!['KIOSK','IMBISS','RESTAURANT'].includes(p.edition))fail('edition ungültig');
+    if(p.fiscal_mode!=null&&!['PRODUKTIV','TESTBETRIEB'].includes(p.fiscal_mode))fail('fiscal_mode ungültig');
+    for(const key of ['outbox_pending','outbox_rejected'])if(p[key]!=null)number(p[key],key,0,1e9,true);
+    if(p.tse_certificate_until!=null&&p.tse_certificate_until!==''&&!/^\d{4}-\d{2}-\d{2}$/.test(p.tse_certificate_until))fail('tse_certificate_until ungültig');
   }else if(type==='stock.snapshot'){
     if(!Array.isArray(p.items)||p.items.length>5000)fail('Bestand: maximal 5000 Artikel pro vollständigem Snapshot');
     const seen=new Set();
@@ -104,8 +112,24 @@ function normalizeEvent(raw){
   }else if(type==='cash.movement'){
     if(!['DEPOSIT','WITHDRAWAL'].includes(p.movement_type))fail('Ungültige Bargeldbewegung');
     cents(p.amount_cents,'amount_cents',0);text(p.reason,'reason',500,true);text(p.actor,'actor',200,true);
+    // Kasse (Kassengesetz-Vorbereitung): DSFinV-K Geschäftsvorfall and the till's movement id.
+    if(p.business_case!=null&&p.business_case!==''&&!['Geldtransit','Privateinlage','Privatentnahme','Lohnzahlung','Einzahlung','Auszahlung','DifferenzSollIst'].includes(p.business_case))fail('business_case ungültig');
+    if(p.movement_id!=null)number(p.movement_id,'movement_id',1,Number.MAX_SAFE_INTEGER,true);
   }else if(type==='z.closed'){
-    text(p.z_number,'z_number',120);cents(p.gross_cents,'gross_cents',0);number(p.sale_count,'sale_count',0,1e9,true);
+    // A period can end negative (returned deposit paid out), so gross is signed.
+    text(p.z_number,'z_number',120);cents(p.gross_cents,'gross_cents');number(p.sale_count,'sale_count',0,1e9,true);
+    for(const key of ['cash_cents','card_cents','list_gross_cents','promotion_discount_cents','manual_discount_cents','storno_cents','return_cents'])
+      if(p[key]!=null)cents(p[key],key);
+    for(const key of ['period_from','period_to'])
+      if(p[key]!=null&&(typeof p[key]!=='string'||!Number.isFinite(Date.parse(p[key]))))fail(`${key}: ungültiger Zeitstempel`);
+    text(p.fiscal_status,'fiscal_status',40,true);text(p.operator_name,'operator_name',200,true);
+    if(p.vat!=null){
+      if(!Array.isArray(p.vat)||p.vat.length>10)fail('vat ungültig');
+      for(const v of p.vat){
+        if(!v||typeof v!=='object')fail('vat Eintrag ungültig');
+        number(v.rate,'vat.rate',0,100);cents(v.net_cents,'vat.net_cents');cents(v.tax_cents,'vat.tax_cents');cents(v.gross_cents,'vat.gross_cents');
+      }
+    }
   }else fail('Unbekannter Ereignistyp');
   return {eventId,type,occurredAt,payload:p};
 }

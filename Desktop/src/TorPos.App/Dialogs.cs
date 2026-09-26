@@ -1807,7 +1807,7 @@ public sealed class ReceiptHistoryWindow : Window
 
         _archiveFilters.Children.Add(new TextBlock
         {
-            Text = "ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich.",
+            Text = "ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = AppTheme.WarningAmber
         });
@@ -1950,6 +1950,7 @@ public sealed class ReceiptHistoryWindow : Window
                 };
 
                 _status.Text = UiLanguage.T("Archiv wird geladen ...");
+                _openPeriodStart = await _repository.GetOpenZPeriodStartAsync();
                 var found = await _repository.SearchHistoryAsync(start, end, receiptNumber, payment);
                 RenderRows(found, todayOnlyActions: false);
                 _status.Text = found.Count == 0
@@ -1990,6 +1991,7 @@ public sealed class ReceiptHistoryWindow : Window
         {
             var today = DateOnly.FromDateTime(DateTime.Now);
             _status.Text = UiLanguage.T("Heutige Bons werden geladen ...");
+            _openPeriodStart = await _repository.GetOpenZPeriodStartAsync();
             var found = await _repository.SearchHistoryAsync(today, today);
             RenderRows(found, todayOnlyActions: true);
             _status.Text = found.Count == 0
@@ -2003,16 +2005,18 @@ public sealed class ReceiptHistoryWindow : Window
         }
     }
 
+    // O-8: Storno/Teilretoure follow the open Z period, not the calendar day.
+    private DateTimeOffset? _openPeriodStart;
+
     private void RenderRows(IReadOnlyList<Sale> sales, bool todayOnlyActions)
     {
         _rows.Children.Clear();
-        var today = DateTimeOffset.Now.Date;
 
         foreach (var sale in sales)
         {
-            var isToday = sale.CreatedAt.Date == today;
+            var inOpenPeriod = _openPeriodStart is not { } start || sale.CreatedAt > start;
             var regularSale = string.Equals(sale.TransactionType, "SALE", StringComparison.OrdinalIgnoreCase);
-            var reversalAllowedByDate = todayOnlyActions && isToday && regularSale;
+            var reversalAllowedByDate = inOpenPeriod && regularSale;
 
             var row = new Grid
             {

@@ -238,6 +238,23 @@ public sealed class ReportEmailService
         return result;
     }
 
+    /// <summary>
+    /// O-13: port 465 is SMTPS - TLS from the first byte (RFC 8314). The sender
+    /// always used STARTTLS, so a 465 server never answered the plain EHLO and
+    /// the mail failed. 465 with TLS enabled now uses implicit TLS; every other
+    /// port keeps the explicit STARTTLS upgrade (plain text is never sent).
+    /// </summary>
+    public static bool UsesImplicitTls(MailConfig config) =>
+        config.UseSsl && config.Port == 465;
+
+    /// <summary>
+    /// O-13: a relay that accepts mail without login (e.g. an internal
+    /// Exchange connector) has no AUTH capability; that is only an error when
+    /// a user name is configured.
+    /// </summary>
+    public static bool RequiresAuthentication(MailConfig config) =>
+        !string.IsNullOrWhiteSpace(config.Username);
+
     public static bool IsGmailHost(string? host)
         => string.Equals(host?.Trim(), "smtp.gmail.com", StringComparison.OrdinalIgnoreCase);
 
@@ -364,13 +381,17 @@ public sealed class ReportEmailService
             await tcp.ConnectAsync(config.Host.Trim(), config.Port, ct);
             await using var network = tcp.GetStream();
 
-            await ExpectAsync(network, "CONNECT", new[] { 220 }, ct);
-            var ehlo = await CommandAsync(network, "EHLO tor-pos.local", "EHLO", new[] { 250 }, ct);
+            var implicitTls = UsesImplicitTls(config);
+            if (!implicitTls)
+            {
+                await ExpectAsync(network, "CONNECT", new[] { 220 }, ct);
+                var ehlo = await CommandAsync(network, "EHLO tor-pos.local", "EHLO", new[] { 250 }, ct);
 
-            if (!ehlo.Lines.Any(x => x.Contains("STARTTLS", StringComparison.OrdinalIgnoreCase)))
-                throw new SmtpStageException("STARTTLS", ehlo.Code, "Server bietet STARTTLS nach EHLO nicht an.");
+                if (!ehlo.Lines.Any(x => x.Contains("STARTTLS", StringComparison.OrdinalIgnoreCase)))
+                    throw new SmtpStageException("STARTTLS", ehlo.Code, "Server bietet STARTTLS nach EHLO nicht an.");
 
-            await CommandAsync(network, "STARTTLS", "STARTTLS", new[] { 220 }, ct);
+                await CommandAsync(network, "STARTTLS", "STARTTLS", new[] { 220 }, ct);
+            }
 
             await using var tls = new SslStream(network, leaveInnerStreamOpen: true);
             await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
@@ -379,12 +400,17 @@ public sealed class ReportEmailService
                 EnabledSslProtocols = SslProtocols.None
             }, ct);
 
+            // Implicit TLS (465): the greeting arrives only now, inside TLS.
+            if (implicitTls)
+                await ExpectAsync(tls, "CONNECT-TLS", new[] { 220 }, ct);
+
             // RFC 3207 requires EHLO again after the TLS state change.
             var secureEhlo = await CommandAsync(tls, "EHLO tor-pos.local", "EHLO-TLS", new[] { 250 }, ct);
-            if (!secureEhlo.Lines.Any(x => x.Contains("AUTH", StringComparison.OrdinalIgnoreCase)))
-                throw new SmtpStageException("AUTH-CAPABILITY", secureEhlo.Code, "Server bietet nach STARTTLS keine SMTP-Authentifizierung an.");
+            if (RequiresAuthentication(config) &&
+                !secureEhlo.Lines.Any(x => x.Contains("AUTH", StringComparison.OrdinalIgnoreCase)))
+                throw new SmtpStageException("AUTH-CAPABILITY", secureEhlo.Code, "Server bietet nach TLS keine SMTP-Authentifizierung an.");
 
-            if (!string.IsNullOrWhiteSpace(config.Username))
+            if (RequiresAuthentication(config))
             {
                 await CommandAsync(tls, "AUTH LOGIN", "AUTH", new[] { 334 }, ct);
                 var user = Convert.ToBase64String(Encoding.UTF8.GetBytes(config.Username.Trim()));
@@ -509,6 +535,10 @@ public sealed class MonthlyReportScheduler : IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Task? _loop;
     private DateTimeOffset? _retryNotBefore;
+    // O-13: when the mail went out but saving last_period failed, the old code
+    // retried after 15 minutes and sent the whole package again. The sent
+    // period is remembered in memory for this run as well.
+    private string? _sentThisRun;
 
     public MonthlyReportScheduler(ISettingsRepository settings, ReportEmailService email, Func<DateTimeOffset>? now = null)
     {
@@ -542,10 +572,13 @@ public sealed class MonthlyReportScheduler : IAsyncDisposable
             var period = $"{target.Year:0000}-{target.Month:00}";
             if (values.TryGetValue("reports.email.monthly.last_period", out var sent) && string.Equals(sent, period, StringComparison.Ordinal))
                 return;
+            if (string.Equals(_sentThisRun, period, StringComparison.Ordinal))
+                return;
 
             try
             {
                 var folder = await _email.SendMonthlyReportsAsync(target.Year, target.Month, ct);
+                _sentThisRun = period;
                 var completed = _now();
                 await _settings.SaveManyAsync(new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
                 {

@@ -19,16 +19,7 @@ public static class V1V2ReportTests
         var settings = new SettingsRepository(db);
         var audit = new AuditLogRepository(db);
         var management = new BusinessManagementService(db, settings, audit);
-
-        // Keep report fixtures inside the current local calendar day. CI often
-        // runs shortly after midnight; using DateTimeOffset.Now.AddMinutes(-9)
-        // would then seed yesterday while the HEUTE report correctly starts at
-        // today's midnight, making this otherwise deterministic V-2 test flaky.
-        var localToday = DateTime.Today;
-        var localOffset = TimeZoneInfo.Local.GetUtcOffset(localToday);
-        var now = new DateTimeOffset(
-            localToday.AddMinutes(20),
-            localOffset);
+        var now = DateTimeOffset.Now;
 
         // 0.500 kg x 19.90 EUR/kg with 10 % Angebot: the checkout charges
         // 8.95 EUR (stored), while 0.5 x 17.91 EUR/kg would give 8.96 EUR.
@@ -82,9 +73,13 @@ public static class V1V2ReportTests
         Directory.CreateDirectory(dir2);
         var db2 = await SafetyDatabase.CreateCurrentAsync(Path.Combine(dir2, "v2.db"));
         var management2 = new BusinessManagementService(db2, new SettingsRepository(db2), new AuditLogRepository(db2));
-        var sale = await SeedAsync(db2, 2001, now.AddMinutes(-6), "SALE", null, total: 1000, cash: 1000, card: 0,
+        // The "HEUTE" line needs both Bons on today's date; a run in the first
+        // minutes after midnight put them on yesterday and failed spuriously.
+        var v2SaleAt = now.AddMinutes(-6) < now.Date ? now.Date : now.AddMinutes(-6);
+        var v2ReturnAt = now.AddMinutes(-5) < now.Date ? now.Date.AddMilliseconds(1) : now.AddMinutes(-5);
+        var sale = await SeedAsync(db2, 2001, v2SaleAt, "SALE", null, total: 1000, cash: 1000, card: 0,
             ("V2 Artikel", quantityMilli: 2000, unitPrice: 500, vat: 19m, lineTotal: 1000, unit: "Stück"));
-        await SeedAsync(db2, 2002, now.AddMinutes(-5), "RETURN", sale, total: 500, cash: 500, card: 0,
+        await SeedAsync(db2, 2002, v2ReturnAt, "RETURN", sale, total: 500, cash: 500, card: 0,
             ("V2 Artikel", quantityMilli: 1000, unitPrice: 500, vat: 19m, lineTotal: 500, unit: "Stück"));
 
         var turnover = string.Join("\n", (await management2.BuildTurnoverSummaryAsync()).Lines);

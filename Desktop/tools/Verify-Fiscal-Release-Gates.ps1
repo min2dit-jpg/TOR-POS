@@ -40,6 +40,20 @@ function Test-CloudFlagEnabled([string]$name) {
     return Test-FlagEnabled $cloudCore $name
 }
 
+# Legislation gates: automatic Finanzamt/ELSTER notification and the planned
+# 2028 rule set (Zweites Kassengesetz, Regierungsentwurf 23.09.2026) stay off
+# until the law is promulgated and a reviewed release changes this script too.
+$tseChangePath = Join-Path $repoRoot 'Desktop/src/TorPos.Core/TseChange.cs'
+$rulesetPath = Join-Path $repoRoot 'Desktop/src/TorPos.Core/GermanFiscalRuleset.cs'
+$tseChange = Get-Content -LiteralPath $tseChangePath -Raw
+$ruleset = Get-Content -LiteralPath $rulesetPath -Raw
+if (-not ($tseChange -match 'public\s+const\s+bool\s+AutomaticSubmissionEnabled\s*=\s*false\s*;')) {
+    throw 'FISCAL RELEASE GATE FAILED: FiscalNotificationRelease.AutomaticSubmissionEnabled must stay false until the notification law is in force.'
+}
+if (-not ($ruleset -match 'public\s+const\s+bool\s+Planned2028Enacted\s*=\s*false\s*;')) {
+    throw 'FISCAL RELEASE GATE FAILED: GermanFiscalRulesets.Planned2028Enacted must stay false until the Zweites Kassengesetz is promulgated.'
+}
+
 $coreFlagNames = @($commonFlagNames) + @($physicalFlags.Values)
 
 $enabledFlags = @(

@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 47;
+    public const int TargetSchemaVersion = 48;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2461,6 +2461,52 @@ public sealed class SchemaMigrationService
                       updated_by TEXT NOT NULL DEFAULT '');
                     """;
                 await q.ExecuteNonQueryAsync(ct);
+            }),
+            // main and Restaurant DEV4 independently used schema version 42.
+            // Version 48 reconciles both physical schemas without renumbering
+            // the already-issued Restaurant DEV migrations.
+            new(48, "SCHEMA42_MAIN_RESTAURANT_RECONCILE", static async (c, tx, ct) =>
+            {
+                await using (var cloud=c.CreateCommand())
+                {
+                    cloud.Transaction=tx;
+                    cloud.CommandText="""
+                        CREATE TABLE IF NOT EXISTS cloud_outbox_rejected(
+                          event_id TEXT PRIMARY KEY,
+                          event_type TEXT NOT NULL,
+                          occurred_at TEXT NOT NULL,
+                          payload TEXT NOT NULL,
+                          target_url TEXT NOT NULL,
+                          device_code TEXT NOT NULL,
+                          rejected_at TEXT NOT NULL,
+                          verdict TEXT NOT NULL,
+                          reason TEXT NOT NULL DEFAULT '');
+                        """;
+                    await cloud.ExecuteNonQueryAsync(ct);
+                }
+
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var restaurant=c.CreateCommand();
+                restaurant.Transaction=tx;
+                restaurant.CommandText="""
+                    CREATE TABLE IF NOT EXISTS restaurant_ingredients(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        unit TEXT NOT NULL CHECK(unit IN ('g','ml','Stück')),
+                        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+                    CREATE TABLE IF NOT EXISTS restaurant_recipes(
+                        product_id INTEGER NOT NULL REFERENCES products(id),
+                        ingredient_id INTEGER NOT NULL REFERENCES restaurant_ingredients(id),
+                        quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                        PRIMARY KEY(product_id,ingredient_id));
+                    CREATE TABLE IF NOT EXISTS restaurant_order_options(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+                    """;
+                await restaurant.ExecuteNonQueryAsync(ct);
             })
         };
 

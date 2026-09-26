@@ -1396,8 +1396,8 @@ internal static class UiTranslations
         ["TOR-Regel: Offene geparkte Bons sperren den Z-Abschluss."] =
             "TOR kuralı: Bekletilen açık fişler Z-Abschluss'u kilitler.",
         ["Bonnummer (optional)"] = "Fiş numarası (isteğe bağlı)",
-        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich."] =
-            "ARŞİV · Eski fişler görüntülenebilir veya kopya olarak yazdırılabilir. İPTAL / KISMİ İADE yalnızca satış günü mümkündür.",
+        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich."] =
+            "ARŞİV · Eski fişler görüntülenebilir veya kopya olarak yazdırılabilir. İPTAL / KISMİ İADE yalnızca son gün sonu kapanışından sonraki fişler için mümkündür.",
         ["Von: "] = "Başlangıç: ",
         [" Bis: "] = " Bitiş: ",
         ["TEILRETOURE"] = "KISMİ İADE",
@@ -1717,6 +1717,16 @@ internal static class UiTranslations
         ["Prüfnachweis: Windows-Warteschlange / bereits gedruckte Belege"] =
             "Kanıt: Windows kuyruğu / zaten yazdırılmış belgeler",
         ["Eingabefeld auswählen"] = "Giriş alanı seç",
+        // TSE-Wechselprotokoll (Kassengesetz-Vorbereitung)
+        ["TSE-Wechselprotokoll"] = "TSE değişim kaydı",
+        ["TSE-WECHSELPROTOKOLL"] = "TSE DEĞİŞİM KAYDI",
+        ["MELDESTATUS SPEICHERN"] = "BİLDİRİM DURUMUNU KAYDET",
+        ["Meldestatus"] = "Bildirim durumu",
+        ["Meldestatus gespeichert."] = "Bildirim durumu kaydedildi.",
+        ["Noch kein TSE-Wechsel protokolliert."] = "Henüz kayıtlı TSE değişimi yok.",
+        ["Referenz (z. B. ELSTER-Transferticket)"] = "Referans (ör. ELSTER Transferticket)",
+        ["Notiz"] = "Not",
+        ["Jeder TSE-Wechsel wird unveränderbar protokolliert. Frühere Vorgänge bleiben ihrer TSE zugeordnet. Eine automatische Meldung an das Finanzamt ist nicht freigegeben; die Mitteilung nach § 146a Abs. 4 AO erfolgt über Mein ELSTER."] = "Her TSE değişimi değiştirilemez şekilde kaydedilir. Önceki işlemler kendi TSE'lerine bağlı kalır. Finanzamt'a otomatik bildirim etkin değildir; § 146a Abs. 4 AO bildirimi Mein ELSTER üzerinden yapılır.",
     };
 
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
@@ -3090,8 +3100,8 @@ internal static class UiTranslations
         ["TOR-Regel: Offene geparkte Bons sperren den Z-Abschluss."] =
             "TOR rule: open parked receipts block the Z-Abschluss.",
         ["Bonnummer (optional)"] = "Receipt number (optional)",
-        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich."] =
-            "ARCHIVE · older receipts can be viewed or printed as a copy. A VOID or PARTIAL RETURN is only possible on the day of sale.",
+        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich."] =
+            "ARCHIVE · older receipts can be viewed or printed as a copy. A VOID or PARTIAL RETURN is only possible for receipts since the last end-of-day closing.",
         ["Von: "] = "From: ",
         [" Bis: "] = " To: ",
         ["TEILRETOURE"] = "PARTIAL RETURN",
@@ -3413,5 +3423,15 @@ internal static class UiTranslations
         ["Prüfnachweis: Windows-Warteschlange / bereits gedruckte Belege"] =
             "Evidence: the Windows queue / receipts already printed",
         ["Eingabefeld auswählen"] = "Choose an input field",
+        // TSE-Wechselprotokoll (Kassengesetz-Vorbereitung)
+        ["TSE-Wechselprotokoll"] = "TSE change log",
+        ["TSE-WECHSELPROTOKOLL"] = "TSE CHANGE LOG",
+        ["MELDESTATUS SPEICHERN"] = "SAVE NOTIFICATION STATUS",
+        ["Meldestatus"] = "Notification status",
+        ["Meldestatus gespeichert."] = "Notification status saved.",
+        ["Noch kein TSE-Wechsel protokolliert."] = "No TSE change recorded yet.",
+        ["Referenz (z. B. ELSTER-Transferticket)"] = "Reference (e.g. ELSTER transfer ticket)",
+        ["Notiz"] = "Note",
+        ["Jeder TSE-Wechsel wird unveränderbar protokolliert. Frühere Vorgänge bleiben ihrer TSE zugeordnet. Eine automatische Meldung an das Finanzamt ist nicht freigegeben; die Mitteilung nach § 146a Abs. 4 AO erfolgt über Mein ELSTER."] = "Every TSE change is logged immutably. Earlier transactions stay assigned to their TSE. Automatic notification to the tax office is not enabled; the notification under § 146a (4) AO is made via Mein ELSTER.",
     };
 }

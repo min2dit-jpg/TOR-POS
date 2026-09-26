@@ -1,0 +1,23 @@
+{
+  "_comment": "The z.closed payload exactly as TOR POS queues it at a Kassenabschluss (TorCloudOutbox.EnqueueZClosed). Desktop CloudContractTests and Cloud tests both use this file. Change both sides together.",
+  "payload": {
+    "z_number": "7",
+    "gross_cents": 123450,
+    "sale_count": 42,
+    "period_from": "2026-09-25T20:10:00.0000000+00:00",
+    "period_to": "2026-09-26T20:05:00.0000000+00:00",
+    "cash_cents": 80000,
+    "card_cents": 43450,
+    "list_gross_cents": 130000,
+    "promotion_discount_cents": 2000,
+    "manual_discount_cents": 1550,
+    "storno_cents": 1800,
+    "return_cents": 1200,
+    "vat": [
+      { "rate": 7, "net_cents": 50000, "tax_cents": 3500, "gross_cents": 53500 },
+      { "rate": 19, "net_cents": 58782, "tax_cents": 11168, "gross_cents": 69950 }
+    ],
+    "fiscal_status": "PRODUCTION_ALLOWED",
+    "operator_name": "chef"
+  }
+}

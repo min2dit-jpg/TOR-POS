@@ -52,13 +52,18 @@ public sealed class FullBackupService(
                         staging,
                         "torpos.db"));
 
+                // O-14: TseExports (TSE TAR exports) and DATEV (Kassenbuch
+                // exports) fall under the retention duty (§ 147 AO) and were
+                // not in the full backup at all.
                 foreach (var folder in new[]
                          {
                              "ProductImages",
                              "ReceiptAssets",
                              "PrintJobs",
                              "CustomerDisplayAds",
-                             "WerbeTvBilder"
+                             "WerbeTvBilder",
+                             "TseExports",
+                             "DATEV"
                          })
                 {
                     var source =

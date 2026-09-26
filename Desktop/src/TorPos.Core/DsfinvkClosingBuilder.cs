@@ -419,7 +419,12 @@ public static class DsfinvkClosingBuilder
         private void WriteAborted(DsfinvkAbortedVorgang aborted)
         {
             var bonId = AbortedBonId(aborted.Number);
-            var total = Math.Max(0, aborted.Lines.Sum(l => l.LineTotalCents) - aborted.DiscountCents);
+            // O-17: an aborted Vorgang holding only returned deposit (Leergut)
+            // has a negative total. UMS_BRUTTO was clamped to 0 while
+            // Bonkopf_USt below carried the negative amount, so the Bonkopf no
+            // longer added up. It now states the same signed total, as a sale
+            // with a Leergut payout does.
+            var total = aborted.Lines.Sum(l => l.LineTotalCents) - aborted.DiscountCents;
 
             Add("Bonkopf", new()
             {

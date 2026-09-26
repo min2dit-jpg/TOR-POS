@@ -196,11 +196,35 @@ public static class PaymentTerminalProfiles
             SetupHint: "Flatpay muss für TOR eine dokumentierte ECR/Partner-Schnittstelle freigeben. Ohne diese Freigabe wird keine automatische Zahlung gestartet.")
     ];
 
+    /// <summary>
+    /// O-19: returned for a stored profile id TOR does not know. It is never
+    /// production-ready and speaks no protocol, so the ZVT adapter refuses it
+    /// instead of charging a card through an assumed AUTO_ZVT profile.
+    /// </summary>
+    public static PaymentTerminalProfile Unknown { get; } = new(
+        "UNKNOWN",
+        "Unbekanntes Profil",
+        "Nicht erkannt",
+        "Keine",
+        "NICHT FREIGEGEBEN",
+        "Das gespeicherte Terminal-Profil ist TOR nicht bekannt. Bitte unter Geräte → KARTENTERMINAL VERBINDEN neu auswählen.",
+        "UNKNOWN",
+        ProductionReady: false,
+        SetupHint: "Terminal-Profil neu auswählen.");
+
     public static PaymentTerminalProfile Find(string? id)
     {
         var key = (id ?? "").Trim();
+        // Nothing stored yet: the recommended default, as before.
+        if (key.Length == 0)
+            return All[0];
         key = key.ToUpperInvariant() switch
         {
+            "ZVT" or "ZVT_TCP" or "GENERIC" or "STANDARD" => "AUTO_ZVT",
+            "INGENICO" => "INGENICO_ZVT",
+            "VERIFONE" => "VERIFONE_ZVT",
+            "PAX" => "PAX_PROVIDER_ZVT",
+            "OTHER" => "OTHER_ZVT",
             "SUMUP" => "SUMUP_CLOUD",
             "PAYONE" => "PAYONE_ZVT",
             "CCV" => "CCV_ZVT",
@@ -214,7 +238,7 @@ public static class PaymentTerminalProfiles
 
         return All.FirstOrDefault(x =>
             string.Equals(x.Id, key, StringComparison.OrdinalIgnoreCase))
-            ?? All[0];
+            ?? Unknown;
     }
 
     public static bool UsesZvt(string? id) =>
