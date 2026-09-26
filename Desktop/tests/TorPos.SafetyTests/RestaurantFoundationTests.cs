@@ -2375,33 +2375,9 @@ internal static class RestaurantFoundationTests
                 guestCount: 1,
                 deviceId: "KASSE-1");
 
-            await using (var c = db.OpenConnection())
-            {
-                await using var partialPaid = c.CreateCommand();
-                partialPaid.CommandText = """
-                    UPDATE restaurant_session_items
-                    SET quantity_milli=1000,version=version+1
-                    WHERE id=$item AND session_id=$session AND state='ACTIVE';
-
-                    INSERT INTO restaurant_session_items(
-                        session_id,line_token,product_id,product_name,variant_name,
-                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        added_by,added_at,version,fiscal_state)
-                    VALUES(
-                        $session,$token,$product,$name,'',
-                        1000,$price,$vat,0,'PAID',
-                        'TEST',$now,1,'SECURED');
-                    """;
-                partialPaid.Parameters.AddWithValue("$item", paidMergeItem.Id);
-                partialPaid.Parameters.AddWithValue("$session", paidMergeSource.Id);
-                partialPaid.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
-                partialPaid.Parameters.AddWithValue("$product", product.Id);
-                partialPaid.Parameters.AddWithValue("$name", product.Name);
-                partialPaid.Parameters.AddWithValue("$price", product.BasePriceCents);
-                partialPaid.Parameters.AddWithValue("$vat", (double)product.VatRate);
-                partialPaid.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-                await partialPaid.ExecuteNonQueryAsync();
-            }
+            await InsertPartialPaymentFixtureAsync(
+                db, paidMergeSource.Id, paidMergeItem.Id,
+                quantityMilli: 1000, amountCents: 1290);
 
             await repo.MergeSessionsAsync(
                 paidMergeSource.Id,
@@ -2438,29 +2414,9 @@ internal static class RestaurantFoundationTests
                 await fiscalState.IsCurrentStateSecuredAsync(targetSession.Id),
                 "Balanced merge deltas reconcile both source and target Restaurant orders");
 
-            await using (var c = db.OpenConnection())
-            {
-                using var partial = c.CreateCommand();
-                partial.CommandText = """
-                    UPDATE restaurant_session_items
-                    SET quantity_milli=1000,version=version+1
-                    WHERE session_id=$session AND state='ACTIVE';
-
-                    INSERT INTO restaurant_session_items(
-                        session_id,line_token,product_id,product_name,variant_name,
-                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        added_by,added_at,version)
-                    VALUES($session,$token,$product,$name,'',1000,$price,$vat,0,'PAID','TEST',$now,1);
-                    """;
-                partial.Parameters.AddWithValue("$session", targetSession.Id);
-                partial.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
-                partial.Parameters.AddWithValue("$product", product.Id);
-                partial.Parameters.AddWithValue("$name", product.Name);
-                partial.Parameters.AddWithValue("$price", product.BasePriceCents);
-                partial.Parameters.AddWithValue("$vat", (double)product.VatRate);
-                partial.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-                partial.ExecuteNonQuery();
-            }
+            await InsertPartialPaymentFixtureAsync(
+                db, targetSession.Id, mergedItems.Single().Id,
+                quantityMilli: 1000, amountCents: 1290);
 
             assert(
                 await fiscalState.IsCurrentStateSecuredAsync(targetSession.Id),
@@ -2468,6 +2424,11 @@ internal static class RestaurantFoundationTests
 
             var payableItems = await repo.ListActiveItemsAsync(merged.Id);
             var payable = payableItems.Single();
+            assert(
+                payable.QuantityMilli == 1000 &&
+                payable.PaidCents == 1290 &&
+                payable.LineTotalCents == 1290,
+                "Partial payment fixture leaves exactly one unpaid item worth 1290 cents");
             var paymentDraft = await repo.BuildCheckoutDraftAsync(
                 merged.Id,
                 merged.Version,
@@ -3079,6 +3040,52 @@ internal static class RestaurantFoundationTests
             string productVersion)
         {
         }
+    }
+
+    private static async Task InsertPartialPaymentFixtureAsync(
+        SqliteDatabase db,
+        string sessionId,
+        long itemId,
+        long quantityMilli,
+        long amountCents)
+    {
+        await using var c = db.OpenConnection();
+        await using var tx = c.BeginTransaction();
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        // Match the persisted partial-payment shape: the active row retains
+        // its original total and accumulates paid cents; the paid slice carries
+        // its own exact amount and the same immutable product snapshot.
+        q.CommandText = """
+            UPDATE restaurant_session_items
+            SET quantity_milli=quantity_milli-$quantity,
+                paid_cents=paid_cents+$amount,version=version+1
+            WHERE id=$item AND session_id=$session AND state='ACTIVE'
+              AND quantity_milli>$quantity;
+
+            INSERT INTO restaurant_session_items(
+                session_id,line_token,product_id,product_name,variant_name,
+                quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                added_by,added_at,version,fiscal_state,line_total_cents,paid_cents,
+                unit,list_unit_price_cents,im_haus_applicable,
+                vat_allocations_json,menu_components_json,order_options)
+            SELECT session_id,$token,product_id,product_name,variant_name,
+                $quantity,unit_price_cents,vat_rate,pfand_cents,'PAID',
+                added_by,$now,1,'SECURED',$amount,0,
+                unit,list_unit_price_cents,im_haus_applicable,
+                vat_allocations_json,menu_components_json,order_options
+            FROM restaurant_session_items
+            WHERE id=$item AND session_id=$session AND state='ACTIVE';
+            """;
+        q.Parameters.AddWithValue("$item", itemId);
+        q.Parameters.AddWithValue("$session", sessionId);
+        q.Parameters.AddWithValue("$quantity", quantityMilli);
+        q.Parameters.AddWithValue("$amount", amountCents);
+        q.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
+        q.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+        if (await q.ExecuteNonQueryAsync() != 2)
+            throw new InvalidOperationException("Partial-payment fixture requires one active source item.");
+        await tx.CommitAsync();
     }
 
     private static async Task InsertRestaurantBestellungAsync(
