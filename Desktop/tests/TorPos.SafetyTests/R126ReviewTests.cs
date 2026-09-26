@@ -51,6 +51,7 @@ public static class R126ReviewTests
 
         // ---------- the snapshot sandbox ----------
         var previousOverride = AppPaths.DataDirectoryOverride;
+        var callerDataDirectory = AppPaths.DataDirectory;
         var sandbox = Path.Combine(Path.GetTempPath(), "tor-r126-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -69,7 +70,8 @@ public static class R126ReviewTests
 
         assert(
             AppPaths.DataDirectoryOverride == previousOverride &&
-            AppPaths.ProductDataDirectoryName().Equals("TOR-POS-Pro", StringComparison.OrdinalIgnoreCase),
-            "R126 snapshot sandbox restores the caller data-directory context and keeps the default product folder");
+            AppPaths.DataDirectory == callerDataDirectory &&
+            (previousOverride is not null || callerDataDirectory.EndsWith("TOR-POS-Pro", StringComparison.OrdinalIgnoreCase)),
+            "R126 snapshot sandbox restores exactly the caller data-directory context");
     }
 }
