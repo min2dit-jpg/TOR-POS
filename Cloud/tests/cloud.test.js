@@ -78,6 +78,19 @@ test('invalid values and HTML payment types rejected; whole batch rolls back',as
  const unknown={...event('unknown'),type:'sale.completedd'};assert.equal((await sync([unknown])).status,400);
  assert.equal((await request('/api/v1/devices/sync',{},headers)).status,400);
 });
+// A split that contradicts the payment method would make the reports (split)
+// and the receipt list (method) disagree about the same Bon.
+test('cash/card split must match the payment method',async()=>{
+ const withSplit=(method,cash,card,type='SALE')=>{const e=event('split-'+method+cash+type);Object.assign(e.payload,{payment_method:method,cash_portion_cents:cash,card_portion_cents:card,transaction_type:type});if(type!=='SALE')e.payload.original_receipt_number=1;return e;};
+ const refused=(e,msg)=>assert.throws(()=>normalizeEvent(e),new RegExp(msg));
+ refused(withSplit('CASH',400,400),'Barzahlung darf keinen Kartenanteil haben');
+ refused(withSplit('CARD',400,400),'Kartenzahlung darf keinen Baranteil haben');
+ refused(withSplit('CASH',400,400,'RETURN'),'Barzahlung darf keinen Kartenanteil haben');
+ for(const ok of [withSplit('CASH',800,0),withSplit('CARD',0,800),withSplit('MIXED',300,500),withSplit('CARD',0,800,'STORNO')])
+  assert.doesNotThrow(()=>normalizeEvent(ok));
+ const legacy=event('split-legacy');assert.doesNotThrow(()=>normalizeEvent(legacy),'older tills without portions stay accepted');
+ assert.equal((await sync([withSplit('CASH',400,400)])).status,400,'the device API refuses it too');
+});
 // C-4: with partial:true one bad event no longer blocks the whole batch.
 test('C-4 partial sync stores good events and reports bad ones per event',async()=>{
  const invalid=event('c4-invalid');invalid.payload.total_cents=1;
