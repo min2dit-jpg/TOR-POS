@@ -4,8 +4,11 @@
     "version": "0.0.1",
     "type": "module",
     "scripts": {
+        "predev": "node scripts/prepare-assets.mjs",
         "dev": "vite",
+        "prebuild": "node scripts/prepare-assets.mjs",
         "build": "vite build",
+        "prepreview": "node scripts/prepare-assets.mjs",
         "preview": "vite preview"
     },
     "dependencies": {
