@@ -28,7 +28,7 @@ public sealed class SchemaMigrationService
 
     public Task<SchemaMigrationResult> InitializeDatabaseAsync(
         CancellationToken ct = default)
-        => IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(TargetSchemaVersion, ct));
+        => IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(ct));
 
     /// <summary>
     /// Tests only: builds the schema an older release left behind (e.g. main
@@ -44,6 +44,10 @@ public sealed class SchemaMigrationService
 
         return IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(stopAfterVersion, ct));
     }
+
+    private Task<SchemaMigrationResult> InitializeDatabaseCoreAsync(
+        CancellationToken ct)
+        => InitializeDatabaseCoreAsync(TargetSchemaVersion, ct);
 
     private async Task<SchemaMigrationResult> InitializeDatabaseCoreAsync(
         int target,
