@@ -346,6 +346,8 @@ public partial class MainWindow:Window
                 QueueTseVorgangWork(async v =>
                 {
                     await _fiscalSigning.FinishCommittedVorgaengeAsync(actor);
+                    // F-6: a Storno/Retoure booked right before the program ended.
+                    await _fiscalSigning.DocumentInterruptedReversalsAsync(actor);
                     await v.AbortOrphansAsync(keep, actor);
                 });
             }
@@ -2944,6 +2946,7 @@ public partial class MainWindow:Window
             try
             {
                 await _fiscalSigning.FinishCommittedVorgaengeAsync(_currentUser.Username);
+                await _fiscalSigning.DocumentInterruptedReversalsAsync(_currentUser.Username);
                 await openVorgaenge.AbortOrphansAsync(null, _currentUser.Username);
             }
             catch (Exception ex)

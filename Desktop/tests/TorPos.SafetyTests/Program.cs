@@ -721,7 +721,9 @@ const int CloudAlignmentChecks = 7;
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
 // F-6 for aborts adds 2 checks: an abort signed before a crash keeps its signature without a
 // second finish call; an abort retried before its journal names the transaction.
-const int ExpectedSafetyChecks = 1425;
+// F-6 for BON STORNO / TEILRETOURE adds 4 checks: signature kept after a crash, a started
+// transaction finished at start-up, a reversal booked before signing documented as outage, normal path clean.
+const int ExpectedSafetyChecks = 1429;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {

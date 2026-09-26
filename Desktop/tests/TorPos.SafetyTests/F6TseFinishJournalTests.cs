@@ -124,6 +124,74 @@ public static class F6TseFinishJournalTests
         assert(
             earlyReason.Contains($"TSE-Transaktion {abortEarly.TransactionNumber} wurde vor einem Programmabbruch möglicherweise bereits abgeschlossen", StringComparison.Ordinal),
             "F-6 an abort retried after a crash before its journal names the transaction that may already be signed in the aborted record");
+
+        // BON STORNO / TEILRETOURE are signed after their commit (SignAsync).
+        // (a) the TSE returned the signature, the program stopped before the
+        //     reversal got it: recovered with that signature, no second finish.
+        provider.RefuseFinish = false;
+        var stornoA = await InsertSaleAsync(db, 606101, 700, "STORNO");
+        await ExecAsync(db, "CREATE TRIGGER f6_storno_crash BEFORE INSERT ON sale_tse_signatures BEGIN SELECT RAISE(ABORT,'simulated crash'); END;");
+        var stornoCrashed = false;
+        try { await signing.SignAsync((await sales.GetByIdAsync(stornoA))!, "kasse1"); }
+        catch (Exception) { stornoCrashed = true; }
+        await ExecAsync(db, "DROP TRIGGER f6_storno_crash;");
+        var stornoJournal = await vorgaenge.GetJournaledFinishAsync(SaleFiscalSigningService.PostCommitVorgangId(stornoA));
+        var finishesAfterStorno = provider.Finishes;
+        provider.RefuseFinish = true;
+        await signing.FinishCommittedVorgaengeAsync("SYSTEM");
+        var stornoARecorded = (await sales.GetByIdAsync(stornoA))!;
+        assert(
+            stornoCrashed && stornoJournal is { Signed: true } &&
+            provider.Finishes == finishesAfterStorno &&
+            !stornoARecorded.TseOutage && stornoARecorded.TseSignature == stornoJournal.Signature &&
+            await vorgaenge.GetJournaledFinishAsync(SaleFiscalSigningService.PostCommitVorgangId(stornoA)) is null,
+            "F-6 a BON STORNO whose TSE answer arrived before a crash gets that signature at start-up, without a second finish call and without an outage");
+
+        // (b) the transaction was started, the program stopped before finish:
+        //     start-up ends it with the data of that reversal.
+        provider.RefuseFinish = false;
+        var returnB = await InsertSaleAsync(db, 606102, 250, "RETURN");
+        await vorgaenge.StartAsync(SaleFiscalSigningService.PostCommitVorgangId(returnB), false, DateTimeOffset.Now, "kasse1");
+        var finishesBeforeB = provider.Finishes;
+        await signing.FinishCommittedVorgaengeAsync("SYSTEM");
+        var returnBRecorded = (await sales.GetByIdAsync(returnB))!;
+        assert(
+            provider.Finishes == finishesBeforeB + 1 && !returnBRecorded.TseOutage && returnBRecorded.TseSignature.Length > 0 &&
+            (await vorgaenge.GetAsync(SaleFiscalSigningService.PostCommitVorgangId(returnB)))?.State == "FINISHED",
+            "F-6 a TEILRETOURE whose TSE transaction was started before a crash is finished at start-up with its own data and signed once");
+
+        // (c) booked, then the program stopped before signing began: documented
+        //     as a TSE outage (never signed later); closed Z periods untouched.
+        var oldStorno = await InsertSaleAsync(db, 606103, 100, "STORNO", DateTimeOffset.Now.AddHours(-2));
+        await ExecAsync(db, $"INSERT INTO daily_closings(closed_at,operator_name) VALUES('{DateTimeOffset.Now.AddHours(-1):O}','kasse1');");
+        var stornoC = await InsertSaleAsync(db, 606104, 300, "STORNO");
+        var finishesBeforeC = provider.Finishes;
+        var documented = await signing.DocumentInterruptedReversalsAsync("SYSTEM");
+        var again2 = await signing.DocumentInterruptedReversalsAsync("SYSTEM");
+        var stornoCRecorded = (await sales.GetByIdAsync(stornoC))!;
+        string oldRow;
+        await using (var c = db.OpenConnection())
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = $"SELECT COUNT(*) FROM sale_tse_signatures WHERE sale_id={oldStorno};";
+            oldRow = Convert.ToString(await q.ExecuteScalarAsync()) ?? "";
+        }
+        assert(
+            documented == 1 && again2 == 0 && provider.Finishes == finishesBeforeC &&
+            stornoCRecorded.TseOutage && oldRow == "0",
+            "F-6 a BON STORNO booked right before the program ended, never started at the TSE, is documented once as a TSE outage in the open Z period - not signed later; closed periods are left alone");
+
+        // (d) the normal post-commit signing leaves no open Vorgang behind.
+        provider.RefuseFinish = false;
+        var stornoD = await InsertSaleAsync(db, 606105, 450, "STORNO");
+        await signing.SignAsync((await sales.GetByIdAsync(stornoD))!, "kasse1");
+        var dRecorded = (await sales.GetByIdAsync(stornoD))!;
+        assert(
+            !dRecorded.TseOutage && dRecorded.TseSignature.Length > 0 &&
+            (await vorgaenge.GetAsync(SaleFiscalSigningService.PostCommitVorgangId(stornoD)))?.State == "FINISHED" &&
+            await vorgaenge.GetJournaledFinishAsync(SaleFiscalSigningService.PostCommitVorgangId(stornoD)) is null &&
+            await signing.FinishCommittedVorgaengeAsync("SYSTEM") == 0,
+            "F-6 a normally signed BON STORNO leaves a finished Vorgang, no journal and nothing to recover");
     }
 
     private static async Task ExecAsync(SqliteDatabase db, string sql)
@@ -151,14 +219,15 @@ public static class F6TseFinishJournalTests
         return (r.GetInt64(0), r.GetString(1), r.GetInt64(2) != 0, r.GetString(3), r.GetInt64(4) != 0);
     }
 
-    private static async Task<long> InsertSaleAsync(SqliteDatabase db, long receipt, long cents)
+    private static async Task<long> InsertSaleAsync(SqliteDatabase db, long receipt, long cents, string type = "SALE", DateTimeOffset? at = null)
     {
         await Task.Delay(15);
         await using var c = db.OpenConnection();
         await using var q = c.CreateCommand();
-        q.CommandText = "INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents,fiscal_status,transaction_type,cash_portion_cents,im_haus,started_at) VALUES($r,$at,'CASH',$t,$t,'TEST_FIXTURE','SALE',$t,0,$at); SELECT last_insert_rowid();";
+        q.CommandText = "INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents,fiscal_status,transaction_type,cash_portion_cents,im_haus,started_at) VALUES($r,$at,'CASH',$t,$t,'TEST_FIXTURE',$type,$t,0,$at); SELECT last_insert_rowid();";
         q.Parameters.AddWithValue("$r", receipt);
-        q.Parameters.AddWithValue("$at", DateTimeOffset.Now.ToString("O"));
+        q.Parameters.AddWithValue("$type", type);
+        q.Parameters.AddWithValue("$at", (at ?? DateTimeOffset.Now).ToString("O"));
         q.Parameters.AddWithValue("$t", cents);
         var id = Convert.ToInt64(await q.ExecuteScalarAsync());
         await using var item = c.CreateCommand();
