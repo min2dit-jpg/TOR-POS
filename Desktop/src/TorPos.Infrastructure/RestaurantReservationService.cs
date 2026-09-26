@@ -41,7 +41,8 @@ public sealed class RestaurantReservationService
         string note,
         long? tableId,
         string actor,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool extendTable = false)
     {
         _entitlements.Require(RestaurantFeature.Reservierungen);
 
@@ -70,8 +71,9 @@ public sealed class RestaurantReservationService
 
             if (tableId is long table)
             {
-                await EnsureActiveTableAsync(c, tx, table, guestCount, ct);
+                var extra = await EnsureActiveTableAsync(c, tx, table, guestCount, extendTable, ct);
                 await EnsureTableFreeAsync(c, tx, table, reservationAt, durationMinutes, excludeId: null, ct);
+                note = WithExtension(note, extra);
             }
 
             var id = Guid.NewGuid().ToString("N");
@@ -148,7 +150,8 @@ public sealed class RestaurantReservationService
         long expectedVersion,
         long? tableId,
         string actor,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool extendTable = false)
     {
         _entitlements.Require(RestaurantFeature.Reservierungen);
 
@@ -166,11 +169,13 @@ public sealed class RestaurantReservationService
             await using var c = _db.OpenConnection();
             await using var tx = c.BeginTransaction();
 
+            string? note = null;
             if (tableId is long table)
             {
                 var current = await ReadAsync(c, tx, reservationId, ct);
-                await EnsureActiveTableAsync(c, tx, table, current.GuestCount, ct);
+                var extra = await EnsureActiveTableAsync(c, tx, table, current.GuestCount, extendTable, ct);
                 await EnsureTableFreeAsync(c, tx, table, current.ReservationAt, current.DurationMinutes, reservationId, ct);
+                note = WithExtension(current.Note, extra);
             }
 
             var now = DateTimeOffset.UtcNow.ToString("O");
@@ -180,6 +185,7 @@ public sealed class RestaurantReservationService
                 q.CommandText = """
                     UPDATE restaurant_reservations
                     SET table_id=$table,
+                        note=COALESCE($note,note),
                         updated_at=$now,
                         updated_by=$actor,
                         version=version+1
@@ -188,6 +194,7 @@ public sealed class RestaurantReservationService
                       AND status='BOOKED';
                     """;
                 q.Parameters.AddWithValue("$table", tableId is long value ? value : DBNull.Value);
+                q.Parameters.AddWithValue("$note", note is null ? DBNull.Value : note);
                 q.Parameters.AddWithValue("$now", now);
                 q.Parameters.AddWithValue("$actor", actor);
                 q.Parameters.AddWithValue("$id", reservationId);
@@ -260,11 +267,13 @@ public sealed class RestaurantReservationService
         });
     }
 
-    private static async Task EnsureActiveTableAsync(
+    // Returns the extra chairs the table needs (0 when the party fits).
+    private static async Task<int> EnsureActiveTableAsync(
         SqliteConnection c,
         SqliteTransaction tx,
         long tableId,
         int guestCount,
+        bool extendTable,
         CancellationToken ct)
     {
         await using var q = c.CreateCommand();
@@ -279,13 +288,25 @@ public sealed class RestaurantReservationService
         if (!await r.ReadAsync(ct))
             throw new InvalidOperationException(
                 "Reservierungstisch ist nicht vorhanden oder deaktiviert.");
-        // A reservation holds one table; larger parties are booked without a
-        // table and seated at joined tables (Tische zusammenlegen) on arrival.
+        // As in service: a party larger than the table is a question, not a
+        // silent booking. The staff may extend the table with extra chairs
+        // (recorded in the note), pick a larger table, or book without a
+        // table and join tables on arrival.
         var seats = r.GetInt32(1);
-        if (guestCount > seats)
-            throw new InvalidOperationException(
-                $"{r.GetString(0)} hat {seats} Plätze, die Reservierung {guestCount} Gäste. " +
-                "Größeren Tisch wählen oder ohne Tisch reservieren und beim Eintreffen Tische zusammenlegen.");
+        if (guestCount <= seats)
+            return 0;
+        if (!extendTable)
+            throw new RestaurantTableCapacityException(r.GetString(0), seats, guestCount);
+        return guestCount - seats;
+    }
+
+    private static string WithExtension(string note, int extraChairs)
+    {
+        if (extraChairs <= 0)
+            return note;
+        var marker = $"Tisch erweitert: +{extraChairs} Plätze";
+        var combined = string.IsNullOrWhiteSpace(note) ? marker : marker + " · " + note;
+        return combined.Length > 1000 ? combined[..1000] : combined;
     }
 
     // One table, one party at a time: a BOOKED or SEATED reservation whose
@@ -363,4 +384,18 @@ public sealed class RestaurantReservationService
             r.GetString(11),
             r.GetString(12),
             r.GetInt64(13));
+}
+
+/// <summary>
+/// The party is larger than the table. Ask whether to extend the table
+/// (extendTable: true) instead of booking it silently.
+/// </summary>
+public sealed class RestaurantTableCapacityException(string tableName, int seats, int guestCount)
+    : InvalidOperationException(
+        $"{tableName} hat {seats} Plätze, die Reservierung {guestCount} Gäste. " +
+        "Tisch erweitern, größeren Tisch wählen oder ohne Tisch reservieren und beim Eintreffen Tische zusammenlegen.")
+{
+    public string TableName { get; } = tableName;
+    public int Seats { get; } = seats;
+    public int GuestCount { get; } = guestCount;
 }
