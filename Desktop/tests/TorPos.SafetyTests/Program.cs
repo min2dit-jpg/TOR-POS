@@ -44,6 +44,7 @@ if (args.Contains("--restaurant-third"))
     await RestaurantRecipeTests.Run(Assert);
     await RestaurantInterimBillTests.Run(Assert);
     await RestaurantSplitPlannerTests.Run(Assert);
+    await RestaurantDev5SplitPropertyTests.Run(Assert);
     var restaurantTargetedRoot =
         Path.Combine(
             Path.GetTempPath(),
@@ -58,6 +59,9 @@ if (args.Contains("--restaurant-third"))
             restaurantTargetedRoot,
             Assert);
         await RestaurantDev5PaymentTests.Run(
+            restaurantTargetedRoot,
+            Assert);
+        await RestaurantDev5SnapshotKitchenTests.Run(
             restaurantTargetedRoot,
             Assert);
     }
@@ -661,10 +665,12 @@ await RestaurantThirdExeTests.Run(Assert);
 await RestaurantRecipeTests.Run(Assert);
 await RestaurantInterimBillTests.Run(Assert);
 await RestaurantSplitPlannerTests.Run(Assert);
+await RestaurantDev5SplitPropertyTests.Run(Assert);
 await RestaurantWaiterSettlementTests.Run(root, Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
 await RestaurantDev5MergeTests.Run(root, Assert);
 await RestaurantDev5PaymentTests.Run(root, Assert);
+await RestaurantDev5SnapshotKitchenTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
