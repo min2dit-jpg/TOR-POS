@@ -684,8 +684,9 @@ await RetailGastroFollowUpTests.Run(root, Assert);
 // DSFinV-K ranges, cent allocation, CSV and TSE export input.
 // Einzelhandel/Gastro follow-up: V-3 export off the write queue, O-3 probe cache,
 // receipt policy in the checkout (no normal receipt for an unfinished Vorgang)
-// and the TSE-Wechselprotokoll window.
-const int ExpectedSafetyChecks = 1447;
+// and the TSE-Wechselprotokoll window; 3 load checks (payment journal race,
+// replay storm under SQLite lock + export, slow TSE) and 2 seeded EAN/scale checks.
+const int ExpectedSafetyChecks = 1452;
 
 if (checks != ExpectedSafetyChecks)
 {

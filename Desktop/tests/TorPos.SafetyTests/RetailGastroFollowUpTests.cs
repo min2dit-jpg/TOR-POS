@@ -15,6 +15,8 @@ public static partial class RetailGastroFollowUpTests
         await ExportDoesNotHoldQueue(dir, assert);
         await ProbeCache(dir, assert);
         ReceiptWiring(assert);
+        await Stress(dir, assert);
+        BarcodeAndScale(assert);
     }
 
     private static void ReceiptWiring(Action<bool, string> assert)

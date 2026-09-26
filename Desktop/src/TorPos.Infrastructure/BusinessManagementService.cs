@@ -2302,7 +2302,7 @@ internal static class SimplePdfWriter
 
     private static string F(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
-    private static bool TryBuildEan13(string? raw, out string modules)
+    internal static bool TryBuildEan13(string? raw, out string modules)
     {
         modules = "";
         var digits = new string((raw ?? "").Where(char.IsDigit).ToArray());
