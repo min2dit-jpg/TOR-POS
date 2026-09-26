@@ -365,13 +365,33 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
                 (errors.Count > 10 ? $"\n... und {errors.Count - 10} weitere" : ""));
         }
 
-        await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "ARTICLE_IMPORT_CSV", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), $"rows={count}; stock_changes={stockChanges.Count}", ct);
+        // The audit rows commit with the articles or not at all: an import
+        // that reports an error has changed nothing, so a retry cannot add
+        // the same article twice under a fresh Artikelnummer.
+        await InsertAuditAsync(c, (SqliteTransaction)tx, actor, "ARTICLE_IMPORT_CSV", Path.GetFileName(sourcePath), $"rows={count}; stock_changes={stockChanges.Count}", ct);
         // O-12: stock set by an import is traceable like a manual correction.
         if (stockChanges.Count > 0)
-            await _audit.WriteAsync(actor, "ARTICLE_IMPORT_STOCK", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), string.Join("; ", stockChanges), ct);
+            await InsertAuditAsync(c, (SqliteTransaction)tx, actor, "ARTICLE_IMPORT_STOCK", Path.GetFileName(sourcePath), string.Join("; ", stockChanges), ct);
+        await tx.CommitAsync(ct);
         return count;
     });
+}
+
+// Same row as AuditLogRepository.WriteAsync, inside the caller's transaction.
+private static async Task InsertAuditAsync(SqliteConnection c, SqliteTransaction tx, string actor, string eventType, string entityId, string details, CancellationToken ct)
+{
+    await using var q = c.CreateCommand();
+    q.Transaction = tx;
+    q.CommandText = """
+        INSERT INTO audit_log(created_at,actor,event_type,entity_type,entity_id,details)
+        VALUES($time,$actor,$event,'ARTICLE_MASTER_DATA',$id,$details);
+        """;
+    q.Parameters.AddWithValue("$time", DateTimeOffset.Now.ToString("O"));
+    q.Parameters.AddWithValue("$actor", actor ?? "SYSTEM");
+    q.Parameters.AddWithValue("$event", eventType);
+    q.Parameters.AddWithValue("$id", entityId ?? "");
+    q.Parameters.AddWithValue("$details", details ?? "");
+    await q.ExecuteNonQueryAsync(ct);
 }
 
 internal static string DecodeCsvText(byte[] bytes)
@@ -528,8 +548,8 @@ private static async Task<decimal?> ExistingCategoryVatAsync(SqliteConnection c,
             await UpsertProductAsync(c, (SqliteTransaction)tx, categoryId, row.Name, row.Sku, row.Barcode, row.Price, row.Vat, row.Pfand, row.Unit, row.Active, row.Stock, row.MinStock, row.PurchasePrice, ct, categoryImHaus);
         }
 
+        await InsertAuditAsync(c, (SqliteTransaction)tx, actor, "ARTICLE_IMPORT_DATABASE", Path.GetFileName(sourceDatabasePath), $"rows={rows.Count}", ct);
         await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "ARTICLE_IMPORT_DATABASE", "ARTICLE_MASTER_DATA", Path.GetFileName(sourceDatabasePath), $"rows={rows.Count}", ct);
         return rows.Count;
     });
 }public async Task<ReportDocument> BuildXReportAsync(CancellationToken ct = default)

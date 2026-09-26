@@ -596,6 +596,7 @@ PrinterBeforeCashTests.Run(Assert);
 await CsvAndBackupHardeningTests.Run(root, Assert);
 ZReportSingleRunTests.Run(Assert);
 await StockUnitChangeTests.Run(root, Assert);
+await ImportAuditAtomicTests.Run(root, Assert);
 await G3UpdateHelperTests.Run(Assert);
 await ReviewFollowUpTests.Run(root, Assert);
 await EinzelhandelGastroFollowUpTests.Run(root, Assert);
@@ -731,7 +732,8 @@ const int CloudAlignmentChecks = 7;
 // CSV formula guard (3) and backup-not-encrypted warning (2) add 5 checks.
 // One Z run for both Z buttons adds 1 check.
 // A unit change needs a recount of stock and Mindestbestand: 5 checks.
-const int ExpectedSafetyChecks = 1441;
+// Article imports commit their audit rows with the articles: 2 checks.
+const int ExpectedSafetyChecks = 1443;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {
