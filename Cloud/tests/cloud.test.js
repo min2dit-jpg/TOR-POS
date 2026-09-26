@@ -582,3 +582,36 @@ test('Kasse: Z-Bericht and cash movement contents are validated',()=>{
  assert.throws(()=>normalizeEvent(ev('cash.movement',{...cash,amount_cents:-5})),/amount_cents/);
  assert.doesNotThrow(()=>normalizeEvent(ev('cash.movement',{movement_type:'WITHDRAWAL',amount_cents:100})),'an older till sends no business case');
 });
+
+test('Portal Berichte: turnover for a period is net of Storno/Retoure, split by VAT and downloadable as CSV',async()=>{
+ const sale=(id,receipt,at,payload)=>({event_id:id,type:'sale.completed',occurred_at:at,payload:{receipt_number:receipt,payment_method:'CASH',operator_name:'t',...payload}});
+ const items2=[{position_no:1,product_key:'1',name:'Döner',quantity:1,unit_price_cents:700,line_total_cents:700,vat_rate:7},{position_no:2,product_key:'2',name:'Cola',quantity:1,unit_price_cents:300,line_total_cents:300,vat_rate:19}];
+ const r=await sync([
+  // 15.08.: 1000 with 100 discount (VAT base lowered), card 450 of it
+  sale('rep-1',9101,'2026-08-15T12:00:00+02:00',{payment_method:'MIXED',subtotal_cents:1000,discount_cents:100,total_cents:900,cash_portion_cents:450,card_portion_cents:450,item_count:2,items:items2}),
+  // 15.08. 23:30 Berlin is still the 15th although UTC is the 15th 21:30
+  sale('rep-2',9102,'2026-08-15T23:30:00+02:00',{subtotal_cents:300,discount_cents:0,total_cents:300,item_count:1,items:[items2[1]]}),
+  // 16.08. 00:30 Berlin (22:30 UTC on the 15th) belongs to the 16th: a Storno of 9102
+  sale('rep-3',9103,'2026-08-16T00:30:00+02:00',{transaction_type:'STORNO',original_receipt_number:9102,subtotal_cents:300,discount_cents:0,total_cents:300,cash_portion_cents:300,card_portion_cents:0,item_count:1,items:[items2[1]]}),
+  sale('rep-4',9104,'2026-08-17T10:00:00+02:00',{subtotal_cents:700,discount_cents:0,total_cents:700,item_count:1,items:[items2[0]]})]);
+ assert.equal(r.status,200);assert.equal(r.body.accepted,4);
+ const rep=(await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:cookie})).body.report;
+ assert.deepEqual(rep.rows.map(x=>x.day),['2026-08-15','2026-08-16']);
+ const d15=rep.rows[0],d16=rep.rows[1];
+ assert.equal(d15.sale_count,2);assert.equal(d15.gross_cents,1200);assert.equal(d15.cash_cents,750);assert.equal(d15.card_cents,450);
+ assert.deepEqual(d15.vat,{'7':630,'19':570});
+ assert.equal(d16.storno_count,1);assert.equal(d16.storno_cents,-300);assert.equal(d16.gross_cents,-300);assert.deepEqual(d16.vat,{'19':-300});
+ assert.equal(rep.totals.gross_cents,900);assert.deepEqual(rep.totals.vat,{'7':630,'19':270});
+ assert.deepEqual(rep.rates,['7','19']);
+ const csv=await fetch(base+'/api/reports/turnover.csv?from=2026-08-15&to=2026-08-16',{headers:{Cookie:cookie}});
+ assert.equal(csv.status,200);assert.match(csv.headers.get('content-disposition'),/TOR-Umsatz-2026-08-15-2026-08-16\.csv/);
+ const lines=(await csv.text()).replace(/^﻿/,'').trim().split('\r\n');
+ assert.equal(lines[0],'Tag;Verkäufe;Stornos;Retouren;Storno EUR;Retoure EUR;Bar EUR;Karte EUR;Brutto 7 % EUR;Brutto 19 % EUR;Umsatz brutto EUR');
+ assert.equal(lines[1],'2026-08-15;2;0;0;0,00;0,00;7,50;4,50;6,30;5,70;12,00');
+ assert.equal(lines[3],'Summe;2;1;0;-3,00;0,00;4,50;4,50;6,30;2,70;9,00');
+ assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:otherCookie})).body.report.rows.length,0);
+ for(const q of ['from=2026-08-16&to=2026-08-15','from=15.08.2026&to=2026-08-16','from=2026-02-30&to=2026-03-01','from=2025-01-01&to=2026-08-16'])
+  assert.equal((await request('/api/reports/turnover?'+q,undefined,{Cookie:cookie})).status,400,q);
+ assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16')).status,401);
+ assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:viewerCookie})).status,403);
+});

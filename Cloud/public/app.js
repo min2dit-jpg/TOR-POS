@@ -246,3 +246,37 @@ if ($('logoutBtn')) {
   setInterval(()=>{if(!document.hidden)refresh();},30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 }
+
+// Portal Berichte: turnover for a chosen period (net of Storno/Retoure).
+(function(){
+  const form=document.getElementById('turnoverForm');
+  if(!form)return;
+  const $=id=>document.getElementById(id);
+  const escText=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const euro=c=>(Number(c||0)/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+  const berlinToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin'}).format(new Date());
+  const today=berlinToday();
+  $('turnoverFrom').value=today.slice(0,8)+'01';
+  $('turnoverTo').value=today;
+  const query=()=>`from=${encodeURIComponent($('turnoverFrom').value)}&to=${encodeURIComponent($('turnoverTo').value)}`;
+  const syncCsv=()=>{$('turnoverCsv').href='/api/reports/turnover.csv?'+query();};
+  $('turnoverFrom').addEventListener('change',syncCsv);$('turnoverTo').addEventListener('change',syncCsv);syncCsv();
+  const rateLabel=r=>isNaN(Number(r))?escText(r):`USt ${String(r).replace('.',',')} %`;
+  const row=(r,rates,tag)=>`<tr><${tag}>${escText(r.day)}</${tag}><${tag}>${r.sale_count}</${tag}><${tag}>${euro(r.storno_cents+r.return_cents)}</${tag}><${tag}>${euro(r.cash_cents)}</${tag}><${tag}>${euro(r.card_cents)}</${tag}>${rates.map(x=>`<${tag}>${euro(r.vat[x]||0)}</${tag}>`).join('')}<${tag}><b>${euro(r.gross_cents)}</b></${tag}></tr>`;
+  async function load(){
+    $('turnoverStatus').textContent='Wird geladen …';
+    try{
+      const r=await fetch('/api/reports/turnover?'+query(),{credentials:'same-origin'});
+      const body=await r.json();
+      if(!r.ok||!body.ok)throw new Error(body.error||('HTTP '+r.status));
+      const rep=body.report;
+      $('turnoverHead').innerHTML=`<tr><th>Tag</th><th>Verkäufe</th><th>Storno / Retoure</th><th>Bar</th><th>Karte</th>${rep.rates.map(x=>`<th>${rateLabel(x)} brutto</th>`).join('')}<th>Umsatz brutto</th></tr>`;
+      $('turnoverRows').innerHTML=rep.rows.map(x=>row(x,rep.rates,'td')).join('')||`<tr><td colspan="${6+rep.rates.length}" class="muted">Im Zeitraum wurden keine Verkäufe synchronisiert.</td></tr>`;
+      $('turnoverTotal').innerHTML=rep.rows.length?row(rep.totals,rep.rates,'th'):'';
+      $('turnoverStatus').textContent=`${rep.from} bis ${rep.to}`;
+    }catch(err){$('turnoverStatus').textContent='Bericht nicht geladen: '+err.message;}
+  }
+  form.addEventListener('submit',e=>{e.preventDefault();syncCsv();load();});
+  window.addEventListener('hashchange',()=>{if(location.hash==='#reports')load();});
+  if(location.hash==='#reports')load();
+})();

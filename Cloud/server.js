@@ -722,6 +722,71 @@ function dashboardSummary(businessId) {
   return { today, totals, recentSales, registers, hourly, lowStock };
 }
 
+// Portal Berichte: turnover per Berlin calendar day for a chosen period.
+// Storno/Retoure are stored with a negative sign (sale.completed projection),
+// so every sum is already net. The VAT split of a sale is its total spread over
+// its lines' rates, the last rate taking the rounding rest - the same rule as
+// the till's VatSummaryCalculator, so a discount lowers the VAT base.
+const REPORT_MAX_DAYS=366;
+function reportDay(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const d=new Date(value+'T00:00:00Z');
+  return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value?value:null;
+}
+function saleVatSplit(total,items){
+  const groups=new Map();
+  for(const i of items){const rate=Number(i.vat_rate);groups.set(rate,(groups.get(rate)||0)+Number(i.line_total_cents||0));}
+  const rates=[...groups.keys()].sort((a,b)=>a-b);
+  const base=rates.reduce((sum,r)=>sum+groups.get(r),0);
+  if(!rates.length)return [['ohne Positionen',total]];
+  let assigned=0;
+  return rates.map((r,i)=>{
+    const gross=i===rates.length-1?total-assigned:(base===0?0:Math.round(groups.get(r)*total/base));
+    assigned+=gross;return [String(r),gross];
+  });
+}
+function turnoverReport(businessId, from, to){
+  const fromDay=reportDay(from),toDay=reportDay(to);
+  if(!fromDay||!toDay)throw Object.assign(new Error('Zeitraum: Datum im Format JJJJ-MM-TT angeben.'),{statusCode:400});
+  if(toDay<fromDay)throw Object.assign(new Error('Das Enddatum liegt vor dem Startdatum.'),{statusCode:400});
+  const span=(Date.parse(toDay)-Date.parse(fromDay))/86400000+1;
+  if(span>REPORT_MAX_DAYS)throw Object.assign(new Error(`Höchstens ${REPORT_MAX_DAYS} Tage pro Bericht.`),{statusCode:400});
+  const sales=db.prepare(`
+    SELECT s.id,s.occurred_at,s.transaction_type,s.payment_method,s.total_cents,s.cash_portion_cents,s.card_portion_cents
+    FROM cloud_sales s JOIN registers r ON r.id=s.register_id JOIN branches br ON br.id=r.branch_id
+    WHERE br.business_id=? AND s.occurred_at>=? AND s.occurred_at<?
+    ORDER BY s.occurred_at
+  `).all(businessId,dayWindow(fromDay)[0],dayWindow(toDay)[1]).filter(x=>{const d=berlinParts(x.occurred_at).day;return d>=fromDay&&d<=toDay;});
+  const itemStmt=db.prepare('SELECT vat_rate,line_total_cents FROM cloud_sale_items WHERE sale_id=?');
+  const days=new Map();const vatRates=new Set();
+  const empty=day=>({day,sale_count:0,storno_count:0,return_count:0,storno_cents:0,return_cents:0,cash_cents:0,card_cents:0,gross_cents:0,vat:{}});
+  for(const s of sales){
+    const day=berlinParts(s.occurred_at).day;
+    if(!days.has(day))days.set(day,empty(day));
+    const row=days.get(day);
+    const total=Number(s.total_cents||0);
+    const split=Number(s.cash_portion_cents)!==0||Number(s.card_portion_cents)!==0;
+    row.cash_cents+=split?Number(s.cash_portion_cents):(s.payment_method==='CASH'?total:0);
+    row.card_cents+=split?Number(s.card_portion_cents):(s.payment_method==='CARD'?total:0);
+    row.gross_cents+=total;
+    if(s.transaction_type==='SALE')row.sale_count++;
+    else if(s.transaction_type==='STORNO'){row.storno_count++;row.storno_cents+=total;}
+    else if(s.transaction_type==='RETURN'){row.return_count++;row.return_cents+=total;}
+    for(const [rate,gross] of saleVatSplit(total,itemStmt.all(s.id))){vatRates.add(rate);row.vat[rate]=(row.vat[rate]||0)+gross;}
+  }
+  const rows=[...days.values()].sort((a,b)=>a.day<b.day?-1:1);
+  const totals=rows.reduce((t,r)=>{for(const k of ['sale_count','storno_count','return_count','storno_cents','return_cents','cash_cents','card_cents','gross_cents'])t[k]+=r[k];for(const [rate,v] of Object.entries(r.vat))t.vat[rate]=(t.vat[rate]||0)+v;return t;},empty('Summe'));
+  const rates=[...vatRates].sort((a,b)=>(Number(a)||1e9)-(Number(b)||1e9));
+  return {from:fromDay,to:toDay,rates,rows,totals};
+}
+function turnoverCsv(report){
+  const money=c=>(c<0?'-':'')+Math.floor(Math.abs(c)/100)+','+String(Math.abs(c)%100).padStart(2,'0');
+  const cell=v=>{const t=String(v);return /[;"\r\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
+  const head=['Tag','Verkäufe','Stornos','Retouren','Storno EUR','Retoure EUR','Bar EUR','Karte EUR',...report.rates.map(r=>isNaN(Number(r))?'Brutto '+r:`Brutto ${String(r).replace('.',',')} % EUR`),'Umsatz brutto EUR'];
+  const line=r=>[r.day,r.sale_count,r.storno_count,r.return_count,money(r.storno_cents),money(r.return_cents),money(r.cash_cents),money(r.card_cents),...report.rates.map(x=>money(r.vat[x]||0)),money(r.gross_cents)].map(cell).join(';');
+  return '\ufeff'+[head.map(cell).join(';'),...report.rows.map(line),line(report.totals)].join('\r\n')+'\r\n';
+}
+
 function portalData(businessId, offset=0) {
   const summary = dashboardSummary(businessId);
   const sales = db.prepare(`
@@ -1437,6 +1502,19 @@ async function handler(req, res) {
     if (req.method === 'GET' && pathname === '/api/portal/data') {
       const user = requireUser(req, res); if (!user) return;
       return json(res, 200, {ok:true, ...portalData(user.business_id,Math.max(0,Math.min(10000000,parseInt(url.searchParams.get('offset')||'0',10)||0)))});
+    }
+
+    if (req.method === 'GET' && (pathname === '/api/reports/turnover' || pathname === '/api/reports/turnover.csv')) {
+      const user = requireUser(req, res); if (!user) return;
+      let report;
+      try { report = turnoverReport(user.business_id, url.searchParams.get('from'), url.searchParams.get('to')); }
+      catch (e) { if (e.statusCode === 400) return json(res, 400, {ok:false, error:e.message}); throw e; }
+      if (pathname.endsWith('.csv')) {
+        const body = Buffer.from(turnoverCsv(report), 'utf8');
+        res.writeHead(200, {'Content-Type':'text/csv; charset=utf-8','Content-Length':body.length,'Content-Disposition':`attachment; filename="TOR-Umsatz-${report.from}-${report.to}.csv"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
+        return res.end(body);
+      }
+      return json(res, 200, {ok:true, report});
     }
 
     if (req.method === 'GET' && /^\/api\/receipts\/\d+$/.test(pathname)) {
