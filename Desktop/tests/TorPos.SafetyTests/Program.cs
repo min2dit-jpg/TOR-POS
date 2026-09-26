@@ -57,6 +57,9 @@ if (args.Contains("--restaurant-third"))
         await RestaurantDev5MergeTests.Run(
             restaurantTargetedRoot,
             Assert);
+        await RestaurantDev5PaymentTests.Run(
+            restaurantTargetedRoot,
+            Assert);
     }
     finally
     {
@@ -661,6 +664,7 @@ await RestaurantSplitPlannerTests.Run(Assert);
 await RestaurantWaiterSettlementTests.Run(root, Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
 await RestaurantDev5MergeTests.Run(root, Assert);
+await RestaurantDev5PaymentTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
