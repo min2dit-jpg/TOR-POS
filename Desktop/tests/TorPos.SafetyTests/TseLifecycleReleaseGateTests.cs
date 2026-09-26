@@ -130,9 +130,14 @@ internal static class TseLifecycleReleaseGateTests
             !main.Contains("FiscalRelease.Enabled,", StringComparison.Ordinal),
             "Runtime sale/training gates use the actually probed provider and device generation");
 
-        var reprobeIndex = failSafe.IndexOf(
-            "var releaseProbe = await _provider.ProbeAsync(ct);",
-            StringComparison.Ordinal);
+        // O-3: the re-probe goes through a short Ready-only cache; the
+        // provider is still probed once the cached result is older than
+        // ReadyProbeLifetime, and every failure clears it.
+        var reprobeIndex =
+            failSafe.Contains("var probe = await _provider.ProbeAsync(ct);", StringComparison.Ordinal) &&
+            failSafe.Contains("ReadyProbeLifetime = TimeSpan.FromSeconds(30)", StringComparison.Ordinal)
+                ? failSafe.IndexOf("var releaseProbe = await ProbeForTransactionAsync(ct);", StringComparison.Ordinal)
+                : -1;
         var generationGuardIndex = failSafe.IndexOf(
             "TSE_GENERATION_UNKNOWN",
             reprobeIndex < 0 ? 0 : reprobeIndex,
