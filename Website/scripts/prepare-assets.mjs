@@ -1,7 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = resolve(root, "public/resources/tor-pos-logo.jpg.b64");
 const target = resolve(root, "public/resources/tor-pos-logo.jpg");
 
