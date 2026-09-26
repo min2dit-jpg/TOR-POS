@@ -39,7 +39,9 @@ public sealed record RestaurantKitchenCancellationAlert(
     decimal Quantity,
     string Waiter,
     string Station,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool PrintFailed = false,
+    string LastError = "");
 
 public sealed class RestaurantKitchenOutbox
 {
@@ -347,6 +349,65 @@ public sealed class RestaurantKitchenOutbox
             return failed;
         });
 
+    /// <summary>
+    /// The kitchen confirms it has seen a Storno. Works for a Storno whose
+    /// printout failed as well: the alert stays until someone confirms it.
+    /// </summary>
+    public Task AcknowledgeCancellationAsync(
+        string id,
+        CancellationToken ct = default) =>
+        IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE restaurant_kitchen_jobs
+                SET state='HANDED_OVER',
+                    handed_over_at=$now
+                WHERE id=$id AND action='CANCEL' AND state IN ('PENDING','FAILED');
+                """;
+            q.Parameters.AddWithValue("$id", id);
+            q.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+            await q.ExecuteNonQueryAsync(ct);
+        });
+
+    /// <summary>Kitchen jobs parked after five failed print attempts.</summary>
+    public async Task<int> FailedCountAsync(
+        string? station = null,
+        CancellationToken ct = default)
+    {
+        await using var c = _db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT COUNT(*) FROM restaurant_kitchen_jobs
+            WHERE state='FAILED' AND ($station='' OR station=$station);
+            """;
+        q.Parameters.AddWithValue("$station", KitchenStations.Normalize(station));
+        return Convert.ToInt32(await q.ExecuteScalarAsync(ct));
+    }
+
+    /// <summary>
+    /// After the printer is fixed: failed jobs go back to the queue with a
+    /// fresh attempt count, in their original order. The job id stays the
+    /// same, so the print journal still prevents a second printout.
+    /// </summary>
+    public Task<int> RequeueFailedAsync(
+        string? station = null,
+        CancellationToken ct = default) =>
+        IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE restaurant_kitchen_jobs
+                SET state='PENDING',
+                    attempts=0
+                WHERE state='FAILED' AND ($station='' OR station=$station);
+                """;
+            q.Parameters.AddWithValue("$station", KitchenStations.Normalize(station));
+            return await q.ExecuteNonQueryAsync(ct);
+        });
+
     public async Task<IReadOnlyList<RestaurantKitchenCancellationAlert>> CancellationAlertsAsync(
         string? station = null,
         CancellationToken ct = default)
@@ -366,7 +427,9 @@ public sealed class RestaurantKitchenOutbox
                 i.quantity_milli,
                 s.assigned_waiter,
                 j.station,
-                j.created_at
+                j.created_at,
+                j.state,
+                COALESCE(j.last_error,'')
             FROM restaurant_kitchen_jobs j
             JOIN restaurant_session_items i
               ON i.id=j.session_item_id
@@ -375,7 +438,10 @@ public sealed class RestaurantKitchenOutbox
             JOIN restaurant_tables t
               ON t.id=s.table_id
             WHERE j.action='CANCEL'
-              AND j.state='PENDING'
+              -- A Storno whose printout failed five times must stay on the
+              -- KDS: the item is already off the board, so this is the
+              -- kitchen's only sign to stop preparing it.
+              AND j.state IN ('PENDING','FAILED')
               AND ($station='' OR j.station=$station)
             ORDER BY j.created_at,j.id;
             """;
@@ -393,7 +459,9 @@ public sealed class RestaurantKitchenOutbox
                 r.GetInt64(5) / 1000m,
                 r.GetString(6),
                 r.GetString(7),
-                DateTimeOffset.Parse(r.GetString(8))));
+                DateTimeOffset.Parse(r.GetString(8)),
+                r.GetString(9) == "FAILED",
+                r.GetString(10)));
         }
 
         return result;
