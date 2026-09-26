@@ -171,7 +171,8 @@ async Task RunAsync()
     {
         var windowFactory = new NoWindows(() => new RestaurantWorkspaceControl(
             restaurantRepository, restaurantFiscal, kitchen, kitchenDispatcher, catalog, settings,
-            new ControlledPosActionService(db), admin, receiptPrinter));
+            new ControlledPosActionService(db), new RestaurantWaiterSettlementService(db),
+            admin, receiptPrinter));
         var window = new MainWindow(
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
             compliance, dsfinvkExport, datevAscii, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
