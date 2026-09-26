@@ -192,6 +192,34 @@ Bu ölçülmeden canlıya çıkış yok.
 - CI'da her PR'da değil, elle ya da gece çalışsın.
 - Plus sürümü canlıya çıkmadan önce raporu kaydedilmiş olmalı.
 
+### R-8 · İlk ölçüm sonuçları (25.09.2026, Linux VM, 4 CPU)
+
+Araç: `Desktop/tools/TorPos.RestaurantStress`, raporlar `Desktop/verification/RESTAURANT-STRESS/`.
+Servis ve veritabanı katmanı ölçüldü; HTTP/TLS ve TSE dahil değil.
+Koşul: 20 cihaz, 100 masa, 60 sn, yaklaşık 5.300 kalem.
+
+| Ölçüm | Sonuç |
+|---|---|
+| Kalem ekleme | p99 4,4 ms |
+| Kasa ödeme hazırlığı | p99 ~65 ms |
+| Kasanın veritabanı kuyruğunda beklemesi (IoQueue) | p99 < 1 ms |
+| Çift kayıt (tekrarlanan komutlarda kalem veya mutfak işi) | 0 |
+
+**Bulgu: KDS panosu yük altında ağırlaşıyor.** p95 2,8–3,0 sn, p99 4,2 sn.
+- `RestaurantKitchenOutbox.BoardAsync`, açık her kalem için `restaurant_kitchen_jobs`
+  tablosunu `session_item_id` ile iki kez alt sorguda arıyor. Bu sütunda indeks yok;
+  mevcut indeksler `(state, created_at)` ve `(session_id, created_at)`.
+- Yalnızca test veritabanında
+  `CREATE INDEX … ON restaurant_kitchen_jobs(session_item_id, action, created_at)`
+  ile panonun p95'i **39 ms'ye** iniyor.
+- Pano ayrıca `FERTIG` durumdaki kalemleri de listelemeye devam ediyor.
+
+**Öneri (şema dosyası ortak ve sende):**
+- Bu indeksi bir sonraki restoran migration'ına ekle.
+- Panoda `FERTIG` kalemleri bir süre sonra (örn. 10 dk) gizle.
+- Kasa bundan etkilenmiyor (okuma bağlantısı), ama mutfak ekranı akşam yoğunluğunda
+  saniyelerce donar.
+
 ---
 
 ## R-9 · Kesirli kısmi ödemede kuruş kaçağı (yeni bulgu)
