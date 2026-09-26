@@ -92,7 +92,21 @@ R125 - fertige Vorlagen in `deploy/`:
 | `tor-pos-cloud.env.example` | alle Umgebungsvariablen für den Live-Betrieb, kommentiert |
 | `tor-pos-cloud.service` | systemd-Dienst (Neustart bei Fehler, sauberes Beenden, gehärtet) |
 | `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`, seit R145 für `api.<domain>` und `bon.<domain>` |
+| `update-cloud.sh` | Update in einem Schritt mit Sicherung, Versionsprüfung und automatischem Zurücksetzen |
 | `apply-c1-caddy.sh` | C-1: stellt auf einem laufenden Server das Upload-Limit um (TOR Mail 12 MiB, sonst 2 MB) – mit Sicherung, `caddy validate`, automatischem Zurücksetzen bei Fehler und `reload`: `sudo bash deploy/apply-c1-caddy.sh` |
+
+**Update auf eine neue Version (ein Befehl):** neue Version als ZIP (GitHub „Code → Download ZIP“) oder `Cloud`-Ordner
+auf den Server kopieren und
+
+```
+sudo bash /opt/tor-pos-cloud/deploy/update-cloud.sh /tmp/TOR-POS-main.zip
+```
+
+Das Script prüft die neue Version (Syntax), stoppt den Dienst, sichert Code **und** Datenbank nach
+`/opt/tor-pos-cloud.sicherung-<Zeit>`, ersetzt nur den Code (`data/`, `updates/`, `node_modules/` bleiben), startet den
+Dienst und verlangt, dass `/api/health` die neue Version meldet. Sonst setzt es den alten Stand automatisch zurück.
+Zurück zu einer Sicherung: `sudo bash deploy/update-cloud.sh /opt/tor-pos-cloud.sicherung-<Zeit>`. Die letzten 5
+Sicherungen bleiben (`TOR_CLOUD_KEEP`). Andere Pfade: `TOR_CLOUD_DIR`, `TOR_CLOUD_SERVICE`, `TOR_CLOUD_ENV`.
 
 **Datensicherung:** mit `TOR_CLOUD_BACKUP_DIR` schreibt der Server im laufenden Betrieb
 eine konsistente Kopie (`VACUUM INTO`), standardmäßig alle 24 h, die letzten 14 bleiben
