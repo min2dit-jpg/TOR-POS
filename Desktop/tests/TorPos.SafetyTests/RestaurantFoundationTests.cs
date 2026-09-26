@@ -2231,7 +2231,8 @@ internal static class RestaurantFoundationTests
                     1)
                 {
                     PersistedLineTotalCents = 998,
-                    PaidCents = 0
+                    PaidCents = 0,
+                    Unit = "kg"
                 };
 
             var firstThird =
