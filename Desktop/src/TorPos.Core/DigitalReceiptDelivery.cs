@@ -22,6 +22,21 @@ public enum ReceiptFiscalState
     DocumentedOutage
 }
 
+public static class ReceiptFiscalStates
+{
+    /// <summary>
+    /// A sale is presentable when the TSE result is stored (transaction number
+    /// and signature) or the outage is documented on the sale. Anything else -
+    /// e.g. signing ended with an exception - is not fiscally completed.
+    /// </summary>
+    public static ReceiptFiscalState Of(bool tseOutage, string? tseTransactionNumber, string? tseSignature) =>
+        tseOutage
+            ? ReceiptFiscalState.DocumentedOutage
+            : !string.IsNullOrWhiteSpace(tseTransactionNumber) && !string.IsNullOrWhiteSpace(tseSignature)
+                ? ReceiptFiscalState.Signed
+                : ReceiptFiscalState.NotCompleted;
+}
+
 public sealed record ReceiptDeliveryPlan(
     FiscalComplianceProfile Profile,
     ReceiptDeliveryChannel DefaultChannel,

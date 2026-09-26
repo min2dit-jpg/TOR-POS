@@ -3122,9 +3122,21 @@ private Control TsePage()
     sdkRow.Children.Add(chooseSdk);
     sdkRow.Children.Add(swissbitDownload);
 
+    // Every TSE-Wechsel is journaled; this shows it and lets an administrator
+    // record the manual Mein-ELSTER notification.
+    var changeJournal = new Button
+    {
+        Content = "TSE-WECHSELPROTOKOLL",
+        MinHeight = 48,
+        MinWidth = 180
+    };
+    changeJournal.Click += async (_,_) =>
+        await TseChangeJournalWindow.ForDatabase(_currentUser.Username, _currentUser.IsAdmin).ShowDialog(this);
+
     actionRow.Children.Add(detect);
     actionRow.Children.Add(activate);
     actionRow.Children.Add(exportTar);
+    actionRow.Children.Add(changeJournal);
 
     actions.Children.Add(sdkRow);
     actions.Children.Add(actionRow);

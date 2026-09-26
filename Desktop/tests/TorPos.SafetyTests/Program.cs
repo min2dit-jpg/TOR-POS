@@ -682,8 +682,10 @@ await RetailGastroFollowUpTests.Run(root, Assert);
 // readiness, the digital receipt/QR layer, the AI boundary and the DSFinV-K
 // preflight/ZIP packaging; 7 seeded property checks fuzz receipt links,
 // DSFinV-K ranges, cent allocation, CSV and TSE export input.
-// Einzelhandel/Gastro follow-up: V-3 export off the write queue, O-3 probe cache.
-const int ExpectedSafetyChecks = 1444;
+// Einzelhandel/Gastro follow-up: V-3 export off the write queue, O-3 probe cache,
+// receipt policy in the checkout (no normal receipt for an unfinished Vorgang)
+// and the TSE-Wechselprotokoll window.
+const int ExpectedSafetyChecks = 1447;
 
 if (checks != ExpectedSafetyChecks)
 {

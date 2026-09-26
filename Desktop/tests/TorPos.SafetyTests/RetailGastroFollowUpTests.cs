@@ -14,6 +14,54 @@ public static partial class RetailGastroFollowUpTests
 
         await ExportDoesNotHoldQueue(dir, assert);
         await ProbeCache(dir, assert);
+        ReceiptWiring(assert);
+    }
+
+    private static void ReceiptWiring(Action<bool, string> assert)
+    {
+        assert(
+            ReceiptFiscalStates.Of(false, "17", "c2ln") == ReceiptFiscalState.Signed &&
+            ReceiptFiscalStates.Of(true, "", "") == ReceiptFiscalState.DocumentedOutage &&
+            ReceiptFiscalStates.Of(true, "17", "c2ln") == ReceiptFiscalState.DocumentedOutage &&
+            ReceiptFiscalStates.Of(false, "17", "") == ReceiptFiscalState.NotCompleted &&
+            ReceiptFiscalStates.Of(false, "", null) == ReceiptFiscalState.NotCompleted,
+            "Receipt policy: a sale is presentable only when signed (number and signature) or its TSE outage is documented");
+
+        var main = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
+        var state = main.IndexOf("ReceiptFiscalStates.Of(sale.TseOutage, sale.TseTransactionNumber, sale.TseSignature)", StringComparison.Ordinal);
+        var plan = main.IndexOf("ReceiptDeliveryPolicy.Plan(", state < 0 ? 0 : state, StringComparison.Ordinal);
+        var withheld = main.IndexOf("await WithholdReceiptNotFiscalAsync(sale);", state < 0 ? 0 : state, StringComparison.Ordinal);
+        var offer = main.IndexOf("else if(receiptPlan.Offered.Contains(ReceiptDeliveryChannel.QrCode))", state < 0 ? 0 : state, StringComparison.Ordinal);
+        assert(
+            state > 0 && plan > state && withheld > state && offer > withheld &&
+            main.Contains("GermanFiscalRulesets.Resolve(DateOnly.FromDateTime(DateTime.Now))", StringComparison.Ordinal) &&
+            main.Contains("\"RECEIPT_WITHHELD_NOT_FISCAL\"", StringComparison.Ordinal),
+            "Receipt policy: the Einzelhandel/Gastro checkout decides paper/QR through the rule set in force and withholds - with a German message and audit entry - a receipt for a sale that is neither signed nor a documented outage");
+
+        var settings = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/SettingsWindow.axaml.cs"));
+        var window = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/TseChangeJournalWindow.cs"));
+        assert(
+            settings.Contains("TseChangeJournalWindow.ForDatabase(_currentUser.Username, _currentUser.IsAdmin)", StringComparison.Ordinal) &&
+            window.Contains("IsEnabled = canEdit", StringComparison.Ordinal) &&
+            window.Contains("if (!_canEdit ||", StringComparison.Ordinal) &&
+            window.Contains("SetNotificationStatusAsync(", StringComparison.Ordinal) &&
+            !window.Contains("RecordAsync(", StringComparison.Ordinal),
+            "TSE-Wechselprotokoll: the settings page opens the journal; only an administrator records the notification status, and the window never writes a TSE change itself");
+    }
+
+    private static string FindRepoFile(string relativePath)
+    {
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        throw new FileNotFoundException(relativePath);
     }
 
     private static async Task ExportDoesNotHoldQueue(string dir, Action<bool, string> assert)
