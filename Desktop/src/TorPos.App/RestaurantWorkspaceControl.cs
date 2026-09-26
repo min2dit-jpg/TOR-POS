@@ -422,17 +422,30 @@ public sealed class RestaurantWorkspaceControl : UserControl
         var detailGrid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         detailGrid.Children.Add(new ScrollViewer { Content = right,
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
+        // Two rows so every German label is readable on the 1024x640 till and
+        // on a 1366x768 laptop: five buttons in one row cut "BESTELLUNG
+        // SENDEN" and "ZWISCHENRECHNUNG" in half (DEV5 UiSnapshot).
         var footer = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*"),
+            ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto"),
             ColumnSpacing = 8,
+            RowSpacing = 8,
             Margin = new Thickness(12)
         };
-        var primaryActions = new Control[] { _sendOrder, _interim, _move, _split, _payAll };
-        for (var column = 0; column < primaryActions.Length; column++)
+        var primaryActions = new (Button Button, int Row, int Column, int Span)[]
         {
-            Grid.SetColumn(primaryActions[column], column);
-            footer.Children.Add(primaryActions[column]);
+            (_sendOrder, 0, 0, 3), (_interim, 0, 3, 3),
+            (_move, 1, 0, 2), (_split, 1, 2, 2), (_payAll, 1, 4, 2)
+        };
+        foreach (var (button, row, column, span) in primaryActions)
+        {
+            button.HorizontalAlignment = HorizontalAlignment.Stretch;
+            button.HorizontalContentAlignment = HorizontalAlignment.Center;
+            Grid.SetRow(button, row);
+            Grid.SetColumn(button, column);
+            Grid.SetColumnSpan(button, span);
+            footer.Children.Add(button);
         }
         Grid.SetRow(footer, 1);
         detailGrid.Children.Add(footer);

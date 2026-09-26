@@ -244,6 +244,27 @@ async Task RunAsync()
                 Path.Combine(output, $"restaurant-order-{width}x{height}.png"),
                 new PngBitmapEncoderOptions());
 
+            // DEV5: the order screen of an open table keeps every action and
+            // the header (TISCHPLAN, THEKE, ABMELDEN) inside the window.
+            CheckNamedActions(
+                window,
+                new[]
+                {
+                    "RestaurantTablesButton",
+                    "RestaurantCounterButton",
+                    "LogoutButton",
+                    "RestaurantSendOrder",
+                    "InterimBill",
+                    "RestaurantMove",
+                    "RestaurantSplit",
+                    "TablePayAll"
+                },
+                failures);
+            CheckLabelsFit(
+                window,
+                new[] { "RestaurantSendOrder", "InterimBill", "RestaurantMove", "RestaurantSplit", "TablePayAll" },
+                failures);
+
             var sameButton = workspace
                 .GetVisualDescendants()
                 .OfType<Button>()
@@ -544,6 +565,23 @@ static (int, int) ParseSize(string text)
 }
 
 // The snapshot never opens secondary windows; any attempt is a bug in the run.
+// DEV5: a button can sit inside the window and still cut its own label
+// ("BESTELL", "ZWISCHE" at 1024x640). The label is measured with the
+// button's font and compared to the room inside the button.
+static void CheckLabelsFit(Window window, string[] names, List<string> failures)
+{
+    foreach (var name in names)
+    {
+        var button = window.GetVisualDescendants().OfType<Button>().SingleOrDefault(b => b.Name == name);
+        if (button?.Content is not string label) { failures.Add($"{window.Title}: {name} has no text label"); continue; }
+        var probe = new TextBlock { Text = label, FontSize = button.FontSize, FontWeight = button.FontWeight, FontFamily = button.FontFamily };
+        probe.Measure(Size.Infinity);
+        var room = button.Bounds.Width - button.Padding.Left - button.Padding.Right - button.BorderThickness.Left - button.BorderThickness.Right;
+        if (probe.DesiredSize.Width > room + 1)
+            failures.Add($"{window.Title}: {name} cuts its label \"{label}\" ({probe.DesiredSize.Width:0}px text in {room:0}px)");
+    }
+}
+
 static void CheckNamedActions(Window window, string[] names, List<string> failures)
 {
     foreach(var name in names)
