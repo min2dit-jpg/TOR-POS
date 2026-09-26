@@ -81,6 +81,28 @@ foreach ($editionName in @('retail', 'gastro')) {
     }
 }
 
+# The TOR Cloud portal preview in the website simulator uses the portal's own
+# labels. They must exist in Cloud/public (portal.html / app.js) so the preview
+# never shows a menu or heading the real portal does not have.
+if ($null -ne $contract.cloudPortal) {
+    $cloudText = Get-ChildItem (Join-Path $root 'Cloud/public') -File -Include *.html,*.js -Recurse |
+        ForEach-Object { Get-Content $_.FullName -Raw -Encoding UTF8 } |
+        Out-String
+    $cloudLabels = @()
+    $cloudLabels += @($contract.cloudPortal.menu)
+    $cloudLabels += @($contract.cloudPortal.reports.PSObject.Properties | ForEach-Object { $_.Value })
+    $cloudLabels += @($contract.cloudPortal.deviceStatus.PSObject.Properties | ForEach-Object { $_.Value })
+    foreach ($label in ($cloudLabels | Select-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace($label)) { continue }
+        if ($cloudText.IndexOf([string]$label, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            $missing += "cloudPortal:$label"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$contract.cloudPortal.previewNote)) {
+        $missing += 'cloudPortal.previewNote'
+    }
+}
+
 if ($missing.Count -gt 0) {
     $details = ($missing | Sort-Object -Unique) -join ', '
     throw "Simulator contract is out of sync with TOR POS: $details"

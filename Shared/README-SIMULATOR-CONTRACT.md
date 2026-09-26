@@ -12,6 +12,9 @@ only the parts that a website simulator needs to reproduce safely:
 - top menu and cashier labels
 - visual theme tokens
 - demo-only category/product fixtures
+- the TOR Cloud customer portal labels (`cloudPortal`) for the simulator's portal preview;
+  CI checks them against `Cloud/public`. The preview only shows the simulator session's
+  own data and never connects to TOR Cloud.
 
 Internal identifiers stay stable (`KIOSK` / `IMBISS`) and are intentionally
 separate from public labels.
