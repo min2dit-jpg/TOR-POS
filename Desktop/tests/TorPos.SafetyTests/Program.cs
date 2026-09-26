@@ -674,6 +674,7 @@ await RestaurantDev5MergeTests.Run(root, Assert);
 await RestaurantDev5PaymentTests.Run(root, Assert);
 await RestaurantDev5SnapshotKitchenTests.Run(root, Assert);
 await RestaurantDev6RecoveryTests.Run(root, Assert);
+await RestaurantDev6ServiceModeMergeTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -794,7 +795,7 @@ const int ExpectedSafetyChecks = 1423;
 // refusal, check before bootstrap; payment concurrency/repetition/partial
 // payments and the Kellnerabrechnung (8); snapshot and kitchen resend (4);
 // split properties (2); THEKE/TISCHPLAN switch guards (3); installer identity.
-const int RestaurantDev5Checks = 107;
+const int RestaurantDev5Checks = 108;
 
 const int TotalSafetyChecks =
     ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
