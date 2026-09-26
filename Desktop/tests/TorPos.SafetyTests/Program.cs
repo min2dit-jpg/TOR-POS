@@ -639,8 +639,8 @@ await CloudContractTests.Run(root, Assert);
 const int GermanFiscalPrepChecks = 62;
 // TOR Cloud alignment, counted on its own for the same reason: z.closed and
 // cash.movement pinned to Cloud/tests/fixtures and queued in the booking's
-// own transaction (6 checks).
-const int CloudAlignmentChecks = 6;
+// own transaction, plus the extended heartbeat (7 checks).
+const int CloudAlignmentChecks = 7;
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,

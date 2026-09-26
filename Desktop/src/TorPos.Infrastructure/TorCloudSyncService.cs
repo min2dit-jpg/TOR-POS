@@ -236,9 +236,36 @@ public sealed class TorCloudOutbox
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx);
         if(config is null||!config.Enabled)return Task.CompletedTask;
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT COUNT(*) FROM cloud_outbox WHERE event_type='heartbeat';";
-        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status=HeartbeatTseStatus(c,tx),printer_status="NICHT GEPRÜFT"}));
+        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",HeartbeatPayload(c,tx)));
         tx.Commit();return Task.CompletedTask;
     });
+
+    /// <summary>
+    /// Cloud: what the portal's Gerätestatus needs to see a till's real state -
+    /// the product edition it runs, test or production mode, events still
+    /// waiting or refused by TOR Cloud, and when the TSE certificate expires.
+    /// Nothing here touches the TSE or the printer.
+    /// </summary>
+    internal static object HeartbeatPayload(SqliteConnection c,SqliteTransaction tx)
+    {
+        string Setting(string key){using var s=c.CreateCommand();s.Transaction=tx;s.CommandText="SELECT value FROM app_settings WHERE key=$k;";s.Parameters.AddWithValue("$k",key);return ((s.ExecuteScalar() as string)??"").Trim();}
+        long Count(string sql){using var s=c.CreateCommand();s.Transaction=tx;s.CommandText=sql;try{return Convert.ToInt64(s.ExecuteScalar());}catch(SqliteException){return 0;}}
+        var edition=(AppPaths.ProductEdition??Setting("installation.edition")).ToUpperInvariant();
+        if(edition.Length==0)edition=Setting("business.mode").ToUpperInvariant();
+        if(edition is not ("KIOSK" or "IMBISS" or "RESTAURANT"))edition="";
+        var expiry=Setting("tse.expiry_date");
+        if(!DateOnly.TryParseExact(expiry,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out _))expiry="";
+        return new {
+            software_version=TorRelease.UserAgentVersion,
+            tse_status=HeartbeatTseStatus(c,tx),
+            printer_status="NICHT GEPRÜFT",
+            edition,
+            fiscal_mode=FiscalRelease.ProductionAllowed?"PRODUKTIV":"TESTBETRIEB",
+            outbox_pending=Count("SELECT COUNT(*) FROM cloud_outbox WHERE event_type<>'heartbeat';"),
+            outbox_rejected=Count("SELECT COUNT(*) FROM cloud_outbox_rejected;"),
+            tse_certificate_until=expiry
+        };
+    }
     public Task EnqueueStockAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx)??throw new InvalidOperationException("Cloud zuerst speichern.");
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="""

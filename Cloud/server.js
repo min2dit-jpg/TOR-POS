@@ -556,6 +556,8 @@ ensureColumn('cloud_sales','card_portion_cents','INTEGER NOT NULL DEFAULT 0');
 for(const [name,definition] of [['period_from',"TEXT NOT NULL DEFAULT ''"],['period_to',"TEXT NOT NULL DEFAULT ''"],['cash_cents','INTEGER NOT NULL DEFAULT 0'],['card_cents','INTEGER NOT NULL DEFAULT 0'],['storno_cents','INTEGER NOT NULL DEFAULT 0'],['return_cents','INTEGER NOT NULL DEFAULT 0'],['discount_cents','INTEGER NOT NULL DEFAULT 0'],['vat_json',"TEXT NOT NULL DEFAULT '[]'"],['fiscal_status',"TEXT NOT NULL DEFAULT ''"],['operator_name',"TEXT NOT NULL DEFAULT ''"]])
   ensureColumn('z_reports',name,definition);
 ensureColumn('cash_movements','business_case',"TEXT NOT NULL DEFAULT ''");
+for(const [name,definition] of [['reported_edition',"TEXT NOT NULL DEFAULT ''"],['fiscal_mode',"TEXT NOT NULL DEFAULT ''"],['outbox_pending','INTEGER NOT NULL DEFAULT 0'],['outbox_rejected','INTEGER NOT NULL DEFAULT 0'],['tse_certificate_until',"TEXT NOT NULL DEFAULT ''"]])
+  ensureColumn('registers',name,definition);
 ensureColumn('users','totp_enabled','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','totp_pending_secret',"TEXT NOT NULL DEFAULT ''");
@@ -700,7 +702,7 @@ function dashboardSummary(businessId) {
   `).all(businessId);
 
   const registers = db.prepare(`
-    SELECT r.device_code,r.name,r.edition,r.last_seen_at,r.software_version,r.tse_status,r.printer_status,br.name branch_name
+    SELECT r.device_code,r.name,r.edition,r.last_seen_at,r.software_version,r.tse_status,r.printer_status,r.reported_edition,r.fiscal_mode,r.outbox_pending,r.outbox_rejected,r.tse_certificate_until,br.name branch_name
     FROM registers r JOIN branches br ON br.id=r.branch_id
     WHERE br.business_id=? ORDER BY br.name,r.name
   `).all(businessId);
@@ -859,8 +861,9 @@ function ingestEvent(registerId, event) {
 
   const p = event.payload;
   if (event.type === 'heartbeat') {
-    db.prepare('UPDATE registers SET last_seen_at=?,software_version=?,tse_status=?,printer_status=? WHERE id=?')
-      .run(receivedAt, String(p.software_version || ''), String(p.tse_status || 'UNBEKANNT'), String(p.printer_status || 'UNBEKANNT'), registerId);
+    db.prepare('UPDATE registers SET last_seen_at=?,software_version=?,tse_status=?,printer_status=?,reported_edition=?,fiscal_mode=?,outbox_pending=?,outbox_rejected=?,tse_certificate_until=? WHERE id=?')
+      .run(receivedAt, String(p.software_version || ''), String(p.tse_status || 'UNBEKANNT'), String(p.printer_status || 'UNBEKANNT'),
+        String(p.edition || ''), String(p.fiscal_mode || ''), Number(p.outbox_pending || 0), Number(p.outbox_rejected || 0), String(p.tse_certificate_until || ''), registerId);
   } else if (event.type === 'sale.completed') {
     const rawItems = Array.isArray(p.items) ? p.items : [];
     const transactionType=String(p.transaction_type||'SALE').toUpperCase();

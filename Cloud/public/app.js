@@ -224,7 +224,7 @@ if ($('logoutBtn')) {
 
       $('branchCards').innerHTML=branches.map(b=>`<div class="panel"><div class="flex-between"><div><div class="eyebrow">Filiale</div><h3>${esc(b.name)}</h3><div class="muted">${esc(b.city||'')}</div></div><span class="badge">${esc(b.register_count)} Kasse(n)</span></div></div>`).join('') || '<div class="panel muted">Keine Filiale vorhanden.</div>';
 
-      $('deviceCards').innerHTML=registers.map(r=>{const online=onlineFrom(r.last_seen_at); return `<div class="panel"><div class="flex-between"><div><div class="eyebrow">${esc(r.branch_name)}</div><h3>${esc(r.name)}</h3><div class="muted small">${esc(r.device_code)} · ${esc(r.edition)}</div></div><span class="status"><i class="dot" style="background:${online?'var(--green)':'#71879a'}"></i>${online?'Online':'Offline'}</span></div><div class="status-grid">${statusLine('Software',r.software_version)}${statusLine('TSE',r.tse_status,['BEREIT','OK'])}${statusLine('Drucker',r.printer_status,['BEREIT','OK'])}${statusLine('Letzte Meldung',dateTime(r.last_seen_at))}</div></div>`;}).join('') || '<div class="panel muted">Keine Geräte vorhanden.</div>';
+      $('deviceCards').innerHTML=registers.map(r=>{const online=onlineFrom(r.last_seen_at); return `<div class="panel"><div class="flex-between"><div><div class="eyebrow">${esc(r.branch_name)}</div><h3>${esc(r.name)}</h3><div class="muted small">${esc(r.device_code)} · ${esc(editionLabel(r.edition))}</div></div><span class="status"><i class="dot" style="background:${online?'var(--green)':'#71879a'}"></i>${online?'Online':'Offline'}</span></div><div class="status-grid">${statusLine('Software',r.software_version)}${statusLine('TSE',r.tse_status,['BEREIT','OK','AKTIV'])}${statusLine('Drucker',r.printer_status,['BEREIT','OK'])}${statusLine('Letzte Meldung',dateTime(r.last_seen_at))}${deviceNotes(r)}</div></div>`;}).join('') || '<div class="panel muted">Keine Geräte vorhanden.</div>';
 
       $('supportIdentity').innerHTML=`<div class="support-code"><small>Kundennummer</small><b>${esc(me.business.customer_number)}</b></div>`;
       const health=await api('/api/health');
@@ -280,3 +280,21 @@ if ($('logoutBtn')) {
   window.addEventListener('hashchange',()=>{if(location.hash==='#reports')load();});
   if(location.hash==='#reports')load();
 })();
+
+// Kasse: facts a till reports in its heartbeat, shown only when there is something to see.
+function deviceNotes(r){
+  const esc2=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const line=(label,value,warn)=>`<div class="flex-between small" style="gap:8px"><span class="muted">${label}</span><b style="color:${warn?'#ffb4a8':'inherit'}">${esc2(value)}</b></div>`;
+  const out=[];
+  if(r.fiscal_mode)out.push(line('Betriebsart',r.fiscal_mode==='PRODUKTIV'?'Produktiv':'Testbetrieb',r.fiscal_mode!=='PRODUKTIV'));
+  if(r.reported_edition&&r.edition&&r.reported_edition!==r.edition)out.push(line('Produkt',`Kasse meldet ${editionLabel(r.reported_edition)}, eingerichtet als ${editionLabel(r.edition)}`,true));
+  if(Number(r.outbox_pending)>0)out.push(line('Wartende Daten',String(r.outbox_pending),Number(r.outbox_pending)>100));
+  if(Number(r.outbox_rejected)>0)out.push(line('Von der Cloud abgelehnt',`${r.outbox_rejected} – TOR Service prüfen`,true));
+  if(r.tse_certificate_until){
+    const days=Math.floor((Date.parse(r.tse_certificate_until+'T00:00:00Z')-Date.now())/86400000);
+    out.push(line('TSE-Zertifikat bis',`${r.tse_certificate_until.split('-').reverse().join('.')}${days<0?' – abgelaufen':days<=90?` – noch ${days} Tage`:''}`,days<=90));
+  }
+  return out.join('');
+}
+
+function editionLabel(code){return ({KIOSK:'TOR Einzelhandel',IMBISS:'TOR Gastronomie',RESTAURANT:'TOR Restaurant'})[code]||code||'';}

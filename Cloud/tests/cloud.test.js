@@ -615,3 +615,16 @@ test('Portal Berichte: turnover for a period is net of Storno/Retoure, split by 
  assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16')).status,401);
  assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:viewerCookie})).status,403);
 });
+
+test('Kasse: the heartbeat shows edition, mode, sync backlog and TSE certificate in Gerätestatus',async()=>{
+ const hb={software_version:'0.7.33.882',tse_status:'AKTIV',printer_status:'NICHT GEPRÜFT',edition:'IMBISS',fiscal_mode:'TESTBETRIEB',outbox_pending:3,outbox_rejected:1,tse_certificate_until:'2031-01-31'};
+ assert.equal((await sync([{event_id:'hb-kasse-1',type:'heartbeat',occurred_at:new Date().toISOString(),payload:hb}])).body.accepted,1);
+ const reg=(await request('/api/portal/data',undefined,{Cookie:cookie})).body.registers.find(r=>r.device_code==='DEMO-KASSE-01');
+ assert.equal(reg.reported_edition,'IMBISS');assert.equal(reg.edition,'KIOSK');assert.equal(reg.fiscal_mode,'TESTBETRIEB');
+ assert.equal(reg.outbox_pending,3);assert.equal(reg.outbox_rejected,1);assert.equal(reg.tse_certificate_until,'2031-01-31');
+ const ev=payload=>({event_id:'x',type:'heartbeat',occurred_at:'2026-09-26T22:05:00+02:00',payload});
+ assert.doesNotThrow(()=>normalizeEvent(ev({software_version:'1',tse_status:'OK',printer_status:'OK'})),'an older till sends only the three status texts');
+ assert.throws(()=>normalizeEvent(ev({...hb,edition:'SUPERMARKT'})),/edition/);
+ assert.throws(()=>normalizeEvent(ev({...hb,outbox_pending:-1})),/outbox_pending/);
+ assert.throws(()=>normalizeEvent(ev({...hb,tse_certificate_until:'31.01.2031'})),/tse_certificate_until/);
+});

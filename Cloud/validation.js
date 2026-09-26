@@ -96,6 +96,11 @@ function normalizeEvent(raw){
     }
   }else if(type==='heartbeat'){
     for(const key of ['software_version','tse_status','printer_status'])text(p[key],key,100,true);
+    // Kasse: edition, test/production mode, sync backlog and TSE certificate end.
+    if(p.edition!=null&&p.edition!==''&&!['KIOSK','IMBISS','RESTAURANT'].includes(p.edition))fail('edition ungültig');
+    if(p.fiscal_mode!=null&&!['PRODUKTIV','TESTBETRIEB'].includes(p.fiscal_mode))fail('fiscal_mode ungültig');
+    for(const key of ['outbox_pending','outbox_rejected'])if(p[key]!=null)number(p[key],key,0,1e9,true);
+    if(p.tse_certificate_until!=null&&p.tse_certificate_until!==''&&!/^\d{4}-\d{2}-\d{2}$/.test(p.tse_certificate_until))fail('tse_certificate_until ungültig');
   }else if(type==='stock.snapshot'){
     if(!Array.isArray(p.items)||p.items.length>5000)fail('Bestand: maximal 5000 Artikel pro vollständigem Snapshot');
     const seen=new Set();

@@ -76,6 +76,33 @@ public static class CloudContractTests
         assert(await PayloadAsync(db, $"cash-{movement.Id}") is null,
             "Cloud contract: a test Entnahme booked through the repository is not queued for TOR Cloud");
 
+        // ---------- heartbeat ----------
+        await settings.SaveManyAsync(new Dictionary<string, string> { ["installation.edition"] = "IMBISS", ["tse.expiry_date"] = "2031-01-31" });
+        JsonNode? heartbeat;
+        await using (var c = db.OpenConnection())
+        await using (var tx = (SqliteTransaction)await c.BeginTransactionAsync())
+        {
+            heartbeat = System.Text.Json.JsonSerializer.SerializeToNode(TorCloudOutbox.HeartbeatPayload(c, tx));
+            await tx.CommitAsync();
+        }
+        long pending;
+        await using (var c = db.OpenConnection())
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = "SELECT COUNT(*) FROM cloud_outbox WHERE event_type<>'heartbeat';";
+            pending = Convert.ToInt64(await q.ExecuteScalarAsync());
+        }
+        var expectedEdition = AppPaths.ProductEdition ?? "IMBISS";
+        assert(
+            heartbeat is not null &&
+            (string?)heartbeat["edition"] == expectedEdition &&
+            (string?)heartbeat["fiscal_mode"] == (FiscalRelease.ProductionAllowed ? "PRODUKTIV" : "TESTBETRIEB") &&
+            (long?)heartbeat["outbox_pending"] == pending && pending >= 3 &&
+            (long?)heartbeat["outbox_rejected"] == 0 &&
+            (string?)heartbeat["tse_certificate_until"] == "2031-01-31" &&
+            heartbeat["software_version"] is not null && heartbeat["tse_status"] is not null,
+            "Cloud contract: the heartbeat reports edition, test/production mode, waiting and refused events and the TSE certificate end - in the values Cloud validation accepts");
+
         var repository = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/FiscalComplianceServices.cs"));
         var management = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/BusinessManagementService.cs"));
         assert(
