@@ -326,13 +326,13 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _product.ItemsSource = _catalog.Products.Where(p => p.IsActive).OrderBy(p => p.Name).ToArray();
             await ReloadAsync();
         };
-        var waiterSettlement = new Button
+        var waiterSettlementButton = new Button
         {
             Content = "KELLNERABRECHNUNG",
             MinHeight = 44,
             IsVisible = _user.Can(UserPermissions.ZReport)
         };
-        waiterSettlement.Click += async (_, _) =>
+        waiterSettlementButton.Click += async (_, _) =>
         {
             await new RestaurantWaiterSettlementWindow(
                     _waiterSettlement)
@@ -341,7 +341,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
         var navigation = new StackPanel
         {
             Spacing = 8,
-            Children = { theke, master, waiterSettlement, refresh, _areas }
+            Children = { theke, master, waiterSettlementButton, refresh, _areas }
         };
         DockPanel.SetDock(navigation, Dock.Top);
         left.Children.Add(navigation);

@@ -33,6 +33,7 @@ public sealed class RestaurantTablePlanWindow : Window
         IProductCatalog catalog,
         ISettingsRepository settings,
         ControlledPosActionService controlledActions,
+        RestaurantWaiterSettlementService waiterSettlement,
         AuthenticatedUser user,
         IReceiptPrinterService receiptPrinter)
     {
@@ -53,6 +54,7 @@ public sealed class RestaurantTablePlanWindow : Window
             catalog,
             settings,
             controlledActions,
+            waiterSettlement,
             user,
             receiptPrinter);
 

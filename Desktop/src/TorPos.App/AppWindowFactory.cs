@@ -130,6 +130,7 @@ internal sealed class AppWindowFactory : IAppWindowFactory
             _services.GetRequiredService<IProductCatalog>(),
             _services.GetRequiredService<ISettingsRepository>(),
             _services.GetRequiredService<ControlledPosActionService>(),
+            _services.GetRequiredService<RestaurantWaiterSettlementService>(),
             user,
             _services.GetRequiredService<IReceiptPrinterService>());
 
