@@ -170,7 +170,8 @@ public static class MultiLanguageTests
             "RestaurantRecipeWindow",
             "RestaurantTableSettingsWindow",
             "RestaurantInterimBillWindow",
-            "RestaurantOrderOptionsWindow"
+            "RestaurantOrderOptionsWindow",
+            "RestaurantWaiterSettlementWindow"
         ];
 
         string[] germanOnlyWindowFiles =
@@ -181,6 +182,7 @@ public static class MultiLanguageTests
             "RestaurantTablePlanWindow.cs",
             "RestaurantWorkspaceControl.cs",
             "RestaurantSplitCheckoutWindow.cs",
+            "RestaurantWaiterSettlementWindow.cs",
             "MainWindow.Restaurant.cs" // Restaurant-only Stammdaten menu.
         ];
         var windows = 0;
