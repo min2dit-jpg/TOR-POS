@@ -283,6 +283,8 @@ public partial class App : Avalonia.Application
             appServices.AddSingleton(new ProductImageStore());
             appServices.AddSingleton(new RestaurantRepository(db));
             appServices.AddSingleton(
+                new RestaurantWaiterSettlementService(db));
+            appServices.AddSingleton(
                 new RestaurantReservationService(
                     db,
                     restaurantEntitlements));
