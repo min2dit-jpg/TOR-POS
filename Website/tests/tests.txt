@@ -1,0 +1,147 @@
+# Tests
+
+## Test 1 - Public test version opens without an access code [sanity]
+Viewport: desktop
+Covers: public test access, POST /api/site, visible test-version labeling, no private access gate, TOR POS brand logo, filled hero right panel
+Description: Verifies the TOR POS development preview is publicly accessible while clearly marked as a test version.
+Steps:
+1. Open the public site in a fresh browser session
+2. Observe the first screen
+3. Inspect the page head/robots behavior
+Expected: No access-code form is shown. The TOR POS homepage loads directly and a prominent TEST- / AUFBAUPHASE banner states that the site is still being built and currently accepts no sales, no orders, no contracts and no paid services. The supplied TOR POS logo is visible in the navigation and prominently in the hero's right-side brand panel, which also contains feature badges and the cashier preview instead of unused whitespace. A second WICHTIGER HINWEIS notice in the hero explains that displayed prices, products and workflows are for demonstration/testing only. The page remains noindex/nofollow.
+
+## Test 2 - Open a dedicated simulator-only page matching the real TOR POS cashier
+Viewport: desktop
+Covers: public access, POST /api/site, dedicated #/simulator route, test/setup notice, real-program simulator layout, colored Warengruppen, keypad and cashier action row
+Description: Verifies Online testen leaves the marketing homepage and opens a simulator-only testing page.
+Steps:
+1. Open the public TOR POS test site
+2. Click "Online testen"
+3. Inspect the resulting #/simulator page
+Expected: The URL hash is #/simulator. Hero, editions, hardware, features, cloud, status and footer are absent. A compact TEST- / AUFBAUPHASE strip explicitly says there is no sale or order acceptance, followed by the minimal Website/back and DE/TR toolbar plus the TOR POS simulator. On laptop-sized desktop viewports the simulator fits the available browser width without horizontal scrolling; TOR POS Testbetrieb, WAREN/EINSTELLUNGEN/KASSE/BERICHTE, TSE-AUSFALL, TEST · KEINE LIZENZ, admin and ABMELDEN are fully visible on one top row. AUSSER HAUS / IM HAUS and GEMISCHT are not header controls anymore; they belong to the payment dialog.
+
+## Test 3 - Category selection replaces the left grid with priced products and cash checkout works
+Viewport: desktop
+Covers: Warengruppe-to-Artikel transition, priced product tiles, cart, keypad quantity controls, BAR checkout, cash received and change calculation
+Description: Verifies the simulator behaves like the real TOR POS flow where a Warengruppe opens products in the same left work area while the cart remains fixed on the right.
+Steps:
+1. Open the public test site, click Online testen, and enter the dedicated simulator page
+2. Tap "Döner", add one "Döner Kebab", then return to WARENGRUPPEN, open "Getränke" and add one "Ayran"
+3. Click BAR · TEST, keep the payment dialog on its default AUSSER HAUS, choose BAR, then choose 20,00 €, complete payment and inspect the receipt
+Expected: Selecting Döner replaces the Warengruppen area with product buttons. The sale total before payment is 9,50 €. The payment dialog defaults to AUSSER HAUS. The demo receipt shows Döner Kebab and Ayran, Verkaufsart AUSSER HAUS, payment BAR, 20,00 € received and 10,50 € Rückgeld.
+
+## Test 4 - Gastronomie order flow and card simulation remain functional
+Viewport: desktop
+Covers: Bestellung annehmen, Abholnummer, open-order counter, card-payment simulation, demo receipt
+Description: Verifies the screenshot-matched layout still provides interactive Gastronomie sales behavior.
+Steps:
+1. Open the public test site, enter Online testen, open Döner and add one Döner Kebab
+2. Click BESTELLUNG ANNEHMEN and verify the order ticket
+3. Close it, add another Döner Kebab, click KARTE · TEST, choose IM HAUS in the payment dialog, choose KARTE and simulate card payment
+Expected: The first flow produces Abholnummer 42 with WIRD VORBEREITET and increments OFFENE BESTELLUNGEN to 1. The second flow produces a 7,50 € demo receipt with Verkaufsart IM HAUS and payment method KARTE.
+
+## Test 5 - Shared contract sync uses safe fallback
+Viewport: desktop
+Covers: GitHub main simulator-contract fetch, schema validation, shared catalog/label application, embedded fallback
+Description: Verifies the simulator can consume Shared/simulator-contract.json after it is merged without becoming dependent on GitHub availability.
+Steps:
+1. Open the public site and enter Online testen
+2. Allow the shared contract request to complete and inspect the Gastronomie categories/labels
+3. Repeat with the contract request blocked or unavailable
+Expected: With a valid schema-v1 contract the simulator uses the shared edition names, German cashier labels, theme tokens and demo catalogs. If the request fails or is invalid, the current embedded simulator still renders and all checkout/order flows remain usable.
+
+## Test 6 - WAREN management screens are interactive
+Viewport: desktop
+Covers: WAREN navigation, Artikelverwaltung, Bestand/Inventur, Datenaustausch, back-to-cashier flow
+Description: Verifies the top-level WAREN menu now opens realistic management views instead of only showing a placeholder status.
+Steps:
+1. Open Online testen and click WAREN
+2. Open Artikelverwaltung and inspect the demo table
+3. Return to WAREN, open Inventur and change a Zählmenge with +/-
+4. Open Datenaustausch, trigger a demo action, then return to the cashier
+Expected: WAREN shows ARTIKEL, BESTAND / INVENTUR and DATENAUSTAUSCH groups. Artikelverwaltung lists demo EAN, VK, EK, Bestand and Mindestbestand values; low stock rows are highlighted. Inventur shows EK Warenwert, low-stock count and editable demo count controls. Datenaustausch clearly states no real files/data are changed. Zurück zur Kasse restores the normal cashier screen.
+
+## Test 7 - KASSE screens track demo orders, receipts, Z report and cash movements
+Viewport: desktop
+Covers: KASSE navigation, Bestellübersicht, Bon-Historie, Z-Bericht, Einlage/Entnahme and session linkage
+Description: Verifies KASSE is a functional simulator area and reflects actions performed on the cashier screen.
+Steps:
+1. Open Online testen, sell one Döner Kebab by BAR and close the receipt
+2. Add one Ayran and click BESTELLUNG ANNEHMEN; close the order ticket
+3. Open KASSE > Bon-Historie and verify the new sale appears
+4. Open Bestellübersicht and mark the new order FERTIG
+5. Open Z-Bericht and inspect BAR/KARTE/Rabatt/Storno/Retouren breakdown
+6. Open Einlage / Entnahme and add a 20,00 € ENTNAHME with reason "Test"
+Expected: The new sale is present in Bon-Historie, the accepted order appears with its Abholnummer and can switch between preparation/ready, Z-Bericht shows separate payment and correction metrics, and the demo cash movement appears in the movement list without claiming to change real cash data.
+
+## Test 8 - BERICHTE screens use live demo-session data
+Viewport: desktop
+Covers: Berichtszentrum, X-Bericht, Kassensturz, Kassenjournal, Umsatzberichte, Monatsbericht, Verkaufsstatistik, Warenbestand, Bedienerabrechnung, Stornobericht
+Description: Verifies reports are interactive and derive values from the same demo receipt, payment, stock, and cash-movement state used elsewhere in the simulator.
+Steps:
+1. Complete one new BAR sale and one new KARTE sale; optionally use Rabatt on one sale
+2. Add an ENTNAHME under KASSE > Einlage / Entnahme
+3. Open BERICHTE and inspect X-Bericht, Kassenjournal and Umsatzberichte
+4. Open Kassensturz, enter a counted cash value and calculate the difference
+5. Inspect Monatsbericht, Verkaufsstatistik, Warenbestand, Bedienerabrechnung and Stornobericht
+Expected: Report values update from the current demo session; BAR and KARTE remain separate, discounts/stornos/returns remain separate, the cash journal includes sales and cash movements, Kassensturz calculates Soll vs Ist, article statistics aggregate quantities/revenue, Warenbestand shows EK value and low-stock count, and every report is clearly marked as demo/non-fiscal.
+
+## Test 9 - Edition switching and mobile access preserve the real-screen simulator
+Viewport: mobile
+Covers: Gastronomie/Einzelhandel edition switch, mobile horizontal access to fixed POS layout, colored categories, responsive payment dialogs
+Description: Verifies the real cashier layout remains accessible on a small screen without being redesigned into unrelated mobile cards.
+Steps:
+1. Open the public test site, tap TR, then open Online dene to enter the dedicated simulator page
+2. Tap the GASTRONOMİ edition badge to switch to EINZELHANDEL
+3. Horizontally scroll the cashier window and open a product group
+Expected: The simulator keeps the same cashier-screen structure and shows EINZELHANDEL with six colored Warengruppen. Desktop/laptop widths down to 760px fit responsively without clipping; below 760px the simulator switches to an 850px horizontal-scroll canvas so the right-side cart/keypad remains reachable. Payment dialogs fit within the mobile viewport.
+
+## Test 10 - EINSTELLUNGEN opens the current TOR POS settings submenu
+Viewport: desktop
+Covers: Einstellungen navigation, settings submenu, current desktop settings groups, back-to-cashier flow
+Description: Verifies the top-level EINSTELLUNGEN button opens a real simulator submenu instead of only writing a demo status message.
+Steps:
+1. Open Online testen and click EINSTELLUNGEN
+2. Select DATEV, Berichte & E-Mail and Erweitert / Techniker 🔒 in sequence
+3. Click ZURÜCK ZUR KASSE
+Expected: EINSTELLUNGEN opens a management screen with Kasse & Bedienung, Firma & Bon, Artikel & Steuern, Zahlung, Geräte, Personal, Berichte & E-Mail, DATEV, Datensicherung, Software & Update and Erweitert / Techniker 🔒. Selecting a group updates the detail panel, and ZURÜCK ZUR KASSE restores the cashier screen.
+
+## Test 11 - Payment hub owns Verkaufsart and GEMISCHT
+Viewport: desktop
+Covers: payment hub, Außer Haus default, Im Haus per-sale selection, mixed payment, header de-cluttering, per-sale reset
+Description: Verifies service type and split payment live in one payment dialog and never crowd the cashier header.
+Steps:
+1. Add a Döner Kebab and click KASSIEREN
+2. Verify AUSSER HAUS is selected by default, switch to IM HAUS, choose GEMISCHT, set a valid BAR portion and complete the mixed payment
+3. Close the receipt, add another item and open KASSIEREN again
+Expected: The header contains neither AUSSER HAUS / IM HAUS nor GEMISCHT. The upper quick-action row contains no KASSIEREN button, and the bottom BAR/KARTE pair is replaced by one wide KASSIEREN button. Clicking it opens exactly one payment page. Selecting BAR, KARTE or GEMISCHT changes the detail area inside that same page instead of opening another modal. The first receipt shows IM HAUS, GEMISCHT and separate BAR/KARTE portions. The next payment page is back on AUSSER HAUS automatically.
+
+## Test 12 - FAQ presents TOR POS capabilities as bilingual question-and-answer accordions
+Viewport: desktop
+Covers: FAQ navigation, comprehensive TOR POS feature Q&A, expandable details, German/Turkish language switching
+Description: Verifies the marketing site now exposes the system capabilities through a structured FAQ instead of requiring visitors to infer them from feature cards.
+Steps:
+1. Open the public TOR POS test site and click FAQ in the top navigation
+2. Expand questions about barcode scanning, DATEV/TSE and Cloud/backup
+3. Switch the page language from DE to TR and inspect the same FAQ section
+Expected: A section titled "Häufig gestellte Fragen" is visible with five grouped areas covering Kassieren & Bedienung, Artikel & Warenwirtschaft, Gastronomie & Bon, Berichte/DATEV/Fiskal and Cloud/Sicherheit/Backup/Hardware. Each question expands to a readable answer and can collapse again. The FAQ explicitly describes scanner behavior, the one-step KASSIEREN payment flow, terminal brands/status, inventory, menus, orders, reports, DATEV, TSE/DSFinV-K, Cloud, e-mail, backup, users and hardware without removing the existing test-phase/fiscal caveats. After switching to TR the section becomes "Sık Sorulan Sorular" and the questions/answers are shown in Turkish.
+
+## Test 13 - Latest payment changes are visible as differentiating product features
+Viewport: desktop
+Covers: one-step checkout marketing, multi-brand payment terminal center, production-ready versus partner-gated terminal status, bilingual feature copy
+Description: Verifies the site reflects the latest R166/R167 payment behavior instead of advertising the older separate BAR/KARTE flow or implying every listed terminal provider is already production-ready.
+Steps:
+1. Open the main TOR POS page and inspect the hero cashier preview, hardware section and Funktionen section
+2. Open FAQ and expand the payment and kartenterminal questions under Kassieren & Bedienung
+3. Switch from DE to TR and inspect the corresponding feature cards and FAQ answers
+Expected: The cashier preview shows one KASSIEREN action rather than separate BAR/KARTE buttons. The page visibly presents Ein-Schritt-Zahlung and Kartenterminal-Zentrale (Turkish: Tek adımda ödeme and Kart terminali merkezi). PAYONE, CCV, Sparkasse/S-Händlerservice, SumUp, myPOS, readyPay/readyMini, Zettle/iZettle and Flatpay are named, while the text clearly distinguishes approved ZVT/TCP profiles from SumUp pairing and providers that still require official partner/API/adapter approval.
+
+## Test 14 - R169 printer center and cash-drawer test are documented bilingually
+Viewport: desktop
+Covers: R169 Drucker-Zentrale feature, Epson/Star conservative model recognition, test receipt workflow, cash-drawer pulse test safety, German/Turkish feature and FAQ copy
+Description: Verifies the private preview documents the R169 printer setup workflow accurately without implying that ambiguous models or physical drawer opening are automatically confirmed.
+Steps:
+1. Open the main page in German and inspect Funktionen for Drucker-Zentrale
+2. Open FAQ under Cloud, Sicherheit, Backup & Hardware and expand the Bondrucker/Kassenschublade setup question
+3. Switch the site to Turkish and inspect the corresponding Yazıcı Merkezi feature and FAQ answer
+Expected: German visibly describes Drucker-Zentrale, Windows printer/driver/port inspection, conservative Epson/Star model recognition, TESTBON DRUCKEN and KASSENSCHUBLADE TESTEN. The drawer test is described as one ESC-p/StarPRNT pulse that creates neither a sale nor a receipt and requires physical verification at the device. Turkish presents the equivalent Yazıcı Merkezi information and preserves the same safety qualifications.
