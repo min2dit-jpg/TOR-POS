@@ -6,7 +6,9 @@ name: TOR-POS Windows kontrol
 
 on:
   push:
-    branches: [main]
+    # Keep the DEV4 branch independently testable when unrelated main changes
+    # temporarily prevent GitHub from producing a pull-request merge ref.
+    branches: [main, feature/restaurant-third-exe]
   pull_request:
     branches: [main]
   workflow_dispatch:
