@@ -145,3 +145,13 @@ Steps:
 2. Open FAQ under Cloud, Sicherheit, Backup & Hardware and expand the Bondrucker/Kassenschublade setup question
 3. Switch the site to Turkish and inspect the corresponding Yazıcı Merkezi feature and FAQ answer
 Expected: German visibly describes Drucker-Zentrale, Windows printer/driver/port inspection, conservative Epson/Star model recognition, TESTBON DRUCKEN and KASSENSCHUBLADE TESTEN. The drawer test is described as one ESC-p/StarPRNT pulse that creates neither a sale nor a receipt and requires physical verification at the device. Turkish presents the equivalent Yazıcı Merkezi information and preserves the same safety qualifications.
+
+## Test 15 - TOR Cloud customer portal preview inside the simulator uses only session data
+Viewport: desktop
+Covers: #/simulator, BERICHTE → TOR CLOUD · Kundenportal · Vorschau, portal labels from Shared/simulator-contract.json (cloudPortal) with embedded fallback, Dashboard/Berichte/Gerätestatus tabs, no network call to TOR Cloud
+Description: Verifies the simulator shows how TOR Cloud presents the till's data without connecting to TOR Cloud.
+Steps:
+1. Open #/simulator, sell one article with KARTE
+2. Open BERICHTE and click "Kundenportal · Vorschau" under TOR CLOUD
+3. Inspect Dashboard, then Berichte, then Gerätestatus; watch the browser network log
+Expected: The header reads TOR POS Cloud – Kundenportal with the note that only this simulator session's data is shown and there is no connection to TOR Cloud. The portal menu lists the real portal's items; only Dashboard, Berichte and Gerätestatus are active, the others are disabled. Dashboard shows Umsatz heute, Bons, Bar and Karte including the new card sale, and the new receipt appears under Letzte Verkäufe. A seeded sale marked STORNO/RETOURE counts as reversed: it does not add to turnover, Bar or Karte and appears in the Storno / Retoure column. Berichte shows Umsatz im Zeitraum for today, one example Z-Bericht row labelled as example, and Einlagen und Entnahmen from the session. Gerätestatus shows Betriebsart Testbetrieb, Wartende Daten 0, Von der Cloud abgelehnt 0 and an example TSE-Zertifikat date. No request goes to any TOR Cloud host.
