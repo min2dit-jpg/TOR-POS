@@ -593,6 +593,7 @@ await O6UiErrorGuardTests.Run(Assert);
 await F3F4FiscalGateTests.Run(Assert);
 await F6TseFinishJournalTests.Run(root, Assert);
 PrinterBeforeCashTests.Run(Assert);
+await CsvAndBackupHardeningTests.Run(root, Assert);
 await G3UpdateHelperTests.Run(Assert);
 await ReviewFollowUpTests.Run(root, Assert);
 await EinzelhandelGastroFollowUpTests.Run(root, Assert);
@@ -725,7 +726,8 @@ const int CloudAlignmentChecks = 7;
 // F-6 for BON STORNO / TEILRETOURE adds 4 checks: signature kept after a crash, a started
 // transaction finished at start-up, a reversal booked before signing documented as outage, normal path clean.
 // Printer question before the payment page adds 1 check.
-const int ExpectedSafetyChecks = 1430;
+// CSV formula guard (3) and backup-not-encrypted warning (2) add 5 checks.
+const int ExpectedSafetyChecks = 1435;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {

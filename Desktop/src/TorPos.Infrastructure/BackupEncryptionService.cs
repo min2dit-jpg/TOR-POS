@@ -169,7 +169,12 @@ public sealed class BackupEncryptionService
 
         var protectedKek = values.GetValueOrDefault(RecoveryKekProtectedKey, "");
         if (string.IsNullOrWhiteSpace(protectedKek))
-            return plainPath; // Enabled but never actually set up; fail open rather than silently losing the backup.
+        {
+            // Enabled, but the key is missing (never set up, or the setting was
+            // lost). The plain backup is kept - losing it would be worse - but
+            // it is never reported as the encrypted backup the operator expects.
+            throw new BackupNotEncryptedException(plainPath);
+        }
 
         var kek = ProtectedData.Unprotect(Convert.FromBase64String(protectedKek), DpapiEntropy, DataProtectionScope.LocalMachine);
         var fingerprint = values.GetValueOrDefault(RecoveryFingerprintKey, "");
@@ -398,4 +403,16 @@ public sealed class RecoveryCodeRequiredException : Exception
         : base("Diese Sicherung kann auf diesem Computer nicht automatisch entschlüsselt werden. Wiederherstellungscode erforderlich.")
     {
     }
+}
+
+/// <summary>
+/// Backup encryption is switched on but no recovery key is set up: the backup
+/// was written, unencrypted, to <see cref="PlainPath"/>. Callers show this to
+/// the operator instead of reporting an encrypted backup.
+/// </summary>
+public sealed class BackupNotEncryptedException(string plainPath) : InvalidOperationException(
+    $"Sicherung ist NICHT verschlüsselt: Die Verschlüsselung ist eingeschaltet, aber kein Wiederherstellungsschlüssel eingerichtet. " +
+    $"Die Sicherung liegt unverschlüsselt unter {plainPath}. Bitte unter Einstellungen → Sicherung die Verschlüsselung neu einrichten.")
+{
+    public string PlainPath { get; } = plainPath;
 }
