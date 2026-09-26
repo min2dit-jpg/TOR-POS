@@ -3,10 +3,11 @@
 #
 #   sudo bash apply-c1-caddy.sh [/etc/caddy/Caddyfile] [api.]
 #
-# 1. backs up the Caddyfile (Caddyfile.vor-c1-<time>)
-# 2. rewrites only the request_body limit of the api.* site (c1-caddy-patch.js)
-# 3. caddy validate - on any error the backup is restored and nothing reloads
-# 4. systemctl reload caddy (running connections stay open)
+# 1. rewrites only the request_body limit of the api.* site (c1-caddy-patch.js)
+#    in a copy - the running Caddyfile is not touched yet
+# 2. apply-caddyfile.sh: caddy validate on the copy, backup
+#    (Caddyfile.vor-<time>), install, systemctl reload caddy; a failed reload
+#    puts the backup back
 # Running it twice changes nothing.
 set -euo pipefail
 
@@ -18,23 +19,15 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 command -v node >/dev/null || { echo "node fehlt (wird für den Patch gebraucht)." >&2; exit 1; }
 command -v caddy >/dev/null || { echo "caddy fehlt im PATH." >&2; exit 1; }
 
-BACKUP="$CADDYFILE.vor-c1-$(date +%Y%m%d-%H%M%S)"
-cp -p "$CADDYFILE" "$BACKUP"
-echo "Sicherung: $BACKUP"
+WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+cp "$CADDYFILE" "$WORK/Caddyfile"
 
-restore() { cp -p "$BACKUP" "$CADDYFILE"; echo "Zurückgesetzt auf die Sicherung. Caddy wurde NICHT neu geladen." >&2; }
-
-if ! RESULT="$(node "$HERE/c1-caddy-patch.js" "$CADDYFILE" "$SITE")"; then
-  restore; exit 1
+if ! RESULT="$(node "$HERE/c1-caddy-patch.js" "$WORK/Caddyfile" "$SITE")"; then
+  echo "Nichts geändert, Caddy wurde NICHT neu geladen." >&2; exit 1
 fi
 if [ "$RESULT" = "ALREADY" ]; then
-  echo "Bereits angepasst - nichts zu tun."; rm -f "$BACKUP"; exit 0
+  echo "Bereits angepasst - nichts zu tun."; exit 0
 fi
 
-if ! caddy validate --config "$CADDYFILE" --adapter caddyfile; then
-  restore; exit 1
-fi
-
-systemctl reload caddy
-echo "Fertig: TOR Mail bis 12 MiB, alle anderen Routen weiter 2 MB. Caddy neu geladen."
-echo "Rückgängig: sudo cp -p '$BACKUP' '$CADDYFILE' && sudo systemctl reload caddy"
+bash "$HERE/apply-caddyfile.sh" "$WORK/Caddyfile" "$CADDYFILE"
+echo "Fertig: TOR Mail bis 12 MiB, alle anderen Routen weiter 2 MB."
