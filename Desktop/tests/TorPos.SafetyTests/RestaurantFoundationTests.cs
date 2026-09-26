@@ -1084,6 +1084,29 @@ internal static class RestaurantFoundationTests
                 staleReservationRejected,
                 "Restaurant reservation status advances version and rejects stale writes");
 
+            // One table, one party at a time: an overlapping reservation for
+            // the same table is refused on create and on table assignment.
+            async Task<bool> Refused(Func<Task> action)
+            {
+                try { await action(); return false; }
+                catch (InvalidOperationException ex) when (ex.Message.StartsWith("Tisch ist in diesem Zeitraum bereits reserviert", StringComparison.Ordinal)) { return true; }
+            }
+            var overlapCreate = await Refused(() => reservations.CreateAsync(
+                reservationAt.AddHours(1), 60, 2, "Überschneidung", "", "", tableId, "ADMIN"));
+            var adjacent = await reservations.CreateAsync(
+                reservationAt.AddHours(2), 90, 2, "Direkt danach", "", "", tableId, "ADMIN");
+            var unassigned = await reservations.CreateAsync(
+                reservationAt.AddHours(3), 60, 2, "Ohne Tisch", "", "", null, "ADMIN");
+            var overlapAssign = await Refused(() => reservations.AssignTableAsync(
+                unassigned.Id, unassigned.Version, tableId, "ADMIN"));
+            await reservations.SetStatusAsync(adjacent.Id, adjacent.Version, "CANCELLED", "ADMIN");
+            var assignedAfterCancel = await reservations.AssignTableAsync(
+                unassigned.Id, unassigned.Version, tableId, "ADMIN");
+            assert(
+                overlapCreate && adjacent.TableId == tableId && overlapAssign &&
+                assignedAfterCancel.TableId == tableId,
+                "Restaurant reservation: an overlapping BOOKED/SEATED reservation keeps the table - a second one is refused on create and on table assignment; back-to-back and cancelled reservations do not block");
+
             var session = await repo.OpenTableAsync(
                 tableId,
                 "KELLNER-1",
@@ -1881,6 +1904,37 @@ internal static class RestaurantFoundationTests
                 (await idempotentKitchen.PendingAsync())
                     .Count(x => x.Id == idempotentKitchenJob) == 1,
                 "Restaurant kitchen retry with the same job id creates exactly one durable printer/KDS job");
+
+            // A Storno whose printout failed five times stayed off the KDS: the
+            // item is already gone from the board, so the kitchen kept cooking.
+            const string failedCancelJob =
+                "33333333333333333333333333333333";
+            await idempotentKitchen.EnqueueCancellationIdempotentAsync(
+                idempotentSessionAfterAdd,
+                firstIdempotentAdd.Item,
+                "Idempotenz Tisch",
+                "KELLNER-1",
+                failedCancelJob,
+                KitchenStations.Grill);
+            var parked = false;
+            for (var attempt = 0; attempt < 5; attempt++)
+                parked = await idempotentKitchen.MarkFailedAttemptAsync(failedCancelJob, "Drucker offline");
+            var failedAlert = (await idempotentKitchen.CancellationAlertsAsync(KitchenStations.Grill))
+                .SingleOrDefault(x => x.JobId == failedCancelJob);
+            var failedCount = await idempotentKitchen.FailedCountAsync(KitchenStations.Grill);
+            var requeued = await idempotentKitchen.RequeueFailedAsync(KitchenStations.Grill);
+            var retried = (await idempotentKitchen.PendingAsync())
+                .SingleOrDefault(x => x.Id == failedCancelJob);
+            for (var attempt = 0; attempt < 5; attempt++)
+                await idempotentKitchen.MarkFailedAttemptAsync(failedCancelJob, "Drucker offline");
+            await idempotentKitchen.AcknowledgeCancellationAsync(failedCancelJob);
+            assert(
+                parked && failedAlert is { PrintFailed: true, LastError: "Drucker offline" } &&
+                failedCount == 1 && requeued == 1 &&
+                retried is { State: "PENDING", Attempts: 0 } &&
+                (await idempotentKitchen.CancellationAlertsAsync()).All(x => x.JobId != failedCancelJob) &&
+                await idempotentKitchen.FailedCountAsync() == 0,
+                "Restaurant kitchen: a Storno whose printout failed five times stays on the KDS marked as not printed until the kitchen confirms it, and DRUCK WIEDERHOLEN puts failed jobs back in the queue");
 
             var commandJournal =
                 new RestaurantCommandJournal(db);

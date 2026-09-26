@@ -69,7 +69,10 @@ public sealed class RestaurantReservationService
             await using var tx = c.BeginTransaction();
 
             if (tableId is long table)
+            {
                 await EnsureActiveTableAsync(c, tx, table, ct);
+                await EnsureTableFreeAsync(c, tx, table, reservationAt, durationMinutes, excludeId: null, ct);
+            }
 
             var id = Guid.NewGuid().ToString("N");
             var now = DateTimeOffset.UtcNow;
@@ -164,7 +167,11 @@ public sealed class RestaurantReservationService
             await using var tx = c.BeginTransaction();
 
             if (tableId is long table)
+            {
                 await EnsureActiveTableAsync(c, tx, table, ct);
+                var current = await ReadAsync(c, tx, reservationId, ct);
+                await EnsureTableFreeAsync(c, tx, table, current.ReservationAt, current.DurationMinutes, reservationId, ct);
+            }
 
             var now = DateTimeOffset.UtcNow.ToString("O");
             await using (var q = c.CreateCommand())
@@ -270,6 +277,43 @@ public sealed class RestaurantReservationService
         if (Convert.ToInt32(await q.ExecuteScalarAsync(ct)) != 1)
             throw new InvalidOperationException(
                 "Reservierungstisch ist nicht vorhanden oder deaktiviert.");
+    }
+
+    // One table, one party at a time: a BOOKED or SEATED reservation whose
+    // time overlaps [start, start + duration) keeps the table. Runs inside
+    // the writing transaction on the single writer queue, so two tills
+    // cannot both pass the check.
+    private static async Task EnsureTableFreeAsync(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        long tableId,
+        DateTimeOffset start,
+        int durationMinutes,
+        string? excludeId,
+        CancellationToken ct)
+    {
+        var end = start.AddMinutes(durationMinutes);
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = """
+            SELECT customer_name,reservation_at,duration_minutes
+            FROM restaurant_reservations
+            WHERE table_id=$table
+              AND status IN ('BOOKED','SEATED')
+              AND id<>$exclude;
+            """;
+        q.Parameters.AddWithValue("$table", tableId);
+        q.Parameters.AddWithValue("$exclude", excludeId ?? "");
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+        {
+            var otherStart = DateTimeOffset.Parse(r.GetString(1), System.Globalization.CultureInfo.InvariantCulture);
+            var otherEnd = otherStart.AddMinutes(r.GetInt32(2));
+            if (start < otherEnd && otherStart < end)
+                throw new InvalidOperationException(
+                    $"Tisch ist in diesem Zeitraum bereits reserviert: {r.GetString(0)}, " +
+                    $"{otherStart.ToLocalTime():dd.MM.yyyy HH:mm}–{otherEnd.ToLocalTime():HH:mm}.");
+        }
     }
 
     private static async Task<RestaurantReservation> ReadAsync(

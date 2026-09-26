@@ -733,7 +733,8 @@ const int CloudAlignmentChecks = 7;
 // One Z run for both Z buttons adds 1 check.
 // A unit change needs a recount of stock and Mindestbestand: 5 checks.
 // Article imports commit their audit rows with the articles: 2 checks.
-const int ExpectedSafetyChecks = 1443;
+// Restaurant: failed Storno printout stays on the KDS (1), no overlapping table reservations (1).
+const int ExpectedSafetyChecks = 1445;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {
