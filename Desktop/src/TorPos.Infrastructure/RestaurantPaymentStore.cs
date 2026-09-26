@@ -148,7 +148,7 @@ internal static class RestaurantPaymentStore
                     : reserved.AmountCents;
 
             if (remainingCents < 0 ||
-                reserved.AmountCents <= 0 ||
+                reserved.AmountCents < 0 ||
                 reserved.AmountCents > remainingCents)
             {
                 throw new InvalidOperationException(

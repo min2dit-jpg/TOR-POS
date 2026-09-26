@@ -21,6 +21,7 @@ public static class RestaurantDev5PaymentTests
             await TwoWindows(db, repo, areaId, assert);
             await DoubleClickAndRepeatedCommit(db, repo, areaId, assert);
             await PartialPaymentsToTheLastCent(db, repo, areaId, assert);
+            await ZeroPriceItemClosesNormally(db, repo, areaId, assert);
         }
         finally
         {
@@ -132,6 +133,21 @@ public static class RestaurantDev5PaymentTests
 
     // A 1,5 l open-wine position paid in three parts: every part is charged once and
     // the parts add up to the line total to the cent, including the odd cent.
+    // A non-weighted article may legitimately have price 0.00 in article master data.
+    // The normal checkout already supports a zero-total cash sale, so Restaurant must not
+    // leave such a table permanently stuck in CHECK_REQUESTED.
+    private static async Task ZeroPriceItemClosesNormally(SqliteDatabase db, RestaurantRepository repo, long areaId, Action<bool, string> assert)
+    {
+        var (session, item) = await TableWithItemAsync(repo, areaId, 1m, 0, "Stück");
+        var draft = await DraftAsync(repo, session.Id, item.Id, 1000);
+        await repo.PreparePaymentReservationAsync(draft);
+        var error = await TryAsync(() => ApplyAsync(db, draft, 960299));
+        assert(
+            draft.TotalCents == 0 && error.Length == 0 &&
+            (await repo.GetSessionAsync(session.Id))?.State == RestaurantTableSessionState.Closed &&
+            await ScalarAsync(db, "SELECT COUNT(*) FROM restaurant_session_items WHERE id=$i AND state='PAID' AND line_total_cents=0", ("$i", item.Id)) == 1,
+            "DEV5 payment: a legitimate 0,00 EUR Stück article can be completed and closes the table instead of getting stuck in payment");
+    }
     private static async Task PartialPaymentsToTheLastCent(SqliteDatabase db, RestaurantRepository repo, long areaId, Action<bool, string> assert)
     {
         var (session, item) = await TableWithItemAsync(repo, areaId, 1.5m, 999, "l");
