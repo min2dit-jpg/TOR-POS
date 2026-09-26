@@ -685,8 +685,9 @@ await RetailGastroFollowUpTests.Run(root, Assert);
 // Einzelhandel/Gastro follow-up: V-3 export off the write queue, O-3 probe cache,
 // receipt policy in the checkout (no normal receipt for an unfinished Vorgang)
 // and the TSE-Wechselprotokoll window; 3 load checks (payment journal race,
-// replay storm under SQLite lock + export, slow TSE) and 2 seeded EAN/scale checks.
-const int ExpectedSafetyChecks = 1452;
+// replay storm under SQLite lock + export, slow TSE) and 2 seeded EAN/scale checks;
+// G-4 licence tombstones/clock/trial cache (4) and O-15 split-data warning (1).
+const int ExpectedSafetyChecks = 1457;
 
 if (checks != ExpectedSafetyChecks)
 {

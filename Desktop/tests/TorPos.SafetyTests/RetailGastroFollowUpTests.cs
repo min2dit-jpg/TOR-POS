@@ -17,6 +17,8 @@ public static partial class RetailGastroFollowUpTests
         ReceiptWiring(assert);
         await Stress(dir, assert);
         BarcodeAndScale(assert);
+        await LicenseHardening(dir, assert);
+        DataLocation(dir, assert);
     }
 
     private static void ReceiptWiring(Action<bool, string> assert)

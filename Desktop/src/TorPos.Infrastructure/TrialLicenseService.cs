@@ -284,6 +284,7 @@ public sealed class TrialLicenseService : IDisposable
 
             if (cache is null ||
                 !string.Equals(cache.TrialId, trialId, StringComparison.Ordinal) ||
+                !IsPlausible(cache) ||
                 !CryptographicOperations.FixedTimeEquals(
                     Convert.FromHexString(cache.Signature),
                     Convert.FromHexString(Sign(cache with { Signature = "" }, trialId))))
@@ -303,6 +304,20 @@ public sealed class TrialLicenseService : IDisposable
             return null;
         }
     }
+
+    /// <summary>
+    /// G-4: the cache signing key can be derived from the local trial ID, so
+    /// a cache is also held to what the server could ever have issued: at
+    /// most seven days from its start, started before the last server contact.
+    /// A cache that is still active offline therefore never outlives seven
+    /// days after the last successful online check.
+    /// </summary>
+    private static bool IsPlausible(TrialCache cache) =>
+        cache.StartedAtUtc != default &&
+        cache.ExpiresAtUtc > cache.StartedAtUtc &&
+        cache.ExpiresAtUtc <= cache.StartedAtUtc.AddDays(TrialPolicy.DurationDays).AddMinutes(1) &&
+        cache.LastServerTimeUtc >= cache.StartedAtUtc &&
+        cache.LastObservedUtc >= cache.LastServerTimeUtc - TrialPolicy.ClockRollbackTolerance;
 
     private void SaveCache(
         string trialId,

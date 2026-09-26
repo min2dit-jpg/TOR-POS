@@ -95,7 +95,30 @@ Gesetzestext. **Kein Entwurfsinhalt ist in TOR aktiv.**
   Bon-Links/QR, DSFinV-K-Zeiträume über Sommer-/Winterzeit, Cent-genaue USt-Aufteilung,
   Teilretouren, CSV-Import, TSE-TAR-Parser, TSE-Seriennummern.
 
-## 3. Offen / nächste Schritte
+## 3. Einzelhandel/Gastro – Nacharbeiten aus dem Prüfbericht 24.09.2026
+
+Ergänzend zu PR #97 (O-4/5/7/8/9/10/13/14/16/17/19), ohne diese zu wiederholen:
+
+| Punkt | Umsetzung |
+|---|---|
+| V-3 | DSFinV-K-Preflight/Export liest auf eigener Read-only-Verbindung in einem WAL-Snapshot statt in der globalen Schreib-Warteschlange – Kassieren bleibt während des Exports möglich (Test hält die Warteschlange fest). |
+| O-3 | Erfolgreiche TSE-Prüfung wird 30 s wiederverwendet; jeder Fehler, Ausfall oder abgelaufenes Zertifikat verwirft sie. |
+| Belegausgabe | Kasse entscheidet Papier/QR über `ReceiptDeliveryPolicy` + geltendes Regelwerk. Endet die Signierung mit einer Ausnahme (weder signiert noch Ausfall dokumentiert), wird **kein Normalbeleg** gedruckt: deutsche Meldung, Audit `RECEIPT_WITHHELD_NOT_FISCAL`, Nachdruck über Bon-Historie. |
+| TSE-Wechselprotokoll | Fenster in den TSE-Einstellungen; nur Admin pflegt den Meldestatus (manuelle ELSTER-Mitteilung mit Transferticket). |
+| Last/Eingaben | Zahlungsjournal-Wettlauf, 80 parallele Wiederholungen unter SQLite-Sperre + Export, langsame/fehlerhafte TSE; EAN-13- und Waagen-Property-Tests. |
+| G-4 | Lizenz-Deaktivierung zusätzlich als Tombstone in ProgramData und Registry (HKCU); Ablauf gegen die höchste je gesehene Uhrzeit (max. 400 Tage Vorlauf vertraut); Demo-Cache nur plausibel (≤ 7 Tage ab Start, Start ≤ letzter Serverkontakt). |
+| O-15 | Startprüfung warnt, wenn Kassendaten desselben Produkts in einem anderen Windows-Benutzerprofil liegen. |
+
+**Bewusst nicht umgesetzt (Begründung):**
+- **O-15 Verlagerung nach ProgramData:** betrifft Installer-ACL und die Migration der
+  Fiskaldatenbank auf jedem Kunden-PC. Ohne Windows-/Hardwaretest nicht verantwortbar;
+  Plan: Installer legt `ProgramData\<Produkt>` mit Gruppe „TOR-POS-Bediener“ an, Migration
+  per SQLite-Backup-API + `integrity_check` + Zeilenvergleich, alte DB wird nur umbenannt.
+- **O-2 dauerhafter Swissbit-Worker:** braucht echte TSE zur Messung und Abnahme.
+- **G-4 Rest:** vollständiger Schutz erfordert servergesignierte Demo-Token (Cloud-Änderung)
+  und eine Geräte-Bindung der Demo auf dem Server; die Demo-API-Domain ist eine Betriebsentscheidung.
+
+## 4. Offen / nächste Schritte
 
 | Priorität | Punkt |
 |---|---|
