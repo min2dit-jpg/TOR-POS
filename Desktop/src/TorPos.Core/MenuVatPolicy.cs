@@ -253,6 +253,27 @@ public static class MenuVatPolicy
             if (!byId.TryGetValue(line.ProductId, out var product) || !product.IsCombo)
                 continue;
 
+            // A persisted order/parked/Restaurant line already carries the
+            // immutable VAT allocation that was validated when it was created.
+            // Re-reading today's menu recipe or component prices here would
+            // rewrite or reject an old commercial snapshot after Stammdaten
+            // changes. Keep only the still-relevant mixed-menu promotion guard.
+            if (line.PersistedLineTotalCents is not null &&
+                line.VatAllocations.Length > 0)
+            {
+                if (line.VatAllocations
+                        .Select(x => x.VatRate)
+                        .Distinct()
+                        .Count() > 1 &&
+                    line.HasPromotion)
+                {
+                    result.Add(MenuVatAnalysis.Invalid(
+                        product,
+                        "Zusätzliches ANGEBOT auf einem Menü mit gemischter MwSt. ist noch nicht freigegeben."));
+                }
+                continue;
+            }
+
             var analysis = Analyze(
                 product,
                 catalog,
@@ -353,6 +374,13 @@ public static class MenuVatPolicy
             if (line.ProductId <= 0 ||
                 !byId.TryGetValue(line.ProductId, out var product) ||
                 !product.IsCombo)
+            {
+                result.Add(CloneWithAllocations(line, line.VatAllocations));
+                continue;
+            }
+
+            if (line.PersistedLineTotalCents is not null &&
+                line.VatAllocations.Length > 0)
             {
                 result.Add(CloneWithAllocations(line, line.VatAllocations));
                 continue;

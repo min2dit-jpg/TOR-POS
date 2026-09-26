@@ -88,6 +88,8 @@ if (args.Contains("--restaurant-third"))
 }
 
 var root=Path.Combine(Path.GetTempPath(),"tor-safety-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+var previousDataDirectoryOverride = AppPaths.DataDirectoryOverride;
+AppPaths.DataDirectoryOverride = Path.Combine(root, "appdata");
 var db=await SafetyDatabase.CreateCurrentAsync(
     Path.Combine(root,"test.db"));
 
@@ -671,6 +673,8 @@ await RestaurantFiscalRetryTests.Run(root, Assert);
 await RestaurantDev5MergeTests.Run(root, Assert);
 await RestaurantDev5PaymentTests.Run(root, Assert);
 await RestaurantDev5SnapshotKitchenTests.Run(root, Assert);
+await RestaurantDev6RecoveryTests.Run(root, Assert);
+await RestaurantDev6ServiceModeMergeTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -791,7 +795,7 @@ const int ExpectedSafetyChecks = 1423;
 // refusal, check before bootstrap; payment concurrency/repetition/partial
 // payments and the Kellnerabrechnung (8); snapshot and kitchen resend (4);
 // split properties (2); THEKE/TISCHPLAN switch guards (3); installer identity.
-const int RestaurantDev5Checks = 103;
+const int RestaurantDev5Checks = 108;
 
 const int TotalSafetyChecks =
     ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
@@ -804,6 +808,7 @@ if (checks != TotalSafetyChecks)
 }
 
 Console.WriteLine($"ALL {checks} CHECKS PASSED");
+AppPaths.DataDirectoryOverride = previousDataDirectoryOverride;
 SqliteConnection.ClearAllPools();Directory.Delete(root,true);
 
 sealed class FakeSumUpHandler : System.Net.Http.HttpMessageHandler
