@@ -70,11 +70,7 @@ public async Task WriteAsync(string actor, string eventType, string entityType, 
             """;
         q.Parameters.AddWithValue("$from", from?.ToString("O") ?? "");
         q.Parameters.AddWithValue("$to", to?.ToString("O") ?? "");
-        static string Csv(string? value)
-        {
-            value ??= "";
-            return "\"" + value.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
-        }
+        static string Csv(string? value) => CsvCells.Text(value);
 
         await using var writer = new StreamWriter(targetPath, false, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         await writer.WriteLineAsync("ID;CREATED_AT;ACTOR;EVENT_TYPE;ENTITY_TYPE;ENTITY_ID;DETAILS");

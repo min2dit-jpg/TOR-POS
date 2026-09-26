@@ -2090,8 +2090,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         return scope is "KIOSK" or "IMBISS" ? scope : "ALL";
     }
 
-    private static string Csv(string? value) =>
-        "\"" + (value ?? "").Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
+    private static string Csv(string? value) => CsvCells.Text(value);
 
     private static List<string> ParseCsvLine(string line)
     {
@@ -2116,7 +2115,8 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             else sb.Append(ch);
         }
         result.Add(sb.ToString());
-        return result;
+        // An article exported by TOR as '=... comes back as =...
+        return result.Select(CsvCells.Unguard).ToList();
     }
 
     // German report amounts must not depend on the Windows account culture.
