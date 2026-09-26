@@ -190,8 +190,8 @@ public sealed class RestaurantSplitCheckoutWindow : Window
             Minimum = 0m,
             Maximum = item.Quantity,
             Value = 0m,
-            Increment = item.QuantityMilli % 1000 == 0 ? 1m : 0.001m,
-            FormatString = item.QuantityMilli % 1000 == 0 ? "0" : "0.###",
+            Increment = string.Equals(item.Unit, "Stück", StringComparison.OrdinalIgnoreCase) ? 1m : 0.001m,
+            FormatString = string.Equals(item.Unit, "Stück", StringComparison.OrdinalIgnoreCase) ? "0" : "0.###",
             Width = 110,
             MinHeight = 42
         };

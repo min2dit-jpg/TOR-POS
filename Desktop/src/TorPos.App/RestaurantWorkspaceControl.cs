@@ -948,6 +948,85 @@ public sealed class RestaurantWorkspaceControl : UserControl
             }
 
             var quantity = Convert.ToDecimal(_quantity.Value ?? 1m);
+            ProductVariant? variant = null;
+            MenuComponentSnapshot[] menuComponents =
+                Array.Empty<MenuComponentSnapshot>();
+            long unitPriceCents =
+                product.BasePriceCents + product.PfandCents;
+
+            if (product.IsWeighted)
+            {
+                if (product.Variants.Count > 0 || product.IsCombo)
+                    throw new InvalidOperationException(
+                        "Gewichtsartikel dürfen keine Varianten oder Menüs verwenden.");
+
+                var weighed = await new WeightEntryWindow(product)
+                    .ShowDialog<WeightEntryResult?>(RequireOwner());
+                if (weighed is null)
+                    return;
+
+                quantity = weighed.Kilograms;
+                unitPriceCents = product.BasePriceCents;
+            }
+            else if (product.Variants.Count > 0)
+            {
+                variant = await new VariantWindow(product)
+                    .ShowDialog<ProductVariant?>(RequireOwner());
+                if (variant is null)
+                    return;
+
+                unitPriceCents = product.EffectivePriceCents(variant);
+            }
+
+            if (product.IsCombo)
+            {
+                if (product.Variants.Count > 0)
+                    throw new InvalidOperationException(
+                        "Menüartikel dürfen keine zusätzliche Größenvariante verwenden.");
+
+                if (product.ComboItems.Any(x => x.IsChoice))
+                {
+                    var selected =
+                        await new MenuChoiceWindow(
+                                product,
+                                _catalog.Products)
+                            .ShowDialog<MenuChoiceResult?>(RequireOwner());
+                    if (selected is null)
+                        return;
+
+                    menuComponents = selected.Components;
+                    unitPriceCents = selected.UnitPriceCents;
+                }
+                else
+                {
+                    var fixedComponents =
+                        new List<MenuComponentSnapshot>();
+
+                    foreach (var recipe in
+                             product.ComboItems.OrderBy(x => x.SortOrder))
+                    {
+                        var component =
+                            _catalog.Products.FirstOrDefault(
+                                x => x.Id == recipe.ComponentProductId)
+                            ?? throw new InvalidOperationException(
+                                $"Menübestandteil {recipe.ComponentName} ist nicht mehr aktiv.");
+
+                        fixedComponents.Add(
+                            new MenuComponentSnapshot(
+                                component.Id,
+                                component.Name,
+                                recipe.Quantity,
+                                component.BasePriceCents,
+                                component.VatRate,
+                                component.ImHausApplicable,
+                                ""));
+                    }
+
+                    menuComponents = fixedComponents.ToArray();
+                    unitPriceCents = product.BasePriceCents;
+                }
+            }
+
             var options=(await _restaurant.Recipes.ListOptionsAsync()).Where(x=>x.IsActive).ToArray();
             var optionText="";
             if(options.Length>0)
@@ -964,6 +1043,44 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 optionText=choice;
             }
 
+            var lineSnapshot = new CartLine
+            {
+                ProductId = product.Id,
+                ProductName = product.Name,
+                VariantName = variant?.Name ?? "",
+                Quantity = quantity,
+                Unit =
+                    product.IsWeighted
+                        ? "kg"
+                        : string.IsNullOrWhiteSpace(product.Unit)
+                            ? "Stück"
+                            : product.Unit,
+                UnitPriceCents = unitPriceCents,
+                ListUnitPriceCents = unitPriceCents,
+                VatRate = ImHausVat.Effective(
+                    product.VatRate,
+                    imHaus: true,
+                    product.ImHausApplicable),
+                ImHausApplicable = product.ImHausApplicable,
+                PfandCents = product.PfandCents,
+                MenuComponents = menuComponents
+            };
+
+            if (product.IsCombo)
+            {
+                lineSnapshot =
+                    MenuVatPolicy.ApplyAllocations(
+                        new[] { lineSnapshot },
+                        _catalog.Products,
+                        imHaus: true)[0];
+            }
+
+            lineSnapshot = new CartLine(lineSnapshot)
+            {
+                PersistedLineTotalCents =
+                    lineSnapshot.LineTotalCents
+            };
+
             fiscalVorgang = await _restaurantFiscal.BeginChangeAsync(
                 _selectedSession.Id,
                 _user.Username);
@@ -975,7 +1092,8 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 quantity,
                 _user.Username,
                 Environment.MachineName,
-                orderOptions: optionText);
+                orderOptions: optionText,
+                lineSnapshot: lineSnapshot);
             addedItem = pendingItem;
 
             await _restaurantFiscal.SecureAddedItemAsync(
