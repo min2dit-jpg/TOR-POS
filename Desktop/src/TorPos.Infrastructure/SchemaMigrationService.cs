@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 41;
+    public const int TargetSchemaVersion = 42;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2326,6 +2326,31 @@ public sealed class SchemaMigrationService
                           ADD COLUMN finish_attempted_at TEXT NOT NULL DEFAULT '';
                         ALTER TABLE tse_vorgaenge
                           ADD COLUMN finish_result_json TEXT NOT NULL DEFAULT '';
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            // C-4: Cloud events the Cloud refuses for good (invalid or in
+            // conflict with a stored event) are parked here with the reason
+            // instead of blocking the FIFO outbox head forever.
+            new(
+                42,
+                "C4_CLOUD_OUTBOX_REJECTED",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS cloud_outbox_rejected(
+                          event_id TEXT PRIMARY KEY,
+                          event_type TEXT NOT NULL,
+                          occurred_at TEXT NOT NULL,
+                          payload TEXT NOT NULL,
+                          target_url TEXT NOT NULL,
+                          device_code TEXT NOT NULL,
+                          rejected_at TEXT NOT NULL,
+                          verdict TEXT NOT NULL,
+                          reason TEXT NOT NULL DEFAULT '');
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 })

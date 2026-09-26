@@ -21,7 +21,11 @@ public async Task<SystemIdentity> GetAsync(CancellationToken ct = default)
         await using var r = await q.ExecuteReaderAsync(ct);
         if (!await r.ReadAsync(ct))
             throw new InvalidOperationException("Systemidentität fehlt.");
-        return new SystemIdentity(r.GetString(0), r.GetString(1), r.GetString(2), DateTimeOffset.Parse(r.GetString(3)));
+        // O-16: created_at is written by SQLite datetime('now') - UTC without
+        // an offset. A plain Parse read it as local time, off by 1-2 hours.
+        return new SystemIdentity(r.GetString(0), r.GetString(1), r.GetString(2),
+            DateTimeOffset.Parse(r.GetString(3), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal));
     });
 }}
 

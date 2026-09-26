@@ -1421,21 +1421,26 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             }
         }
 
+        // Review §6: the open period starts AFTER the last closing - a Bon in the
+        // closing's own millisecond belongs to that closed Z (which counted it
+        // with "<= to"), exactly as the DSFinV-K export and DATEV see it.
         return await GetPeriodSummaryAsync(
             from,
             to,
-            ct);
+            ct,
+            exclusiveFrom: from != DateTimeOffset.MinValue);
     }
 
     private async Task<OpenPeriodSummary> GetPeriodSummaryAsync(
         DateTimeOffset from,
         DateTimeOffset to,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool exclusiveFrom = false)
     {
         // UTC text bounds so a period spanning a DST transition (this feeds
         // X-/Z-report turnover and VAT totals) compares as a true instant
         // instead of raw local-offset text.
-        var fromUtcText = ToUtcColumnText(from);
+        var fromUtcText = exclusiveFrom ? FiscalUtcText.After(from) : ToUtcColumnText(from);
         var toUtcText = ToUtcColumnText(to);
         await using var c = _db.OpenConnection();
 
@@ -2115,7 +2120,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
     // (strftime('%Y-%m-%dT%H:%M:%fZ', ...)) exactly, so a plain text WHERE
     // comparison against it is a true, DST-safe instant comparison.
     private static string ToUtcColumnText(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        FiscalUtcText.Of(value);
     private static string SafeFileName(string value)
     {
         foreach (var ch in Path.GetInvalidFileNameChars())
@@ -2221,6 +2226,21 @@ internal static class SimplePdfWriter
         sb.AppendLine($"BT /F1 {size} Tf {F(x)} {F(y)} Td ({EscapePdf(value)}) Tj ET");
     }
 
+    // Review §6: the font is declared /WinAnsiEncoding, but the text was
+    // written as Latin-1 - "…", „“ and every Turkish letter outside Latin-1
+    // came out as "?". Text is now encoded as Windows-1252 (= WinAnsi). The six
+    // Turkish letters the standard PDF fonts cannot show are written as their
+    // closest Latin letter, which reads far better than "?".
+    internal static byte[] PdfTextBytes(string value)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var text = value
+            .Replace('ş', 's').Replace('Ş', 'S')
+            .Replace('ğ', 'g').Replace('Ğ', 'G')
+            .Replace('ı', 'i').Replace('İ', 'I');
+        return Encoding.GetEncoding(1252).GetBytes(text);
+    }
+
     private static void WritePdf(string path, IReadOnlyList<string> pageStreams)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? Environment.CurrentDirectory);
@@ -2228,7 +2248,7 @@ internal static class SimplePdfWriter
 
         int Add(string value)
         {
-            objects.Add(Encoding.Latin1.GetBytes(value));
+            objects.Add(PdfTextBytes(value));
             return objects.Count - 1;
         }
 
@@ -2239,7 +2259,7 @@ internal static class SimplePdfWriter
 
         foreach (var stream in pageStreams)
         {
-            var bytes = Encoding.Latin1.GetBytes(stream);
+            var bytes = PdfTextBytes(stream);
             var contentId = Add($"<< /Length {bytes.Length} >>\nstream\n{stream}\nendstream");
             var pageId = Add($"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 {fontId} 0 R >> >> /Contents {contentId} 0 R >>");
             pageIds.Add(pageId);

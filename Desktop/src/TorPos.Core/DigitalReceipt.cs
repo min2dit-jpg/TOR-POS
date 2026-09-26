@@ -100,6 +100,36 @@ public sealed record CumulativeReturnAllocation(
     long CashCents,
     long CardCents);
 
+/// <summary>
+/// O-17: the base a partial return is prorated against. Deposit returns
+/// (Leergut) cannot be returned themselves; they are a separate cash payout
+/// netted into the Bon. Prorating against the Bon subtotal INCLUDING them made
+/// a return of the goods larger than that subtotal ("überschreitet die
+/// ursprüngliche Zwischensumme") - e.g. Cola 5,00 + Leergut -3,00 = 2,00 paid,
+/// the Cola could not be returned. The base now counts the goods only: the
+/// Leergut amount goes back onto total and - since a payout is always cash
+/// (R149) - onto the cash part. Returning the Cola then refunds 5,00: the
+/// 2,00 paid by card to the card, the 3,00 bottle credit in cash.
+/// </summary>
+public static class ReturnProrationBase
+{
+    public static (long SubtotalCents, long TotalCents, long CashCents) Of(
+        IEnumerable<CartLine> originalLines,
+        long originalTotalCents,
+        long originalCashCents)
+    {
+        long goods = 0, deposit = 0;
+        foreach (var line in originalLines)
+        {
+            if (PfandProducts.IsDepositReturn(line))
+                deposit = checked(deposit - line.LineTotalCents);
+            else
+                goods = checked(goods + line.LineTotalCents);
+        }
+        return (goods, checked(originalTotalCents + deposit), checked(originalCashCents + deposit));
+    }
+}
+
 public static class CumulativeReturnProration
 {
     public static CumulativeReturnAllocation Allocate(

@@ -2121,6 +2121,12 @@ public partial class MainWindow:Window
 
         if (_engine.Cart.Count == 0)
         {
+            if (_restaurantCheckoutDraft is not null && !CartLocked)
+            {
+                DiscardRestaurantCheckoutDraft("Tisch-Zahlung verworfen · Tisch bleibt unverändert offen.");
+                return;
+            }
+
             StatusLine = "Verkaufsfenster ist bereits leer.";
             return;
         }
@@ -3158,7 +3164,14 @@ public partial class MainWindow:Window
             .ShowDialog<PaymentChoiceResult?>(this);
 
         if (choice is null)
+        {
+            // O-7: a cancelled restaurant payment used to leave the invisible
+            // draft behind, and the table plan then refused to open ("Zuerst
+            // Kassenbon abschließen") with nothing on screen to finish.
+            if (restaurantDraft is not null)
+                DiscardRestaurantCheckoutDraft("TISCH-ZAHLUNG ABGEBROCHEN · Tisch bleibt unverändert offen");
             return;
+        }
 
         if (restaurantDraft is not null && !IsSimulation)
         {
@@ -3189,7 +3202,10 @@ public partial class MainWindow:Window
         {
             if (choice.CashTenderedCents < paymentTotal)
             {
-                StatusLine = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
+                if (restaurantDraft is not null)
+                    DiscardRestaurantCheckoutDraft("BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag. Tisch bleibt offen.");
+                else
+                    StatusLine = "BARZAHLUNG: Gegebener Betrag ist kleiner als der Zahlbetrag.";
                 return;
             }
 
@@ -3204,6 +3220,15 @@ public partial class MainWindow:Window
             choice.CashPortionCents,
             pageCash,
             cardConfirmedOnPaymentPage: true);
+    }
+
+    // O-7: the draft is only a payment attempt for a table; the table's
+    // items stay in its session, so dropping the draft changes nothing fiscal.
+    private void DiscardRestaurantCheckoutDraft(string status)
+    {
+        _restaurantCheckoutDraft = null;
+        _operationId = Guid.NewGuid().ToString("N");
+        StatusLine = status;
     }
 
     private CheckoutSnapshot CaptureCheckout(PaymentMethod method, long cashPortionCents = 0)

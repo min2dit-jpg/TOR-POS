@@ -1223,7 +1223,7 @@ public static class MultiLanguageTests
             "Testsimulation – keine echte Terminalbuchung. ",
             "TOR-Regel: Offene geparkte Bons sperren den Z-Abschluss.",
             "Bonnummer (optional)",
-            "ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich.",
+            "ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich.",
             "Von: ",
             " Bis: ",
             "TEILRETOURE",

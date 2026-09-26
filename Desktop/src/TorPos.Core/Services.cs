@@ -51,6 +51,11 @@ public interface ISaleRepository
 {
     Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken ct = default);
 
+    // O-8: the start of the open Z period (the last Tagesabschluss), or null
+    // before the first one. Storno/Teilretoure are allowed for Bons after it.
+    Task<DateTimeOffset?> GetOpenZPeriodStartAsync(CancellationToken ct = default) =>
+        Task.FromResult<DateTimeOffset?>(null);
+
     Task<Sale?> GetLastAsync(
         CancellationToken ct = default);
 

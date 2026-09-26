@@ -161,11 +161,22 @@ public sealed class TorCloudOutbox
         q.Parameters.Clear();q.CommandText="INSERT INTO app_settings(key,value) VALUES('cloud.configuration',$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value;";
         q.Parameters.AddWithValue("$v",JsonSerializer.Serialize(config));q.ExecuteNonQuery();tx.Commit();return Task.CompletedTask;
     });
+    // Review §7: the heartbeat always said "NICHT GEPRÜFT". It now reports what
+    // the till knows without touching the TSE: an open outage wins, otherwise
+    // the configured TSE status. The printer is still not probed for this.
+    private static string HeartbeatTseStatus(SqliteConnection c,SqliteTransaction tx){
+        using var q=c.CreateCommand();q.Transaction=tx;
+        q.CommandText="SELECT COUNT(*) FROM tse_outage_log WHERE state='OPEN';";
+        if(Convert.ToInt64(q.ExecuteScalar())>0)return "AUSFALL";
+        q.CommandText="SELECT value FROM app_settings WHERE key='tse.status';";
+        var configured=((q.ExecuteScalar() as string)??"").Trim().ToUpperInvariant();
+        return configured.Length==0?"NICHT EINGERICHTET":configured.Length>40?configured[..40]:configured;
+    }
     public Task EnqueueHeartbeatAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx);
         if(config is null||!config.Enabled)return Task.CompletedTask;
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT COUNT(*) FROM cloud_outbox WHERE event_type='heartbeat';";
-        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status="NICHT GEPRÜFT",printer_status="NICHT GEPRÜFT"}));
+        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status=HeartbeatTseStatus(c,tx),printer_status="NICHT GEPRÜFT"}));
         tx.Commit();return Task.CompletedTask;
     });
     public Task EnqueueStockAsync()=>IoQueue.RunAsync(()=>{
@@ -233,12 +244,34 @@ public sealed class TorCloudOutbox
         if(success){using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="INSERT INTO app_settings(key,value) VALUES('cloud.last_success',$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value;";q.Parameters.AddWithValue("$v",DateTimeOffset.UtcNow.ToString("O"));q.ExecuteNonQuery();}
         tx.Commit();return Task.CompletedTask;
     });
+    // C-4: the Cloud has answered for every event. Accepted and duplicate
+    // events leave the queue; an event the Cloud refuses for good (rejected or
+    // conflict) moves to cloud_outbox_rejected with the reason instead of
+    // blocking the FIFO head forever. Nothing is deleted without a trace: the
+    // local fiscal record is untouched, only its Cloud copy is parked.
+    public Task SettleAsync(IReadOnlyList<TorCloudEvent> done,IReadOnlyList<(TorCloudEvent Event,string Verdict,string Reason)> refused)=>IoQueue.RunAsync(()=>{
+        using var c=_db.OpenConnection();using var tx=c.BeginTransaction();
+        foreach(var (e,verdict,reason) in refused){
+            using var q=c.CreateCommand();q.Transaction=tx;
+            q.CommandText="""
+                INSERT OR REPLACE INTO cloud_outbox_rejected(event_id,event_type,occurred_at,payload,target_url,device_code,rejected_at,verdict,reason)
+                SELECT event_id,event_type,occurred_at,payload,target_url,device_code,strftime('%Y-%m-%dT%H:%M:%fZ','now'),$verdict,$reason FROM cloud_outbox WHERE event_id=$id;
+                DELETE FROM cloud_outbox WHERE event_id=$id;
+                """;
+            q.Parameters.AddWithValue("$id",e.EventId);q.Parameters.AddWithValue("$verdict",verdict);
+            q.Parameters.AddWithValue("$reason",reason.Length>500?reason[..500]:reason);q.ExecuteNonQuery();
+        }
+        foreach(var e in done){using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="DELETE FROM cloud_outbox WHERE event_id=$id;";q.Parameters.AddWithValue("$id",e.EventId);q.ExecuteNonQuery();}
+        {using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="INSERT INTO app_settings(key,value) VALUES('cloud.last_success',$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value;";q.Parameters.AddWithValue("$v",DateTimeOffset.UtcNow.ToString("O"));q.ExecuteNonQuery();}
+        tx.Commit();return Task.CompletedTask;
+    });
     public Task<string> StatusAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();using var q=c.CreateCommand();q.CommandText="SELECT COUNT(*),COALESCE(MAX(last_error),'') FROM cloud_outbox;";
         long n;string error;using(var r=q.ExecuteReader()){r.Read();n=r.GetInt64(0);error=r.GetString(1);}
+        q.CommandText="SELECT COUNT(*) FROM cloud_outbox_rejected;";var refused=Convert.ToInt64(q.ExecuteScalar());
         q.CommandText="SELECT value FROM app_settings WHERE key='cloud.last_success';";var last=q.ExecuteScalar() as string;
         var at=DateTimeOffset.TryParse(last,out var t)?t.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"):"Noch keine Übertragung";
-        return Task.FromResult($"Wartende Ereignisse: {n} · Letzte Bestätigung: {at}"+(error.Length>0?" · "+error:""));
+        return Task.FromResult($"Wartende Ereignisse: {n} · Letzte Bestätigung: {at}"+(refused>0?$" · Von der Cloud abgelehnt: {refused}":"")+(error.Length>0?" · "+error:""));
     });
 }
 
@@ -390,13 +423,22 @@ public sealed class TorCloudSyncService : IAsyncDisposable
             var config=await ConfigurationAsync();if(config is null||!config.Enabled)return;
             var batch=await _outbox.PendingAsync(config);if(batch.Count==0)return;
             try{
-                var reply=await RequestAsync(config,"api/v1/devices/sync",new {events=batch},_stop.Token);
+                // C-4: partial asks the Cloud for a verdict per event instead of
+                // failing the whole batch on one bad event. An older Cloud ignores
+                // the flag and answers all-or-nothing as before.
+                var reply=await RequestAsync(config,"api/v1/devices/sync",new {partial=true,events=batch},_stop.Token);
                 if(!reply.TryGetProperty("results",out var results)||results.ValueKind!=JsonValueKind.Array||results.GetArrayLength()!=batch.Count)throw new InvalidDataException("Unvollständige Cloud-Bestätigung.");
-                var ids=new HashSet<string>(batch.Select(x=>x.EventId),StringComparer.Ordinal);
+                var byId=batch.ToDictionary(x=>x.EventId,StringComparer.Ordinal);
+                var done=new List<TorCloudEvent>();var refused=new List<(TorCloudEvent,string,string)>();
                 foreach(var row in results.EnumerateArray()){
-                    if(!row.TryGetProperty("event_id",out var id)||!ids.Remove(id.GetString()??"")||!row.TryGetProperty("status",out var status)||status.GetString() is not ("accepted" or "duplicate"))throw new InvalidDataException("Cloud-Bestätigung passt nicht zum Auftrag.");
+                    if(!row.TryGetProperty("event_id",out var id)||!byId.Remove(id.GetString()??"",out var sent)||!row.TryGetProperty("status",out var status))throw new InvalidDataException("Cloud-Bestätigung passt nicht zum Auftrag.");
+                    switch(status.GetString()){
+                        case "accepted" or "duplicate":done.Add(sent);break;
+                        case "rejected" or "conflict":refused.Add((sent,status.GetString()!,row.TryGetProperty("error",out var why)&&why.ValueKind==JsonValueKind.String?why.GetString()??"":""));break;
+                        default:throw new InvalidDataException("Cloud-Bestätigung passt nicht zum Auftrag.");
+                    }
                 }
-                await _outbox.CompleteAsync(batch,true);
+                await _outbox.SettleAsync(done,refused);
             }catch(OperationCanceledException) when(_stop.IsCancellationRequested){throw;}
             catch(Exception ex){var message=ex is InvalidOperationException?ex.Message:"Cloud nicht bestätigt. Automatische Wiederholung; Daten bleiben gespeichert.";await _outbox.CompleteAsync(batch,false,message);}
         }finally{_gate.Release();}

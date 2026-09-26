@@ -1,6 +1,6 @@
-# TOR POS Cloud v0.8.0 R48 · Stand R125
+# TOR POS Cloud 0.13.0 (R145) · Stand 25.09.2026
 
-Gemeinsamer Entwicklungsstand mit TOR POS Desktop R48. Lokale Demo, keine Fiskal-Produktivfreigabe.
+Serverversion: `CLOUD_VERSION` in `server.js`. Die Abschnitte „R48 …“ weiter unten sind Entwicklungshistorie. Keine Fiskal-Produktivfreigabe.
 
 Start: `START-TOR-CLOUD.bat` (Windows), oder `TOR_CLOUD_DEMO=true node server.js`.
 Node 22.13+ mit `node:sqlite`. Standard: 127.0.0.1:8787.
@@ -69,6 +69,7 @@ R125 - fertige Vorlagen in `deploy/`:
 | `tor-pos-cloud.env.example` | alle Umgebungsvariablen für den Live-Betrieb, kommentiert |
 | `tor-pos-cloud.service` | systemd-Dienst (Neustart bei Fehler, sauberes Beenden, gehärtet) |
 | `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`, seit R145 für `api.<domain>` und `bon.<domain>` |
+| `apply-c1-caddy.sh` | C-1: stellt auf einem laufenden Server das Upload-Limit um (TOR Mail 12 MiB, sonst 2 MB) – mit Sicherung, `caddy validate`, automatischem Zurücksetzen bei Fehler und `reload`: `sudo bash deploy/apply-c1-caddy.sh` |
 
 **Datensicherung:** mit `TOR_CLOUD_BACKUP_DIR` schreibt der Server im laufenden Betrieb
 eine konsistente Kopie (`VACUUM INTO`), standardmäßig alle 24 h, die letzten 14 bleiben

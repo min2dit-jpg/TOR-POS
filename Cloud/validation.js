@@ -50,7 +50,10 @@ function normalizeEvent(raw){
     if(receiptTotal(p.subtotal_cents,p.discount_cents)!==p.total_cents)fail('Zwischensumme, Rabatt und Gesamt stimmen nicht überein');
     if(p.cash_portion_cents!=null)cents(p.cash_portion_cents,'cash_portion_cents');
     if(p.card_portion_cents!=null)cents(p.card_portion_cents,'card_portion_cents');
-    if(p.transaction_type!=='SALE' &&
+    // Review §7: a SALE that carries cash/card portions (every current till
+    // does) must add up as well; older tills without portions stay accepted.
+    const hasPortions=p.cash_portion_cents!=null||p.card_portion_cents!=null;
+    if((p.transaction_type!=='SALE'||hasPortions) &&
        ((p.cash_portion_cents??0)+(p.card_portion_cents??0)!==p.total_cents))
       fail('Bar-/Kartenanteil stimmt nicht mit Gesamt überein');
     if(p.total_cents<0&&p.payment_method!=='CASH')fail('Eine Pfand-Auszahlung ist nur bar möglich');

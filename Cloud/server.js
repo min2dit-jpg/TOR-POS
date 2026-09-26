@@ -41,6 +41,8 @@ const TOTP_KEY = crypto.createHash('sha256').update(TOTP_KEY_MATERIAL || 'disabl
 // A short-lived QR pairing is completed in the user's phone browser. The Cloud keeps only
 // an encrypted refresh token and returns short-lived access tokens to the authenticated POS.
 const CLOUD_PUBLIC_URL = String(process.env.TOR_CLOUD_PUBLIC_URL || '').trim().replace(/\/$/, '');
+// C-2: editions that may have their own update channel (manifest-<EDITION>.json).
+const UPDATE_EDITIONS = ['KIOSK', 'IMBISS', 'RESTAURANT'];
 const GOOGLE_OAUTH_CLIENT_ID = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_ID || '').trim();
 const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.TOR_GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
 const GOOGLE_TOKEN_KEY_MATERIAL = String(process.env.TOR_CLOUD_GOOGLE_TOKEN_KEY || '').trim();
@@ -110,6 +112,14 @@ function timingSafeEqualText(a, b) {
   const bb = Buffer.from(String(b));
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
+// G-5: an unknown e-mail runs the same scrypt as a known one, so the response
+// time does not tell whether an account exists.
+const DUMMY_PASSWORD_SALT = crypto.randomBytes(16).toString('hex');
+const DUMMY_PASSWORD_HASH = crypto.scryptSync(crypto.randomBytes(16), DUMMY_PASSWORD_SALT, 64).toString('hex');
+async function verifyUserPassword(user, password) {
+  const ok = await verifyPassword(password, user ? user.password_salt : DUMMY_PASSWORD_SALT, user ? user.password_hash : DUMMY_PASSWORD_HASH);
+  return !!user && ok;
+}
 async function verifyPassword(password, salt, expected) {
   const actual = (await new Promise((resolve,reject)=>crypto.scrypt(password,salt,64,(error,key)=>error?reject(error):resolve(key)))).toString('hex');
   return timingSafeEqualText(actual, expected);
@@ -117,8 +127,14 @@ async function verifyPassword(password, salt, expected) {
 const BASE32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 function base32Encode(buffer){let bits=0,value=0,out='';for(const byte of buffer){value=(value<<8)|byte;bits+=8;while(bits>=5){out+=BASE32[(value>>>(bits-5))&31];bits-=5;}}if(bits>0)out+=BASE32[(value<<(5-bits))&31];return out;}
 function base32Decode(text){const clean=String(text||'').toUpperCase().replace(/[^A-Z2-7]/g,'');let bits=0,value=0;const out=[];for(const ch of clean){const idx=BASE32.indexOf(ch);if(idx<0)continue;value=(value<<5)|idx;bits+=5;if(bits>=8){out.push((value>>>(bits-8))&255);bits-=8;}}return Buffer.from(out);}
-function totpCode(secret,timeMs=Date.now()){const counter=BigInt(Math.floor(timeMs/30000));const msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest();const off=h[h.length-1]&15;const bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
-function verifyTotp(secret,code){const c=String(code||'').replace(/\s/g,'');if(!/^\d{6}$/.test(c))return false;const now=Date.now();return [-30000,0,30000].some(delta=>timingSafeEqualText(totpCode(secret,now+delta),c));}
+function totpCode(secret,timeMs=Date.now()){return totpAtStep(secret,Math.floor(timeMs/30000));}
+function totpAtStep(secret,step){const counter=BigInt(step);const msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest();const off=h[h.length-1]&15;const bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
+// G-5: returns the matching 30 s step (0 = no match). Only steps after
+// `notBefore` count, so a code that was already accepted once cannot be
+// replayed while it is still inside the +/-30 s window.
+function totpStep(secret,code,notBefore=0){const c=String(code||'').replace(/\s/g,'');if(!secret||!/^\d{6}$/.test(c))return 0;const now=Math.floor(Date.now()/30000);for(const step of [now-1,now,now+1])if(step>notBefore&&timingSafeEqualText(totpAtStep(secret,step),c))return step;return 0;}
+// Accepts the code for this user and burns its step; false on mismatch or replay.
+function consumeTotp(userId,secret,lastStep,code){const step=totpStep(secret,code,Number(lastStep||0));if(!step)return false;return db.prepare('UPDATE users SET totp_last_step=? WHERE id=? AND totp_last_step<?').run(step,userId,step).changes===1;}
 function recoveryCode(){const raw=base32Encode(crypto.randomBytes(8)).slice(0,12);return raw.match(/.{1,4}/g).join('-');}
 function protectTotpSecret(secret){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',TOTP_KEY,iv);const enc=Buffer.concat([cipher.update(String(secret),'utf8'),cipher.final()]);const tag=cipher.getAuthTag();return ['v1',iv.toString('base64url'),tag.toString('base64url'),enc.toString('base64url')].join(':');}
 function unprotectTotpSecret(value){const text=String(value||'');if(!text)return '';if(!text.startsWith('v1:'))return text;const parts=text.split(':');if(parts.length!==4)throw new Error('2FA-Schlüssel ist beschädigt.');const iv=Buffer.from(parts[1],'base64url'),tag=Buffer.from(parts[2],'base64url'),enc=Buffer.from(parts[3],'base64url');const dec=crypto.createDecipheriv('aes-256-gcm',TOTP_KEY,iv);dec.setAuthTag(tag);return Buffer.concat([dec.update(enc),dec.final()]).toString('utf8');}
@@ -217,6 +233,29 @@ async function readBody(req, maxBytes = 1024 * 1024) {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+// C-3: /updates/* and /trial/* are public and re-check the installer against its
+// manifest hash on every download (R120). Hashing used to be readFileSync on the
+// whole exe per request, which blocked the event loop - a handful of parallel
+// downloads froze the server. The hash is now streamed and remembered per file
+// identity; any rewrite changes size, mtime, ctime or inode and forces a fresh
+// hash. Concurrent requests share one in-flight computation.
+const installerHashCache = new Map();
+async function installerSha256(full) {
+  const stat = await fs.promises.stat(full);
+  if (!stat.isFile()) throw Object.assign(new Error('Nicht gefunden'), { code: 'ENOENT' });
+  const key = `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.ino}`;
+  let entry = installerHashCache.get(full);
+  if (!entry || entry.key !== key) {
+    const hash = new Promise((resolve, reject) => {
+      const h = crypto.createHash('sha256');
+      fs.createReadStream(full).on('error', reject).on('data', c => h.update(c)).on('end', () => resolve(h.digest('hex').toUpperCase()));
+    });
+    entry = { key, hash };
+    installerHashCache.set(full, entry);
+    hash.catch(() => { if (installerHashCache.get(full) === entry) installerHashCache.delete(full); });
+  }
+  return { sha256: await entry.hash, size: stat.size };
 }
 async function readJson(req, maxBytes = 1024 * 1024) {
   const raw = await readBody(req, maxBytes);
@@ -328,6 +367,9 @@ function initSchema() {
       FOREIGN KEY(sale_id) REFERENCES cloud_sales(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_cloud_sale_items_sale_id ON cloud_sale_items(sale_id);
+    CREATE INDEX IF NOT EXISTS idx_cloud_sales_occurred ON cloud_sales(occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_cloud_sales_register_occurred ON cloud_sales(register_id,occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_cloud_events_type_received ON cloud_events(event_type,received_at);
     CREATE TABLE IF NOT EXISTS cash_movements(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       register_id INTEGER NOT NULL,
@@ -514,6 +556,7 @@ ensureColumn('users','totp_enabled','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','totp_pending_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','recovery_hashes',"TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('users','totp_last_step','INTEGER NOT NULL DEFAULT 0');
 // R128: set by tools/provision.js for a one-time password; cleared when the
 // owner chooses their own. Existing accounts default to 0 and are unaffected.
 ensureColumn('users','must_change_password','INTEGER NOT NULL DEFAULT 0');
@@ -621,8 +664,18 @@ function requireDevice(req, res) {
   return row;
 }
 
+// Review §7: berlin_day() in WHERE forced a scan of every sale. occurred_at
+// is ISO text with an offset of at most +/-14 h, so the calendar date written
+// in it lies within one day of the Berlin day: that string range can use the
+// index, and berlin_day() keeps the exact cut.
+function dayWindow(day){
+  const d=new Date(day+'T00:00:00Z');
+  const shift=n=>new Date(d.getTime()+n*86400000).toISOString().slice(0,10);
+  return [shift(-1),shift(2)];
+}
 function dashboardSummary(businessId) {
   const today = berlinParts(new Date()).day;
+  const [fromText, toText] = dayWindow(today);
   const totals = db.prepare(`
     SELECT COALESCE(SUM(s.total_cents),0) total_cents,
            COALESCE(SUM(CASE WHEN s.transaction_type='SALE' THEN 1 ELSE 0 END),0) sale_count,
@@ -632,8 +685,8 @@ function dashboardSummary(businessId) {
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id
     JOIN branches br ON br.id=r.branch_id
-    WHERE br.business_id=? AND berlin_day(s.occurred_at)=?
-  `).get(businessId, today);
+    WHERE br.business_id=? AND s.occurred_at>=? AND s.occurred_at<? AND berlin_day(s.occurred_at)=?
+  `).get(businessId, fromText, toText, today);
 
   const recentSales = db.prepare(`
     SELECT s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.transaction_type,s.original_receipt_number,s.total_cents,s.operator_name,r.name register_name,br.name branch_name
@@ -651,9 +704,9 @@ function dashboardSummary(businessId) {
   const hourly = db.prepare(`
     SELECT berlin_hour(s.occurred_at) hour, SUM(s.total_cents) total_cents
     FROM cloud_sales s JOIN registers r ON r.id=s.register_id JOIN branches br ON br.id=r.branch_id
-    WHERE br.business_id=? AND berlin_day(s.occurred_at)=?
+    WHERE br.business_id=? AND s.occurred_at>=? AND s.occurred_at<? AND berlin_day(s.occurred_at)=?
     GROUP BY berlin_hour(s.occurred_at) ORDER BY hour
-  `).all(businessId, today);
+  `).all(businessId, fromText, toText, today);
 
   const lowStock = db.prepare(`
     SELECT st.name,st.quantity,st.min_stock_quantity,r.name register_name,br.name branch_name
@@ -703,7 +756,7 @@ function portalData(businessId, offset=0) {
 
 function receiptDetail(businessId, saleId) {
   const sale = db.prepare(`
-    SELECT s.id sale_id,s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.subtotal_cents,s.discount_cents,s.total_cents,s.operator_name,s.item_count,
+    SELECT s.id sale_id,s.receipt_number,s.pickup_number,s.occurred_at,s.payment_method,s.transaction_type,s.original_receipt_number,s.cash_portion_cents,s.card_portion_cents,s.subtotal_cents,s.discount_cents,s.total_cents,s.operator_name,s.item_count,
            r.name register_name,r.device_code,br.name branch_name,br.city
     FROM cloud_sales s
     JOIN registers r ON r.id=s.register_id
@@ -800,7 +853,7 @@ function serveStatic(req, res, pathname) {
   if (rel === '/login') rel = '/login.html';
   if (rel === '/portal') rel = '/portal.html';
   const file = path.normalize(path.join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC)) return false;
+  if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) return false;
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
   const body = fs.readFileSync(file);
   res.writeHead(200, {
@@ -835,6 +888,23 @@ function clientIp(req){
 
 // R145: the receipt domain. Every response there says: do not index, do not
 // cache, send no referrer (the link itself is the key), no framing.
+// Review §7: the download/redirect links were built from the Host header when
+// TOR_CLOUD_PUBLIC_URL is unset. The configured URL always wins; without it only
+// a syntactically plain host[:port] is used, anything else is a 400.
+function publicOrigin(req){
+  if(CLOUD_PUBLIC_URL)return new URL(CLOUD_PUBLIC_URL+'/');
+  const host=String(req.headers.host||'');
+  if(!/^(?:[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*|\[[0-9A-Fa-f:.]+\])(?::\d{1,5})?$/.test(host))
+    throw Object.assign(new Error('Ungültiger Host-Header'),{statusCode:400});
+  return new URL(`${COOKIE_SECURE?'https':'http'}://${host}/`);
+}
+// Review §7: "Origin: null" or a malformed Origin used to throw in new URL()
+// and answer 500; it is a foreign origin and gets the 403.
+function foreignOrigin(req){
+  const origin=req.headers.origin;
+  if(!origin)return false;
+  try{return new URL(origin).host!==req.headers.host;}catch{return true;}
+}
 function requestHostname(req){
   try{return new URL(`http://${String(req.headers.host||'')}`).hostname.toLowerCase();}catch{return '';}
 }
@@ -943,9 +1013,15 @@ function loginLimited(req,email){
   for(const key of keys){const v=loginAttempts.get(key)||{count:0,until:now+15*60*1000};v.count++;loginAttempts.set(key,v);if(v.count>(key.startsWith('ip:')?100:10))limited=true;}
   return limited;
 }
+// G-5: the per-mail counter used to count successful logins as well, so an
+// owner who simply logged in often enough locked themselves out and an attacker
+// needed fewer wrong guesses to do it for them. Only failures accumulate now.
+function loginSucceeded(email){loginAttempts.delete('mail:'+email);}
 async function handler(req, res) {
   try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    // The base only resolves the path; a malformed Host header must not
+    // turn every request into a 500.
+    const url = new URL(req.url, 'http://localhost');
     const pathname = url.pathname;
     // R145: behind the proxy, a request that came in over plain HTTP goes to
     // HTTPS before anything else (Caddy redirects already; this is the second
@@ -953,7 +1029,7 @@ async function handler(req, res) {
     if(forwardedProto(req)==='http'){
       const onReceipt=!!RECEIPT_HOST&&requestHostname(req)===RECEIPT_HOST;
       const origin=onReceipt?(RECEIPT_HTTPS?RECEIPT_ORIGIN:''):(CLOUD_PUBLIC_URL.startsWith('https://')?new URL(CLOUD_PUBLIC_URL).origin:'');
-      if(origin){res.writeHead(308,{Location:origin+pathname,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
+      if(origin){res.writeHead(308,{Location:origin+pathname+url.search,'Content-Length':0,'Cache-Control':'no-store'});return res.end();}
     }
     // R145: the receipt domain serves receipts and nothing else; no receipt is
     // served on any other host.
@@ -961,8 +1037,7 @@ async function handler(req, res) {
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     if(req.method==='POST' && !pathname.startsWith('/api/v1/devices/')){
-      const origin=req.headers.origin;
-      if(req.headers['sec-fetch-site']==='cross-site' || (origin && new URL(origin).host!==req.headers.host)) return json(res,403,{ok:false,error:'Fremder Ursprung nicht erlaubt'});
+      if(req.headers['sec-fetch-site']==='cross-site' || foreignOrigin(req)) return json(res,403,{ok:false,error:'Fremder Ursprung nicht erlaubt'});
       if(!String(req.headers['content-type']||'').startsWith('application/json'))return json(res,415,{ok:false,error:'JSON erforderlich'});
     }
 
@@ -975,16 +1050,23 @@ async function handler(req, res) {
     if(req.method==='POST' && pathname==='/api/v1/devices/mail/send'){
       const device=requireDevice(req,res);if(!device)return;
       if(!TOR_MAIL_READY)return json(res,503,{ok:false,error:'TOR Mail ist auf dem Cloud-Server noch nicht konfiguriert.'});
-      const now=Date.now();
-      const hourAgo=new Date(now-60*60*1000).toISOString();
-      const dayAgo=new Date(now-24*60*60*1000).toISOString();
-      const hourly=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,hourAgo).c);
-      const daily=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,dayAgo).c);
-      if(hourly>=TOR_MAIL_HOURLY_LIMIT||daily>=TOR_MAIL_DAILY_LIMIT)
-        return json(res,429,{ok:false,error:'TOR Mail Versandlimit erreicht. Bitte später erneut versuchen.'},{'Retry-After':'3600'});
+      const overQuota=()=>{
+        const now=Date.now();
+        const hourAgo=new Date(now-60*60*1000).toISOString();
+        const dayAgo=new Date(now-24*60*60*1000).toISOString();
+        const hourly=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,hourAgo).c);
+        const daily=Number(db.prepare('SELECT COUNT(*) c FROM managed_mail_log WHERE register_id=? AND created_at>=?').get(device.register_id,dayAgo).c);
+        return hourly>=TOR_MAIL_HOURLY_LIMIT||daily>=TOR_MAIL_DAILY_LIMIT;
+      };
+      const quotaReply=()=>json(res,429,{ok:false,error:'TOR Mail Versandlimit erreicht. Bitte später erneut versuchen.'},{'Retry-After':'3600'});
+      if(overQuota())return quotaReply();
 
       const body=await readJson(req,12*1024*1024);
       const mail=normalizeManagedMailPayload(body);
+      // Review §7: parallel requests all passed the check above while their
+      // bodies were still arriving. The recheck and the INSERT run with no
+      // await in between, so the counted row is in place before the next one looks.
+      if(overQuota())return quotaReply();
       const created=nowIso();
       const log=db.prepare(`INSERT INTO managed_mail_log(register_id,created_at,recipient_hash,subject_hash,attachment_count,total_bytes,status)
                             VALUES(?,?,?,?,?,?,'SENDING') RETURNING id`)
@@ -1152,8 +1234,7 @@ async function handler(req, res) {
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Demo-Manifest ist ungültig.'});}
       const file=path.basename(String(m.filename||''));
       if(!m.enabled||!file||!/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'TOR POS Demo Setup ist noch nicht freigegeben.'});
-      const origin=CLOUD_PUBLIC_URL?new URL(CLOUD_PUBLIC_URL.endsWith('/')?CLOUD_PUBLIC_URL:CLOUD_PUBLIC_URL+'/'):new URL(`${COOKIE_SECURE?'https':'http'}://${req.headers.host}`);
-      res.writeHead(302,{Location:new URL(`/trial/${encodeURIComponent(file)}`,origin).toString(),'Cache-Control':'no-store'});
+      res.writeHead(302,{Location:new URL(`/trial/${encodeURIComponent(file)}`,publicOrigin(req)).toString(),'Cache-Control':'no-store'});
       return res.end();
     }
 
@@ -1164,16 +1245,14 @@ async function handler(req, res) {
       const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/trial/'.length));
       if(!m.enabled||requested!==expected||requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
       const full=path.join(UPDATES,expected);
-      if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');
-      const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
-      if(served!==String(m.sha256||'').toUpperCase()){
+      let served;try{served=await installerSha256(full);}catch{return text(res,404,'Nicht gefunden');}
+      if(served.sha256!==String(m.sha256||'').toUpperCase()){
         console.error('Demo download refused: sha256 of',expected,'does not match manifest');
         return text(res,409,'Demo-Datei stimmt nicht mit dem Manifest überein.');
       }
-      const stat=fs.statSync(full);
       res.writeHead(200,{
         'Content-Type':'application/vnd.microsoft.portable-executable',
-        'Content-Length':stat.size,
+        'Content-Length':served.size,
         'Content-Disposition':'attachment; filename="TOR-POS-Demo-Setup.exe"',
         'Cache-Control':'no-store',
         'X-Content-Type-Options':'nosniff'
@@ -1185,36 +1264,45 @@ async function handler(req, res) {
 
     if(req.method==='GET' && pathname==='/api/v1/updates/check'){
       const current=String(url.searchParams.get('version')||'0'),edition=String(url.searchParams.get('edition')||'KIOSK').toUpperCase();
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false});
+      // C-2: a product with its own published channel gets its own installer;
+      // otherwise the shared manifest.json and its editions list decide.
+      const editionManifest=UPDATE_EDITIONS.includes(edition)?path.join(UPDATES,`manifest-${edition}.json`):'';
+      const manifestPath=editionManifest&&fs.existsSync(editionManifest)?editionManifest:path.join(UPDATES,'manifest.json');
+      if(!fs.existsSync(manifestPath))return json(res,200,{ok:true,update_available:false});
       let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return json(res,503,{ok:false,error:'Update-Manifest ist ungültig.'});}
       const allowed=Array.isArray(m.editions)?m.editions.map(x=>String(x).toUpperCase()):['KIOSK','IMBISS'];
       if(!m.enabled || !allowed.includes(edition) || compareVersion(String(m.version||'0'),current)<=0)return json(res,200,{ok:true,update_available:false});
       const file=path.basename(String(m.filename||''));const full=path.join(UPDATES,file);
       if(!file || !fs.existsSync(full) || !/^[A-Fa-f0-9]{64}$/.test(String(m.sha256||'')))return json(res,503,{ok:false,error:'Update-Datei/Prüfsumme nicht bereit.'});
-      const publicRoot=String(process.env.TOR_CLOUD_PUBLIC_URL||'').trim();let origin;
-      if(publicRoot){origin=new URL(publicRoot.endsWith('/')?publicRoot:publicRoot+'/');}
-      else{const scheme=COOKIE_SECURE?'https':'http';origin=new URL(`${scheme}://${req.headers.host}`);}
-      const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,origin).toString();
+      const downloadUrl=new URL(`/updates/${encodeURIComponent(file)}`,publicOrigin(req)).toString();
       return json(res,200,{ok:true,update_available:true,manifest:{version:String(m.version),revision:String(m.revision||m.version),published_at:String(m.published_at||''),mandatory:!!m.mandatory,download_url:downloadUrl,sha256:String(m.sha256).toUpperCase(),signer_thumbprint:String(m.signer_thumbprint||''),release_notes:String(m.release_notes||'')}});
     }
 
     if(req.method==='GET' && pathname.startsWith('/updates/')){
-      const manifestPath=path.join(UPDATES,'manifest.json');if(!fs.existsSync(manifestPath))return text(res,404,'Nicht gefunden');
-      let m;try{m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{return text(res,404,'Nicht gefunden');}
-      const expected=path.basename(String(m.filename||'')),requested=decodeURIComponent(pathname.slice('/updates/'.length));
-      if(!m.enabled || requested!==expected || requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
-      const full=path.join(UPDATES,expected);if(!fs.existsSync(full))return text(res,404,'Nicht gefunden');const stat=fs.statSync(full);
+      // C-2: the requested file must be the one an enabled manifest names -
+      // the shared manifest.json or one of the per-edition manifests.
+      let requested='';try{requested=decodeURIComponent(pathname.slice('/updates/'.length));}catch{}
+      if(!requested||requested!==path.basename(requested))return text(res,404,'Nicht gefunden');
+      let m=null;
+      for(const name of ['manifest.json',...UPDATE_EDITIONS.map(e=>`manifest-${e}.json`)]){
+        const manifestPath=path.join(UPDATES,name);if(!fs.existsSync(manifestPath))continue;
+        let candidate;try{candidate=JSON.parse(fs.readFileSync(manifestPath,'utf8'));}catch{continue;}
+        if(candidate.enabled&&path.basename(String(candidate.filename||''))===requested){m=candidate;break;}
+      }
+      if(!m)return text(res,404,'Nicht gefunden');
+      const expected=requested;
+      const full=path.join(UPDATES,expected);
       // R120: verify the bytes actually being served against the manifest
       // hash. The publishing script checks Authenticode, but nothing checked
       // the file again at serve time - so anything that could write into the
-      // updates directory bypassed that gate completely. Cheap enough here:
-      // this endpoint is hit once per update, not per request.
-      const served=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex').toUpperCase();
-      if(served!==String(m.sha256||'').toUpperCase()){
+      // updates directory bypassed that gate completely. C-3: the hash is
+      // streamed and cached per file identity (installerSha256).
+      let served;try{served=await installerSha256(full);}catch{return text(res,404,'Nicht gefunden');}
+      if(served.sha256!==String(m.sha256||'').toUpperCase()){
         console.error('Update refused: sha256 of',expected,'does not match manifest');
         return text(res,409,'Update-Datei stimmt nicht mit dem Manifest überein.');
       }
-      res.writeHead(200,{'Content-Type':'application/vnd.microsoft.portable-executable','Content-Length':stat.size,'Content-Disposition':`attachment; filename="${expected}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+      res.writeHead(200,{'Content-Type':'application/vnd.microsoft.portable-executable','Content-Length':served.size,'Content-Disposition':`attachment; filename="${expected}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       // R120: an aborted download used to raise an unhandled 'error' on the
       // stream and take the whole server process down with it.
       const stream=fs.createReadStream(full);
@@ -1226,14 +1314,14 @@ async function handler(req, res) {
       const body=await readJson(req);const email=String(body.email||'').trim().toLowerCase();const password=String(body.password||'');
       if(loginLimited(req,email))return json(res,429,{ok:false,error:'Zu viele Anmeldeversuche. Bitte 15 Minuten warten.'});
       const user=db.prepare('SELECT * FROM users WHERE email=? AND is_active=1').get(email);
-      if(!user || !await verifyPassword(password,user.password_salt,user.password_hash))return json(res,401,{ok:false,error:'E-Mail oder Passwort ist falsch.'});
+      if(!await verifyUserPassword(user,password))return json(res,401,{ok:false,error:'E-Mail oder Passwort ist falsch.'});
       if(user.totp_enabled){
         const challenge=randomId(24),expires=new Date(Date.now()+5*60*1000).toISOString();
         db.prepare('DELETE FROM login_challenges WHERE user_id=? OR expires_at<=?').run(user.id,nowIso());
         db.prepare('INSERT INTO login_challenges(id,user_id,created_at,expires_at) VALUES(?,?,?,?)').run(challenge,user.id,nowIso(),expires);
         return json(res,200,{ok:true,requires_2fa:true,challenge});
       }
-      createSession(res,user);
+      loginSucceeded(email);createSession(res,user);
       return json(res,200,{ok:true,requires_2fa:false,user:{display_name:user.display_name,role:user.role},two_factor_setup_required:REQUIRE_OWNER_2FA&&user.role==='OWNER'});
     }
 
@@ -1242,10 +1330,10 @@ async function handler(req, res) {
       const row=db.prepare(`SELECT c.id,c.user_id,c.expires_at,c.attempts,u.* FROM login_challenges c JOIN users u ON u.id=c.user_id WHERE c.id=? AND u.is_active=1`).get(challenge);
       if(!row || Date.parse(row.expires_at)<=Date.now()){if(row)db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);return json(res,401,{ok:false,error:'2FA-Anmeldung ist abgelaufen. Bitte erneut anmelden.'});}
       if(row.attempts>=5){db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);return json(res,429,{ok:false,error:'Zu viele 2FA-Versuche. Bitte erneut anmelden.'});}
-      let valid=verifyTotp(unprotectTotpSecret(row.totp_secret),code),usedRecovery=false;
+      let valid=consumeTotp(row.user_id,unprotectTotpSecret(row.totp_secret),row.totp_last_step,code),usedRecovery=false;
       if(!valid){let hashes=[];try{hashes=JSON.parse(row.recovery_hashes||'[]');}catch{}const h=hashToken(code.replace(/-/g,''));const idx=hashes.findIndex(x=>timingSafeEqualText(x,h));if(idx>=0){valid=true;usedRecovery=true;hashes.splice(idx,1);db.prepare('UPDATE users SET recovery_hashes=? WHERE id=?').run(JSON.stringify(hashes),row.user_id);}}
       if(!valid){db.prepare('UPDATE login_challenges SET attempts=attempts+1 WHERE id=?').run(challenge);return json(res,401,{ok:false,error:'Sicherheitscode ist ungültig.'});}
-      db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);createSession(res,row);
+      db.prepare('DELETE FROM login_challenges WHERE id=?').run(challenge);loginSucceeded(row.email);createSession(res,row);
       return json(res,200,{ok:true,user:{display_name:row.display_name,role:row.role},used_recovery_code:usedRecovery});
     }
 
@@ -1277,6 +1365,7 @@ async function handler(req, res) {
       if(problem)return json(res,400,{ok:false,error:problem});
       const secret=hashPassword(next);
       db.prepare('UPDATE users SET password_salt=?,password_hash=?,must_change_password=0 WHERE id=?').run(secret.salt,secret.hash,user.user_id);
+      loginSucceeded(user.email);
       // Whoever knew the old password must not stay logged in elsewhere; the
       // session that made the change continues.
       const ended=Number(db.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').run(user.user_id,parseCookies(req).tor_session||'').changes);
@@ -1285,6 +1374,17 @@ async function handler(req, res) {
 
     if(req.method==='POST' && pathname==='/api/2fa/setup/start'){
       const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;
+      // G-5: with 2FA already on, a session alone must not be enough to swap
+      // the authenticator - a stolen session could otherwise lock the owner out.
+      // Re-enrolment needs the password and a current code, like disabling.
+      if(user.totp_enabled){
+        const body=await readJson(req);
+        if(loginLimited(req,user.email))return json(res,429,{ok:false,error:'Zu viele Versuche. Bitte 15 Minuten warten.'});
+        const row=db.prepare('SELECT * FROM users WHERE id=?').get(user.user_id);
+        if(!await verifyUserPassword(row,String(body.password||''))||!consumeTotp(row.id,unprotectTotpSecret(row.totp_secret),row.totp_last_step,String(body.code||'')))
+          return json(res,401,{ok:false,code:'REAUTH_REQUIRED',error:'Passwort oder Sicherheitscode ist falsch.'});
+        loginSucceeded(user.email);
+      }
       const secret=base32Encode(crypto.randomBytes(20));
       db.prepare('UPDATE users SET totp_pending_secret=? WHERE id=?').run(protectTotpSecret(secret),user.user_id);
       const label=encodeURIComponent(`TOR POS Cloud:${user.email}`);const issuer=encodeURIComponent('TOR POS Cloud');
@@ -1295,19 +1395,22 @@ async function handler(req, res) {
       const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;const body=await readJson(req);
       const row=db.prepare('SELECT totp_pending_secret FROM users WHERE id=?').get(user.user_id);const secret=unprotectTotpSecret(row?.totp_pending_secret||'');
       if(!secret)return json(res,400,{ok:false,error:'2FA-Einrichtung wurde noch nicht gestartet.'});
-      if(!verifyTotp(secret,String(body.code||'')))return json(res,400,{ok:false,error:'Sicherheitscode passt nicht. Uhrzeit am Telefon prüfen und erneut versuchen.'});
+      const step=totpStep(secret,String(body.code||''));
+      if(!step)return json(res,400,{ok:false,error:'Sicherheitscode passt nicht. Uhrzeit am Telefon prüfen und erneut versuchen.'});
       const recovery=Array.from({length:8},()=>recoveryCode());const hashes=recovery.map(x=>hashToken(x.replace(/-/g,'')));
-      db.prepare("UPDATE users SET totp_enabled=1,totp_secret=?,totp_pending_secret='',recovery_hashes=? WHERE id=?").run(protectTotpSecret(secret),JSON.stringify(hashes),user.user_id);
+      db.prepare("UPDATE users SET totp_enabled=1,totp_secret=?,totp_pending_secret='',recovery_hashes=?,totp_last_step=? WHERE id=?").run(protectTotpSecret(secret),JSON.stringify(hashes),step,user.user_id);
       db.prepare('DELETE FROM sessions WHERE user_id=? AND id<>?').run(user.user_id,parseCookies(req).tor_session||'');
       return json(res,200,{ok:true,recovery_codes:recovery});
     }
 
     if(req.method==='POST' && pathname==='/api/2fa/disable'){
       const user=requireUser(req,res,{allowUnenrolled:true});if(!user)return;const body=await readJson(req);
+      if(loginLimited(req,user.email))return json(res,429,{ok:false,error:'Zu viele Versuche. Bitte 15 Minuten warten.'});
       const row=db.prepare('SELECT * FROM users WHERE id=?').get(user.user_id);
-      if(!row || !await verifyPassword(String(body.password||''),row.password_salt,row.password_hash) || !verifyTotp(unprotectTotpSecret(row.totp_secret),String(body.code||'')))return json(res,401,{ok:false,error:'Passwort oder Sicherheitscode ist falsch.'});
+      if(!await verifyUserPassword(row,String(body.password||'')) || !consumeTotp(row.id,unprotectTotpSecret(row.totp_secret),row.totp_last_step,String(body.code||'')))return json(res,401,{ok:false,error:'Passwort oder Sicherheitscode ist falsch.'});
       if(REQUIRE_OWNER_2FA && row.role==='OWNER')return json(res,409,{ok:false,error:'2FA ist für Inhaber in diesem Cloud-Betrieb verpflichtend.'});
       db.prepare("UPDATE users SET totp_enabled=0,totp_secret='',totp_pending_secret='',recovery_hashes='[]' WHERE id=?").run(user.user_id);
+      loginSucceeded(user.email);
       return json(res,200,{ok:true});
     }
 
@@ -1335,16 +1438,39 @@ async function handler(req, res) {
       if(!Array.isArray(body.events)||!body.events.length) return json(res,400,{ok:false,error:'events fehlt oder leer'});
       const events = body.events;
       if (events.length > 250) return json(res, 400, {ok:false, error:'Maximal 250 Ereignisse pro Batch'});
+      // C-4: a till that sends partial:true gets a verdict per event. An event
+      // the Cloud will never accept (400) or that conflicts with a stored one
+      // (409) is reported as rejected/conflict and rolled back alone via a
+      // savepoint; the rest of the batch is stored. Before, one bad event made
+      // the whole batch 400, and because the till's outbox is FIFO it sat at
+      // the head for good and stopped all Cloud sync. Older tills that do not
+      // send partial keep the all-or-nothing answer they understand.
+      const partial = body.partial === true;
       const result = [];
       db.exec('BEGIN IMMEDIATE');
       try {
         for (const raw of events) {
-          const event = normalizeEvent(raw);
-          result.push({event_id:event.eventId, status:ingestEvent(device.register_id, event)});
+          if (!partial) {
+            const event = normalizeEvent(raw);
+            result.push({event_id:event.eventId, status:ingestEvent(device.register_id, event)});
+            continue;
+          }
+          db.exec('SAVEPOINT sync_event');
+          try {
+            const event = normalizeEvent(raw);
+            result.push({event_id:event.eventId, status:ingestEvent(device.register_id, event)});
+            db.exec('RELEASE sync_event');
+          } catch (e) {
+            db.exec('ROLLBACK TO sync_event'); db.exec('RELEASE sync_event');
+            if (e.statusCode !== 400 && e.statusCode !== 409) throw e;
+            const id = raw && typeof raw === 'object' && typeof raw.event_id === 'string' ? raw.event_id.slice(0, 120) : '';
+            result.push({event_id:id, status:e.statusCode === 409 ? 'conflict' : 'rejected', error:String(e.message || '').slice(0, 300)});
+          }
         }
         db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
-      return json(res, 200, {ok:true, accepted:result.filter(x=>x.status==='accepted').length, duplicates:result.filter(x=>x.status==='duplicate').length, results:result, server_time:nowIso()});
+      const count = status => result.filter(x=>x.status===status).length;
+      return json(res, 200, {ok:true, accepted:count('accepted'), duplicates:count('duplicate'), rejected:count('rejected')+count('conflict'), results:result, server_time:nowIso()});
     }
 
     // R145: the till publishes the customer's digital receipt after the sale is
@@ -1422,6 +1548,7 @@ async function handler(req, res) {
 // touched again - a session nobody returns to stayed forever, so the table only
 // ever grew. And the whole Cloud lived in one SQLite file with no backup at all.
 const CLEANUP_INTERVAL_MS=Math.max(200,Number(process.env.TOR_CLOUD_CLEANUP_INTERVAL_MS||60*60*1000));
+const HEARTBEAT_KEEP_MS=Math.max(60*60*1000,Number(process.env.TOR_CLOUD_HEARTBEAT_KEEP_HOURS||48)*60*60*1000);
 function cleanupExpired(){
   const now=nowIso();
   const sessions=Number(db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now).changes);
@@ -1430,7 +1557,15 @@ function cleanupExpired(){
   // R145: at the end of its lifetime a digital receipt is deleted entirely -
   // token hash, PDF and content. The fiscal records on the till are untouched.
   const receipts=Number(db.prepare('DELETE FROM public_receipts WHERE expires_at<=?').run(now).changes);
-  return {sessions,challenges,receipts};
+  // Review §7: a heartbeat arrives every 60 s per till and only updates the
+  // register row; keeping every one for good grew cloud_events without end.
+  const heartbeatCutoff=new Date(Date.now()-HEARTBEAT_KEEP_MS).toISOString();
+  const heartbeats=Number(db.prepare("DELETE FROM cloud_events WHERE event_type='heartbeat' AND received_at<?").run(heartbeatCutoff).changes);
+  // A crash between INSERT 'SENDING' and the SMTP answer left the row SENDING
+  // for good. After an hour nobody is waiting for it any more.
+  const staleMail=new Date(Date.now()-60*60*1000).toISOString();
+  const mails=Number(db.prepare("UPDATE managed_mail_log SET status='FAILED',last_error='Abgebrochen (Serverneustart während des Versands)' WHERE status='SENDING' AND created_at<?").run(staleMail).changes);
+  return {sessions,challenges,receipts,heartbeats,mails};
 }
 
 // Backups are off unless TOR_CLOUD_BACKUP_DIR is set, so a developer checkout

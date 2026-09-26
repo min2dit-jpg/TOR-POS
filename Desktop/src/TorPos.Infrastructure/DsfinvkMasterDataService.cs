@@ -139,7 +139,7 @@ public static class DsfinvkMasterDataStore
     }
 
     public static string UtcText(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        FiscalUtcText.Of(value);
 
     private static SqliteCommand Command(SqliteConnection c, SqliteTransaction? tx, string sql)
     {

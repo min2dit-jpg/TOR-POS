@@ -1396,8 +1396,8 @@ internal static class UiTranslations
         ["TOR-Regel: Offene geparkte Bons sperren den Z-Abschluss."] =
             "TOR kuralı: Bekletilen açık fişler Z-Abschluss'u kilitler.",
         ["Bonnummer (optional)"] = "Fiş numarası (isteğe bağlı)",
-        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich."] =
-            "ARŞİV · Eski fişler görüntülenebilir veya kopya olarak yazdırılabilir. İPTAL / KISMİ İADE yalnızca satış günü mümkündür.",
+        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich."] =
+            "ARŞİV · Eski fişler görüntülenebilir veya kopya olarak yazdırılabilir. İPTAL / KISMİ İADE yalnızca son gün sonu kapanışından sonraki fişler için mümkündür.",
         ["Von: "] = "Başlangıç: ",
         [" Bis: "] = " Bitiş: ",
         ["TEILRETOURE"] = "KISMİ İADE",
@@ -3100,8 +3100,8 @@ internal static class UiTranslations
         ["TOR-Regel: Offene geparkte Bons sperren den Z-Abschluss."] =
             "TOR rule: open parked receipts block the Z-Abschluss.",
         ["Bonnummer (optional)"] = "Receipt number (optional)",
-        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist ausschließlich am Verkaufstag möglich."] =
-            "ARCHIVE · older receipts can be viewed or printed as a copy. A VOID or PARTIAL RETURN is only possible on the day of sale.",
+        ["ARCHIV · Ältere Bons können angesehen oder als Kopie gedruckt werden. STORNO / TEILRETOURE ist nur für Bons seit dem letzten Tagesabschluss möglich."] =
+            "ARCHIVE · older receipts can be viewed or printed as a copy. A VOID or PARTIAL RETURN is only possible for receipts since the last end-of-day closing.",
         ["Von: "] = "From: ",
         [" Bis: "] = " To: ",
         ["TEILRETOURE"] = "PARTIAL RETURN",
