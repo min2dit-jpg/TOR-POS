@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+public/resources/tor-pos-logo.jpg
