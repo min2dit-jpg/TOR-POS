@@ -594,6 +594,8 @@ await F3F4FiscalGateTests.Run(Assert);
 await F6TseFinishJournalTests.Run(root, Assert);
 PrinterBeforeCashTests.Run(Assert);
 await CsvAndBackupHardeningTests.Run(root, Assert);
+ZReportSingleRunTests.Run(Assert);
+await StockUnitChangeTests.Run(root, Assert);
 await G3UpdateHelperTests.Run(Assert);
 await ReviewFollowUpTests.Run(root, Assert);
 await EinzelhandelGastroFollowUpTests.Run(root, Assert);
@@ -727,7 +729,9 @@ const int CloudAlignmentChecks = 7;
 // transaction finished at start-up, a reversal booked before signing documented as outage, normal path clean.
 // Printer question before the payment page adds 1 check.
 // CSV formula guard (3) and backup-not-encrypted warning (2) add 5 checks.
-const int ExpectedSafetyChecks = 1435;
+// One Z run for both Z buttons adds 1 check.
+// A unit change needs a recount of stock and Mindestbestand: 5 checks.
+const int ExpectedSafetyChecks = 1441;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {

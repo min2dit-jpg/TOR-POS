@@ -29,7 +29,7 @@ public interface IProductRepository
     Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationToken ct = default);
     Task<Product?> GetByIdAsync(long id, CancellationToken ct = default);
     Task<long> SaveAsync(Product product, CancellationToken ct = default);
-    Task<long> SaveWithStockAsync(Product product, decimal? count, decimal expected, string actor, CancellationToken ct = default, IReadOnlyList<ProductVariant>? variants = null, IReadOnlyList<ProductComboItem>? comboItems = null);
+    Task<long> SaveWithStockAsync(Product product, decimal? count, decimal expected, string actor, CancellationToken ct = default, IReadOnlyList<ProductVariant>? variants = null, IReadOnlyList<ProductComboItem>? comboItems = null, bool unitChangeRecounted = false);
     Task ReplaceVariantsAsync(long productId, IReadOnlyList<ProductVariant> variants, CancellationToken ct = default);
     Task ReplaceComboItemsAsync(long productId, IReadOnlyList<ProductComboItem> items, CancellationToken ct = default);
     Task<IReadOnlyList<ProductComboItem>> GetComboItemsAsync(long productId, CancellationToken ct = default);
