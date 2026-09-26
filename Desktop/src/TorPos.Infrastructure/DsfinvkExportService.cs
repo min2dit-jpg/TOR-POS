@@ -427,7 +427,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
     /// them (after the previous closing, up to and including this one).
     /// </summary>
     private static string UtcText(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        FiscalUtcText.Of(value);
 
     private static async Task<List<long>> IdsAsync(SqliteConnection c, string sql, ClosingRow closing, CancellationToken ct)
     {

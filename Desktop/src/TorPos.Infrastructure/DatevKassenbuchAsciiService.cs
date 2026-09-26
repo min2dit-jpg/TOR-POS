@@ -261,12 +261,8 @@ public sealed class DatevKassenbuchAsciiService
         var sales = new List<SaleCashTaxData>();
         // Match the generated created_at_utc column exactly:
         // strftime('%Y-%m-%dT%H:%M:%fZ', ...).
-        var fromUtc = z.PeriodFrom.UtcDateTime.ToString(
-            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
-            CultureInfo.InvariantCulture);
-        var toUtc = z.PeriodTo.UtcDateTime.ToString(
-            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
-            CultureInfo.InvariantCulture);
+        var fromUtc = FiscalUtcText.Of(z.PeriodFrom);
+        var toUtc = FiscalUtcText.Of(z.PeriodTo);
 
         await using var c = _db.OpenConnection();
 
@@ -279,7 +275,7 @@ public sealed class DatevKassenbuchAsciiService
                        COALESCE(cash_portion_cents,0),
                        COALESCE(card_portion_cents,0)
                 FROM sales
-                WHERE created_at_utc >= $from AND created_at_utc <= $to
+                WHERE created_at_utc > $from AND created_at_utc <= $to
                   AND COALESCE(transaction_type,'SALE') IN ('SALE','STORNO','RETURN')
                 ORDER BY id;
                 """;
@@ -409,7 +405,7 @@ public sealed class DatevKassenbuchAsciiService
             q.CommandText = """
                 SELECT id,created_at,movement_type,amount_cents,reason
                 FROM cash_movements
-                WHERE created_at_utc >= $from AND created_at_utc <= $to
+                WHERE created_at_utc > $from AND created_at_utc <= $to
                   AND movement_type IN ('EINLAGE','ENTNAHME')
                   AND fiscal_mode <> 'TEST_ONLY'
                 ORDER BY id;

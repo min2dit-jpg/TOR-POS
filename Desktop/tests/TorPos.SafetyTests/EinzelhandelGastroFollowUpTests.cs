@@ -110,6 +110,24 @@ public static class EinzelhandelGastroFollowUpTests
                refund.TotalCents == 500 && refund.CardCents == 200 && refund.CashCents == 300 && refund.DiscountCents == 0,
             "O-17 returning the Cola from 'Cola 5,00 + Leergut -3,00' refunds 5,00: 2,00 to the card, the 3,00 bottle credit in cash");
 
+        // O-17 (DSFinV-K): an aborted Vorgang with only Leergut adds up in the export.
+        var abortedRows = DsfinvkClosingBuilder.Build(new DsfinvkClosingInput
+        {
+            Closing = new DsfinvkClosing(1, DateTimeOffset.Now),
+            Master = new DsfinvkMasterData("K1", "Test", "Str. 1", "10115", "Berlin", "DE", "12/345/67890", "", "TOR", "POS", "S-1", "TOR POS", "R0"),
+            Aborted = new[]
+            {
+                new DsfinvkAbortedVorgang(7, DateTimeOffset.Now.AddMinutes(-1), DateTimeOffset.Now, "kasse",
+                    new[] { new CartLine { ProductId = PfandProducts.Bottle25, ProductName = "PFAND-RÜCKGABE", Quantity = 4m, UnitPriceCents = -25, VatRate = 19m } },
+                    0, null)
+            }
+        });
+        var abortedHead = abortedRows.For("Bonkopf").Single();
+        var abortedVat = abortedRows.For("Bonkopf_USt").Sum(x => ((DsfinvkMoney)x["BON_BRUTTO"]!).Cents);
+        assert(
+            ((DsfinvkMoney)abortedHead["UMS_BRUTTO"]!).Cents == -100 && abortedVat == -100,
+            $"O-17 an aborted Leergut-only Vorgang states UMS_BRUTTO -1,00 like its Bonkopf_USt (VAT rows: {abortedVat})");
+
         // O-8: a Bon cashed before midnight but after the last Tagesabschluss
         // (the evening trade of an Imbiss) can still be reversed after 00:00.
         var nightDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(dir, "o8-night.db"));
@@ -139,6 +157,35 @@ public static class EinzelhandelGastroFollowUpTests
             lateReason is null && earlyReason?.Contains("Tagesabschluss", StringComparison.Ordinal) == true &&
             await nightSales.GetOpenZPeriodStartAsync() is { } periodStart && periodStart.Date == yesterday,
             $"O-8 yesterday's 23:30 Bon after the last Tagesabschluss stays reversible; the one before it does not (late='{lateReason}', early='{earlyReason}')");
+
+        // §6 Z boundaries: bounds are written exactly as SQLite writes created_at_utc.
+        var rng = new Random(20260926);
+        var mismatches = 0;
+        var ordered = true;
+        var exclusiveOk = true;
+        await using (var c = db.OpenConnection())
+        {
+            await using var q = c.CreateCommand();
+            q.CommandText = "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', $t);";
+            var p = q.Parameters.Add("$t", Microsoft.Data.Sqlite.SqliteType.Text);
+            for (var i = 0; i < 2000; i++)
+            {
+                var t = new DateTimeOffset(2026, 3, 29, 0, 0, 0, TimeSpan.FromHours(1))
+                    .AddTicks((long)(rng.NextDouble() * TimeSpan.TicksPerDay));
+                p.Value = t.ToString("O");
+                var column = (string)(await q.ExecuteScalarAsync())!;
+                if (column != FiscalUtcText.Of(t)) mismatches++;
+                var later = t.AddTicks(rng.Next(0, 20000));
+                if (string.CompareOrdinal(column, FiscalUtcText.Of(later)) > 0) ordered = false;
+                // ">= After(x)" selects exactly what "> Of(x)" selects.
+                if ((string.CompareOrdinal(column, FiscalUtcText.After(later)) >= 0) !=
+                    (string.CompareOrdinal(column, FiscalUtcText.Of(later)) > 0)) exclusiveOk = false;
+            }
+        }
+        assert(mismatches == 0,
+            $"Z bounds are written exactly like SQLite's created_at_utc, rounding milliseconds instead of truncating ({mismatches} of 2000 differ)");
+        assert(ordered && exclusiveOk,
+            "a Bon before a period end never compares after it, and the open period starts strictly after the last closing");
 
         // §6: PDF text is WinAnsi (cp1252); Turkish letters outside it are transliterated, never "?".
         var pdf = SimplePdfWriter.PdfTextBytes("Dürüm … „Şiş“ Ağa İlık");

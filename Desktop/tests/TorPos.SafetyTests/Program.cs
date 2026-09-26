@@ -694,9 +694,9 @@ await BarTestBonPreparationTests.Run(Assert);
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
 // C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue;
 // one more: the Cloud heartbeat reports an open TSE outage.
-// Einzelhandel/Gastro follow-ups add 10 checks: O-8, O-9, O-10, O-13, O-14, O-17 and PDF text.
+// Einzelhandel/Gastro follow-ups add 13 checks: O-8, O-9, O-10, O-13, O-14, O-17 (2), Z bounds (2) and PDF text.
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
-const int ExpectedSafetyChecks = 1420;
+const int ExpectedSafetyChecks = 1423;
 
 if (checks != ExpectedSafetyChecks)
 {

@@ -1421,21 +1421,26 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             }
         }
 
+        // Review §6: the open period starts AFTER the last closing - a Bon in the
+        // closing's own millisecond belongs to that closed Z (which counted it
+        // with "<= to"), exactly as the DSFinV-K export and DATEV see it.
         return await GetPeriodSummaryAsync(
             from,
             to,
-            ct);
+            ct,
+            exclusiveFrom: from != DateTimeOffset.MinValue);
     }
 
     private async Task<OpenPeriodSummary> GetPeriodSummaryAsync(
         DateTimeOffset from,
         DateTimeOffset to,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool exclusiveFrom = false)
     {
         // UTC text bounds so a period spanning a DST transition (this feeds
         // X-/Z-report turnover and VAT totals) compares as a true instant
         // instead of raw local-offset text.
-        var fromUtcText = ToUtcColumnText(from);
+        var fromUtcText = exclusiveFrom ? FiscalUtcText.After(from) : ToUtcColumnText(from);
         var toUtcText = ToUtcColumnText(to);
         await using var c = _db.OpenConnection();
 
@@ -2115,7 +2120,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
     // (strftime('%Y-%m-%dT%H:%M:%fZ', ...)) exactly, so a plain text WHERE
     // comparison against it is a true, DST-safe instant comparison.
     private static string ToUtcColumnText(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        FiscalUtcText.Of(value);
     private static string SafeFileName(string value)
     {
         foreach (var ch in Path.GetInvalidFileNameChars())
