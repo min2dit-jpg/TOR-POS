@@ -29,13 +29,15 @@ public static class RestaurantDev6RecoveryTests
         };
 
         var before = await audit.HasEntryAsync(actionId, "APPLIED");
+        await audit.AppendAsync(request with { Phase = "AUTHORIZED" });
         await audit.AppendAsync(request);
-        var after = await audit.HasEntryAsync(actionId, "APPLIED");
+        var authorized = await audit.HasEntryAsync(actionId, "AUTHORIZED");
+        var applied = await audit.HasEntryAsync(actionId, "APPLIED");
         var failedPhase = await audit.HasEntryAsync(actionId, "FAILED");
 
         assert(
-            !before && after && !failedPhase,
-            "DEV6 handheld recovery can distinguish an already committed APPLIED Storno audit from a missing phase");
+            !before && authorized && applied && !failedPhase,
+            "DEV6 handheld recovery can distinguish already committed AUTHORIZED/APPLIED Storno audit phases from a missing phase");
 
         var handheld = File.ReadAllText(FindRepoFile(
             "Desktop/src/TorPos.App/RestaurantHandheldService.cs"));
@@ -47,9 +49,12 @@ public static class RestaurantDev6RecoveryTests
                 "_controlledActions.HasEntryAsync(",
                 StringComparison.Ordinal) &&
             handheld.Contains(
+                "\"AUTHORIZED\"",
+                StringComparison.Ordinal) &&
+            handheld.Contains(
                 "\"APPLIED\"",
                 StringComparison.Ordinal),
-            "DEV6 handheld recovered Storno skips an already durable APPLIED audit before retrying kitchen/command completion");
+            "DEV6 handheld recovered Storno skips already durable AUTHORIZED/APPLIED audit phases before retrying fiscal/kitchen/command completion");
     }
 
     private static string FindRepoFile(string relative)
