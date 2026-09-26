@@ -195,3 +195,34 @@ test('preflight-cloud.sh reports every unsafe production setting',{skip},()=>{
     assert.match(r.stdout,msg);
   assert.match(r.stdout,/Ergebnis: \d+ FEHLER - nicht live schalten/);
 });
+
+test('restore-cloud-db.sh: checks the backup, keeps the current database and brings the backup back live',{skip},()=>{
+  const {DatabaseSync}=require('node:sqlite');
+  const b=installBench('restore');
+  assert.equal(b.runInstall().status,3);b.fillEnv();
+  const started=b.runInstall();assert.equal(started.status,0,started.stdout+started.stderr);
+  // The live server writes its startup backup (VACUUM INTO) into TOR_CLOUD_BACKUP_DIR.
+  let backup;for(let i=0;i<40&&!backup;i++){backup=readdirSync(b.backups).find(n=>/^tor-cloud-.*Z\.db$/.test(n));if(!backup)spawnSync('sleep',['0.25']);}
+  assert.ok(backup,'the server wrote a backup');
+  const dbFile=path.join(b.install,'data','tor-cloud.db');
+  const live=new DatabaseSync(dbFile);live.exec('PRAGMA busy_timeout=5000; CREATE TABLE after_backup(v TEXT); INSERT INTO after_backup VALUES(\'neu\');');live.close();
+  const run=file=>spawnSync('bash',[path.join(deploy,'restore-cloud-db.sh'),file],{encoding:'utf8',timeout:60000,
+    env:{...process.env,PATH:path.join(b.root,'bin')+path.delimiter+process.env.PATH,TOR_CLOUD_ENV:b.env,TOR_CLOUD_USER:userInfo().username,TOR_CLOUD_UPDATE_TEST:'1',TOR_CLOUD_HEALTH_WAIT:'20'}});
+
+  const junk=path.join(b.root,'junk.db');writeFileSync(junk,'kein sqlite');
+  const refused=run(junk);
+  assert.equal(refused.status,1);assert.match(refused.stderr,/keine gültige TOR-Cloud-Datenbank - nichts geändert/);
+  assert.doesNotMatch(b.calls(),/^stop/m,'the service was not stopped for a bad backup');
+  assert.equal(run(dbFile).status,1,'the running database itself is refused as a backup');
+
+  const r=run(path.join(b.backups,backup));
+  assert.equal(r.status,0,r.stdout+r.stderr);
+  const restored=new DatabaseSync(dbFile,{readOnly:true});
+  try{assert.equal(restored.prepare("SELECT 1 FROM sqlite_master WHERE name='after_backup'").get(),undefined,'state of the backup is live');}finally{restored.close();}
+  const kept=readdirSync(path.dirname(dbFile)).find(n=>n.startsWith('tor-cloud.db.vor-wiederherstellung-'));
+  assert.ok(kept,'the replaced database is kept');
+  const old=new DatabaseSync(path.join(path.dirname(dbFile),kept,'tor-cloud.db'),{readOnly:true});
+  try{assert.equal(old.prepare('SELECT v FROM after_backup').get().v,'neu');}finally{old.close();}
+  const health=JSON.parse(spawnSync('curl',['-fsS',`http://127.0.0.1:${b.port}/api/health`],{encoding:'utf8'}).stdout);
+  assert.equal(health.ok,true);assert.equal(health.demo,false);
+});
