@@ -204,12 +204,35 @@ public static class RestaurantSplitCalculator
 }
 
 
+public static class RestaurantServiceModes
+{
+    public const string InHouse = "IN_HOUSE";
+    public const string Takeaway = "TAKEAWAY";
+    public const string Pickup = "PICKUP";
+
+    public static string Normalize(string? value) =>
+        (value ?? "").Trim().ToUpperInvariant() switch
+        {
+            Takeaway => Takeaway,
+            Pickup => Pickup,
+            _ => InHouse
+        };
+
+    public static bool IsImHaus(string? value) =>
+        string.Equals(
+            Normalize(value),
+            InHouse,
+            StringComparison.Ordinal);
+}
+
 public sealed record RestaurantCheckoutDraft(
     string SessionId,
     long SessionVersion,
     string OperationId,
     CartLine[] Lines,
-    RestaurantSplitSelection[] Selections)
+    RestaurantSplitSelection[] Selections,
+    string ServiceMode = RestaurantServiceModes.InHouse)
 {
     public long TotalCents => Lines.Sum(x => x.LineTotalCents);
+    public bool ImHaus => RestaurantServiceModes.IsImHaus(ServiceMode);
 }

@@ -449,7 +449,8 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_device_commands") &&
                     TableExists(c, "restaurant_operator_sessions") &&
                     TableExists(c, "restaurant_self_order_tables") &&
-                    TableExists(c, "restaurant_self_order_sessions"),
+                    TableExists(c, "restaurant_self_order_sessions") &&
+                    TableExists(c, "restaurant_session_service_mode"),
                     "Restaurant-only tables including Bestellung, kitchen, reservations, terminal, device-command and Self Order records are created for the Restaurant product");
 
                 assert(
@@ -2476,6 +2477,100 @@ internal static class RestaurantFoundationTests
                         payable.QuantityMilli)
                 });
 
+            var serviceModeArea =
+                await repo.SaveAreaAsync(
+                    "Service Mode",
+                    90);
+            var serviceModeTable =
+                await repo.SaveTableAsync(
+                    serviceModeArea,
+                    "SM-1",
+                    "Abholung",
+                    2,
+                    1);
+            var serviceModeSession =
+                await repo.OpenTableAsync(
+                    serviceModeTable,
+                    "SERVICE-TEST",
+                    1,
+                    deviceId: "TEST");
+
+            assert(
+                await repo.GetServiceModeAsync(
+                    serviceModeSession.Id) ==
+                    RestaurantServiceModes.InHouse,
+                "R-5.3 Restaurant sessions default to IN_HOUSE until the operator selects takeaway or pickup");
+
+            serviceModeSession =
+                await repo.UpdateServiceModeAsync(
+                    serviceModeSession.Id,
+                    serviceModeSession.Version,
+                    RestaurantServiceModes.Pickup,
+                    "SERVICE-TEST",
+                    "TEST");
+
+            var serviceProduct = new Product
+            {
+                Id = 98501,
+                Name = "Abholung Speise",
+                BasePriceCents = 700,
+                VatRate = 7m,
+                Unit = "Stück",
+                ImHausApplicable = true,
+                IsActive = true
+            };
+            var serviceLine =
+                await repo.AddItemAsync(
+                    serviceModeSession.Id,
+                    serviceModeSession.Version,
+                    serviceProduct,
+                    1m,
+                    "SERVICE-TEST",
+                    "TEST");
+            var serviceCurrent =
+                await repo.GetSessionAsync(
+                    serviceModeSession.Id)
+                ?? throw new InvalidOperationException(
+                    "Service mode session missing.");
+            var serviceDraft =
+                await repo.BuildCheckoutDraftAsync(
+                    serviceCurrent.Id,
+                    serviceCurrent.Version,
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            serviceLine.Id,
+                            serviceLine.QuantityMilli)
+                    });
+
+            assert(
+                serviceDraft.ServiceMode ==
+                    RestaurantServiceModes.Pickup &&
+                !serviceDraft.ImHaus,
+                "R-5.3 pickup service mode survives into the immutable Restaurant checkout draft and sale ImHaus flag");
+
+            var serviceModeMutationRejected = false;
+            try
+            {
+                await repo.UpdateServiceModeAsync(
+                    serviceCurrent.Id,
+                    serviceCurrent.Version,
+                    RestaurantServiceModes.Takeaway,
+                    "SERVICE-TEST",
+                    "TEST");
+            }
+            catch (InvalidOperationException ex)
+            {
+                serviceModeMutationRejected =
+                    ex.Message.Contains(
+                        "offenen Positionen",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                serviceModeMutationRejected,
+                "R-5.3 service mode cannot change after open positions exist so fiscal VAT snapshots cannot be rewritten silently");
+
             await using (var exactCents = db.OpenReadConnection())
             await using (var exactQuery = exactCents.CreateCommand())
             {
@@ -2897,6 +2992,7 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_sessions") &&
                     !TableExists(c, "restaurant_bestellungen") &&
                     !TableExists(c, "restaurant_kitchen_jobs") &&
+                    !TableExists(c, "restaurant_session_service_mode") &&
                     !TableExists(c, "restaurant_handheld_devices") &&
                     !TableExists(c, "restaurant_reservations") &&
                     !TableExists(c, "restaurant_terminals") &&

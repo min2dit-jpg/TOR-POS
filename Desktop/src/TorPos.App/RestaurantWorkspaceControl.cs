@@ -63,6 +63,39 @@ public sealed class RestaurantWorkspaceControl : UserControl
         MinHeight = 44
     };
 
+    private readonly ComboBox _serviceMode = new()
+    {
+        MinHeight = 42,
+        MinWidth = 220,
+        ItemsSource = new[]
+        {
+            "IM HAUS",
+            "AUSSER HAUS",
+            "ABHOLUNG"
+        },
+        SelectedIndex = 0,
+        IsEnabled = false
+    };
+
+    private string SelectedServiceMode =>
+        _serviceMode.SelectedIndex switch
+        {
+            1 => RestaurantServiceModes.Takeaway,
+            2 => RestaurantServiceModes.Pickup,
+            _ => RestaurantServiceModes.InHouse
+        };
+
+    private void SelectServiceMode(string mode)
+    {
+        _serviceMode.SelectedIndex =
+            RestaurantServiceModes.Normalize(mode) switch
+            {
+                RestaurantServiceModes.Takeaway => 1,
+                RestaurantServiceModes.Pickup => 2,
+                _ => 0
+            };
+    }
+
     private readonly NumericUpDown _guestCount = new()
     {
         Minimum = 1,
@@ -372,7 +405,9 @@ public sealed class RestaurantWorkspaceControl : UserControl
         };
 
         var details = new StackPanel { Spacing=8,Children={
-            new TextBlock { Text="Gäste" },_guestCount,new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,
+            new TextBlock { Text="Gäste" },_guestCount,
+            new TextBlock { Text="Servicemodus" },_serviceMode,
+            new TextBlock { Text="Tischnotiz / Küchenhinweis" },_tableNote,
             _saveDetails,_takeOver,_reconcileFiscal,tableActions} };
         var right = new StackPanel
         {
@@ -697,6 +732,8 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _cancelItem.IsEnabled = false;
             _guestCount.IsEnabled = true;
             _tableNote.IsEnabled = true;
+            SelectServiceMode(RestaurantServiceModes.InHouse);
+            _serviceMode.IsEnabled = false;
             _saveDetails.IsEnabled = false;
             _takeOver.IsVisible = false;
             _takeOver.IsEnabled = false;
@@ -712,6 +749,10 @@ public sealed class RestaurantWorkspaceControl : UserControl
 
         var currentItems = await _restaurant.ListActiveItemsAsync(
             _selectedSession.Id);
+        var serviceMode =
+            await _restaurant.GetServiceModeAsync(
+                _selectedSession.Id);
+        SelectServiceMode(serviceMode);
 
         var total = currentItems.Sum(x => x.LineTotalCents);
         var paymentLocked =
@@ -745,6 +786,9 @@ public sealed class RestaurantWorkspaceControl : UserControl
         _cancelItem.IsEnabled = false;
         _guestCount.IsEnabled = !mutationLocked;
         _tableNote.IsEnabled = !mutationLocked;
+        _serviceMode.IsEnabled =
+            !mutationLocked &&
+            currentItems.Count == 0;
         _saveDetails.IsEnabled = !mutationLocked;
         _reconcileFiscal.IsVisible =
             _user.IsAdmin &&
@@ -863,6 +907,24 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 999);
 
             var oldNote = _selectedSession.Note;
+            var currentServiceMode =
+                await _restaurant.GetServiceModeAsync(
+                    _selectedSession.Id);
+            var requestedServiceMode = SelectedServiceMode;
+
+            if (!string.Equals(
+                    currentServiceMode,
+                    requestedServiceMode,
+                    StringComparison.Ordinal))
+            {
+                _selectedSession =
+                    await _restaurant.UpdateServiceModeAsync(
+                        _selectedSession.Id,
+                        _selectedSession.Version,
+                        requestedServiceMode,
+                        _user.Username,
+                        Environment.MachineName);
+            }
 
             _selectedSession = await _restaurant.UpdateSessionDetailsAsync(
                 _selectedSession.Id,
@@ -966,6 +1028,21 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 return;
             }
 
+            var persistedServiceMode =
+                await _restaurant.GetServiceModeAsync(
+                    _selectedSession.Id);
+            if (!string.Equals(
+                    persistedServiceMode,
+                    SelectedServiceMode,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Servicemodus zuerst mit TISCHDETAILS SPEICHERN übernehmen.");
+            }
+
+            var imHaus =
+                RestaurantServiceModes.IsImHaus(
+                    persistedServiceMode);
             var quantity = Convert.ToDecimal(_quantity.Value ?? 1m);
             ProductVariant? variant = null;
             MenuComponentSnapshot[] menuComponents =
@@ -1078,7 +1155,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
                 ListUnitPriceCents = unitPriceCents,
                 VatRate = ImHausVat.Effective(
                     product.VatRate,
-                    imHaus: true,
+                    imHaus,
                     product.ImHausApplicable),
                 ImHausApplicable = product.ImHausApplicable,
                 PfandCents = product.PfandCents,
@@ -1091,7 +1168,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
                     MenuVatPolicy.ApplyAllocations(
                         new[] { lineSnapshot },
                         _catalog.Products,
-                        imHaus: true)[0];
+                        imHaus)[0];
             }
 
             lineSnapshot = new CartLine(lineSnapshot)

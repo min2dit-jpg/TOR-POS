@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 46;
+    public const int TargetSchemaVersion = 47;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2442,6 +2442,23 @@ public sealed class SchemaMigrationService
                 q.CommandText="""
                     CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_item_action
                       ON restaurant_kitchen_jobs(session_item_id,action,created_at);
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(47, "RESTAURANT_SERVICE_MODE", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    CREATE TABLE IF NOT EXISTS restaurant_session_service_mode(
+                      session_id TEXT PRIMARY KEY REFERENCES restaurant_sessions(id),
+                      service_mode TEXT NOT NULL DEFAULT 'IN_HOUSE'
+                        CHECK(service_mode IN ('IN_HOUSE','TAKEAWAY','PICKUP')),
+                      updated_at TEXT NOT NULL,
+                      updated_by TEXT NOT NULL DEFAULT '');
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             })

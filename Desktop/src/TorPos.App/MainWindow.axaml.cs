@@ -615,7 +615,7 @@ public partial class MainWindow:Window
 
         _restaurantCheckoutDraft = draft;
         _operationId = draft.OperationId;
-        _imHaus = true;
+        _imHaus = draft.ImHaus;
         RestaurantWorkspaceHost.IsEnabled = false;
 
         try
@@ -3567,7 +3567,7 @@ public partial class MainWindow:Window
                 method,
                 _currentUser.Username,
                 null,
-                true,
+                restaurant.ImHaus,
                 cashPortionCents,
                 "",
                 null,

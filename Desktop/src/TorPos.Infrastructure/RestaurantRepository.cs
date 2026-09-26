@@ -338,6 +338,132 @@ public sealed partial class RestaurantRepository
         });
     }
 
+    public async Task<string> GetServiceModeAsync(
+        string sessionId,
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        if (sessionId.Length == 0)
+            return RestaurantServiceModes.InHouse;
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenReadConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                SELECT service_mode
+                FROM restaurant_session_service_mode
+                WHERE session_id=$session
+                LIMIT 1;
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+            var raw = Convert.ToString(await q.ExecuteScalarAsync(ct));
+            return RestaurantServiceModes.Normalize(raw);
+        });
+    }
+
+    public async Task<RestaurantTableSession> UpdateServiceModeAsync(
+        string sessionId,
+        long expectedVersion,
+        string serviceMode,
+        string actor,
+        string deviceId = "",
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+        serviceMode = RestaurantServiceModes.Normalize(serviceMode);
+
+        if (sessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+        if (expectedVersion < 1)
+            throw new ArgumentOutOfRangeException(nameof(expectedVersion));
+
+        return await IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var tx = c.BeginTransaction();
+
+            await using (var openItems = c.CreateCommand())
+            {
+                openItems.Transaction = tx;
+                openItems.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_session_items
+                    WHERE session_id=$session
+                      AND state='ACTIVE';
+                    """;
+                openItems.Parameters.AddWithValue("$session", sessionId);
+                if (Convert.ToInt32(
+                        await openItems.ExecuteScalarAsync(ct)) > 0)
+                {
+                    throw new InvalidOperationException(
+                        "Servicemodus kann bei offenen Positionen nicht geändert werden.");
+                }
+            }
+
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            await using (var touch = c.CreateCommand())
+            {
+                touch.Transaction = tx;
+                touch.CommandText = """
+                    UPDATE restaurant_sessions
+                    SET updated_at=$now,
+                        version=version+1
+                    WHERE id=$session
+                      AND version=$version
+                      AND state='OPEN';
+                    """;
+                touch.Parameters.AddWithValue("$now", now);
+                touch.Parameters.AddWithValue("$session", sessionId);
+                touch.Parameters.AddWithValue("$version", expectedVersion);
+                if (await touch.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException(
+                        "Tischvorgang wurde zwischenzeitlich geändert. Ansicht aktualisieren.");
+            }
+
+            await using (var save = c.CreateCommand())
+            {
+                save.Transaction = tx;
+                save.CommandText = """
+                    INSERT INTO restaurant_session_service_mode(
+                        session_id,service_mode,updated_at,updated_by)
+                    VALUES($session,$mode,$now,$actor)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        service_mode=excluded.service_mode,
+                        updated_at=excluded.updated_at,
+                        updated_by=excluded.updated_by;
+                    """;
+                save.Parameters.AddWithValue("$session", sessionId);
+                save.Parameters.AddWithValue("$mode", serviceMode);
+                save.Parameters.AddWithValue("$now", now);
+                save.Parameters.AddWithValue("$actor", actor);
+                await save.ExecuteNonQueryAsync(ct);
+            }
+
+            await AppendEventAsync(
+                c,
+                tx,
+                sessionId,
+                "SERVICE_MODE_GEAENDERT",
+                actor,
+                deviceId,
+                System.Text.Json.JsonSerializer.Serialize(
+                    new { serviceMode }),
+                now,
+                ct);
+
+            var result = await ReadSessionAsync(
+                c,
+                tx,
+                sessionId,
+                ct);
+
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
+
     public async Task<RestaurantTableSession> UpdateSessionDetailsAsync(
         string sessionId,
         long expectedVersion,
@@ -1462,6 +1588,22 @@ public sealed partial class RestaurantRepository
             if (session.State != RestaurantTableSessionState.Open)
                 throw new InvalidOperationException("Tisch ist bereits in einem Zahlungs-/Abschlussvorgang.");
 
+            string serviceMode;
+            await using (var mode = c.CreateCommand())
+            {
+                mode.Transaction = tx;
+                mode.CommandText = """
+                    SELECT service_mode
+                    FROM restaurant_session_service_mode
+                    WHERE session_id=$session
+                    LIMIT 1;
+                    """;
+                mode.Parameters.AddWithValue("$session", sessionId);
+                serviceMode = RestaurantServiceModes.Normalize(
+                    Convert.ToString(
+                        await mode.ExecuteScalarAsync(ct)));
+            }
+
             var items = new List<RestaurantSessionItem>();
             foreach (var selection in selections)
             {
@@ -1519,7 +1661,8 @@ public sealed partial class RestaurantRepository
                 expectedSessionVersion,
                 Guid.NewGuid().ToString("N"),
                 cartLines.ToArray(),
-                selections.ToArray());
+                selections.ToArray(),
+                serviceMode);
         });
     }
 
