@@ -44,7 +44,29 @@ if (args.Contains("--restaurant-third"))
     await RestaurantRecipeTests.Run(Assert);
     await RestaurantInterimBillTests.Run(Assert);
     await RestaurantSplitPlannerTests.Run(Assert);
-    await RestaurantWaiterSettlementTests.Run(root, Assert);
+    var restaurantTargetedRoot =
+        Path.Combine(
+            Path.GetTempPath(),
+            "tor-restaurant-targeted-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(restaurantTargetedRoot);
+    try
+    {
+        await RestaurantWaiterSettlementTests.Run(
+            restaurantTargetedRoot,
+            Assert);
+    }
+    finally
+    {
+        try
+        {
+            Directory.Delete(
+                restaurantTargetedRoot,
+                recursive: true);
+        }
+        catch
+        {
+        }
+    }
     await MultiLanguageTests.Run(Assert);
     await AdTvTests.Run(Assert);
     // Existing display fixtures use Windows paths. The complete Windows CI
