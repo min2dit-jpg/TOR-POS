@@ -19,7 +19,16 @@ public static class V1V2ReportTests
         var settings = new SettingsRepository(db);
         var audit = new AuditLogRepository(db);
         var management = new BusinessManagementService(db, settings, audit);
-        var now = DateTimeOffset.Now;
+
+        // Keep report fixtures inside the current local calendar day. CI often
+        // runs shortly after midnight; using DateTimeOffset.Now.AddMinutes(-9)
+        // would then seed yesterday while the HEUTE report correctly starts at
+        // today's midnight, making this otherwise deterministic V-2 test flaky.
+        var localToday = DateTime.Today;
+        var localOffset = TimeZoneInfo.Local.GetUtcOffset(localToday);
+        var now = new DateTimeOffset(
+            localToday.AddMinutes(20),
+            localOffset);
 
         // 0.500 kg x 19.90 EUR/kg with 10 % Angebot: the checkout charges
         // 8.95 EUR (stored), while 0.5 x 17.91 EUR/kg would give 8.96 EUR.
