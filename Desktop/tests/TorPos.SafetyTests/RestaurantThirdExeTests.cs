@@ -213,6 +213,9 @@ internal static class RestaurantThirdExeTests
                     "tor-pos-ci.yml")));
         assert(
             workflowSource.Contains(
+                "TOR-Restaurant-Setup-DEV6-" + "$" + "{{ github.sha }}",
+                StringComparison.Ordinal) &&
+            !workflowSource.Contains(
                 "TOR-Restaurant-Setup-DEV5-" + "$" + "{{ github.sha }}",
                 StringComparison.Ordinal) &&
             !workflowSource.Contains(
@@ -221,7 +224,7 @@ internal static class RestaurantThirdExeTests
             !workflowSource.Contains(
                 "TOR-Restaurant-Setup-DEV-" + "$" + "{{ github.sha }}",
                 StringComparison.Ordinal),
-            "fifth Restaurant development installer (DEV5, merged with main) is uploaded under the DEV5 artifact name, never again as DEV4");
+            "sixth Restaurant development installer (DEV6: DEV5 plus readable action labels) is uploaded as DEV6, never again as DEV5 or DEV4");
 
         var path = Path.Combine(Path.GetTempPath(), "restaurant-third-" + Guid.NewGuid().ToString("N") + ".db");
         var db = await SafetyDatabase.CreateCurrentAsync(path);
