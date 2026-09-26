@@ -146,6 +146,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
 
             if (to < from)
                 issues.Add(new("RANGE", "Enddatum liegt vor dem Startdatum."));
+            issues.AddRange(DsfinvkPreflightChecks.Range(from, to, DateTimeOffset.Now));
 
             await using var c = _db.OpenConnection();
 
@@ -157,6 +158,10 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             var inRange = closings.Where(z => z.CreatedAt >= from && z.CreatedAt <= to).ToList();
             if (inRange.Count == 0)
                 issues.Add(new("NO_CLOSING", "Im gewählten Zeitraum gibt es keinen Kassenabschluss (Z-Bericht). Exportiert werden nur abgeschlossene Zeiträume."));
+            else
+                issues.AddRange(DsfinvkPreflightChecks.ClosingContinuity(
+                    closings.Select(z => z.ZNumber).ToList(),
+                    inRange.Max(z => z.ZNumber)));
 
             var withoutSnapshot = inRange.Where(z => z.Master is null).ToList();
             if (withoutSnapshot.Count > 0)
@@ -170,8 +175,13 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
             var tseWithUnknownAlgorithm = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             var salesWithoutImHaus = 0;
             var withoutStart = 0;
-            void NoteTse(string transactionNumber, string serial) =>
+            var tseSerialsInOrder = new List<string>();
+            void NoteTse(string transactionNumber, string serial)
+            {
                 CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
+                if (!string.IsNullOrWhiteSpace(serial) && !tseSerialsInOrder.Contains(serial, StringComparer.OrdinalIgnoreCase))
+                    tseSerialsInOrder.Add(serial);
+            }
             var outages = await LoadOutagesAsync(c, ct);
             var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
             foreach (var pair in await RestaurantBestellungExportLoader.LoadSaleAllocationGroupsAsync(c, ct))
@@ -305,6 +315,14 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 issues.Add(new("OPEN_PERIOD", open == 1
                     ? "1 Vorgang nach dem letzten Kassenabschluss gehört noch zu keinem Z-Bericht und ist nicht enthalten."
                     : $"{open} Vorgänge nach dem letzten Kassenabschluss gehören noch zu keinem Z-Bericht und sind nicht enthalten.", Blocking: false));
+
+            // Several TSE in one period are legitimate (TSE-Wechsel); each
+            // transition should be documented in the TSE change journal.
+            var documentedTseChanges = (await TseChangeJournal.LoadAllAsync(c, ct))
+                .Where(x => x.Outcome == TseChangeOutcome.Succeeded)
+                .Select(x => (x.Previous.SerialNumber, x.Next.SerialNumber))
+                .ToList();
+            issues.AddRange(DsfinvkPreflightChecks.TsePeriods(tseSerialsInOrder, documentedTseChanges));
 
             // What TOR does not record yet. Stated, not hidden.
             if (!FiscalRelease.ProductionAllowed)

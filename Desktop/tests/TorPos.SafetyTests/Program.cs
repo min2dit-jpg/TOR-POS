@@ -600,6 +600,8 @@ await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
+await GermanFiscalPrepTests.Run(root, Assert);
+FiscalPropertyTests.Run(Assert);
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -674,7 +676,12 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1400;
+// German fiscal prep: 33 checks lock the append-only TSE-Wechsel journal and
+// its notification states, the closed ELSTER/2028 legislation gates, provider
+// readiness, the digital receipt/QR layer, the AI boundary and the DSFinV-K
+// preflight/ZIP packaging; 7 seeded property checks fuzz receipt links,
+// DSFinV-K ranges, cent allocation, CSV and TSE export input.
+const int ExpectedSafetyChecks = 1440;
 
 if (checks != ExpectedSafetyChecks)
 {
