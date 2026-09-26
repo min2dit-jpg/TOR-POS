@@ -138,6 +138,7 @@ public static class RestaurantDev5PaymentTests
         var lineTotal = await ScalarAsync(db, "SELECT line_total_cents FROM restaurant_session_items WHERE id=$i", ("$i", item.Id));
         var paidParts = new List<long>();
         var states = new List<RestaurantTableSessionState>();
+        (long Shown, long Open, long WineLeft) openAfterFirstPart = default;
         var over = "";
         for (var part = 0; part < 3; part++)
         {
@@ -151,6 +152,12 @@ public static class RestaurantDev5PaymentTests
             await ApplyAsync(db, draft, 960200 + part);
             paidParts.Add(draft.TotalCents);
             states.Add((await repo.GetSessionAsync(session.Id))!.State);
+            if (part == 0)
+            {
+                var open = await ScalarAsync(db, "SELECT COALESCE(SUM(line_total_cents-paid_cents),0) FROM restaurant_session_items i JOIN restaurant_sessions s ON s.id=i.session_id WHERE s.state IN ('OPEN','CHECK_REQUESTED') AND i.state='ACTIVE' AND s.assigned_waiter='DEV5-TEST'");
+                var row = (await new RestaurantWaiterSettlementService(db).BuildForOpenPeriodAsync()).Rows.Single(x => x.Waiter == "DEV5-TEST");
+                openAfterFirstPart = (row.OpenTablesCents, open, lineTotal - draft.TotalCents);
+            }
         }
 
         var openRows = await ScalarAsync(db, "SELECT COUNT(*) FROM restaurant_session_items WHERE session_id=$s AND state='ACTIVE'", ("$s", session.Id));
@@ -163,5 +170,9 @@ public static class RestaurantDev5PaymentTests
             states[0] == RestaurantTableSessionState.Open && states[1] == RestaurantTableSessionState.Open &&
             states[2] == RestaurantTableSessionState.Closed,
             $"DEV5 payment: the table stays open while anything is unpaid and closes only with the payment of the last part ({string.Join(" -> ", states)})");
+        assert(
+            openAfterFirstPart.WineLeft == 999 && openAfterFirstPart.Shown == openAfterFirstPart.Open &&
+            openAfterFirstPart.Shown == 900 + 999,
+            $"DEV5 payment: the Kellnerabrechnung shows a partly paid table with what is still open (14,99 - 5,00 = 9,99 EUR here, plus the other open table), not the full amount ({openAfterFirstPart.Shown} cents)");
     }
 }
