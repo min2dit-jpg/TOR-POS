@@ -787,7 +787,11 @@ const int ExpectedSafetyChecks = 1423;
 // lists) plus 23 DEV5 merge checks (schema 42 = C-4 and Restaurant 43-48,
 // history name verification, DEV4 refusal, main-42 upgrades, idempotent
 // restart, reservation lifecycle and checkout/receipt wiring).
-const int RestaurantDev5Checks = 82;
+// DEV6 night hardening adds 21: migration source guard, byte-identical DEV4
+// refusal, check before bootstrap; payment concurrency/repetition/partial
+// payments and the Kellnerabrechnung (8); snapshot and kitchen resend (4);
+// split properties (2); THEKE/TISCHPLAN switch guards (3); installer identity.
+const int RestaurantDev5Checks = 103;
 
 const int TotalSafetyChecks =
     ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
