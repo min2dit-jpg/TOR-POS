@@ -456,6 +456,20 @@ internal static class RestaurantFoundationTests
                     ColumnExists(c, "restaurant_session_items", "fiscal_state"),
                     "K-4 Restaurant schema tracks PENDING versus SECURED fiscal item state");
 
+                await using (var indexCheck = c.CreateCommand())
+                {
+                    indexCheck.CommandText = """
+                        SELECT COUNT(*)
+                        FROM sqlite_master
+                        WHERE type='index'
+                          AND name='ix_restaurant_kitchen_jobs_item_action';
+                        """;
+                    assert(
+                        Convert.ToInt32(
+                            await indexCheck.ExecuteScalarAsync()) == 1,
+                        "R-8 Restaurant schema indexes kitchen lookup by session item/action so KDS stays responsive under load");
+                }
+
                 var immutableBestellung = false;
                 try
                 {

@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 45;
+    public const int TargetSchemaVersion = 46;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -2429,6 +2429,19 @@ public sealed class SchemaMigrationService
                         line_total_cents=
                             CAST(ROUND((quantity_milli * unit_price_cents) / 1000.0) AS INTEGER)
                     WHERE list_unit_price_cents<=0 OR line_total_cents<0;
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(46, "RESTAURANT_KDS_ITEM_LOOKUP_INDEX", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_item_action
+                      ON restaurant_kitchen_jobs(session_item_id,action,created_at);
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             })
