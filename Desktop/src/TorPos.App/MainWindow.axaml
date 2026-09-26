@@ -1104,7 +1104,7 @@
                       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
                         <Button Grid.Column="0" Classes="menuhubaction" Content="Bon-Historie · Heute" Click="OnReceiptHistoryClick"/>
                         <Button Grid.Column="1" Classes="menuhubaction" Content="Einlage / Entnahme" Click="OnCashMovementClick"/>
-                        <Button Grid.Column="2" Classes="menuhubaction" Content="Z-Bericht" Click="OnZReportClick"/>
+                        <Button x:Name="MenuZReportButton" Grid.Column="2" Classes="menuhubaction" Content="Z-Bericht" Click="OnZReportClick"/>
                       </Grid>
                     </StackPanel>
                   </Border>

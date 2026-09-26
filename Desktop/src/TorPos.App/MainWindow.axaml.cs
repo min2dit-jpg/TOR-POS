@@ -2926,7 +2926,35 @@ public partial class MainWindow:Window
         return await _dailyClosingGuard.CheckAsync();
     }
 
+    // Both Z buttons (hidden ZReportButton and the menu tile) share one run:
+    // a second click while the first Z is still being archived would queue
+    // behind it and archive a second, empty Z for the new period.
+    private bool _zReportRunning;
+
     private async void OnZReportClick(object? sender, RoutedEventArgs e)
+    {
+        if (_zReportRunning)
+        {
+            StatusLine = "Z-BERICHT läuft bereits · bitte warten.";
+            return;
+        }
+
+        _zReportRunning = true;
+        var buttons = new[] { ZReportButton, MenuZReportButton };
+        var enabled = buttons.Select(x => x.IsEnabled).ToArray();
+        foreach (var button in buttons) button.IsEnabled = false;
+        try
+        {
+            await RunZReportAsync();
+        }
+        finally
+        {
+            for (var i = 0; i < buttons.Length; i++) buttons[i].IsEnabled = enabled[i];
+            _zReportRunning = false;
+        }
+    }
+
+    private async Task RunZReportAsync()
     {
         if (!RequirePermission(UserPermissions.ZReport, "Z-BERICHT") ||
             !RequireRealMode("Z-BERICHT"))
