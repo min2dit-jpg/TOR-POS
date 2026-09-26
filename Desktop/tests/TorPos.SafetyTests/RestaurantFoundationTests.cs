@@ -1132,6 +1132,28 @@ internal static class RestaurantFoundationTests
                 staleReservationRejected,
                 "Restaurant reservation status advances version and rejects stale writes");
 
+            // A seated party is finished: SEATED -> COMPLETED, and it no
+            // longer holds the table; a finished reservation stays final.
+            var completedReservation = await reservations.SetStatusAsync(
+                seatedReservation.Id,
+                seatedReservation.Version,
+                "COMPLETED",
+                "ADMIN");
+            var seatedCancelRefused = false;
+            var reseated = await reservations.CreateAsync(
+                reservationAt.AddHours(0.5), 60, 2, "Nach Abschluss", "", "", tableId, "ADMIN");
+            var reseatedSeated = await reservations.SetStatusAsync(reseated.Id, reseated.Version, "SEATED", "ADMIN");
+            try { await reservations.SetStatusAsync(reseatedSeated.Id, reseatedSeated.Version, "CANCELLED", "ADMIN"); }
+            catch (InvalidOperationException) { seatedCancelRefused = true; }
+            var completedAgainRefused = false;
+            try { await reservations.SetStatusAsync(completedReservation.Id, completedReservation.Version, "SEATED", "ADMIN"); }
+            catch (InvalidOperationException) { completedAgainRefused = true; }
+            await reservations.SetStatusAsync(reseatedSeated.Id, reseatedSeated.Version, "COMPLETED", "ADMIN");
+            assert(
+                completedReservation.Status == "COMPLETED" && completedReservation.Version == 3 &&
+                reseated.TableId == tableId && seatedCancelRefused && completedAgainRefused,
+                "Restaurant reservation: a seated party is closed with ABGESCHLOSSEN (SEATED -> COMPLETED) and frees the table; a seated one cannot be cancelled and a completed one stays final");
+
             // One table, one party at a time: an overlapping reservation for
             // the same table is refused on create and on table assignment.
             async Task<bool> Refused(Func<Task> action)
@@ -1139,6 +1161,8 @@ internal static class RestaurantFoundationTests
                 try { await action(); return false; }
                 catch (InvalidOperationException ex) when (ex.Message.StartsWith("Tisch ist in diesem Zeitraum bereits reserviert", StringComparison.Ordinal)) { return true; }
             }
+            await reservations.CreateAsync(
+                reservationAt, 120, 3, "Belegt", "", "", tableId, "ADMIN");
             var overlapCreate = await Refused(() => reservations.CreateAsync(
                 reservationAt.AddHours(1), 60, 2, "Überschneidung", "", "", tableId, "ADMIN"));
             var adjacent = await reservations.CreateAsync(

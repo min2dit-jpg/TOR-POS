@@ -249,7 +249,11 @@ public sealed class RestaurantReservationService
                         version=version+1
                     WHERE id=$id
                       AND version=$version
-                      AND status='BOOKED';
+                      -- BOOKED -> SEATED / CANCELLED / NO_SHOW / COMPLETED;
+                      -- a seated party is finished with SEATED -> COMPLETED
+                      -- (it no longer holds the table from then on).
+                      AND (status='BOOKED'
+                           OR (status='SEATED' AND $status='COMPLETED'));
                     """;
                 q.Parameters.AddWithValue("$status", status);
                 q.Parameters.AddWithValue("$now", now);

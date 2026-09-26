@@ -127,6 +127,13 @@ public sealed class RestaurantReservationsWindow : Window
         };
         arrived.Click += async (_, _) => await SetSelectedStatusAsync("SEATED");
 
+        var completed = new Button
+        {
+            Content = "ABGESCHLOSSEN",
+            MinHeight = 42
+        };
+        completed.Click += async (_, _) => await SetSelectedStatusAsync("COMPLETED");
+
         var cancel = new Button
         {
             Content = "STORNO",
@@ -174,7 +181,7 @@ public sealed class RestaurantReservationsWindow : Window
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { arrived, cancel, noShow, refresh }
+            Children = { arrived, completed, cancel, noShow, refresh }
         };
 
         var right = new StackPanel

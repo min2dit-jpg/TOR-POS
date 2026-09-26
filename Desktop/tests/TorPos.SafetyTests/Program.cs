@@ -736,7 +736,8 @@ const int CloudAlignmentChecks = 7;
 // Restaurant: failed Storno printout stays on the KDS (1), no overlapping table reservations (1),
 // no party larger than the table's seats (1).
 // Restaurant local API: atomic typed pairing (1), KDS refused on order data (1).
-const int ExpectedSafetyChecks = 1448;
+// Reservation SEATED -> COMPLETED (1).
+const int ExpectedSafetyChecks = 1449;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {
