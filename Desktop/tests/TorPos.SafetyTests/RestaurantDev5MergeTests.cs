@@ -65,6 +65,32 @@ public static class RestaurantDev5MergeTests
             defined.Skip(42).Select(x => x.Name).SequenceEqual(RestaurantDev5Names) &&
             defined.Skip(42).Select(x => x.Version).SequenceEqual(new[] { 43, 44, 45, 46, 47, 48 }),
             "DEV5 schema: main's 42 stays C-4; the Restaurant migrations follow as 43-48 in their DEV4 order");
+
+        // Source guard: what the file declares (not only what the list exposes)
+        // - one declaration per number, one number per name, 43-48 Restaurant-
+        // only and edition-gated. A parallel branch adding its own 43 or reusing
+        // a name fails here, and the next free number stays 49.
+        var source = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.Infrastructure/SchemaMigrationService.cs"));
+        var declared = System.Text.RegularExpressions.Regex
+            .Matches(source, @"new\(\s*(\d+)\s*,\s*""([A-Z0-9_.]+)""")
+            .Select(m => (Version: int.Parse(m.Groups[1].Value), Name: m.Groups[2].Value, At: m.Index))
+            .ToList();
+        var restaurantGated = declared
+            .Where(d => d.Version is >= 43 and <= 48)
+            .All(d =>
+            {
+                var next = declared.FirstOrDefault(x => x.At > d.At);
+                var body = next.Name is null ? source[d.At..] : source[d.At..next.At];
+                return d.Name.StartsWith("RESTAURANT_", StringComparison.Ordinal) &&
+                       body.Contains("TOR_POS_PRODUCT_EDITION", StringComparison.Ordinal);
+            });
+        assert(
+            declared.Count == SchemaMigrationService.TargetSchemaVersion &&
+            declared.Select(d => (d.Version, d.Name)).SequenceEqual(defined) &&
+            declared.GroupBy(d => d.Version).All(g => g.Count() == 1) &&
+            declared.GroupBy(d => d.Name).All(g => g.Count() == 1) &&
+            restaurantGated,
+            "DEV5 schema source guard: each migration number and name is declared exactly once, 43-48 are Restaurant-only and edition-gated, the next free number is 49");
     }
 
     // A) fresh DB -> 48 with a complete, correctly named history.
@@ -185,6 +211,10 @@ public static class RestaurantDev5MergeTests
                 DELETE FROM schema_migrations WHERE version=42;
                 UPDATE schema_migrations SET version=version-1 WHERE version BETWEEN 43 AND 48;
                 UPDATE schema_version SET version=47 WHERE singleton_id=1;
+                -- A table the legacy bootstrap (SqliteDatabase.InitializeAsync)
+                -- recreates: if it reappears, the bootstrap ran before the check.
+                DROP TABLE category_visual_data;
+                PRAGMA wal_checkpoint(TRUNCATE);
                 """;
             await q.ExecuteNonQueryAsync();
         }
@@ -197,8 +227,10 @@ public static class RestaurantDev5MergeTests
             dev4History.First(x => x.Version == 47).Name == "RESTAURANT_SERVICE_MODE",
             "DEV5 C setup: the database carries the DEV4 history 42-47 without C-4");
 
+        var hashBefore = DatabaseFileHash(db);
         var (_, dev5, backups) = Open(dir, "dev4-restaurant");
         var message = await RefusalAsync(() => dev5.InitializeDatabaseAsync());
+        var hashAfter = DatabaseFileHash(db);
 
         assert(
             message.StartsWith(SchemaMigrationService.Dev4DatabaseRefusedMessage, StringComparison.Ordinal) &&
@@ -216,6 +248,17 @@ public static class RestaurantDev5MergeTests
                 !TableExists(c, "cloud_outbox_rejected") &&
                 CountFiles(backups) == 0,
                 "DEV5 C: the refused DEV4 database is left untouched - migration 48 did not run, it is not counted current and no backup was written");
+        }
+
+        assert(
+            hashBefore.Length > 0 && hashAfter == hashBefore,
+            $"DEV5 C: the refused DEV4 database file is byte-for-byte unchanged (SHA-256 {hashBefore[..Math.Min(12, hashBefore.Length)]}…, database and WAL)");
+
+        await using (var c = db.OpenConnection())
+        {
+            assert(
+                !TableExists(c, "category_visual_data"),
+                "DEV5 C: the history check runs before the legacy bootstrap - a table the bootstrap would recreate is still missing after the refusal");
         }
 
         var secondMessage = await RefusalAsync(() => dev5.InitializeDatabaseAsync());
@@ -526,6 +569,21 @@ public static class RestaurantDev5MergeTests
         q.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=$column;";
         q.Parameters.AddWithValue("$column", column);
         return Convert.ToInt32(q.ExecuteScalar()) == 1;
+    }
+
+    // SHA-256 over the database file and its WAL (the WAL holds committed pages
+    // until a checkpoint); -shm is a reader index, not data.
+    private static string DatabaseFileHash(SqliteDatabase db)
+    {
+        SqliteConnection.ClearAllPools();
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        foreach (var path in new[] { db.DatabasePath, db.DatabasePath + "-wal" })
+        {
+            var bytes = File.Exists(path) ? File.ReadAllBytes(path) : Array.Empty<byte>();
+            sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+        }
+        sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        return Convert.ToHexString(sha.Hash!);
     }
 
     private static int CountFiles(string directory) =>
