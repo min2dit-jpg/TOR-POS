@@ -25,7 +25,9 @@ type Screen =
   | 'salesStats'
   | 'inventoryReport'
   | 'operatorReport'
-  | 'stornoReport';
+  | 'stornoReport'
+  | 'cloud';
+type CloudTab = 'dashboard' | 'reports' | 'devices';
 type Panel = 'payChoice' | 'cash' | 'card' | 'mixed' | 'search' | null;
 
 type Product = {
@@ -79,7 +81,37 @@ type SimulatorContract = {
     card: string;
   };
   demoCatalogs: Record<Mode, Category[]>;
+  cloudPortal?: CloudPortalLabels;
 };
+
+// TOR Cloud customer portal preview. The labels come from the shared contract
+// (checked in CI against Cloud/public); the numbers come only from this
+// simulator session. Nothing is ever sent to TOR Cloud.
+type CloudPortalLabels = {
+  title: string;
+  menu: string[];
+  reports: { turnover: string; zArchive: string; cashMovements: string };
+  deviceStatus: { mode: string; backlog: string; rejected: string; certificate: string };
+  previewNote: string;
+};
+
+const fallbackCloudPortal: CloudPortalLabels = {
+  title: 'TOR POS Cloud – Kundenportal',
+  menu: ['Dashboard', 'Verkäufe', 'Bons', 'Berichte', 'Artikel', 'Warenbestand', 'Mitarbeiter', 'Filialen & Kassen', 'Gerätestatus', 'Sicherheit', 'Support'],
+  reports: { turnover: 'Umsatz im Zeitraum', zArchive: 'Z-Bericht Archiv', cashMovements: 'Einlagen und Entnahmen' },
+  deviceStatus: { mode: 'Betriebsart', backlog: 'Wartende Daten', rejected: 'Von der Cloud abgelehnt', certificate: 'TSE-Zertifikat bis' },
+  previewNote: 'Vorschau mit den Daten dieser Simulator-Sitzung. Keine Verbindung zu TOR Cloud, keine echten Geschäftsdaten.'
+};
+
+function validCloudPortal(value: unknown): value is CloudPortalLabels {
+  const v = value as CloudPortalLabels | undefined;
+  return !!v && typeof v.title === 'string' && Array.isArray(v.menu) && v.menu.length >= 3 &&
+    v.menu.every((item) => typeof item === 'string') &&
+    typeof v.reports?.turnover === 'string' && typeof v.reports?.zArchive === 'string' && typeof v.reports?.cashMovements === 'string' &&
+    typeof v.deviceStatus?.mode === 'string' && typeof v.deviceStatus?.backlog === 'string' &&
+    typeof v.deviceStatus?.rejected === 'string' && typeof v.deviceStatus?.certificate === 'string' &&
+    typeof v.previewNote === 'string';
+}
 
 const SIMULATOR_CONTRACT_URL =
   'https://raw.githubusercontent.com/min2dit-jpg/TOR-POS/main/Shared/simulator-contract.json';
@@ -488,6 +520,8 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
 
   let mode: Mode = 'gastro';
   let screen: Screen = 'cashier';
+  let cloudTab: CloudTab = 'dashboard';
+  let cloudPortal: CloudPortalLabels = fallbackCloudPortal;
   let settingsSection = 'Kasse & Bedienung';
   let view: View = 'categories';
   let categoryId = catalogs.gastro[0].id;
@@ -573,6 +607,7 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
   }
 
   function applyContract(contract: SimulatorContract): void {
+    if (validCloudPortal(contract.cloudPortal)) cloudPortal = contract.cloudPortal;
     catalogs = {
       gastro: contract.demoCatalogs.gastro,
       retail: contract.demoCatalogs.retail
@@ -1029,6 +1064,7 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
       : screen === 'salesStats' ? 'BERICHTE / VERKAUFSSTATISTIK'
       : screen === 'inventoryReport' ? 'BERICHTE / WARENBESTAND'
       : screen === 'operatorReport' ? 'BERICHTE / BEDIENER'
+      : screen === 'cloud' ? 'TOR CLOUD / KUNDENPORTAL · VORSCHAU'
       : 'BERICHTE / STORNO';
 
     return '<div class="posx-management-bar">' +
@@ -1197,6 +1233,107 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
     '</div>';
   }
 
+  // ---------------------------------------------------------------- TOR Cloud portal preview
+  // A receipt marked STORNO/RETOURE in the simulator is a sale that was later
+  // reversed. TOR Cloud receives the sale and its counter-booking, so both
+  // cancel out: turnover and cash/card only keep the sales that stand.
+  function cloudTotals(): { gross: number; bar: number; card: number; sales: number; reversals: number } {
+    const booked = receiptHistory.filter((item) => item.kind === 'sale');
+    const standing = booked.filter((item) => item.status === 'OK');
+    const portion = (item: HistoryReceipt, which: 'bar' | 'card'): number => item.payment === 'GEMISCHT'
+      ? (which === 'bar' ? item.cashPortion ?? 0 : item.cardPortion ?? 0)
+      : (item.payment === (which === 'bar' ? 'BAR' : 'KARTE') ? item.total : 0);
+    return {
+      gross: standing.reduce((sum, item) => sum + item.total, 0),
+      bar: standing.reduce((sum, item) => sum + portion(item, 'bar'), 0),
+      card: standing.reduce((sum, item) => sum + portion(item, 'card'), 0),
+      sales: booked.length,
+      reversals: booked.filter((item) => item.status !== 'OK').reduce((sum, item) => sum + item.total, 0)
+    };
+  }
+
+  function cloudTableMarkup(className: string, head: string[], rows: string[][], empty: string): string {
+    return '<div class="posx-data-table posx-cloud-table ' + className + '">' +
+      '<div class="head">' + head.map((cell) => '<b>' + cell + '</b>').join('') + '</div>' +
+      (rows.length ? rows.map((row) => '<div>' + row.join('') + '</div>').join('') : '<div class="posx-cloud-empty"><span>' + empty + '</span></div>') +
+    '</div>';
+  }
+
+  function cloudDashboardMarkup(): string {
+    const totals = cloudTotals();
+    const recent = receiptHistory.filter((item) => item.kind === 'sale').slice(-8).reverse();
+    return '<div class="posx-report-kpis">' +
+        '<article><span>UMSATZ HEUTE</span><strong>' + euro(totals.gross) + '</strong></article>' +
+        '<article><span>BONS</span><strong>' + totals.sales + '</strong></article>' +
+        '<article><span>BAR</span><strong>' + euro(totals.bar) + '</strong></article>' +
+        '<article><span>KARTE</span><strong>' + euro(totals.card) + '</strong></article>' +
+      '</div>' +
+      '<h4 class="posx-cloud-heading">Letzte Verkäufe</h4>' +
+      cloudTableMarkup('posx-cloud-sales', ['Bon', 'Zeit', 'Zahlart', 'Art', 'Betrag'],
+        recent.map((item) => ['<strong>#' + item.number + '</strong>', '<span>' + item.time + '</span>', '<span>' + (item.payment ?? '—') + '</span>',
+          '<span>' + (item.status === 'OK' ? 'Verkauf' : item.status === 'STORNO' ? 'Verkauf · storniert' : 'Verkauf · retourniert') + '</span>', '<b>' + euro(item.total) + '</b>']),
+        'Noch keine Verkäufe in dieser Sitzung.');
+  }
+
+  function cloudReportsMarkup(): string {
+    const totals = cloudTotals();
+    const today = new Date().toLocaleDateString(locale);
+    return '<h4 class="posx-cloud-heading">' + escapeHtml(cloudPortal.reports.turnover) + '</h4>' +
+      '<p class="posx-cloud-hint">Storno und Retoure sind abgezogen. In TOR Cloud frei wählbarer Zeitraum mit CSV-Download.</p>' +
+      cloudTableMarkup('posx-cloud-turnover', ['Tag', 'Verkäufe', 'Storno / Retoure', 'Bar', 'Karte', 'Umsatz'],
+        [['<strong>' + today + '</strong>', '<span>' + totals.sales + '</span>', '<span>' + euro(-totals.reversals) + '</span>', '<span>' + euro(totals.bar) + '</span>', '<span>' + euro(totals.card) + '</span>', '<b>' + euro(totals.gross) + '</b>']],
+        '') +
+      '<h4 class="posx-cloud-heading">' + escapeHtml(cloudPortal.reports.zArchive) + '</h4>' +
+      cloudTableMarkup('posx-cloud-z', ['Z-Nr.', 'Zeitraum', 'Verkäufe', 'Bar', 'Karte', 'Brutto'],
+        [['<strong>17</strong>', '<span>Vortag · Beispiel</span>', '<span>38</span>', '<span>' + euro(214.6) + '</span>', '<span>' + euro(187.9) + '</span>', '<b>' + euro(402.5) + '</b>']],
+        '') +
+      '<p class="posx-cloud-hint">Der Z-Bericht erscheint in TOR Cloud, sobald er an der Kasse abgeschlossen wird. Im Simulator ist nur ein Beispiel hinterlegt.</p>' +
+      '<h4 class="posx-cloud-heading">' + escapeHtml(cloudPortal.reports.cashMovements) + '</h4>' +
+      cloudTableMarkup('posx-cloud-cash', ['Zeit', 'Art', 'Grund', 'Betrag'],
+        cashMovements.map((item) => ['<span>' + item.time + '</span>', '<strong class="' + item.type.toLowerCase() + '">' + (item.type === 'EINLAGE' ? 'Einlage' : 'Entnahme') + '</strong>',
+          '<span>' + escapeHtml(item.note) + '</span>', '<b>' + (item.type === 'ENTNAHME' ? '−' : '') + euro(item.amount) + '</b>']),
+        'Noch keine Einlage oder Entnahme.');
+  }
+
+  function cloudDevicesMarkup(): string {
+    const until = new Date();
+    until.setFullYear(until.getFullYear() + 4);
+    const line = (label: string, value: string): string => '<div><span>' + escapeHtml(label) + '</span><b>' + escapeHtml(value) + '</b></div>';
+    return '<div class="posx-cloud-device">' +
+      '<div class="posx-cloud-device-head"><div><small>Filiale · Demo</small><h4>Kasse 1</h4><span>DEMO-KASSE-01 · TOR ' + escapeHtml(editionName()) + '</span></div><em>● Online</em></div>' +
+      '<div class="posx-cloud-device-grid">' +
+        line('Software', 'Online-Simulator') +
+        line('TSE', 'Simuliert – keine TSE') +
+        line(cloudPortal.deviceStatus.mode, 'Testbetrieb') +
+        line(cloudPortal.deviceStatus.backlog, '0') +
+        line(cloudPortal.deviceStatus.rejected, '0') +
+        line(cloudPortal.deviceStatus.certificate, until.toLocaleDateString(locale) + ' · Beispiel') +
+      '</div>' +
+    '</div>';
+  }
+
+  function cloudMarkup(): string {
+    const active: Record<CloudTab, string> = { dashboard: cloudPortal.menu[0] ?? 'Dashboard', reports: cloudPortal.menu.find((m) => /bericht/i.test(m)) ?? 'Berichte', devices: cloudPortal.menu.find((m) => /gerät/i.test(m)) ?? 'Gerätestatus' };
+    const tabOf = (item: string): CloudTab | null => (Object.keys(active) as CloudTab[]).find((key) => active[key] === item) ?? null;
+    return '<div class="posx-management-screen posx-cloud">' +
+      '<div class="posx-management-title"><div><span>TOR CLOUD · VORSCHAU</span><h3>' + escapeHtml(cloudPortal.title) + '</h3><p>' + escapeHtml(cloudPortal.previewNote) + '</p></div></div>' +
+      '<div class="posx-cloud-layout">' +
+        '<nav class="posx-cloud-nav" aria-label="TOR Cloud">' +
+          cloudPortal.menu.map((item) => {
+            const tab = tabOf(item);
+            return tab
+              ? '<button type="button" data-cloud-tab="' + tab + '" class="' + (tab === cloudTab ? 'active' : '') + '">' + escapeHtml(item) + '</button>'
+              : '<button type="button" disabled title="In der Vorschau nicht enthalten">' + escapeHtml(item) + '</button>';
+          }).join('') +
+        '</nav>' +
+        '<section class="posx-cloud-main">' +
+          (cloudTab === 'reports' ? cloudReportsMarkup() : cloudTab === 'devices' ? cloudDevicesMarkup() : cloudDashboardMarkup()) +
+        '</section>' +
+      '</div>' +
+      '<div class="posx-exchange-note">DEMO · Die echte TOR Cloud zeigt diese Übersicht mit den Daten der eigenen Kassen – verschlüsselt, getrennt pro Betrieb und mit Zwei-Faktor-Anmeldung.</div>' +
+    '</div>';
+  }
+
   function reportSales(): HistoryReceipt[] {
     return receiptHistory.filter((item) => item.kind === 'sale' && item.status === 'OK');
   }
@@ -1220,6 +1357,7 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
         '<section><strong>TAGESKONTROLLE</strong><button type="button" data-management="xreport">X-Bericht</button><button type="button" data-management="cashCount">Kassensturz</button><button type="button" data-management="cashJournal">Kassenjournal</button></section>' +
         '<section><strong>VERKAUF / BESTAND</strong><button type="button" data-management="turnover">Umsatzberichte</button><button type="button" data-management="monthly">Monatsbericht / Monatsumsatz</button><button type="button" data-management="salesStats">Verkaufsstatistik · Artikel</button><button type="button" data-management="inventoryReport">Warenbestand</button></section>' +
         '<section><strong>ARCHIV / PERSONAL</strong><button type="button" data-demo-action>Z-Abschluss-Journal</button><button type="button" data-management="operatorReport">Bedienerabrechnung</button><button type="button" data-management="stornoReport">Stornobericht</button><button type="button" data-demo-action>Personalüberwachung</button></section>' +
+        '<section><strong>TOR CLOUD</strong><button type="button" data-management="cloud">Kundenportal · Vorschau</button></section>' +
         '<section><strong>E-MAIL / PDF</strong><button type="button" data-demo-action>Bericht als PDF · Demo</button><button type="button" data-demo-action>Bericht per E-Mail · Demo</button></section>' +
       '</div>' +
     '</div>';
@@ -1388,6 +1526,7 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
     if (screen === 'inventoryReport') return inventoryReportMarkup();
     if (screen === 'operatorReport') return operatorReportMarkup();
     if (screen === 'stornoReport') return stornoReportMarkup();
+    if (screen === 'cloud') return cloudMarkup();
     return kasseHomeMarkup();
   }
 
@@ -1572,11 +1711,21 @@ export function mountTorSimulator(rootId: string, lang: SimulatorLang): void {
           next === 'salesStats' ||
           next === 'inventoryReport' ||
           next === 'operatorReport' ||
-          next === 'stornoReport'
+          next === 'stornoReport' ||
+          next === 'cloud'
         ) {
           screen = next;
           render();
         }
+      });
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('[data-cloud-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const next = button.dataset.cloudTab;
+        if (next !== 'dashboard' && next !== 'reports' && next !== 'devices') return;
+        cloudTab = next;
+        render();
       });
     });
 

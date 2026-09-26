@@ -2241,3 +2241,127 @@
     min-width: 700px;
   }
 }
+
+/* TOR Cloud customer portal preview (session data only, no connection to TOR Cloud) */
+.posx-cloud-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.posx-cloud-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #294765;
+  border-radius: 10px;
+  background: #0e1d2d;
+}
+
+.posx-cloud-nav button {
+  text-align: left;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #dce8f3;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.posx-cloud-nav button.active {
+  border-color: #53e0c0;
+  background: #1d3a55;
+  color: #fff;
+}
+
+.posx-cloud-nav button:disabled {
+  color: #5f7a91;
+  cursor: default;
+}
+
+.posx-cloud-main {
+  min-width: 0;
+}
+
+.posx-cloud-heading {
+  margin: 14px 0 0;
+  color: #fff;
+  font-size: 12px;
+}
+
+.posx-cloud-hint {
+  margin: 4px 0 0;
+  color: #8fb4d0;
+  font-size: 9px;
+}
+
+.posx-cloud-sales > div {
+  grid-template-columns: 70px 70px 80px minmax(130px, 1fr) 100px;
+}
+
+.posx-cloud-turnover > div {
+  grid-template-columns: minmax(90px, 1fr) 70px 110px 90px 90px 100px;
+}
+
+.posx-cloud-z > div {
+  grid-template-columns: 60px minmax(120px, 1fr) 70px 90px 90px 100px;
+}
+
+.posx-cloud-cash > div {
+  grid-template-columns: 70px 90px minmax(140px, 1fr) 90px;
+}
+
+.posx-cloud-cash .einlage { color: #72e9a4; }
+.posx-cloud-cash .entnahme { color: #ff9b8e; }
+
+.posx-cloud-empty {
+  grid-template-columns: 1fr !important;
+  color: #8fb4d0;
+}
+
+.posx-cloud-device {
+  padding: 12px;
+  border: 1px solid #294765;
+  border-radius: 10px;
+  background: #0e1d2d;
+  color: #dce8f3;
+}
+
+.posx-cloud-device-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.posx-cloud-device-head small { color: #8fb4d0; font-size: 9px; }
+.posx-cloud-device-head h4 { margin: 2px 0; color: #fff; font-size: 14px; }
+.posx-cloud-device-head span { color: #8fb4d0; font-size: 9px; }
+.posx-cloud-device-head em { color: #72e9a4; font-style: normal; font-size: 10px; }
+
+.posx-cloud-device-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+  margin-top: 10px;
+}
+
+.posx-cloud-device-grid > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #213b53;
+  font-size: 10px;
+}
+
+.posx-cloud-device-grid span { color: #8fb4d0; }
+
+@media (max-width: 760px) {
+  .posx-cloud-layout { grid-template-columns: 1fr; }
+  .posx-cloud-nav { flex-direction: row; flex-wrap: wrap; }
+  .posx-cloud-device-grid { grid-template-columns: 1fr; }
+}
