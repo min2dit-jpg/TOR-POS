@@ -763,8 +763,42 @@ public partial class SettingsWindow : Window
                 terminalEnabled.IsChecked = false;
         }
 
+        var tseBefore = await _settings.LoadAllAsync();
         await _settings.SaveManyAsync(values);
+        await RecordTseChangeAsync(tseBefore, "Manuelle Änderung der TSE-Einstellungen", TseChangeOutcome.Succeeded, "");
         TouchKeyboard.AutoOpen = values.GetValueOrDefault("ui.keyboard.auto", "true") != "false";
+    }
+
+    /// <summary>
+    /// Documents a TSE-Wechsel in the append-only journal when the TSE serial
+    /// or provider in the settings changed. It never touches sales or TSE data;
+    /// a failure to document is shown, not hidden.
+    /// </summary>
+    private async Task<string> RecordTseChangeAsync(
+        IReadOnlyDictionary<string,string> before,
+        string reason,
+        TseChangeOutcome outcome,
+        string error)
+    {
+        try
+        {
+            var db = new SqliteDatabase(AppPaths.DatabasePath);
+            var change = await TseChangeRecorder.RecordIfChangedAsync(
+                new TseChangeJournal(db),
+                new SystemIdentityRepository(db),
+                before,
+                await _settings.LoadAllAsync(),
+                reason,
+                _currentUser.Username,
+                outcome,
+                outcome == TseChangeOutcome.Failed ? "TSE_ACTIVATION_FAILED" : "",
+                string.IsNullOrWhiteSpace(error) && outcome == TseChangeOutcome.Failed ? "Aktivierung fehlgeschlagen" : error);
+            return change is null ? "" : " · TSE-Wechsel protokolliert";
+        }
+        catch (Exception ex)
+        {
+            return " · ⚠ TSE-Wechsel konnte nicht protokolliert werden: " + ex.Message;
+        }
     }
 
     private Control TaxesPage()
@@ -2881,6 +2915,7 @@ private Control TsePage()
     {
         SettingsStatus = "Swissbit SDK und TSE werden geprüft ...";
 
+        var tseBefore = await _settings.LoadAllAsync();
         var result =
             await _tseProvider.ProbeAsync();
 
@@ -2935,7 +2970,8 @@ private Control TsePage()
                     _text["tse.expiry_date"].Text ?? ""
             });
 
-        SettingsStatus = result.Message;
+        SettingsStatus = result.Message +
+            await RecordTseChangeAsync(tseBefore, "TSE bei Geräteprüfung erkannt", TseChangeOutcome.Succeeded, "");
     };
 
     activate.Click += async (_,_) =>
@@ -2956,6 +2992,8 @@ private Control TsePage()
 
         SettingsStatus =
             "Swissbit TSE-Aktivierung läuft. TSE nicht entfernen ...";
+
+        var tseBefore = await _settings.LoadAllAsync();
 
         var result =
             await _tseProvider.ActivateAsync(request);
@@ -3042,7 +3080,12 @@ private Control TsePage()
                     _text["tse.expiry_date"].Text ?? ""
             });
 
-        SettingsStatus = result.Message + masterDataNote;
+        SettingsStatus = result.Message + masterDataNote +
+            await RecordTseChangeAsync(
+                tseBefore,
+                "TSE-Aktivierung",
+                result.Success ? TseChangeOutcome.Succeeded : TseChangeOutcome.Failed,
+                result.Success ? "" : result.Message);
     };
 
     exportTar.Click += async (_,_) =>
@@ -3079,9 +3122,21 @@ private Control TsePage()
     sdkRow.Children.Add(chooseSdk);
     sdkRow.Children.Add(swissbitDownload);
 
+    // Every TSE-Wechsel is journaled; this shows it and lets an administrator
+    // record the manual Mein-ELSTER notification.
+    var changeJournal = new Button
+    {
+        Content = "TSE-WECHSELPROTOKOLL",
+        MinHeight = 48,
+        MinWidth = 180
+    };
+    changeJournal.Click += async (_,_) =>
+        await TseChangeJournalWindow.ForDatabase(_currentUser.Username, _currentUser.IsAdmin).ShowDialog(this);
+
     actionRow.Children.Add(detect);
     actionRow.Children.Add(activate);
     actionRow.Children.Add(exportTar);
+    actionRow.Children.Add(changeJournal);
 
     actions.Children.Add(sdkRow);
     actions.Children.Add(actionRow);

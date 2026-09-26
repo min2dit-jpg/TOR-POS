@@ -600,6 +600,24 @@ await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
+await GermanFiscalPrepTests.Run(root, Assert);
+FiscalPropertyTests.Run(Assert);
+await RetailGastroFollowUpTests.Run(root, Assert);
+ProviderResponsePropertyTests.Run(Assert);
+InvoiceRequestContractTests.Run(Assert);
+// German fiscal prep, counted separately from ExpectedSafetyChecks so parallel
+// branches that raise that baseline merge without conflict:
+// 33 checks lock the append-only TSE-Wechsel journal and its notification
+// states, the closed ELSTER/2028 legislation gates, provider readiness, the
+// digital receipt/QR layer, the AI boundary and the DSFinV-K preflight/ZIP
+// packaging; 7 seeded property checks fuzz receipt links, DSFinV-K ranges,
+// cent allocation, CSV and TSE export input. Einzelhandel/Gastro follow-up (17):
+// V-3 export off the write queue, O-3 probe cache, receipt policy in the
+// checkout, TSE-Wechselprotokoll window, 3 load checks, 2 seeded EAN/scale
+// checks, G-4 licence/trial hardening (4) and the O-15 split-data warning.
+// Provider answers (2 seeded: card terminal outcomes, fiskaltrust signatures)
+// and the E-Rechnung request boundary (3).
+const int GermanFiscalPrepChecks = 62;
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -676,10 +694,10 @@ await BarTestBonPreparationTests.Run(Assert);
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
 const int ExpectedSafetyChecks = 1400;
 
-if (checks != ExpectedSafetyChecks)
+if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks)
 {
     throw new Exception(
-        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks}, actual {checks}. " +
+        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks + GermanFiscalPrepChecks}, actual {checks}. " +
         "Update the reviewed baseline intentionally before accepting a changed test count.");
 }
 

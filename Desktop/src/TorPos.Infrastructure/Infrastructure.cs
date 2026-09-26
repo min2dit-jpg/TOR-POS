@@ -2313,7 +2313,10 @@ public async Task<Sale> CommitAsync(CheckoutSnapshot snapshot, CancellationToken
         await using var c = _db.OpenConnection();
         return await LoadSaleAsync(c, id, ct);
     });
-}public async Task<IReadOnlyList<Sale>> SearchHistoryAsync(DateOnly from, DateOnly to,
+}
+/// <summary>V-3: the DSFinV-K export reads sales on its own snapshot connection, outside IoQueue.</summary>
+internal static Task<Sale?> LoadSaleOnConnectionAsync(SqliteConnection c, long id, CancellationToken ct) =>
+    LoadSaleAsync(c, id, ct);public async Task<IReadOnlyList<Sale>> SearchHistoryAsync(DateOnly from, DateOnly to,
     long? receiptNumber = null, PaymentMethod? method = null, CancellationToken ct = default)
 {
     if (to < from) throw new ArgumentException("Das Enddatum liegt vor dem Startdatum.");

@@ -16,18 +16,72 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class TseFailSafeService
 {
+    /// <summary>
+    /// O-3: how long a successful (Ready) probe may stand in for the re-probe
+    /// before a transaction. Only Ready results are kept; every failure clears
+    /// the cache, and certificate expiry and TSE generation are still checked
+    /// against the cached device at the current time. A TSE removed within
+    /// this window fails at StartTransaction and is documented as an outage.
+    /// </summary>
+    public static readonly TimeSpan ReadyProbeLifetime = TimeSpan.FromSeconds(30);
+
     private readonly ITseProvider _provider;
     private readonly ITseOutageRepository _outages;
     private readonly IAuditLog _audit;
+    private readonly TimeProvider _time;
+    private readonly object _probeLock = new();
+    private TseProbeResult? _readyProbe;
+    private long _readyProbeAt;
 
     public TseFailSafeService(
         ITseProvider provider,
         ITseOutageRepository outages,
-        IAuditLog audit)
+        IAuditLog audit,
+        TimeProvider? time = null)
     {
         _provider = provider;
         _outages = outages;
         _audit = audit;
+        _time = time ?? TimeProvider.System;
+    }
+
+    private void RememberProbe(TseProbeResult result)
+    {
+        lock (_probeLock)
+        {
+            if (result.State == TseConnectionState.Ready)
+            {
+                _readyProbe = result;
+                _readyProbeAt = _time.GetTimestamp();
+            }
+            else
+            {
+                _readyProbe = null;
+            }
+        }
+    }
+
+    /// <summary>Drops the cached probe; the next transaction probes the TSE again.</summary>
+    public void ForgetProbe()
+    {
+        lock (_probeLock)
+            _readyProbe = null;
+    }
+
+    private async Task<TseProbeResult> ProbeForTransactionAsync(CancellationToken ct)
+    {
+        lock (_probeLock)
+        {
+            if (_readyProbe is not null &&
+                _time.GetElapsedTime(_readyProbeAt) < ReadyProbeLifetime)
+            {
+                return _readyProbe;
+            }
+        }
+
+        var probe = await _provider.ProbeAsync(ct);
+        RememberProbe(probe);
+        return probe;
     }
 
     /// <summary>
@@ -43,6 +97,7 @@ public sealed class TseFailSafeService
         string actor = "SYSTEM",
         CancellationToken ct = default)
     {
+        ForgetProbe();
         await _outages.OpenAsync(reason, actor, ct);
 
         await _audit.WriteAsync(
@@ -93,6 +148,8 @@ public sealed class TseFailSafeService
                     ct);
             }
 
+            RememberProbe(result);
+
             if (result.State == TseConnectionState.Ready)
             {
                 await _outages.CloseOpenAsync(actor, ct);
@@ -112,6 +169,7 @@ public sealed class TseFailSafeService
         }
         catch (Exception ex)
         {
+            ForgetProbe();
             await _outages.OpenAsync(
                 $"{ex.GetType().Name}: {ex.Message}",
                 actor,
@@ -140,8 +198,9 @@ public sealed class TseFailSafeService
         try
         {
             // Certificate safety is independent of acceptance paperwork.
-            // Re-probe the actually connected TSE before every transaction.
-            var releaseProbe = await _provider.ProbeAsync(ct);
+            // Re-probe the actually connected TSE before every transaction;
+            // O-3: a Ready probe younger than ReadyProbeLifetime is reused.
+            var releaseProbe = await ProbeForTransactionAsync(ct);
             var releaseCertificate =
                 TseCertificatePolicy.Evaluate(
                     releaseProbe.Device?.CertificateExpiresAtUtc,
@@ -149,6 +208,7 @@ public sealed class TseFailSafeService
 
             if (releaseCertificate.State == TseCertificateState.Expired)
             {
+                ForgetProbe();
                 var reason = releaseCertificate.Message;
 
                 await _outages.OpenAsync(reason, actor, ct);
@@ -270,6 +330,7 @@ public sealed class TseFailSafeService
                 return (result, false);
             }
 
+            ForgetProbe();
             await _outages.OpenAsync(
                 result.Message,
                 actor,
@@ -279,6 +340,7 @@ public sealed class TseFailSafeService
         }
         catch (Exception ex)
         {
+            ForgetProbe();
             await _outages.OpenAsync(
                 $"{ex.GetType().Name}: {ex.Message}",
                 actor,
@@ -311,6 +373,7 @@ public sealed class TseFailSafeService
                 return (result, false);
             }
 
+            ForgetProbe();
             await _outages.OpenAsync(
                 result.Message,
                 actor,
@@ -320,6 +383,7 @@ public sealed class TseFailSafeService
         }
         catch (Exception ex)
         {
+            ForgetProbe();
             await _outages.OpenAsync(
                 $"{ex.GetType().Name}: {ex.Message}",
                 actor,

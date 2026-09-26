@@ -116,9 +116,14 @@ public static class R171ReviewTests
             delivery.Contains("STEUERBERATER-ADRESSE", StringComparison.Ordinal),
             "R171 delivery assistant offers removable-media copy, manual folder choice and email to the saved tax-adviser address");
 
+        // The ZIP is built by DsfinvkPackage, which also verifies every entry
+        // byte for byte against the export folder before it may be sent.
+        var package = File.ReadAllText(
+            FindRepoFile("Desktop/src/TorPos.Infrastructure/DsfinvkPackage.cs"));
         assert(
-            delivery.Contains("ZipFile.CreateFromDirectory(", StringComparison.Ordinal) &&
-            delivery.Contains("includeBaseDirectory: true", StringComparison.Ordinal) &&
+            delivery.Contains("DsfinvkPackage.Create(_exportFolder, zip)", StringComparison.Ordinal) &&
+            package.Contains("ZipFile.CreateFromDirectory(", StringComparison.Ordinal) &&
+            package.Contains("includeBaseDirectory: true", StringComparison.Ordinal) &&
             delivery.Contains("MaxMailZipBytes = 15L * 1024 * 1024", StringComparison.Ordinal) &&
             delivery.Contains("SendFilesAsync(", StringComparison.Ordinal),
             "R171 email delivery packages the complete DSFinV-K folder into one bounded ZIP attachment");
