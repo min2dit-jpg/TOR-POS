@@ -218,5 +218,21 @@
         ]
       }
     ]
+  },
+  "cloudPortal": {
+    "title": "TOR POS Cloud – Kundenportal",
+    "menu": ["Dashboard", "Verkäufe", "Bons", "Berichte", "Artikel", "Warenbestand", "Mitarbeiter", "Filialen & Kassen", "Gerätestatus", "Sicherheit", "Support"],
+    "reports": {
+      "turnover": "Umsatz im Zeitraum",
+      "zArchive": "Z-Bericht Archiv",
+      "cashMovements": "Einlagen und Entnahmen"
+    },
+    "deviceStatus": {
+      "mode": "Betriebsart",
+      "backlog": "Wartende Daten",
+      "rejected": "Von der Cloud abgelehnt",
+      "certificate": "TSE-Zertifikat bis"
+    },
+    "previewNote": "Vorschau mit den Daten dieser Simulator-Sitzung. Keine Verbindung zu TOR Cloud, keine echten Geschäftsdaten."
   }
 }

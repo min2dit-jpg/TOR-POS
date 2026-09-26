@@ -54,6 +54,9 @@ if (args.Contains("--restaurant-third"))
         await RestaurantWaiterSettlementTests.Run(
             restaurantTargetedRoot,
             Assert);
+        await RestaurantDev5MergeTests.Run(
+            restaurantTargetedRoot,
+            Assert);
     }
     finally
     {
@@ -465,19 +468,35 @@ Assert(
     (await sales.SearchHistoryAsync(historyDay.AddDays(-1), historyDay.AddDays(-1))).Count == 205,
     "Bon-Historie loads every receipt of a single day without a search/pagination step");
 
-var oldOriginal = (await sales.SearchHistoryAsync(historyDay, historyDay, 91001)).Single();
-var oldReversalReason = await sales.CheckReversalAllowedAsync(oldOriginal.Id, forFullStorno: true);
+// O-8: the reversal window is the open Z period (since the last Tagesabschluss),
+// no longer the calendar day. A receipt inside a CLOSED Z period stays blocked.
+// Checked on its own database: daily_closings cannot be deleted again and a
+// closing here would move the open period of every later check in this file.
+var closedPeriodDb = await SafetyDatabase.CreateCurrentAsync(Path.Combine(root, "o8-closed-period.db"));
+var closedPeriodSales = new SaleRepository(closedPeriodDb);
+long oldOriginalId;
+using (var c = closedPeriodDb.OpenConnection())
+{
+    using var q = c.CreateCommand();
+    q.CommandText = """
+        INSERT INTO sales(receipt_number,created_at,payment_method,subtotal_cents,total_cents) VALUES(91001,'2025-03-30T21:00:00+02:00','CASH',500,500);
+        INSERT INTO daily_closings(closed_at,operator_name) VALUES('2025-03-31T02:00:00+02:00','tester');
+        SELECT id FROM sales WHERE receipt_number=91001;
+        """;
+    oldOriginalId = Convert.ToInt64(q.ExecuteScalar());
+}
+var oldReversalReason = await closedPeriodSales.CheckReversalAllowedAsync(oldOriginalId, forFullStorno: true);
 Assert(
-    oldReversalReason?.Contains("Verkaufstag", StringComparison.OrdinalIgnoreCase) == true,
-    "BON STORNO / Teilretoure pre-check blocks receipts from a previous day before any terminal refund");
+    oldReversalReason?.Contains("Tagesabschluss", StringComparison.OrdinalIgnoreCase) == true,
+    "BON STORNO / Teilretoure pre-check blocks receipts of a closed Z period before any terminal refund");
 await RejectMessage(
-    () => sales.RecordStornoAsync(oldOriginal.Id, "tester", "test"),
-    "Verkaufstag",
-    "Authoritative BON STORNO repository gate rejects a previous-day receipt");
+    () => closedPeriodSales.RecordStornoAsync(oldOriginalId, "tester", "test"),
+    "Tagesabschluss",
+    "Authoritative BON STORNO repository gate rejects a receipt of a closed Z period");
 await RejectMessage(
-    () => sales.RecordReturnAsync(oldOriginal.Id, new[] { new ReturnLineRequest(999999, 1m) }, "tester", "test"),
-    "Verkaufstag",
-    "Authoritative Teilretoure repository gate rejects a previous-day receipt");
+    () => closedPeriodSales.RecordReturnAsync(oldOriginalId, new[] { new ReturnLineRequest(999999, 1m) }, "tester", "test"),
+    "Tagesabschluss",
+    "Authoritative Teilretoure repository gate rejects a receipt of a closed Z period");
 
 using (var c=db.OpenConnection())
 {
@@ -616,6 +635,8 @@ await O6UiErrorGuardTests.Run(Assert);
 await F3F4FiscalGateTests.Run(Assert);
 await F6TseFinishJournalTests.Run(root, Assert);
 await G3UpdateHelperTests.Run(Assert);
+await ReviewFollowUpTests.Run(root, Assert);
+await EinzelhandelGastroFollowUpTests.Run(root, Assert);
 await O1PrintJournalTests.Run(root, Assert);
 await O12CsvImportTests.Run(root, Assert);
 await K3FactoryAdminSecurityTests.Run(root, Assert);
@@ -639,11 +660,35 @@ await RestaurantInterimBillTests.Run(Assert);
 await RestaurantSplitPlannerTests.Run(Assert);
 await RestaurantWaiterSettlementTests.Run(root, Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
+await RestaurantDev5MergeTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
 await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
+await GermanFiscalPrepTests.Run(root, Assert);
+FiscalPropertyTests.Run(Assert);
+await RetailGastroFollowUpTests.Run(root, Assert);
+ProviderResponsePropertyTests.Run(Assert);
+InvoiceRequestContractTests.Run(Assert);
+await CloudContractTests.Run(root, Assert);
+// German fiscal prep, counted separately from ExpectedSafetyChecks so parallel
+// branches that raise that baseline merge without conflict:
+// 33 checks lock the append-only TSE-Wechsel journal and its notification
+// states, the closed ELSTER/2028 legislation gates, provider readiness, the
+// digital receipt/QR layer, the AI boundary and the DSFinV-K preflight/ZIP
+// packaging; 7 seeded property checks fuzz receipt links, DSFinV-K ranges,
+// cent allocation, CSV and TSE export input. Einzelhandel/Gastro follow-up (17):
+// V-3 export off the write queue, O-3 probe cache, receipt policy in the
+// checkout, TSE-Wechselprotokoll window, 3 load checks, 2 seeded EAN/scale
+// checks, G-4 licence/trial hardening (4) and the O-15 split-data warning.
+// Provider answers (2 seeded: card terminal outcomes, fiskaltrust signatures)
+// and the E-Rechnung request boundary (3).
+const int GermanFiscalPrepChecks = 62;
+// TOR Cloud alignment, counted on its own for the same reason: z.closed and
+// cash.movement pinned to Cloud/tests/fixtures and queued in the booking's
+// own transaction, plus the extended heartbeat (7 checks).
+const int CloudAlignmentChecks = 7;
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -718,12 +763,24 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1459;
+// C-4 adds 3 checks: per-event Cloud verdicts; a refused event is parked, never blocks the queue;
+// one more: the Cloud heartbeat reports an open TSE outage.
+// Einzelhandel/Gastro follow-ups add 13 checks: O-8, O-9, O-10, O-13, O-14, O-17 (2), Z bounds (2) and PDF text.
+// O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
+const int ExpectedSafetyChecks = 1423;
+// Restaurant DEV4/DEV5 (feature/restaurant-third-exe), counted on its own like
+// the blocks above so this branch and main stop colliding on one number:
+// not yet reviewed - taken from the first merged Windows CI run (its
+// SAFETY BASELINE MISMATCH line), never estimated.
+const int RestaurantDev5Checks = 0;
 
-if (checks != ExpectedSafetyChecks)
+const int TotalSafetyChecks =
+    ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
+
+if (checks != TotalSafetyChecks)
 {
     throw new Exception(
-        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks}, actual {checks}. " +
+        $"SAFETY BASELINE MISMATCH: expected {TotalSafetyChecks}, actual {checks}. " +
         "Update the reviewed baseline intentionally before accepting a changed test count.");
 }
 

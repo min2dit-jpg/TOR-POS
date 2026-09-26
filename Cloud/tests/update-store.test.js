@@ -7,3 +7,15 @@ test('new publication preserves old installer and disable changes manifest',()=>
 test('lock and absent signature metadata prevent publication',()=>fixture(root=>{const s=path.join(root,'in.exe'),d=path.join(root,'updates');fs.writeFileSync(s,'first');const first=publishVerified(d,options(s));fs.writeFileSync(path.join(d,'.publish.lock'),'busy');assert.throws(()=>publishVerified(d,options(s)));assert.throws(()=>publishVerified(d,{...options(s),signer_thumbprint:''}));assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d,'manifest.json'))),first);}));
 
 test('trial publication is separate, seven-day and independently disableable',()=>fixture(root=>{const s=path.join(root,'demo.exe'),d=path.join(root,'updates');fs.writeFileSync(s,'demo');const trial=publishTrialVerified(d,options(s));assert.equal(trial.trial_days,7);assert.match(trial.filename,/^TOR-POS-Demo-Setup-[A-F0-9]{64}\.exe$/);assert.equal(fs.existsSync(path.join(d,'manifest.json')),false,'trial publishing never overwrites commercial update manifest');disableTrial(d);assert.equal(JSON.parse(fs.readFileSync(path.join(d,'trial-manifest.json'))).enabled,false);}));
+
+// C-2: each product can have its own update channel; the shared one is untouched.
+test('C-2 an edition publication gets its own manifest and product setup name',()=>fixture(root=>{
+ const s=path.join(root,'in.exe'),d=path.join(root,'updates');fs.writeFileSync(s,'shared');const shared=publishVerified(d,options(s));
+ fs.writeFileSync(s,'restaurant');const r=publishVerified(d,{...options(s),edition:'restaurant'});
+ assert.deepEqual(r.editions,['RESTAURANT']);assert.match(r.filename,/^TOR-Restaurant-Setup-[A-F0-9]{64}\.exe$/);
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d,'manifest-RESTAURANT.json'))),r);
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d,'manifest.json'))),shared,'the shared KIOSK/IMBISS channel stays as it was');
+ assert.throws(()=>publishVerified(d,{...options(s),edition:'TISCH'}),/KIOSK, IMBISS oder RESTAURANT/);
+ disable(d,'RESTAURANT');assert.equal(JSON.parse(fs.readFileSync(path.join(d,'manifest-RESTAURANT.json'))).enabled,false);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(d,'manifest.json'))).enabled,true,'disabling one edition leaves the shared channel on');
+}));

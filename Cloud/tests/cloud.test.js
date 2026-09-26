@@ -2,7 +2,7 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
-const {mkdtempSync,rmSync,mkdirSync,writeFileSync,readFileSync}=require('node:fs');
+const {mkdtempSync,rmSync,mkdirSync,writeFileSync,readFileSync,statSync,utimesSync}=require('node:fs');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
@@ -14,7 +14,7 @@ const backups=path.join(root,'backups');
 const headers={'X-Device-Code':'DEMO-KASSE-01','X-Device-Token':'tor-demo-device-token-2026'};
 const BASE32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 function base32Decode(text){const clean=String(text||'').toUpperCase().replace(/[^A-Z2-7]/g,'');let bits=0,value=0;const out=[];for(const ch of clean){const idx=BASE32.indexOf(ch);value=(value<<5)|idx;bits+=5;if(bits>=8){out.push((value>>>(bits-8))&255);bits-=8;}}return Buffer.from(out);}
-function totp(secret){const counter=BigInt(Math.floor(Date.now()/30000)),msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest(),off=h[h.length-1]&15,bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
+function totp(secret,offsetMs=0){const counter=BigInt(Math.floor((Date.now()+offsetMs)/30000)),msg=Buffer.alloc(8);msg.writeBigUInt64BE(counter);const h=crypto.createHmac('sha1',base32Decode(secret)).update(msg).digest(),off=h[h.length-1]&15,bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%1000000).padStart(6,'0');}
 async function request(route,body,extra={}){
  const r=await fetch(base+route,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...extra},body:body===undefined?undefined:JSON.stringify(body)});
  return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};
@@ -77,6 +77,24 @@ test('invalid values and HTML payment types rejected; whole batch rolls back',as
  const badLine=event('badline');badLine.payload.items[0].quantity=4;assert.equal((await sync([badLine])).status,400);
  const unknown={...event('unknown'),type:'sale.completedd'};assert.equal((await sync([unknown])).status,400);
  assert.equal((await request('/api/v1/devices/sync',{},headers)).status,400);
+});
+// C-4: with partial:true one bad event no longer blocks the whole batch.
+test('C-4 partial sync stores good events and reports bad ones per event',async()=>{
+ const invalid=event('c4-invalid');invalid.payload.total_cents=1;
+ const conflict=event('c4-conflict');assert.equal((await sync([conflict])).body.accepted,1);
+ const changed=event('c4-conflict');changed.payload.operator_name='changed';
+ const r=await request('/api/v1/devices/sync',{partial:true,events:[event('c4-before',941),invalid,changed,'not-an-object',event('c4-after',942)]},headers);
+ assert.equal(r.status,200);
+ assert.deepEqual(r.body.results.map(x=>[x.event_id,x.status]),[['c4-before','accepted'],['c4-invalid','rejected'],['c4-conflict','conflict'],['','rejected'],['c4-after','accepted']]);
+ assert.equal(r.body.accepted,2);assert.equal(r.body.rejected,3);assert.ok(r.body.results[1].error);
+ // Stored exactly once: a repeat is a duplicate, and the rejected event left nothing behind.
+ const again=await request('/api/v1/devices/sync',{partial:true,events:[event('c4-before',941),event('c4-after',942)]},headers);
+ assert.deepEqual(again.body.results.map(x=>x.status),['duplicate','duplicate']);
+ const fixed=event('c4-invalid');assert.equal((await request('/api/v1/devices/sync',{partial:true,events:[fixed]},headers)).body.results[0].status,'accepted');
+ // Without partial the old all-or-nothing contract stays.
+ const bad=event('c4-legacy');bad.payload.total_cents=1;
+ assert.equal((await sync([event('c4-legacy-good'),bad])).status,400);
+ assert.equal((await sync([event('c4-legacy-good')])).body.accepted,1);
 });
 test('snapshots replace removed products and older snapshots cannot reverse stock',async()=>{
  const stock=(id,at,items)=>({event_id:id,type:'stock.snapshot',occurred_at:at,payload:{items}});
@@ -210,6 +228,25 @@ test('R48 update manifest and download endpoint',async()=>{
  const current=await request('/api/v1/updates/check?version=0.7.33.48&edition=KIOSK');assert.equal(current.body.update_available,false);
  const du=new URL(check.body.manifest.download_url);const r=await fetch(base+du.pathname);assert.equal(r.status,200);assert.equal(Buffer.from(await r.arrayBuffer()).toString(),'TOR POS fake setup for updater test');
 });
+// C-2: the restaurant edition gets its own installer; the others keep the shared one.
+test('C-2 per-edition update channel serves the restaurant its own setup',async()=>{
+ const updates=path.join(root,'updates'),file='TOR-Restaurant-Setup-TEST.exe',setup=Buffer.from('TOR Restaurant fake setup');
+ writeFileSync(path.join(updates,file),setup);
+ const sha=crypto.createHash('sha256').update(setup).digest('hex').toUpperCase();
+ writeFileSync(path.join(updates,'manifest-RESTAURANT.json'),JSON.stringify({enabled:true,version:'0.7.33.900',revision:'R-REST',published_at:'2026-09-25T00:00:00Z',editions:['RESTAURANT'],filename:file,sha256:sha,signer_thumbprint:'',release_notes:'Restaurant'}));
+ try{
+  const rest=await request('/api/v1/updates/check?version=0.7.33.46&edition=RESTAURANT');
+  assert.equal(rest.body.update_available,true);assert.equal(rest.body.manifest.revision,'R-REST');
+  const dl=await fetch(base+new URL(rest.body.manifest.download_url).pathname);assert.equal(dl.status,200);
+  assert.equal(Buffer.from(await dl.arrayBuffer()).toString(),'TOR Restaurant fake setup');
+  const kiosk=await request('/api/v1/updates/check?version=0.7.33.46&edition=KIOSK');
+  assert.equal(kiosk.body.manifest.revision,'R48-Test','KIOSK stays on the shared manifest');
+  assert.equal((await fetch(base+'/updates/not-in-any-manifest.exe')).status,404);
+  assert.equal((await fetch(base+'/updates/%E0%A4%A')).status,404,'a malformed escape is a 404, not a 500');
+ }finally{rmSync(path.join(updates,'manifest-RESTAURANT.json'),{force:true});}
+ const gone=await request('/api/v1/updates/check?version=0.7.33.46&edition=RESTAURANT');
+ assert.equal(gone.body.update_available,false,'without its own manifest RESTAURANT is not offered the KIOSK/IMBISS setup');
+});
 // R120: the publishing script checks Authenticode, but nothing re-checked the
 // bytes at serve time - so anything able to write into the updates directory
 // bypassed that gate. The download now verifies the file against the manifest
@@ -227,14 +264,71 @@ test('R120 a tampered installer is refused at download time',async()=>{
  const restored=await fetch(base+'/updates/TOR-POS-Pro-Setup.exe');
  assert.equal(restored.status,200);
 });
+// C-3: the hash is cached per file identity. A same-size rewrite that even puts
+// the old mtime back must still miss the cache (ctime/inode change).
+test('C-3 cached installer hash still catches a same-size tamper with restored mtime',async()=>{
+ const target=path.join(root,'updates','TOR-POS-Pro-Setup.exe');
+ const original=readFileSync(target),{atime,mtime}=statSync(target);
+ assert.equal((await fetch(base+'/updates/TOR-POS-Pro-Setup.exe')).status,200);
+ try{
+  const forged=Buffer.from(original);forged[0]^=1;writeFileSync(target,forged);utimesSync(target,atime,mtime);
+  assert.equal((await fetch(base+'/updates/TOR-POS-Pro-Setup.exe')).status,409);
+ } finally { writeFileSync(target,original); }
+ assert.equal((await fetch(base+'/updates/TOR-POS-Pro-Setup.exe')).status,200);
+});
+test('C-3 parallel downloads of a large installer share one hash and all succeed',async()=>{
+ const updates=path.join(root,'updates'),target=path.join(updates,'TOR-POS-Pro-Setup.exe'),manifestPath=path.join(updates,'manifest.json');
+ const original=readFileSync(target),manifest=readFileSync(manifestPath);
+ const big=crypto.randomBytes(24*1024*1024);
+ try{
+  writeFileSync(target,big);
+  writeFileSync(manifestPath,JSON.stringify({...JSON.parse(manifest),sha256:crypto.createHash('sha256').update(big).digest('hex').toUpperCase()}));
+  const downloads=Array.from({length:6},()=>fetch(base+'/updates/TOR-POS-Pro-Setup.exe').then(async r=>({status:r.status,body:Buffer.from(await r.arrayBuffer())})));
+  assert.equal((await fetch(base+'/api/health')).status,200);
+  for(const d of await Promise.all(downloads)){assert.equal(d.status,200);assert.ok(d.body.equals(big));}
+ } finally { writeFileSync(target,original);writeFileSync(manifestPath,manifest); }
+});
 test('R45 TOTP enrollment and challenge login',async()=>{
  const start=await request('/api/2fa/setup/start',{}, {Cookie:otherCookie});assert.equal(start.status,200);assert.match(start.body.secret,/^[A-Z2-7]+$/);
  const confirm=await request('/api/2fa/setup/confirm',{code:totp(start.body.secret)},{Cookie:otherCookie});assert.equal(confirm.status,200);assert.equal(confirm.body.recovery_codes.length,8);
  await request('/api/logout',{}, {Cookie:otherCookie});
  const login=await request('/api/login',{email:'other@test.local',password:'test-password'});assert.equal(login.status,200);assert.equal(login.body.requires_2fa,true);assert.ok(login.body.challenge);
  assert.equal((await request('/api/login/2fa',{challenge:login.body.challenge,code:'000000'})).status,401);
- const ok=await request('/api/login/2fa',{challenge:login.body.challenge,code:totp(start.body.secret)});assert.equal(ok.status,200);assert.ok(ok.cookie);
+ // G-5: the confirm code is burnt; the next login needs the following code.
+ const ok=await request('/api/login/2fa',{challenge:login.body.challenge,code:totp(start.body.secret,30000)});assert.equal(ok.status,200);assert.ok(ok.cookie);
  otherCookie=ok.cookie;
+});
+// G-5: a stolen session must not be able to swap the authenticator, a TOTP code
+// is good for one use only, and successful logins do not feed the lockout.
+async function awayFromTotpBoundary(){const left=30000-Date.now()%30000;if(left<5000)await new Promise(r=>setTimeout(r,left+200));}
+test('G-5 authenticator swap needs password and a fresh code; TOTP codes cannot be replayed',async()=>{
+ const db=new DatabaseSync(path.join(root,'db.sqlite'));db.exec('PRAGMA busy_timeout=5000;');
+ const salt='g5-salt',hash=crypto.scryptSync('test-password',salt,64).toString('hex');
+ db.prepare('INSERT INTO users(business_id,email,display_name,role,password_salt,password_hash,created_at) VALUES(2,?,?,?,?,?,?)').run('g5@test.local','G5','OWNER',salt,hash,'2026-09-07');db.close();
+ await awayFromTotpBoundary();
+ const c=(await request('/api/login',{email:'g5@test.local',password:'test-password'})).cookie;
+ const s1=(await request('/api/2fa/setup/start',{},{Cookie:c})).body.secret;
+ assert.equal((await request('/api/2fa/setup/confirm',{code:totp(s1)},{Cookie:c})).status,200);
+ const bare=await request('/api/2fa/setup/start',{},{Cookie:c});assert.equal(bare.status,401);assert.equal(bare.body.code,'REAUTH_REQUIRED');assert.equal(bare.body.secret,undefined);
+ assert.equal((await request('/api/2fa/setup/start',{password:'test-password',code:totp(s1)},{Cookie:c})).status,401,'the confirm code is already used');
+ assert.equal((await request('/api/2fa/setup/start',{password:'wrong-password',code:totp(s1,30000)},{Cookie:c})).status,401);
+ const swap=await request('/api/2fa/setup/start',{password:'test-password',code:totp(s1,30000)},{Cookie:c});assert.equal(swap.status,200);
+ const s2=swap.body.secret;assert.notEqual(s2,s1);
+ assert.equal((await request('/api/2fa/setup/confirm',{code:totp(s2)},{Cookie:c})).status,200);
+ const login=async()=>(await request('/api/login',{email:'g5@test.local',password:'test-password'})).body.challenge;
+ let challenge=await login();
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s2)})).status,401,'confirm code replayed at login');
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s1,30000)})).status,401,'old authenticator no longer works');
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s2,30000)})).status,200);
+ challenge=await login();
+ assert.equal((await request('/api/login/2fa',{challenge,code:totp(s2,30000)})).status,401,'login code replayed');
+});
+test('G-5 successful logins do not count toward the per-mail lockout',async()=>{
+ const attempt=password=>request('/api/login',{email:'viewer@test.local',password});
+ for(let i=0;i<9;i++)assert.equal((await attempt('wrong')).status,401);
+ assert.equal((await attempt('test-password')).status,200);
+ for(let i=0;i<9;i++)assert.equal((await attempt('wrong')).status,401,'counter must restart after a successful login');
+ assert.equal((await attempt('test-password')).status,200);
 });
 test('credential and browser-origin protection',async()=>{
  assert.equal((await sync([event('forbidden')],{'X-Device-Code':'OTHER-01','X-Device-Token':'tor-demo-device-token-2026'})).status,403);
@@ -266,6 +360,31 @@ test('R125 expired sessions and 2FA challenges are swept without anyone touching
  assert.equal((await request('/api/portal/data',undefined,{Cookie:cookie})).status,200,'the logged-in demo owner stays logged in');
 });
 
+// Review §7: old heartbeats and mails stuck in SENDING are swept as well.
+test('old heartbeats and mails stuck in SENDING are swept; recent ones stay',async()=>{
+ const db=new DatabaseSync(path.join(root,'db.sqlite'));db.exec('PRAGMA busy_timeout=5000;');
+ try{
+  const old='2000-01-01T00:00:00.000Z',now=new Date().toISOString();
+  const ev=db.prepare('INSERT INTO cloud_events(register_id,event_id,event_type,occurred_at,received_at,payload_json) VALUES(1,?,?,?,?,?)');
+  ev.run('hb-old','heartbeat',old,old,'{}');ev.run('hb-new','heartbeat',now,now,'{}');ev.run('sale-old-kept','note.test',old,old,'{}');
+  const mail=db.prepare("INSERT INTO managed_mail_log(register_id,created_at,recipient_hash,subject_hash,attachment_count,total_bytes,status) VALUES(1,?,'r','s',0,0,'SENDING') RETURNING id");
+  const stuck=mail.get(old).id,live=mail.get(now).id;
+  await until(()=>!db.prepare("SELECT 1 FROM cloud_events WHERE event_id='hb-old'").get(),'old heartbeat removed');
+  await until(()=>db.prepare('SELECT status FROM managed_mail_log WHERE id=?').get(stuck).status==='FAILED','stuck mail marked FAILED');
+  assert.ok(db.prepare("SELECT 1 FROM cloud_events WHERE event_id='hb-new'").get(),'a recent heartbeat stays');
+  assert.ok(db.prepare("SELECT 1 FROM cloud_events WHERE event_id='sale-old-kept'").get(),'other old events are never swept');
+  assert.equal(db.prepare('SELECT status FROM managed_mail_log WHERE id=?').get(live).status,'SENDING','a mail being sent right now is left alone');
+ }finally{db.close();}
+});
+test('Origin null and a malformed Host header are refused, not answered with 500',async()=>{
+ assert.equal((await request('/api/logout',{}, {Cookie:cookie,Origin:'null'})).status,403);
+ const http=require('node:http');const {port}=new URL(base);
+ const status=await new Promise((resolve,reject)=>{const r=http.request({host:'127.0.0.1',port,path:'/api/health',method:'GET',headers:{Host:'bad host^'}},res=>{res.resume();resolve(res.statusCode);});r.on('error',reject);r.end();});
+ assert.ok(status<500,`malformed Host answered ${status}`);
+ const check=await fetch(base+'/api/v1/updates/check?version=0.0.1&edition=KIOSK');
+ assert.equal(check.status,200,'the configured public URL is used for the download link, not the Host header');
+ assert.match((await check.json()).manifest.download_url,/^http:\/\/127\.0\.0\.1:9999\/updates\//);
+});
 test('R125 the database is backed up while running and old backups are pruned',async()=>{
  const fs=require('node:fs');
  const fresh=await until(()=>fs.readdirSync(backups).find(name=>/^tor-cloud-\d{8}T\d{6}Z\.db$/.test(name)&&!name.startsWith('tor-cloud-2020')),'startup backup');
@@ -330,7 +449,7 @@ test('R125 provisioning creates a customer whose owner and till work against the
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM businesses WHERE customer_number='TOR-R125-002'").get().n,0,'a refused customer leaves no business row behind');
   assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'Kasse 1',name:'X'}),/Gerätecode/,'a code the till would reject is refused here too');
   assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'R125-KASSE-01',name:'X'}),/bereits vergeben/);
-  assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'R125-KASSE-02',name:'X',edition:'TISCH'}),/KIOSK oder IMBISS/);
+  assert.throws(()=>provision.addRegister(db,{branchId:branch.branchId,deviceCode:'R125-KASSE-02',name:'X',edition:'TISCH'}),/KIOSK, IMBISS oder RESTAURANT/);
  }finally{db.close();}
 
  const lines=[];
@@ -415,9 +534,97 @@ test('R179 reversal sync restores stock and is stored as a signed counter-bookin
  assert.equal(p.body.stock.find(x=>x.product_key==='179').quantity,8);
  const row=p.body.sales.find(x=>x.receipt_number===179002);assert.ok(row);
  assert.equal(row.transaction_type,'RETURN');assert.equal(row.original_receipt_number,179001);assert.equal(row.total_cents,-300);
+ // Review §7: the receipt detail (portal modal) carries the booking type too,
+ // so a Retoure no longer shows up as "Verkauf" there.
+ const detail=(await request('/api/receipts/'+row.sale_id,undefined,{Cookie:cookie})).body.receipt;
+ assert.equal(detail.transaction_type,'RETURN');assert.equal(detail.original_receipt_number,179001);assert.equal(detail.cash_portion_cents,-300);
 });
 
 test('R179 portal labels mixed payment as Gemischt',()=>{
  const app=readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
  assert.match(app,/method==='MIXED'\?'Gemischt'/);
+});
+
+test('Kasse: Z-Bericht and Einlage/Entnahme from the till reach the portal with their full content',async()=>{
+ const z=JSON.parse(readFileSync(path.join(__dirname,'fixtures','z-closed-kasse.json'),'utf8')).payload;
+ const cash=JSON.parse(readFileSync(path.join(__dirname,'fixtures','cash-movement-kasse.json'),'utf8')).payload;
+ const withdrawal={...cash,movement_id:13,movement_type:'WITHDRAWAL',amount_cents:2000,business_case:'Privatentnahme',reason:'Privat'};
+ const payout={...z,z_number:'8',gross_cents:-300,sale_count:1,vat:[{rate:19,net_cents:-252,tax_cents:-48,gross_cents:-300}]};
+ const r=await sync([
+  {event_id:'z-7',type:'z.closed',occurred_at:'2026-09-26T22:05:00+02:00',payload:z},
+  {event_id:'z-8',type:'z.closed',occurred_at:'2026-09-27T22:05:00+02:00',payload:payout},
+  {event_id:'cash-12',type:'cash.movement',occurred_at:'2026-09-26T09:00:00+02:00',payload:cash},
+  {event_id:'cash-13',type:'cash.movement',occurred_at:'2026-09-26T15:00:00+02:00',payload:withdrawal}]);
+ assert.equal(r.status,200);assert.equal(r.body.accepted,4);
+ const p=await request('/api/portal/data',undefined,{Cookie:cookie});
+ const row=p.body.zReports.find(x=>x.z_number==='7');
+ assert.ok(row);
+ assert.equal(row.cash_cents,80000);assert.equal(row.card_cents,43450);
+ assert.equal(row.storno_cents,1800);assert.equal(row.return_cents,1200);assert.equal(row.discount_cents,3550);
+ assert.equal(row.period_from,'2026-09-25T20:10:00.000Z');assert.equal(row.fiscal_status,'PRODUCTION_ALLOWED');
+ assert.deepEqual(row.vat.map(v=>v.gross_cents),[53500,69950]);assert.equal(row.vat_json,undefined);
+ assert.equal(p.body.zReports.find(x=>x.z_number==='8').gross_cents,-300);
+ const moves=p.body.cashMovements.filter(m=>m.reason==='Wechselgeld'||m.reason==='Privat');
+ assert.deepEqual(moves.map(m=>[m.movement_type,m.business_case,m.amount_cents]).sort(),[['DEPOSIT','Geldtransit',5000],['WITHDRAWAL','Privatentnahme',2000]]);
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:otherCookie})).body.zReports.some(x=>x.z_number==='7'),false);
+});
+
+test('Kasse: Z-Bericht and cash movement contents are validated',()=>{
+ const z=JSON.parse(readFileSync(path.join(__dirname,'fixtures','z-closed-kasse.json'),'utf8')).payload;
+ const cash=JSON.parse(readFileSync(path.join(__dirname,'fixtures','cash-movement-kasse.json'),'utf8')).payload;
+ const ev=(type,payload)=>({event_id:'x',type,occurred_at:'2026-09-26T22:05:00+02:00',payload});
+ assert.doesNotThrow(()=>normalizeEvent(ev('z.closed',z)));
+ assert.doesNotThrow(()=>normalizeEvent(ev('z.closed',{z_number:'1',gross_cents:100,sale_count:1})),'an older till sends only number, gross and count');
+ assert.throws(()=>normalizeEvent(ev('z.closed',{...z,vat:[{rate:19,net_cents:1.5,tax_cents:0,gross_cents:0}]})),/vat/);
+ assert.throws(()=>normalizeEvent(ev('z.closed',{...z,period_from:'gestern'})),/period_from/);
+ assert.throws(()=>normalizeEvent(ev('z.closed',{...z,cash_cents:'80000'})),/cash_cents/);
+ assert.throws(()=>normalizeEvent(ev('cash.movement',{...cash,business_case:'Schwarzgeld'})),/business_case/);
+ assert.throws(()=>normalizeEvent(ev('cash.movement',{...cash,amount_cents:-5})),/amount_cents/);
+ assert.doesNotThrow(()=>normalizeEvent(ev('cash.movement',{movement_type:'WITHDRAWAL',amount_cents:100})),'an older till sends no business case');
+});
+
+test('Portal Berichte: turnover for a period is net of Storno/Retoure, split by VAT and downloadable as CSV',async()=>{
+ const sale=(id,receipt,at,payload)=>({event_id:id,type:'sale.completed',occurred_at:at,payload:{receipt_number:receipt,payment_method:'CASH',operator_name:'t',...payload}});
+ const items2=[{position_no:1,product_key:'1',name:'Döner',quantity:1,unit_price_cents:700,line_total_cents:700,vat_rate:7},{position_no:2,product_key:'2',name:'Cola',quantity:1,unit_price_cents:300,line_total_cents:300,vat_rate:19}];
+ const r=await sync([
+  // 15.08.: 1000 with 100 discount (VAT base lowered), card 450 of it
+  sale('rep-1',9101,'2026-08-15T12:00:00+02:00',{payment_method:'MIXED',subtotal_cents:1000,discount_cents:100,total_cents:900,cash_portion_cents:450,card_portion_cents:450,item_count:2,items:items2}),
+  // 15.08. 23:30 Berlin is still the 15th although UTC is the 15th 21:30
+  sale('rep-2',9102,'2026-08-15T23:30:00+02:00',{subtotal_cents:300,discount_cents:0,total_cents:300,item_count:1,items:[items2[1]]}),
+  // 16.08. 00:30 Berlin (22:30 UTC on the 15th) belongs to the 16th: a Storno of 9102
+  sale('rep-3',9103,'2026-08-16T00:30:00+02:00',{transaction_type:'STORNO',original_receipt_number:9102,subtotal_cents:300,discount_cents:0,total_cents:300,cash_portion_cents:300,card_portion_cents:0,item_count:1,items:[items2[1]]}),
+  sale('rep-4',9104,'2026-08-17T10:00:00+02:00',{subtotal_cents:700,discount_cents:0,total_cents:700,item_count:1,items:[items2[0]]})]);
+ assert.equal(r.status,200);assert.equal(r.body.accepted,4);
+ const rep=(await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:cookie})).body.report;
+ assert.deepEqual(rep.rows.map(x=>x.day),['2026-08-15','2026-08-16']);
+ const d15=rep.rows[0],d16=rep.rows[1];
+ assert.equal(d15.sale_count,2);assert.equal(d15.gross_cents,1200);assert.equal(d15.cash_cents,750);assert.equal(d15.card_cents,450);
+ assert.deepEqual(d15.vat,{'7':630,'19':570});
+ assert.equal(d16.storno_count,1);assert.equal(d16.storno_cents,-300);assert.equal(d16.gross_cents,-300);assert.deepEqual(d16.vat,{'19':-300});
+ assert.equal(rep.totals.gross_cents,900);assert.deepEqual(rep.totals.vat,{'7':630,'19':270});
+ assert.deepEqual(rep.rates,['7','19']);
+ const csv=await fetch(base+'/api/reports/turnover.csv?from=2026-08-15&to=2026-08-16',{headers:{Cookie:cookie}});
+ assert.equal(csv.status,200);assert.match(csv.headers.get('content-disposition'),/TOR-Umsatz-2026-08-15-2026-08-16\.csv/);
+ const lines=(await csv.text()).replace(/^﻿/,'').trim().split('\r\n');
+ assert.equal(lines[0],'Tag;Verkäufe;Stornos;Retouren;Storno EUR;Retoure EUR;Bar EUR;Karte EUR;Brutto 7 % EUR;Brutto 19 % EUR;Umsatz brutto EUR');
+ assert.equal(lines[1],'2026-08-15;2;0;0;0,00;0,00;7,50;4,50;6,30;5,70;12,00');
+ assert.equal(lines[3],'Summe;2;1;0;-3,00;0,00;4,50;4,50;6,30;2,70;9,00');
+ assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:otherCookie})).body.report.rows.length,0);
+ for(const q of ['from=2026-08-16&to=2026-08-15','from=15.08.2026&to=2026-08-16','from=2026-02-30&to=2026-03-01','from=2025-01-01&to=2026-08-16'])
+  assert.equal((await request('/api/reports/turnover?'+q,undefined,{Cookie:cookie})).status,400,q);
+ assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16')).status,401);
+ assert.equal((await request('/api/reports/turnover?from=2026-08-15&to=2026-08-16',undefined,{Cookie:viewerCookie})).status,403);
+});
+
+test('Kasse: the heartbeat shows edition, mode, sync backlog and TSE certificate in Gerätestatus',async()=>{
+ const hb={software_version:'0.7.33.882',tse_status:'AKTIV',printer_status:'NICHT GEPRÜFT',edition:'IMBISS',fiscal_mode:'TESTBETRIEB',outbox_pending:3,outbox_rejected:1,tse_certificate_until:'2031-01-31'};
+ assert.equal((await sync([{event_id:'hb-kasse-1',type:'heartbeat',occurred_at:new Date().toISOString(),payload:hb}])).body.accepted,1);
+ const reg=(await request('/api/portal/data',undefined,{Cookie:cookie})).body.registers.find(r=>r.device_code==='DEMO-KASSE-01');
+ assert.equal(reg.reported_edition,'IMBISS');assert.equal(reg.edition,'KIOSK');assert.equal(reg.fiscal_mode,'TESTBETRIEB');
+ assert.equal(reg.outbox_pending,3);assert.equal(reg.outbox_rejected,1);assert.equal(reg.tse_certificate_until,'2031-01-31');
+ const ev=payload=>({event_id:'x',type:'heartbeat',occurred_at:'2026-09-26T22:05:00+02:00',payload});
+ assert.doesNotThrow(()=>normalizeEvent(ev({software_version:'1',tse_status:'OK',printer_status:'OK'})),'an older till sends only the three status texts');
+ assert.throws(()=>normalizeEvent(ev({...hb,edition:'SUPERMARKT'})),/edition/);
+ assert.throws(()=>normalizeEvent(ev({...hb,outbox_pending:-1})),/outbox_pending/);
+ assert.throws(()=>normalizeEvent(ev({...hb,tse_certificate_until:'31.01.2031'})),/tse_certificate_until/);
 });

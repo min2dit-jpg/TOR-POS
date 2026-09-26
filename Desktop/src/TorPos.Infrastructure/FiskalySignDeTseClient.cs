@@ -53,6 +53,12 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
     private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _transactionGates = new();
     private readonly ConcurrentDictionary<ulong, TransactionProgress> _progress = new();
     private readonly ConcurrentDictionary<ulong, PendingMutation> _pending = new();
+    // O-5: finished and cancelled transactions stay in _progress so a retried
+    // finish is answered idempotently, but only the most recent ones. Older
+    // entries (and their gates) are dropped so a long-running till does not
+    // keep every transaction of its lifetime in memory.
+    private const int RememberedTerminalTransactions = 256;
+    private readonly ConcurrentQueue<ulong> _terminalOrder = new();
 
     private CachedToken? _token;
 
@@ -403,12 +409,13 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
                     transactionNumber,
                     out _);
 
-                _progress[transactionNumber] =
+                Remember(
+                    transactionNumber,
                     new TransactionProgress(
                         pending.Revision,
                         targetState,
                         fingerprint,
-                        retryResult);
+                        retryResult));
 
                 return retryResult;
             }
@@ -427,7 +434,7 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
                     fingerprint,
                     StringComparison.Ordinal))
             {
-                _progress[transactionNumber] = current;
+                Remember(transactionNumber, current);
                 return current.Result;
             }
 
@@ -491,12 +498,13 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
                     transactionNumber,
                     out _);
 
-                _progress[transactionNumber] =
+                Remember(
+                    transactionNumber,
                     new TransactionProgress(
                         nextRevision,
                         targetState,
                         fingerprint,
-                        result);
+                        result));
 
                 return result;
             }
@@ -513,6 +521,48 @@ public sealed class FiskalySignDeTseClient : IDirectCloudTseClient
             gate.Release();
         }
     }
+
+    private void Remember(
+        ulong transactionNumber,
+        TransactionProgress progress)
+    {
+        _progress[transactionNumber] = progress;
+        if (!IsTerminal(progress.State))
+            return;
+
+        _terminalOrder.Enqueue(transactionNumber);
+        while (_terminalOrder.Count > RememberedTerminalTransactions &&
+               _terminalOrder.TryDequeue(out var old))
+        {
+            if (old == transactionNumber ||
+                _pending.ContainsKey(old) ||
+                !_progress.TryGetValue(old, out var known) ||
+                !IsTerminal(known.State))
+            {
+                continue;
+            }
+
+            // A gate somebody holds or waits on stays; the entry is then
+            // simply kept until a later sweep.
+            if (_transactionGates.TryGetValue(old, out var gate) &&
+                gate.CurrentCount == 0)
+            {
+                continue;
+            }
+
+            // Not disposed: a caller may already hold the reference from
+            // GetOrAdd and be about to wait on it. SemaphoreSlim without a
+            // wait handle needs no disposal.
+            _progress.TryRemove(old, out _);
+            if (gate is not null)
+                _transactionGates.TryRemove(
+                    new KeyValuePair<ulong, SemaphoreSlim>(old, gate));
+        }
+    }
+
+    private static bool IsTerminal(string state) =>
+        string.Equals(state, "FINISHED", StringComparison.Ordinal) ||
+        string.Equals(state, "CANCELLED", StringComparison.Ordinal);
 
     private async Task<TransactionProgress> ResolveProgressAsync(
         DirectCloudTseConfiguration cfg,

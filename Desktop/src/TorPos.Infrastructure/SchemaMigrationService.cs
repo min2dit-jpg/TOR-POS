@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 47;
+    public const int TargetSchemaVersion = 48;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -28,9 +28,25 @@ public sealed class SchemaMigrationService
 
     public Task<SchemaMigrationResult> InitializeDatabaseAsync(
         CancellationToken ct = default)
-        => IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(ct));
+        => IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(TargetSchemaVersion, ct));
+
+    /// <summary>
+    /// Tests only: builds the schema an older release left behind (e.g. main
+    /// at 42) with the very same migration code, so an upgrade can be tested
+    /// from a real history instead of a hand-written one.
+    /// </summary>
+    internal Task<SchemaMigrationResult> InitializeDatabaseUpToAsync(
+        int stopAfterVersion,
+        CancellationToken ct = default)
+    {
+        if (stopAfterVersion < 1 || stopAfterVersion > TargetSchemaVersion)
+            throw new ArgumentOutOfRangeException(nameof(stopAfterVersion));
+
+        return IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(stopAfterVersion, ct));
+    }
 
     private async Task<SchemaMigrationResult> InitializeDatabaseCoreAsync(
+        int target,
         CancellationToken ct)
     {
         var existedBefore =
@@ -49,11 +65,17 @@ public sealed class SchemaMigrationService
                 "Ein Downgrade wird aus Sicherheitsgründen verweigert.");
         }
 
+        // A version number only means something together with its migration
+        // name. Checked read-only before the backup, the legacy bootstrap or any
+        // migration may touch the file, so a refused database stays unchanged.
+        if (existedBefore)
+            VerifyMigrationHistory(await ReadHistoryWithoutCreatingAsync(ct));
+
         string? backupPath = null;
 
         // Existing unversioned/older customer DB: backup BEFORE legacy bootstrap
         // or any versioned migration is allowed to touch its schema.
-        if (existedBefore && before < TargetSchemaVersion)
+        if (existedBefore && before < target)
         {
             backupPath = await _backup.CreateMigrationBackupAsync(
                 _migrationBackupDirectory,
@@ -81,6 +103,9 @@ public sealed class SchemaMigrationService
             if (migration.Version <= current)
                 continue;
 
+            if (migration.Version > target)
+                break;
+
             if (migration.Version != current + 1)
             {
                 throw new InvalidOperationException(
@@ -99,11 +124,11 @@ public sealed class SchemaMigrationService
 
         var finalStatus = await GetStatusAsync(ct);
 
-        if (finalStatus.CurrentVersion != TargetSchemaVersion)
+        if (finalStatus.CurrentVersion != target)
         {
             throw new InvalidOperationException(
                 $"Schema-Migration unvollständig. Ist={finalStatus.CurrentVersion}, " +
-                $"Soll={TargetSchemaVersion}.");
+                $"Soll={target}.");
         }
 
         return new SchemaMigrationResult(
@@ -201,6 +226,104 @@ public sealed class SchemaMigrationService
         return Convert.ToInt32(
             await q.ExecuteScalarAsync(ct));
     }
+
+    /// <summary>
+    /// Migration history as (version, name) pairs, read without creating
+    /// anything. Empty when the database has no history table yet.
+    /// </summary>
+    private async Task<IReadOnlyList<(int Version, string Name)>> ReadHistoryWithoutCreatingAsync(
+        CancellationToken ct)
+    {
+        var cs = new SqliteConnectionStringBuilder
+        {
+            DataSource = _db.DatabasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString();
+
+        await using var c = new SqliteConnection(cs);
+        await c.OpenAsync(ct);
+
+        var rows = new List<(int Version, string Name)>();
+        if (!await TableExistsAsync(c, "schema_migrations", ct))
+            return rows;
+
+        await using var q = c.CreateCommand();
+        q.CommandText = "SELECT version, name FROM schema_migrations ORDER BY version;";
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+            rows.Add((r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1)));
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Restaurant DEV4 test builds recorded their Restaurant migrations as
+    /// 42-47, the numbers main uses for C-4 and DEV5's Restaurant 43-48. Such a
+    /// database is missing C-4 and would pass a pure version check after only
+    /// migration 48 ran, so it is refused instead of converted.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<int, string> Dev4RestaurantHistory =
+        new Dictionary<int, string>
+        {
+            [42] = "RESTAURANT_RECIPES_AND_OPTIONS",
+            [43] = "RESTAURANT_ORDER_OPTION_SNAPSHOT",
+            [44] = "RESTAURANT_EXACT_PARTIAL_PAYMENT_CENTS",
+            [45] = "RESTAURANT_IMMUTABLE_LINE_SNAPSHOTS",
+            [46] = "RESTAURANT_KDS_ITEM_LOOKUP_INDEX",
+            [47] = "RESTAURANT_SERVICE_MODE"
+        };
+
+    public const string Dev4DatabaseRefusedMessage =
+        "Diese Restaurant-DEV4-Testdatenbank kann nicht sicher übernommen werden. " +
+        "Bitte für DEV5 eine neue Testdatenbank anlegen.";
+
+    /// <summary>
+    /// Fail-closed: every recorded migration must carry the name this build
+    /// defines for its version. A different name means another build gave the
+    /// number a different meaning, and skipping by number would leave the
+    /// schema silently wrong.
+    /// </summary>
+    internal static void VerifyMigrationHistory(
+        IEnumerable<(int Version, string Name)> history)
+    {
+        var rows = history.ToList();
+
+        var dev4 = rows.FirstOrDefault(x =>
+            Dev4RestaurantHistory.TryGetValue(x.Version, out var dev4Name) &&
+            string.Equals(x.Name, dev4Name, StringComparison.Ordinal) &&
+            !string.Equals(ExpectedName(x.Version), dev4Name, StringComparison.Ordinal));
+        if (dev4.Name is not null)
+        {
+            throw new InvalidOperationException(
+                Dev4DatabaseRefusedMessage +
+                $" (Migration {dev4.Version} ist als \"{dev4.Name}\" eingetragen, " +
+                $"erwartet wird \"{ExpectedName(dev4.Version)}\".)");
+        }
+
+        foreach (var (version, name) in rows)
+        {
+            var expected = ExpectedName(version);
+            if (expected is null)
+                continue; // newer than this build: refused by the downgrade check
+
+            if (!string.Equals(name, expected, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Schema-Historie passt nicht zu dieser TOR POS-Version: " +
+                    $"Migration {version} ist in der Datenbank als \"{name}\" eingetragen, " +
+                    $"erwartet wird \"{expected}\". Die Datenbank wird nicht verändert; " +
+                    "bitte den Support kontaktieren.");
+            }
+        }
+    }
+
+    private static string? ExpectedName(int version) =>
+        OrderedMigrations.FirstOrDefault(x => x.Version == version)?.Name;
+
+    /// <summary>Versions 1..Target, contiguous, each name used once.</summary>
+    internal static IReadOnlyList<(int Version, string Name)> DefinedMigrations =>
+        OrderedMigrations.Select(x => (x.Version, x.Name)).ToArray();
 
     private async Task EnsureMetadataTablesAsync(
         CancellationToken ct)
@@ -2329,7 +2452,36 @@ public sealed class SchemaMigrationService
                         """;
                     await q.ExecuteNonQueryAsync(ct);
                 }),
-            new(42, "RESTAURANT_RECIPES_AND_OPTIONS", static async (c, tx, ct) =>
+
+            // C-4: Cloud events the Cloud refuses for good (invalid or in
+            // conflict with a stored event) are parked here with the reason
+            // instead of blocking the FIFO outbox head forever.
+            new(
+                42,
+                "C4_CLOUD_OUTBOX_REJECTED",
+                static async (c, tx, ct) =>
+                {
+                    await using var q = c.CreateCommand();
+                    q.Transaction = tx;
+                    q.CommandText = """
+                        CREATE TABLE IF NOT EXISTS cloud_outbox_rejected(
+                          event_id TEXT PRIMARY KEY,
+                          event_type TEXT NOT NULL,
+                          occurred_at TEXT NOT NULL,
+                          payload TEXT NOT NULL,
+                          target_url TEXT NOT NULL,
+                          device_code TEXT NOT NULL,
+                          rejected_at TEXT NOT NULL,
+                          verdict TEXT NOT NULL,
+                          reason TEXT NOT NULL DEFAULT '');
+                        """;
+                    await q.ExecuteNonQueryAsync(ct);
+                }),
+
+            // Restaurant DEV5: the DEV4 branch numbered these 42-47 while main used
+            // 42 for C-4. They follow main's 42 so every version has one meaning;
+            // DEV4 test databases are refused (see Dev4RestaurantHistory).
+            new(43, "RESTAURANT_RECIPES_AND_OPTIONS", static async (c, tx, ct) =>
             {
                 if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
@@ -2353,7 +2505,7 @@ public sealed class SchemaMigrationService
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             }),
-            new(43, "RESTAURANT_ORDER_OPTION_SNAPSHOT", static async (c, tx, ct) =>
+            new(44, "RESTAURANT_ORDER_OPTION_SNAPSHOT", static async (c, tx, ct) =>
             {
                 if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
@@ -2361,7 +2513,7 @@ public sealed class SchemaMigrationService
                 q.CommandText="ALTER TABLE restaurant_session_items ADD COLUMN order_options TEXT NOT NULL DEFAULT '';";
                 await q.ExecuteNonQueryAsync(ct);
             }),
-            new(44, "RESTAURANT_EXACT_PARTIAL_PAYMENT_CENTS", static async (c, tx, ct) =>
+            new(45, "RESTAURANT_EXACT_PARTIAL_PAYMENT_CENTS", static async (c, tx, ct) =>
             {
                 if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
@@ -2384,7 +2536,7 @@ public sealed class SchemaMigrationService
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             }),
-            new(45, "RESTAURANT_IMMUTABLE_LINE_SNAPSHOTS", static async (c, tx, ct) =>
+            new(46, "RESTAURANT_IMMUTABLE_LINE_SNAPSHOTS", static async (c, tx, ct) =>
             {
                 if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
@@ -2432,7 +2584,7 @@ public sealed class SchemaMigrationService
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             }),
-            new(46, "RESTAURANT_KDS_ITEM_LOOKUP_INDEX", static async (c, tx, ct) =>
+            new(47, "RESTAURANT_KDS_ITEM_LOOKUP_INDEX", static async (c, tx, ct) =>
             {
                 if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
@@ -2445,7 +2597,7 @@ public sealed class SchemaMigrationService
                     """;
                 await q.ExecuteNonQueryAsync(ct);
             }),
-            new(47, "RESTAURANT_SERVICE_MODE", static async (c, tx, ct) =>
+            new(48, "RESTAURANT_SERVICE_MODE", static async (c, tx, ct) =>
             {
                 if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
                     "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;

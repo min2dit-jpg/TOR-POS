@@ -6,7 +6,7 @@ name: TOR-POS Windows kontrol
 
 on:
   push:
-    # Keep the DEV4 branch independently testable when unrelated main changes
+    # Keep the Restaurant DEV branch independently testable when unrelated main changes
     # temporarily prevent GitHub from producing a pull-request merge ref.
     branches: [main, feature/restaurant-third-exe]
   pull_request:
@@ -36,7 +36,7 @@ jobs:
         working-directory: Desktop
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -58,7 +58,7 @@ jobs:
 
       - name: .NET 10 SDK kur
         id: dotnet
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
           dotnet-quality: ga
@@ -206,7 +206,7 @@ jobs:
           }
 
       - name: Windows x64 tek EXE test paketini sakla
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: TOR-POS-Windows-x64-${{ github.sha }}
           path: Desktop/ci-results/package/**
@@ -271,7 +271,7 @@ jobs:
       # setup, and the Restaurant build (still in development) never travels
       # in the same archive as the released retail/gastro products.
       - name: TOR Einzelhandel Setup EXE sakla
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: TOR-Einzelhandel-Setup-${{ github.sha }}
           path: Desktop/installer-output/TOR-Einzelhandel-Setup.exe
@@ -280,7 +280,7 @@ jobs:
           compression-level: 0
 
       - name: TOR Gastro Setup EXE sakla
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: TOR-Gastro-Setup-${{ github.sha }}
           path: Desktop/installer-output/TOR-Gastro-Setup.exe
@@ -289,9 +289,9 @@ jobs:
           compression-level: 0
 
       - name: TOR Restaurant Setup EXE sakla (gelistirme)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: TOR-Restaurant-Setup-DEV4-${{ github.sha }}
+          name: TOR-Restaurant-Setup-DEV5-${{ github.sha }}
           path: Desktop/installer-output/TOR-Restaurant-Setup.exe
           if-no-files-found: error
           retention-days: 14
@@ -346,7 +346,7 @@ jobs:
           }
 
       - name: Kunden Setup EXE sakla
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: TOR-POS-Setup-${{ github.sha }}
           path: Desktop/installer-output/TOR-POS-Setup.exe
@@ -371,7 +371,7 @@ jobs:
           }
 
       - name: Kaynak kodu ZIP paketini sakla
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: TOR-POS-Source-${{ github.sha }}
           path: Desktop/ci-results/TOR-POS-Source-${{ github.sha }}.zip
@@ -381,7 +381,7 @@ jobs:
 
       - name: Hata ve test gunluklerini sakla
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tor-pos-ci-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -399,13 +399,13 @@ jobs:
         working-directory: Cloud
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       # node:sqlite without an experimental flag needs Node 22.13 or newer.
       - name: Node.js kur
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
 

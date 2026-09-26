@@ -155,7 +155,7 @@ public static class OrderBestellungDelta
             var menuSelection = string.Join(
                 "|",
                 line.MenuComponents.Select(x =>
-                    $"{x.ProductId}:{x.Quantity:0.###}:{x.ChoiceGroup}"));
+                    FormattableString.Invariant($"{x.ProductId}:{x.Quantity:0.###}:{x.ChoiceGroup}")));
             var key = new Key(
                 line.ProductId,
                 line.ProductName,

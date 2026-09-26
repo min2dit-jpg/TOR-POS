@@ -82,6 +82,8 @@ public static class V1V2ReportTests
         Directory.CreateDirectory(dir2);
         var db2 = await SafetyDatabase.CreateCurrentAsync(Path.Combine(dir2, "v2.db"));
         var management2 = new BusinessManagementService(db2, new SettingsRepository(db2), new AuditLogRepository(db2));
+        // The "HEUTE" line needs both Bons on today's date: 'now' above is fixed
+        // at 00:20 local time, so 00:14 and 00:15 stay on today at any run time.
         var sale = await SeedAsync(db2, 2001, now.AddMinutes(-6), "SALE", null, total: 1000, cash: 1000, card: 0,
             ("V2 Artikel", quantityMilli: 2000, unitPrice: 500, vat: 19m, lineTotal: 1000, unit: "Stück"));
         await SeedAsync(db2, 2002, now.AddMinutes(-5), "RETURN", sale, total: 500, cash: 500, card: 0,

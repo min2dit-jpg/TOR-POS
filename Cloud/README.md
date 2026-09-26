@@ -1,10 +1,33 @@
-# TOR POS Cloud v0.8.0 R48 · Stand R125
+# TOR POS Cloud 0.14.0 · Stand 26.09.2026
 
-Gemeinsamer Entwicklungsstand mit TOR POS Desktop R48. Lokale Demo, keine Fiskal-Produktivfreigabe.
+Serverversion: `CLOUD_VERSION` in `server.js`. Die Abschnitte „R48 …“ weiter unten sind Entwicklungshistorie. Keine Fiskal-Produktivfreigabe.
 
 Start: `START-TOR-CLOUD.bat` (Windows), oder `TOR_CLOUD_DEMO=true node server.js`.
 Node 22.13+ mit `node:sqlite`. Standard: 127.0.0.1:8787.
 Demo: demo@torpos.local / TorDemo2026!; Gerät DEMO-KASSE-01 / tor-demo-device-token-2026.
+
+## Kasse ↔ Cloud (Stand 26.09.2026)
+Die Kasse sendet jetzt alle Ereignisse, die TOR Cloud kennt – jeweils in derselben lokalen Transaktion wie die Buchung:
+
+| Ereignis | Wann | Inhalt |
+|---|---|---|
+| `sale.completed` | Verkauf, Storno, Retoure | wie bisher (R149/R179) |
+| `z.closed` | jeder Kassenabschluss (Event-ID `z-<Z_NR>`) | Zeitraum, Bar/Karte, Rabatte, Storno/Retoure, USt-Gruppen, Fiskalstatus, Bediener |
+| `cash.movement` | echte Einlage/Entnahme, Kassendifferenz beim Kassensturz | Art, Betrag, DSFinV-K-Geschäftsvorfall, Grund, Bediener |
+| `stock.snapshot` | Bestandsabgleich | wie bisher |
+| `heartbeat` | alle 60 s | Version, TSE-Status, Edition, Test-/Produktivbetrieb, wartende und abgelehnte Ereignisse, TSE-Zertifikat bis |
+
+Testbuchungen und der Kassensturz selbst bleiben lokal. Ältere Kassen mit den bisherigen Minimalfeldern werden weiter angenommen.
+Vertrag: `tests/fixtures/z-closed-kasse.json`, `cash-movement-kasse.json` und `sale-completed-kasse.json` – Desktop
+(`CloudContractTests`, `R149ReviewTests`) und Cloud-Tests prüfen dieselben Dateien. Beide Seiten nur gemeinsam ändern.
+
+Portal:
+- **Berichte:** Umsatz für einen frei wählbaren Zeitraum (max. 366 Tage, Berliner Kalendertage), Storno/Retoure abgezogen,
+  Bar/Karte, Brutto je USt-Satz, CSV-Download (`GET /api/reports/turnover(.csv)?from=JJJJ-MM-TT&to=JJJJ-MM-TT`).
+  Z-Bericht-Archiv mit Zeitraum, Bar, Karte, Storno/Retoure und USt; Tabelle „Einlagen und Entnahmen“.
+  Maßgeblich für Steuer und Kasse bleiben Z-Bericht und DSFinV-K der Kasse.
+- **Gerätestatus:** Betriebsart, abweichende Edition, Sync-Rückstand, von der Cloud abgelehnte Ereignisse (C-4) und
+  TSE-Zertifikat mit Warnung ab 90 Tagen.
 
 ## R155 neu: TOR Mail ohne Kunden-Google/SMTP
 - Standardweg für automatische Monatsberichte und DATEV-Dateien: Der Kunde trägt an der Kasse nur die Empfänger-E-Mail ein.
@@ -69,6 +92,21 @@ R125 - fertige Vorlagen in `deploy/`:
 | `tor-pos-cloud.env.example` | alle Umgebungsvariablen für den Live-Betrieb, kommentiert |
 | `tor-pos-cloud.service` | systemd-Dienst (Neustart bei Fehler, sauberes Beenden, gehärtet) |
 | `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`, seit R145 für `api.<domain>` und `bon.<domain>` |
+| `update-cloud.sh` | Update in einem Schritt mit Sicherung, Versionsprüfung und automatischem Zurücksetzen |
+| `apply-c1-caddy.sh` | C-1: stellt auf einem laufenden Server das Upload-Limit um (TOR Mail 12 MiB, sonst 2 MB) – mit Sicherung, `caddy validate`, automatischem Zurücksetzen bei Fehler und `reload`: `sudo bash deploy/apply-c1-caddy.sh` |
+
+**Update auf eine neue Version (ein Befehl):** neue Version als ZIP (GitHub „Code → Download ZIP“) oder `Cloud`-Ordner
+auf den Server kopieren und
+
+```
+sudo bash /opt/tor-pos-cloud/deploy/update-cloud.sh /tmp/TOR-POS-main.zip
+```
+
+Das Script prüft die neue Version (Syntax), stoppt den Dienst, sichert Code **und** Datenbank nach
+`/opt/tor-pos-cloud.sicherung-<Zeit>`, ersetzt nur den Code (`data/`, `updates/`, `node_modules/` bleiben), startet den
+Dienst und verlangt, dass `/api/health` die neue Version meldet. Sonst setzt es den alten Stand automatisch zurück.
+Zurück zu einer Sicherung: `sudo bash deploy/update-cloud.sh /opt/tor-pos-cloud.sicherung-<Zeit>`. Die letzten 5
+Sicherungen bleiben (`TOR_CLOUD_KEEP`). Andere Pfade: `TOR_CLOUD_DIR`, `TOR_CLOUD_SERVICE`, `TOR_CLOUD_ENV`.
 
 **Datensicherung:** mit `TOR_CLOUD_BACKUP_DIR` schreibt der Server im laufenden Betrieb
 eine konsistente Kopie (`VACUUM INTO`), standardmäßig alle 24 h, die letzten 14 bleiben

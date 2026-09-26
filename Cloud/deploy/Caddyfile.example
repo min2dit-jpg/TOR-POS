@@ -36,7 +36,19 @@ api.torpos.de {
 	# Limits what clients may SEND (sync batches, logins, receipts), not downloads
 	# such as installers. server.js rejects JSON bodies over 1 MB itself (413);
 	# this just stops an oversized upload at the edge before it reaches Node.
-	request_body {
+	#
+	# C-1: TOR Mail is the one exception. A till may send up to 8 MB of PDF/CSV
+	# attachments (managed-mail.js), which base64 inflates to ~10.7 MB of JSON;
+	# server.js accepts 12 MiB on that route. The two matchers are mutually
+	# exclusive on purpose: request_body wraps the body once per matching
+	# directive and the smallest wrap wins, so a catch-all 2MB would still cut
+	# the mail route down to 2 MB.
+	@torMail path /api/v1/devices/mail/send
+	request_body @torMail {
+		max_size 12MiB
+	}
+	@notTorMail not path /api/v1/devices/mail/send
+	request_body @notTorMail {
 		max_size 2MB
 	}
 }

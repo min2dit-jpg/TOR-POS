@@ -59,7 +59,29 @@ function validatePublication(o) {
     throw Error('Geprüfte SHA256 und Signer erforderlich.');
 }
 
-function publishFile(dir, o, { prefix, manifestName, demo = false }) {
+// C-2: since R182 each product has its own installer. An update published for
+// one edition lands in manifest-<EDITION>.json under that product's setup name;
+// without an edition the shared manifest.json (KIOSK/IMBISS, TOR-POS-Pro-Setup)
+// stays exactly as before.
+const EDITION_PRODUCTS = {
+  KIOSK: 'TOR-Einzelhandel-Setup',
+  IMBISS: 'TOR-Gastro-Setup',
+  RESTAURANT: 'TOR-Restaurant-Setup'
+};
+
+function editionOf(value) {
+  if (value == null || value === '') return null;
+  const edition = String(value).trim().toUpperCase();
+  if (!Object.hasOwn(EDITION_PRODUCTS, edition))
+    throw Error('Edition muss KIOSK, IMBISS oder RESTAURANT sein.');
+  return edition;
+}
+
+function manifestNameFor(edition) {
+  return edition ? `manifest-${edition}.json` : 'manifest.json';
+}
+
+function publishFile(dir, o, { prefix, manifestName, demo = false, editions = ['KIOSK', 'IMBISS'] }) {
   validatePublication(o);
 
   return locked(dir, () => {
@@ -89,7 +111,7 @@ function publishFile(dir, o, { prefix, manifestName, demo = false }) {
         version: o.version,
         revision: o.revision,
         published_at: new Date().toISOString(),
-        editions: ['KIOSK', 'IMBISS'],
+        editions,
         filename,
         sha256: o.sha256,
         signer_thumbprint: o.signer_thumbprint,
@@ -112,10 +134,10 @@ function publishFile(dir, o, { prefix, manifestName, demo = false }) {
 
 // Internal step: Windows entrypoint must verify Authenticode on the staged bytes first.
 function publishVerified(dir, o) {
-  return publishFile(dir, o, {
-    prefix: 'TOR-POS-Pro-Setup',
-    manifestName: 'manifest.json'
-  });
+  const edition = editionOf(o.edition);
+  return publishFile(dir, o, edition
+    ? { prefix: EDITION_PRODUCTS[edition], manifestName: manifestNameFor(edition), editions: [edition] }
+    : { prefix: 'TOR-POS-Pro-Setup', manifestName: 'manifest.json' });
 }
 
 function publishTrialVerified(dir, o) {
@@ -136,8 +158,8 @@ function disableManifest(dir, name) {
   });
 }
 
-function disable(dir) {
-  return disableManifest(dir, 'manifest.json');
+function disable(dir, edition) {
+  return disableManifest(dir, manifestNameFor(editionOf(edition)));
 }
 
 function disableTrial(dir) {
@@ -145,6 +167,8 @@ function disableTrial(dir) {
 }
 
 module.exports = {
+  EDITION_PRODUCTS,
+  manifestNameFor,
   publishVerified,
   publishTrialVerified,
   disable,
@@ -154,13 +178,13 @@ module.exports = {
 
 if (require.main === module) {
   try {
-    const [action, dir, input] = process.argv.slice(2);
+    const [action, dir, input, edition] = process.argv.slice(2);
     if (action === 'publish') {
       publishVerified(dir, JSON.parse(fs.readFileSync(input, 'utf8').replace(/^\uFEFF/, '')));
     } else if (action === 'publish-trial') {
       publishTrialVerified(dir, JSON.parse(fs.readFileSync(input, 'utf8').replace(/^\uFEFF/, '')));
     } else if (action === 'disable') {
-      disable(dir);
+      disable(dir, input || edition);
     } else if (action === 'disable-trial') {
       disableTrial(dir);
     } else {
