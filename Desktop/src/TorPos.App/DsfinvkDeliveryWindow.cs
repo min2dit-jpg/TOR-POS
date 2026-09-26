@@ -376,14 +376,11 @@ public sealed class DsfinvkDeliveryWindow : Window
         try
         {
             _status.Text = UiLanguage.T("DSFinV-K ZIP-Paket wird erstellt …");
-            await Task.Run(() =>
-                ZipFile.CreateFromDirectory(
-                    _exportFolder,
-                    zip,
-                    CompressionLevel.Optimal,
-                    includeBaseDirectory: true));
+            // Verified byte for byte against the export folder; a package that
+            // differs is refused instead of being sent.
+            var package = await Task.Run(() => DsfinvkPackage.Create(_exportFolder, zip));
 
-            var size = new FileInfo(zip).Length;
+            var size = package.Bytes;
             if (size > MaxMailZipBytes)
             {
                 _status.Text =
@@ -412,7 +409,9 @@ public sealed class DsfinvkDeliveryWindow : Window
             var body =
                 "Anbei der vollständige TOR POS DSFinV-K 2.4 Export als ZIP-Paket.\r\n" +
                 $"Zeitraum: {_from:dd.MM.yyyy} bis {_to:dd.MM.yyyy}\r\n\r\n" +
-                "Das ZIP enthält den vollständigen Exportordner einschließlich CSV-Dateien, index.xml, GDPdU-DTD und TOR-Exportprotokoll.";
+                "Das ZIP enthält den vollständigen Exportordner einschließlich CSV-Dateien, index.xml, GDPdU-DTD und TOR-Exportprotokoll.\r\n" +
+                $"SHA-256 des ZIP-Pakets: {package.Sha256}\r\n" +
+                "Die Dateien sind unverändert; jede Datei wurde vor dem Versand mit dem Export verglichen.";
 
             _status.Text = UiLanguage.T("E-Mail wird an") + $" {recipient} " + UiLanguage.T("gesendet …");
             await email.SendFilesAsync(
@@ -426,7 +425,7 @@ public sealed class DsfinvkDeliveryWindow : Window
                 "DSFINVK_EXPORT_EMAIL",
                 "DSFINV_K",
                 $"{_from:yyyy-MM-dd}/{_to:yyyy-MM-dd}",
-                $"Empfänger={recipient}; ZIP={Path.GetFileName(zip)}; Bytes={size}");
+                $"Empfänger={recipient}; ZIP={Path.GetFileName(zip)}; Bytes={size}; Dateien={package.FileCount}; SHA-256={package.Sha256}");
 
             _status.Text =
                 "✓ " + UiLanguage.T("DSFinV-K wurde per E-Mail an") + $" {recipient} " + UiLanguage.T("gesendet.");
@@ -444,6 +443,8 @@ public sealed class DsfinvkDeliveryWindow : Window
             {
                 if (File.Exists(zip))
                     File.Delete(zip);
+                if (File.Exists(zip + ".sha256"))
+                    File.Delete(zip + ".sha256");
             }
             catch
             {

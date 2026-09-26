@@ -3734,10 +3734,28 @@ public partial class MainWindow:Window
         catch(Exception ex) {
             CrashLog.WriteException("MainWindow operation", ex); ReportOperationalError("NACHVERARBEITUNG",$"Bon {sale.ReceiptNumber} gespeichert. Nicht erneut kassieren.",ex); }
         var willAutoPrint = !_checkoutWithoutPrinterAccepted && _settingsCache.GetBool("device.receipt_printer.enabled",false) && _settingsCache.GetBool("receipt.auto_print",true);
+        // A receipt only presents a fiscally completed Vorgang: signed, or with
+        // the TSE outage documented on the sale. When signing ended with an
+        // exception neither is true - no receipt is printed as if it were a
+        // normal sale; the cashier is told in German and can reprint from the
+        // Bon-Historie once the TSE result is clear.
+        var fiscalState = ReceiptFiscalStates.Of(sale.TseOutage, sale.TseTransactionNumber, sale.TseSignature);
+        var receiptPlan = fiscalState == ReceiptFiscalState.NotCompleted
+            ? null
+            : ReceiptDeliveryPolicy.Plan(
+                GermanFiscalRulesets.Resolve(DateOnly.FromDateTime(DateTime.Now)),
+                fiscalState,
+                await DigitalReceiptOfferedAsync()
+                    ? new[] { ReceiptDeliveryChannel.QrCode }
+                    : Array.Empty<ReceiptDeliveryChannel>());
+        if(receiptPlan is null)
+        {
+            await WithholdReceiptNotFiscalAsync(sale);
+        }
         // R145: with the digital receipt switched on, the customer chooses
         // Papierbeleg or Digitalbeleg (QR) - the sale is final and signed by now
         // (AEAO zu § 146a Nr. 2.5.2). BON EIN/AUS applies when it is switched off.
-        if(await DigitalReceiptOfferedAsync())
+        else if(receiptPlan.Offered.Contains(ReceiptDeliveryChannel.QrCode))
         {
             var job = BuildReceiptPrintJob(sale,snapshot.Method,cashPayment:cash);
             var paperPossible = !_checkoutWithoutPrinterAccepted && _settingsCache.GetBool("device.receipt_printer.enabled",false);
@@ -4127,6 +4145,22 @@ public partial class MainWindow:Window
                 $"Bon {job.ReceiptNumber:000000} GESPEICHERT · Druckerfehler · " +
                 $"NICHT ERNEUT KASSIEREN · Fehler-ID {errorId}";
         }
+    }
+
+    private async Task WithholdReceiptNotFiscalAsync(Sale sale)
+    {
+        const string detail = "TSE-Ergebnis fehlt und kein TSE-Ausfall dokumentiert";
+        try
+        {
+            await _audit.WriteAsync(_currentUser.Username, "RECEIPT_WITHHELD_NOT_FISCAL", "SALE", sale.Id.ToString(), detail);
+        }
+        catch (Exception auditEx)
+        {
+            CrashLog.WriteException("Receipt withheld audit", auditEx);
+        }
+        ReportOperationalError(
+            "BELEG",
+            $"{ReceiptDeliveryPolicy.NotCompletedMessage} Bon {sale.ReceiptNumber:000000} ist gespeichert - nicht erneut kassieren. TSE prüfen und den Beleg danach über die Bon-Historie drucken.");
     }
 
     /// <summary>R145: the digital receipt is switched on and TOR Cloud is set up on this till.</summary>

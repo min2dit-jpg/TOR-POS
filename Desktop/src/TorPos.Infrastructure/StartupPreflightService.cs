@@ -74,6 +74,19 @@ public sealed class StartupPreflightService
                 ex.Message);
         }
 
+        // O-15: fiscal data split over several Windows users is made visible.
+        try
+        {
+            warnings.AddRange(DataLocationCheck.Warnings(
+                AppPaths.DataDirectory,
+                DataLocationCheck.UsersRoot(),
+                AppPaths.ProductDataDirectoryName()));
+        }
+        catch (Exception ex)
+        {
+            warnings.Add("Datenort-Prüfung: " + ex.Message);
+        }
+
         return new StartupPreflightResult(
             true,
             warnings);

@@ -30,10 +30,19 @@ public sealed class CommercialLicenseService : ICommercialLicenseService
             PropertyNameCaseInsensitive = true
         };
 
+    private readonly LicenseTamperStore _tamper;
+
     public CommercialLicenseService()
+        : this(null)
+    {
+    }
+
+    /// <param name="tamper">G-4: deactivation tombstones and clock high-water mark (tests pass their own).</param>
+    public CommercialLicenseService(LicenseTamperStore? tamper)
     {
         InstallationId = LoadOrCreateInstallationId();
         DeviceCode = CreateDeviceCode(InstallationId);
+        _tamper = tamper ?? LicenseTamperStore.Default();
     }
 
     public string InstallationId { get; }
@@ -116,6 +125,9 @@ public sealed class CommercialLicenseService : ICommercialLicenseService
             hash);
 
         var json = JsonSerializer.Serialize(record, JsonOptions);
+        // G-4: also as tombstone in the machine-wide store and the registry, so
+        // deleting the journal file alone does not bring the licence back.
+        _tamper.RecordDeactivation(current.LicenseId);
         File.AppendAllText(
             AppPaths.LicenseDeactivationJournalPath,
             json.Replace(Environment.NewLine, "") + Environment.NewLine,
@@ -275,7 +287,9 @@ public sealed class CommercialLicenseService : ICommercialLicenseService
                     payload.ValidUntilUtc);
             }
 
-            if (payload.ValidUntilUtc <= DateTimeOffset.UtcNow)
+            // G-4: judged at the latest time this PC has seen, so turning the
+            // Windows clock back does not extend the licence.
+            if (payload.ValidUntilUtc <= _tamper.EffectiveUtcNow(DateTimeOffset.UtcNow))
             {
                 return new CommercialLicenseStatus(
                     CommercialLicenseState.Expired,
@@ -305,13 +319,14 @@ public sealed class CommercialLicenseService : ICommercialLicenseService
         }
     }
 
-    private static bool IsLocallyDeactivated(string licenseId)
+    private bool IsLocallyDeactivated(string licenseId)
     {
-        if (string.IsNullOrWhiteSpace(licenseId) ||
-            !File.Exists(AppPaths.LicenseDeactivationJournalPath))
-        {
+        if (string.IsNullOrWhiteSpace(licenseId))
             return false;
-        }
+        if (_tamper.IsDeactivated(licenseId))
+            return true;
+        if (!File.Exists(AppPaths.LicenseDeactivationJournalPath))
+            return false;
 
         try
         {
