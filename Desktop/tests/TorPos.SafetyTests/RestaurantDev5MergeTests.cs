@@ -38,6 +38,7 @@ public static class RestaurantDev5MergeTests
         }
 
         CheckoutWiring(assert);
+        ContextSwitchWiring(assert);
     }
 
     private static readonly string[] RestaurantDev5Names =
@@ -466,6 +467,50 @@ public static class RestaurantDev5MergeTests
             saleReceipts > 0 && saleReceipts == saleReceiptsAfterPolicy &&
             !restaurantPrintsReceipt,
             "DEV5 checkout: a Restaurant payment commits through the shared checkout, whose only sale receipts come after the receipt policy - no normal receipt without a TSE result or documented outage, and no Restaurant window prints its own sale receipt");
+    }
+
+    private static void ContextSwitchWiring(Action<bool, string> assert)
+    {
+        var main = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/MainWindow.axaml.cs"));
+        string Body(string signature)
+        {
+            var start = main.IndexOf(signature, StringComparison.Ordinal);
+            if (start < 0) return "";
+            var next = main.IndexOf("\n    private ", start + signature.Length, StringComparison.Ordinal);
+            return next < 0 ? main[start..] : main[start..next];
+        }
+
+        var guard = Body("private bool CanSwitchRestaurantWorkspace(");
+        assert(
+            guard.Contains("CartLocked", StringComparison.Ordinal) &&
+            guard.Contains("_engine.Cart.Count > 0", StringComparison.Ordinal) &&
+            guard.Contains("_restaurantCheckoutDraft is not null", StringComparison.Ordinal) &&
+            guard.Contains("_restaurantWorkspace?.IsBusy", StringComparison.Ordinal) &&
+            guard.Contains("return false;", StringComparison.Ordinal),
+            "DEV5 THEKE/TISCHPLAN: switching is refused while a cart is open or locked, a table checkout draft exists or the table workspace is busy");
+
+        var tables = Body("private async Task ShowRestaurantTableWorkspaceAsync(");
+        var counter = Body("private void ShowRestaurantCounterWorkspace(");
+        bool GuardFirst(string body, string target)
+        {
+            var check = body.IndexOf($"CanSwitchRestaurantWorkspace(\"{target}\")", StringComparison.Ordinal);
+            var effects = new[] { ".IsVisible", ".IsEnabled", "ShowCategoryOverview(", "EnsureRestaurantWorkspace(" }
+                .Select(e => body.IndexOf(e, StringComparison.Ordinal)).Where(i => i >= 0).ToArray();
+            return check > 0 && effects.Length > 0 && check < effects.Min() &&
+                   body.IndexOf("return;", check, StringComparison.Ordinal) < effects.Min();
+        }
+        assert(
+            GuardFirst(tables, "TISCHPLAN") && GuardFirst(counter, "THEKE"),
+            "DEV5 THEKE/TISCHPLAN: both switches check the guard before they change anything on screen");
+
+        var hides = System.Text.RegularExpressions.Regex.Matches(main, @"RestaurantWorkspaceHost\.IsVisible\s*=\s*false").Count;
+        assert(
+            hides == 1 && counter.Contains("RestaurantWorkspaceHost.IsVisible = false", StringComparison.Ordinal) &&
+            !counter.Contains("OpenTable", StringComparison.Ordinal) &&
+            !counter.Contains("_restaurant.", StringComparison.Ordinal) &&
+            !counter.Contains("_restaurantCheckoutDraft", StringComparison.Ordinal) &&
+            counter.Contains("ShowCategoryOverview()", StringComparison.Ordinal),
+            "DEV5 THEKE: the only way off the table plan is THEKE; it opens no table session and sells through the normal checkout, and nothing else hides the table plan");
     }
 
     private static (SqliteDatabase Db, SchemaMigrationService Migrator, string Backups) Open(string dir, string name)
