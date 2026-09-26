@@ -44,6 +44,7 @@ if (args.Contains("--restaurant-third"))
     await RestaurantRecipeTests.Run(Assert);
     await RestaurantInterimBillTests.Run(Assert);
     await RestaurantSplitPlannerTests.Run(Assert);
+    await RestaurantWaiterSettlementTests.Run(root, Assert);
     await MultiLanguageTests.Run(Assert);
     await AdTvTests.Run(Assert);
     // Existing display fixtures use Windows paths. The complete Windows CI
@@ -614,6 +615,7 @@ await RestaurantThirdExeTests.Run(Assert);
 await RestaurantRecipeTests.Run(Assert);
 await RestaurantInterimBillTests.Run(Assert);
 await RestaurantSplitPlannerTests.Run(Assert);
+await RestaurantWaiterSettlementTests.Run(root, Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
@@ -694,7 +696,7 @@ await BarTestBonPreparationTests.Run(Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-const int ExpectedSafetyChecks = 1451;
+const int ExpectedSafetyChecks = 1454;
 
 if (checks != ExpectedSafetyChecks)
 {
