@@ -97,6 +97,30 @@ public static class RestaurantWaiterSettlementTests
                 before == after && settlement.TotalCashCents == 300 && settlement.TotalCardCents == 1200 &&
                 RestaurantWaiterSettlementService.ToText(settlement).Any(x => x.Contains("Offene Tische: 1", StringComparison.Ordinal)),
                 "R-5.1 building the Kellnerabrechnung writes nothing (sales, audit, events, table versions, settings unchanged)");
+
+            await using (var c = db.OpenConnection())
+            await using (var bad = c.CreateCommand())
+            {
+                bad.CommandText = """
+                    INSERT INTO restaurant_session_events(session_id,event_type,actor,device_id,created_at,payload_json)
+                    VALUES($s,'POSITION_STORNIERT','Anna','KASSE-1',$at,'{');
+                    """;
+                bad.Parameters.AddWithValue("$s", annaTable.Id);
+                bad.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
+                await bad.ExecuteNonQueryAsync();
+            }
+            var corruptRefused = false;
+            try
+            {
+                await service.BuildForOpenPeriodAsync();
+            }
+            catch (InvalidOperationException ex)
+            {
+                corruptRefused = ex.Message.Contains("beschädigt", StringComparison.OrdinalIgnoreCase);
+            }
+            assert(
+                corruptRefused,
+                "R-5.1 a damaged cancellation event fails closed instead of silently understating the waiter settlement");
         }
         finally
         {

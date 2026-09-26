@@ -174,14 +174,21 @@ public sealed class RestaurantWaiterSettlementService
                     if (!DateTimeOffset.TryParse(r.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) ||
                         at < from || at > to)
                         continue;
-                    long cents = 0;
+                    long cents;
                     try
                     {
                         using var payload = JsonDocument.Parse(r.GetString(2));
-                        if (payload.RootElement.TryGetProperty("LineTotalCents", out var total) && total.TryGetInt64(out var value))
-                            cents = value;
+                        if (!payload.RootElement.TryGetProperty("LineTotalCents", out var total) ||
+                            !total.TryGetInt64(out cents))
+                            throw new InvalidOperationException(
+                                $"Kellnerabrechnung: Storno-Daten für {r.GetString(0)} enthalten keinen gültigen Betrag.");
                     }
-                    catch (JsonException) { }
+                    catch (JsonException ex)
+                    {
+                        throw new InvalidOperationException(
+                            $"Kellnerabrechnung: Storno-Daten für {r.GetString(0)} sind beschädigt.",
+                            ex);
+                    }
                     var row = Row(r.GetString(0));
                     rows[row.Waiter] = row with
                     {
