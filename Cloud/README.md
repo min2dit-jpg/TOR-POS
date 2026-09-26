@@ -85,14 +85,18 @@ Ohne Demo-Modus: `TOR_CLOUD_DEMO=false`, HTTPS/Reverse Proxy, `COOKIE_SECURE=tru
 `TOR_CLOUD_PUBLIC_URL`, starkes `TOR_CLOUD_TOTP_KEY`.
 Demo-Datenbank darf nicht im Live-Modus geöffnet werden.
 
-R125 - fertige Vorlagen in `deploy/`:
+R125 - fertige Vorlagen in `deploy/`. Ablauf für den ersten Server: **`docs/CLOUD-PRODUKTION.md`**.
 
 | Datei | Zweck |
 |---|---|
 | `tor-pos-cloud.env.example` | alle Umgebungsvariablen für den Live-Betrieb, kommentiert |
 | `tor-pos-cloud.service` | systemd-Dienst (Neustart bei Fehler, sauberes Beenden, gehärtet) |
 | `Caddyfile.example` | HTTPS (TLS 1.2/1.3) mit automatischem Let's-Encrypt-Zertifikat vor `127.0.0.1:8787`, seit R145 für `api.<domain>` und `bon.<domain>` |
-| `update-cloud.sh` | Update in einem Schritt mit Sicherung, Versionsprüfung und automatischem Zurücksetzen |
+| `install-cloud.sh` | Erstinstallation (Benutzer, Ordner, Umgebungsdatei chmod 600, systemd); startet erst, wenn die Vorabprüfung keinen Fehler findet |
+| `preflight-cloud.sh` | Produktions-Vorabprüfung (nur lesend): Livemodus, Platzhalter, Rechte, Ordner, Node, Dienst, Caddy, `/api/health` |
+| `update-cloud.sh` | Update in einem Schritt mit Sicherung, Versionsprüfung, Stabilitätsprüfung und automatischem Zurücksetzen |
+| `restore-cloud-db.sh` | Datenbank aus einer Sicherung wiederherstellen (prüft die Sicherung, legt die aktuelle beiseite, setzt bei Fehler zurück) |
+| `apply-caddyfile.sh` | neue Caddyfile übernehmen: erst `caddy validate`, dann Sicherung, `reload`, bei Fehler alte Datei zurück |
 | `apply-c1-caddy.sh` | C-1: stellt auf einem laufenden Server das Upload-Limit um (TOR Mail 12 MiB, sonst 2 MB) – mit Sicherung, `caddy validate`, automatischem Zurücksetzen bei Fehler und `reload`: `sudo bash deploy/apply-c1-caddy.sh` |
 
 **Update auf eine neue Version (ein Befehl):** neue Version als ZIP (GitHub „Code → Download ZIP“) oder `Cloud`-Ordner
@@ -111,8 +115,8 @@ Sicherungen bleiben (`TOR_CLOUD_KEEP`). Andere Pfade: `TOR_CLOUD_DIR`, `TOR_CLOU
 **Datensicherung:** mit `TOR_CLOUD_BACKUP_DIR` schreibt der Server im laufenden Betrieb
 eine konsistente Kopie (`VACUUM INTO`), standardmäßig alle 24 h, die letzten 14 bleiben
 (`TOR_CLOUD_BACKUP_INTERVAL_HOURS`, `TOR_CLOUD_BACKUP_KEEP`). Diesen Ordner zusätzlich
-außerhalb des Servers ablegen. Wiederherstellen: Dienst stoppen, Sicherungsdatei als
-`TOR_CLOUD_DB` zurückkopieren (vorhandene `-wal`/`-shm` daneben entfernen), Dienst starten.
+außerhalb des Servers ablegen. Wiederherstellen:
+`sudo bash deploy/restore-cloud-db.sh /var/backups/tor-pos-cloud/tor-cloud-<Zeit>Z.db`.
 
 **Aufräumen:** abgelaufene Sitzungen und 2FA-Anfragen werden stündlich gelöscht
 (vorher nur, wenn genau diese Zeile wieder benutzt wurde - die Tabelle wuchs unbegrenzt).

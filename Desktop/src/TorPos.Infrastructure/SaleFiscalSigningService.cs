@@ -99,6 +99,37 @@ public sealed class SaleFiscalSigningService
         return count;
     }
 
+    /// <summary>
+    /// F-6: a BON STORNO / TEILRETOURE that was booked, then the till stopped
+    /// before its TSE transaction was even started. A transaction is never
+    /// started afterwards and presented as the original one (KassenSichV §2,
+    /// see TseVorgangService.FinishAsync), so the reversal is documented as a
+    /// TSE outage - its receipt then carries the TSE-AUSFALL note. Start-up
+    /// and Z-Bericht only, never while a reversal may be in the middle of
+    /// being signed.
+    /// </summary>
+    public async Task<int> DocumentInterruptedReversalsAsync(string actor, CancellationToken ct = default)
+    {
+        if (Vorgaenge is not { } vorgaenge)
+            return 0;
+
+        var count = 0;
+        foreach (var saleId in await vorgaenge.UnsignedReversalsInOpenPeriodAsync(ct))
+        {
+            if (await _sales.GetByIdAsync(saleId, ct) is not { } sale)
+                continue;
+            var kind = sale.TransactionType == "STORNO" ? "BON STORNO" : "TEILRETOURE";
+            await ReportOutageAsync(
+                sale,
+                $"{kind} {sale.ReceiptNumber:000000} wurde gebucht, das Programm endete vor dem TSE-Start - als TSE-Ausfall dokumentiert, keine nachträgliche Signatur.",
+                actor,
+                ct);
+            count++;
+        }
+
+        return count;
+    }
+
     public async Task SignInVorgangAsync(Sale sale, string vorgangId, string actor, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sale);
@@ -130,9 +161,30 @@ public sealed class SaleFiscalSigningService
         await vorgaenge.ClearFinishJournalAsync(vorgangId, ct);
     }
 
+    /// <summary>
+    /// F-6 for BON STORNO / TEILRETOURE: the Vorgang of a sale that is signed
+    /// after its commit (no cart Vorgang) is keyed by the sale, so start-up
+    /// recovery finds it again (CommittedSalesWithOpenVorgangAsync).
+    /// </summary>
+    public static string PostCommitVorgangId(long saleId) =>
+        TseVorgangService.PostCommitSalePrefix + saleId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     public async Task SignAsync(Sale sale, string actor, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sale);
+
+        // F-6: with a tracked Vorgang the transaction is recorded before the
+        // TSE is asked to start it, and the TSE answer is journaled before the
+        // sale gets it. A crash in between is then recovered at start-up with
+        // the signature the TSE already returned, instead of leaving a booked
+        // Storno/Retoure with neither a signature nor an outage record.
+        if (Vorgaenge is { } vorgaenge)
+        {
+            var vorgangId = PostCommitVorgangId(sale.Id);
+            await vorgaenge.StartAsync(vorgangId, false, DateTimeOffset.Now, actor, ct);
+            await SignInVorgangAsync(sale, vorgangId, actor, ct);
+            return;
+        }
 
         var settings = await _settings.LoadAllAsync(ct);
 

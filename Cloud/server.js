@@ -33,6 +33,12 @@ const HOST = process.env.HOST || '127.0.0.1';
 const DB_PATH = process.env.TOR_CLOUD_DB || path.join(DATA, 'tor-cloud.db');
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const COOKIE_SECURE = String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
+// Production preflight: a secret still holding the text of
+// deploy/tor-pos-cloud.env.example ("REPLACE-WITH-...") is long enough for
+// every length check, so live mode refuses it by name.
+const SECRET_SETTINGS=['TOR_CLOUD_TOTP_KEY','TOR_CLOUD_GOOGLE_TOKEN_KEY','TOR_GOOGLE_OAUTH_CLIENT_SECRET','TOR_MAIL_SMTP_PASSWORD'];
+function looksLikePlaceholder(value){return /REPLACE-WITH|CHANGE[-_ ]?ME|PLACEHOLDER/i.test(String(value||'').trim());}
+if (!DEMO) for (const name of SECRET_SETTINGS) if (looksLikePlaceholder(process.env[name])) throw new Error(`${name} enthält noch den Platzhalter aus tor-pos-cloud.env.example - bitte einen echten Wert setzen.`);
 const TOTP_KEY_MATERIAL = String(process.env.TOR_CLOUD_TOTP_KEY || (DEMO ? 'TOR-POS-DEMO-TOTP-KEY-ONLY-LOCAL' : ''));
 if (!DEMO && REQUIRE_OWNER_2FA && TOTP_KEY_MATERIAL.length < 24) throw new Error('Live-2FA benötigt TOR_CLOUD_TOTP_KEY mit mindestens 24 Zeichen.');
 const TOTP_KEY = crypto.createHash('sha256').update(TOTP_KEY_MATERIAL || 'disabled').digest();
@@ -95,6 +101,9 @@ function legalUrl(name){
 const RECEIPT_LINKS={imprint:legalUrl('TOR_CLOUD_IMPRINT_URL'),privacy:legalUrl('TOR_CLOUD_PRIVACY_URL')};
 
 if (!['127.0.0.1','localhost','::1'].includes(HOST) && (!COOKIE_SECURE || DEMO)) throw new Error('Externer Betrieb benötigt sichere Cookies und deaktivierten Demomodus.');
+// Behind the TLS proxy Node listens on 127.0.0.1, so the check above never
+// fires in production; an HTTPS public address is what says the portal is live.
+if (!DEMO && CLOUD_PUBLIC_URL.startsWith('https://') && !COOKIE_SECURE) throw new Error('TOR_CLOUD_PUBLIC_URL ist HTTPS - dann muss COOKIE_SECURE=true gesetzt sein.');
 const db = new DatabaseSync(DB_PATH);
 db.function('berlin_day', x=>berlinParts(x).day);
 db.function('berlin_hour', x=>berlinParts(x).hour);

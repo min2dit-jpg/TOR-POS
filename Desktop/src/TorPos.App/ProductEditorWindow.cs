@@ -2454,6 +2454,49 @@ public sealed class ProductEditorWindow : Window
         catch (Exception ex) { _imageText.Text = "FEHLER: " + ex.Message; }
     }
 
+    private async Task<bool> ConfirmUnitRecountAsync(Product previous, string newUnit, decimal stock, decimal minStock)
+    {
+        var de = System.Globalization.CultureInfo.GetCultureInfo("de-DE");
+        var dialog = new Window
+        {
+            Title = "EINHEIT GEÄNDERT",
+            Width = 640,
+            Height = 380,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var yes = new Button { Content = "NEU GEZÄHLT · SPEICHERN", MinWidth = 220, MinHeight = 48 };
+        var no = new Button { Content = "ABBRECHEN", MinWidth = 150, MinHeight = 48 };
+        yes.Click += (_,_) => dialog.Close(true);
+        no.Click += (_,_) => dialog.Close(false);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(22),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = "EINHEIT GEÄNDERT", FontSize = 24, FontWeight = FontWeight.Bold },
+                new TextBlock
+                {
+                    Text = StockUnitRules.RecountMessage(previous.Unit, newUnit, previous.StockQuantity, previous.MinStockQuantity),
+                    TextWrapping = TextWrapping.Wrap
+                },
+                new Border
+                {
+                    Background = Brush.Parse("#3A2A15"), CornerRadius = new Avalonia.CornerRadius(8), Padding = new Avalonia.Thickness(10),
+                    Child = new TextBlock
+                    {
+                        Text = $"Wird gespeichert: Bestand {stock.ToString("0.###", de)} {newUnit} · Mindestbestand {minStock.ToString("0.###", de)} {newUnit}",
+                        TextWrapping = TextWrapping.Wrap, Foreground = AppTheme.WarningAmber
+                    }
+                },
+                new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 10, Children = { yes, no } }
+            }
+        };
+        dialog.Opened += (_,_) => UiLanguage.Apply(dialog);
+        return await dialog.ShowDialog<bool>(this);
+    }
+
     private async Task<bool> ConfirmDeleteAsync(string title, string message)
     {
         var dialog = new Window
@@ -2718,9 +2761,21 @@ public sealed class ProductEditorWindow : Window
                     throw new InvalidOperationException("Menü Im Haus: " + inHouse.Message);
             }
 
+            // A unit change (Stück <-> kg, ...) on an article with a count
+            // needs Bestand and Mindestbestand counted again in the new unit;
+            // the numbers are never carried over silently (12 Stück != 12 kg).
+            var unitRecount = _selectedArticle is { } previous &&
+                StockUnitRules.NeedsRecount(previous.Unit, product.Unit, previous.StockQuantity, previous.MinStockQuantity);
+            if (unitRecount &&
+                !await ConfirmUnitRecountAsync(_selectedArticle!, product.Unit, stock, minStock))
+            {
+                _imageText.Text = UiLanguage.T("Nicht gespeichert: Bestand und Mindestbestand bitte in der neuen Einheit eintragen.");
+                return;
+            }
+
             var id = await _repo.SaveWithStockAsync(product,
-                _selectedArticle is null || stock != expectedStock ? stock : null,
-                expectedStock, _user.Username, variants:variants, comboItems:comboItems);
+                _selectedArticle is null || stock != expectedStock || unitRecount ? stock : null,
+                expectedStock, _user.Username, variants:variants, comboItems:comboItems, unitChangeRecounted:unitRecount);
 
             await _catalog.ReloadAsync();
             App.CloudSync?.RequestStockRefresh();

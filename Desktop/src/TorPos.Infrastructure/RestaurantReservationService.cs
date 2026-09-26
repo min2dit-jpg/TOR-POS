@@ -41,7 +41,8 @@ public sealed class RestaurantReservationService
         string note,
         long? tableId,
         string actor,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool extendTable = false)
     {
         _entitlements.Require(RestaurantFeature.Reservierungen);
 
@@ -69,7 +70,11 @@ public sealed class RestaurantReservationService
             await using var tx = c.BeginTransaction();
 
             if (tableId is long table)
-                await EnsureActiveTableAsync(c, tx, table, ct);
+            {
+                var extra = await EnsureActiveTableAsync(c, tx, table, guestCount, extendTable, ct);
+                await EnsureTableFreeAsync(c, tx, table, reservationAt, durationMinutes, excludeId: null, ct);
+                note = WithExtension(note, extra);
+            }
 
             var id = Guid.NewGuid().ToString("N");
             var now = DateTimeOffset.UtcNow;
@@ -145,7 +150,8 @@ public sealed class RestaurantReservationService
         long expectedVersion,
         long? tableId,
         string actor,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool extendTable = false)
     {
         _entitlements.Require(RestaurantFeature.Reservierungen);
 
@@ -163,8 +169,14 @@ public sealed class RestaurantReservationService
             await using var c = _db.OpenConnection();
             await using var tx = c.BeginTransaction();
 
+            string? note = null;
             if (tableId is long table)
-                await EnsureActiveTableAsync(c, tx, table, ct);
+            {
+                var current = await ReadAsync(c, tx, reservationId, ct);
+                var extra = await EnsureActiveTableAsync(c, tx, table, current.GuestCount, extendTable, ct);
+                await EnsureTableFreeAsync(c, tx, table, current.ReservationAt, current.DurationMinutes, reservationId, ct);
+                note = WithExtension(current.Note, extra);
+            }
 
             var now = DateTimeOffset.UtcNow.ToString("O");
             await using (var q = c.CreateCommand())
@@ -173,6 +185,7 @@ public sealed class RestaurantReservationService
                 q.CommandText = """
                     UPDATE restaurant_reservations
                     SET table_id=$table,
+                        note=COALESCE($note,note),
                         updated_at=$now,
                         updated_by=$actor,
                         version=version+1
@@ -181,6 +194,7 @@ public sealed class RestaurantReservationService
                       AND status='BOOKED';
                     """;
                 q.Parameters.AddWithValue("$table", tableId is long value ? value : DBNull.Value);
+                q.Parameters.AddWithValue("$note", note is null ? DBNull.Value : note);
                 q.Parameters.AddWithValue("$now", now);
                 q.Parameters.AddWithValue("$actor", actor);
                 q.Parameters.AddWithValue("$id", reservationId);
@@ -235,7 +249,11 @@ public sealed class RestaurantReservationService
                         version=version+1
                     WHERE id=$id
                       AND version=$version
-                      AND status='BOOKED';
+                      -- BOOKED -> SEATED / CANCELLED / NO_SHOW / COMPLETED;
+                      -- a seated party is finished with SEATED -> COMPLETED
+                      -- (it no longer holds the table from then on).
+                      AND (status='BOOKED'
+                           OR (status='SEATED' AND $status='COMPLETED'));
                     """;
                 q.Parameters.AddWithValue("$status", status);
                 q.Parameters.AddWithValue("$now", now);
@@ -253,23 +271,83 @@ public sealed class RestaurantReservationService
         });
     }
 
-    private static async Task EnsureActiveTableAsync(
+    // Returns the extra chairs the table needs (0 when the party fits).
+    private static async Task<int> EnsureActiveTableAsync(
         SqliteConnection c,
         SqliteTransaction tx,
         long tableId,
+        int guestCount,
+        bool extendTable,
         CancellationToken ct)
     {
         await using var q = c.CreateCommand();
         q.Transaction = tx;
         q.CommandText = """
-            SELECT COUNT(*)
+            SELECT display_name,seats
             FROM restaurant_tables
             WHERE id=$id AND is_active=1;
             """;
         q.Parameters.AddWithValue("$id", tableId);
-        if (Convert.ToInt32(await q.ExecuteScalarAsync(ct)) != 1)
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct))
             throw new InvalidOperationException(
                 "Reservierungstisch ist nicht vorhanden oder deaktiviert.");
+        // As in service: a party larger than the table is a question, not a
+        // silent booking. The staff may extend the table with extra chairs
+        // (recorded in the note), pick a larger table, or book without a
+        // table and join tables on arrival.
+        var seats = r.GetInt32(1);
+        if (guestCount <= seats)
+            return 0;
+        if (!extendTable)
+            throw new RestaurantTableCapacityException(r.GetString(0), seats, guestCount);
+        return guestCount - seats;
+    }
+
+    private static string WithExtension(string note, int extraChairs)
+    {
+        if (extraChairs <= 0)
+            return note;
+        var marker = $"Tisch erweitert: +{extraChairs} Plätze";
+        var combined = string.IsNullOrWhiteSpace(note) ? marker : marker + " · " + note;
+        return combined.Length > 1000 ? combined[..1000] : combined;
+    }
+
+    // One table, one party at a time: a BOOKED or SEATED reservation whose
+    // time overlaps [start, start + duration) keeps the table. Runs inside
+    // the writing transaction on the single writer queue, so two tills
+    // cannot both pass the check.
+    private static async Task EnsureTableFreeAsync(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        long tableId,
+        DateTimeOffset start,
+        int durationMinutes,
+        string? excludeId,
+        CancellationToken ct)
+    {
+        var end = start.AddMinutes(durationMinutes);
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = """
+            SELECT customer_name,reservation_at,duration_minutes
+            FROM restaurant_reservations
+            WHERE table_id=$table
+              AND status IN ('BOOKED','SEATED')
+              AND id<>$exclude;
+            """;
+        q.Parameters.AddWithValue("$table", tableId);
+        q.Parameters.AddWithValue("$exclude", excludeId ?? "");
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+        {
+            var otherStart = DateTimeOffset.Parse(r.GetString(1), System.Globalization.CultureInfo.InvariantCulture);
+            var otherEnd = otherStart.AddMinutes(r.GetInt32(2));
+            if (start < otherEnd && otherStart < end)
+                throw new InvalidOperationException(
+                    $"Tisch ist in diesem Zeitraum bereits reserviert: {r.GetString(0)}, " +
+                    $"{otherStart.ToLocalTime():dd.MM.yyyy HH:mm}–{otherEnd.ToLocalTime():HH:mm}.");
+        }
     }
 
     private static async Task<RestaurantReservation> ReadAsync(
@@ -310,4 +388,18 @@ public sealed class RestaurantReservationService
             r.GetString(11),
             r.GetString(12),
             r.GetInt64(13));
+}
+
+/// <summary>
+/// The party is larger than the table. Ask whether to extend the table
+/// (extendTable: true) instead of booking it silently.
+/// </summary>
+public sealed class RestaurantTableCapacityException(string tableName, int seats, int guestCount)
+    : InvalidOperationException(
+        $"{tableName} hat {seats} Plätze, die Reservierung {guestCount} Gäste. " +
+        "Tisch erweitern, größeren Tisch wählen oder ohne Tisch reservieren und beim Eintreffen Tische zusammenlegen.")
+{
+    public string TableName { get; } = tableName;
+    public int Seats { get; } = seats;
+    public int GuestCount { get; } = guestCount;
 }

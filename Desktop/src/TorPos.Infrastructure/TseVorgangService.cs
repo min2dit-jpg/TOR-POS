@@ -219,8 +219,19 @@ public sealed class TseVorgangService
             return;
 
         SaleTseResult result;
-        if (TryTransaction(vorgang, out var transaction))
+        if (await GetJournaledFinishAsync(vorgangId, ct) is { } journaled)
         {
+            // F-6 for aborts: the TSE already finished this Vorgang before the
+            // program stopped; its answer is used, the TSE is not asked again.
+            result = journaled;
+        }
+        else if (TryTransaction(vorgang, out var transaction))
+        {
+            // F-6: note the attempt first, journal the answer before the
+            // AVBelegabbruch record is written (same order as FinishAsync).
+            var retryAfterCrash = vorgang.FinishAttemptedAt.Length > 0;
+            await MarkFinishAttemptAsync(vorgangId, ct);
+
             var (finish, _) = await _tse.FinishTransactionAsync(
                 new TseTransactionFinishRequest(vorgang.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(FiscalProcessData.AbortText(vorgang.Training)), FiscalProcessData.KassenbelegProcessType),
                 actor,
@@ -234,7 +245,14 @@ public sealed class TseVorgangService
                     finish.SignatureBase64,
                     finish.LogTime,
                     vorgang.StartLogTime)
-                : SaleTseResult.Outage(finish.Message);
+                : SaleTseResult.Outage(retryAfterCrash
+                    ? $"{finish.Message} · TSE-Transaktion {transaction} wurde vor einem Programmabbruch möglicherweise bereits abgeschlossen - Signatur im TSE-Export (TAR) prüfen."
+                    : finish.Message);
+
+            if (finish.Success)
+                await JournalFinishAsync(vorgangId, result, ct);
+            else if (retryAfterCrash)
+                await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
         }
         else
         {
@@ -311,7 +329,7 @@ public sealed class TseVorgangService
             await using (var state = c.CreateCommand())
             {
                 state.Transaction = tx;
-                state.CommandText = "UPDATE tse_vorgaenge SET state='ABORTED',reference=$ref,updated_at=$now WHERE id=$id;";
+                state.CommandText = "UPDATE tse_vorgaenge SET state='ABORTED',reference=$ref,finish_result_json='',updated_at=$now WHERE id=$id;";
                 state.Parameters.AddWithValue("$ref", "ABORT:" + id.ToString(CultureInfo.InvariantCulture));
                 state.Parameters.AddWithValue("$now", DateTimeOffset.Now.ToString("O"));
                 state.Parameters.AddWithValue("$id", vorgangId);
@@ -377,13 +395,56 @@ public sealed class TseVorgangService
     /// </summary>
     public Task<List<(string VorgangId, long SaleId, bool Signed)>> CommittedSalesWithOpenVorgangAsync(CancellationToken ct = default) =>
         QueryAsync("""
-            SELECT v.id, o.sale_id,
-                   EXISTS (SELECT 1 FROM sale_tse_signatures t WHERE t.sale_id=o.sale_id)
-            FROM tse_vorgaenge v
-            JOIN checkout_operations o ON json_extract(o.snapshot,'$.TseVorgangId')=v.id
-            WHERE (v.state='OPEN' OR v.finish_result_json<>'') AND o.sale_id IS NOT NULL
-            ORDER BY v.started_at;
-            """, _ => { }, r => (r.GetString(0), r.GetInt64(1), r.GetInt64(2) != 0), ct);
+            SELECT id, sale_id, signed FROM (
+              SELECT v.id, o.sale_id AS sale_id, v.started_at,
+                     EXISTS (SELECT 1 FROM sale_tse_signatures t WHERE t.sale_id=o.sale_id) AS signed
+              FROM tse_vorgaenge v
+              JOIN checkout_operations o ON json_extract(o.snapshot,'$.TseVorgangId')=v.id
+              WHERE (v.state='OPEN' OR v.finish_result_json<>'') AND o.sale_id IS NOT NULL
+              UNION ALL
+              -- F-6: BON STORNO / TEILRETOURE are signed after their commit in
+              -- a Vorgang keyed by the sale (SaleFiscalSigningService.SignAsync).
+              SELECT v.id, s.id, v.started_at,
+                     EXISTS (SELECT 1 FROM sale_tse_signatures t WHERE t.sale_id=s.id)
+              FROM tse_vorgaenge v
+              JOIN sales s ON v.id=$prefix||s.id
+              WHERE v.id LIKE $prefix||'%' AND (v.state='OPEN' OR v.finish_result_json<>'')
+            )
+            ORDER BY started_at;
+            """, q => q.Parameters.AddWithValue("$prefix", PostCommitSalePrefix),
+            r => (r.GetString(0), r.GetInt64(1), r.GetInt64(2) != 0), ct);
+
+    /// <summary>
+    /// F-6: BON STORNO / TEILRETOURE of the open Z period that are booked but
+    /// have neither a TSE record nor a post-commit Vorgang - the till stopped
+    /// after the reversal was booked and before signing even began. Closed Z
+    /// periods are not touched.
+    /// </summary>
+    public async Task<List<long>> UnsignedReversalsInOpenPeriodAsync(CancellationToken ct = default)
+    {
+        var rows = await QueryAsync("""
+            SELECT s.id, s.created_at,
+                   COALESCE((SELECT closed_at FROM daily_closings ORDER BY id DESC LIMIT 1),'')
+            FROM sales s
+            WHERE s.transaction_type IN ('STORNO','RETURN')
+              AND NOT EXISTS (SELECT 1 FROM sale_tse_signatures t WHERE t.sale_id=s.id)
+              AND NOT EXISTS (SELECT 1 FROM tse_vorgaenge v WHERE v.id=$prefix||s.id)
+            ORDER BY s.id;
+            """, q => q.Parameters.AddWithValue("$prefix", PostCommitSalePrefix),
+            r => (Id: r.GetInt64(0), Created: r.GetString(1), LastClosing: r.GetString(2)), ct);
+
+        return rows
+            .Where(x =>
+                x.LastClosing.Length == 0 ||
+                !DateTimeOffset.TryParse(x.LastClosing, CultureInfo.InvariantCulture, DateTimeStyles.None, out var closed) ||
+                !DateTimeOffset.TryParse(x.Created, CultureInfo.InvariantCulture, DateTimeStyles.None, out var created) ||
+                created > closed)
+            .Select(x => x.Id)
+            .ToList();
+    }
+
+    /// <summary>Vorgang id prefix of a sale signed after its commit (BON STORNO, TEILRETOURE).</summary>
+    public const string PostCommitSalePrefix = "sale-sign-";
 
     /// <summary>F-6: the TSE result journaled for a Vorgang, if the TSE already finished it.</summary>
     public async Task<SaleTseResult?> GetJournaledFinishAsync(string vorgangId, CancellationToken ct = default)

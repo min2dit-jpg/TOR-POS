@@ -319,7 +319,8 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
                 errors.Add($"Zeile {row} ({name}): PFAND, BESTAND, MINDESTBESTAND oder EINKAUFSPREIS ist keine Zahl");
                 continue;
             }
-            var unit = string.IsNullOrWhiteSpace(cells.ElementAtOrDefault(8)) ? "Stück" : cells[8].Trim();
+            // A blank EINHEIT keeps an existing article's unit (new ones: Stück).
+            var unit = string.IsNullOrWhiteSpace(cells.ElementAtOrDefault(8)) ? null : cells[8].Trim();
             var active = !string.Equals(cells.ElementAtOrDefault(9)?.Trim(), "0", StringComparison.OrdinalIgnoreCase);
             // O-12: the Warengruppe's USt is what the checkout uses. One row
             // used to overwrite it for every article of the group; a row that
@@ -339,8 +340,17 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
             var (categoryId, categoryImHaus) = await EnsureCategoryAsync(c, (SqliteTransaction)tx, groupId, category, vat, ct, imHausFromCsv);
             // O-12: a missing BESTAND column (or blank cell) keeps the
             // counted stock instead of setting it to 0.
-            var change = await UpsertProductAsync(c, (SqliteTransaction)tx, categoryId, name, sku, barcode, price, vat, Math.Max(0, pfand ?? 0), unit, active,
-                stock is decimal s ? (decimal?)Math.Max(0m, s) : null, minStock is decimal m ? (decimal?)Math.Max(0m, m) : null, purchasePrice is long pp ? (long?)Math.Max(0L, pp) : null, ct, categoryImHaus);
+            (string Sku, decimal? OldStock, decimal NewStock) change;
+            try
+            {
+                change = await UpsertProductAsync(c, (SqliteTransaction)tx, categoryId, name, sku, barcode, price, vat, Math.Max(0, pfand ?? 0), unit, active,
+                    stock is decimal s ? (decimal?)Math.Max(0m, s) : null, minStock is decimal m ? (decimal?)Math.Max(0m, m) : null, purchasePrice is long pp ? (long?)Math.Max(0L, pp) : null, ct, categoryImHaus);
+            }
+            catch (StockUnitChangeException unitChange)
+            {
+                errors.Add($"Zeile {row} ({name}): {unitChange.Message} (BESTAND und MINDESTBESTAND in der Zeile angeben)");
+                continue;
+            }
             if (change.OldStock is decimal before && change.NewStock != before)
                 stockChanges.Add($"{change.Sku} {name}: {before.ToString("0.###", CultureInfo.InvariantCulture)} -> {change.NewStock.ToString("0.###", CultureInfo.InvariantCulture)}");
             count++;
@@ -355,13 +365,33 @@ public async Task<string> ExportArticlesCsvAsync(string targetPath, Cancellation
                 (errors.Count > 10 ? $"\n... und {errors.Count - 10} weitere" : ""));
         }
 
-        await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "ARTICLE_IMPORT_CSV", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), $"rows={count}; stock_changes={stockChanges.Count}", ct);
+        // The audit rows commit with the articles or not at all: an import
+        // that reports an error has changed nothing, so a retry cannot add
+        // the same article twice under a fresh Artikelnummer.
+        await InsertAuditAsync(c, (SqliteTransaction)tx, actor, "ARTICLE_IMPORT_CSV", Path.GetFileName(sourcePath), $"rows={count}; stock_changes={stockChanges.Count}", ct);
         // O-12: stock set by an import is traceable like a manual correction.
         if (stockChanges.Count > 0)
-            await _audit.WriteAsync(actor, "ARTICLE_IMPORT_STOCK", "ARTICLE_MASTER_DATA", Path.GetFileName(sourcePath), string.Join("; ", stockChanges), ct);
+            await InsertAuditAsync(c, (SqliteTransaction)tx, actor, "ARTICLE_IMPORT_STOCK", Path.GetFileName(sourcePath), string.Join("; ", stockChanges), ct);
+        await tx.CommitAsync(ct);
         return count;
     });
+}
+
+// Same row as AuditLogRepository.WriteAsync, inside the caller's transaction.
+private static async Task InsertAuditAsync(SqliteConnection c, SqliteTransaction tx, string actor, string eventType, string entityId, string details, CancellationToken ct)
+{
+    await using var q = c.CreateCommand();
+    q.Transaction = tx;
+    q.CommandText = """
+        INSERT INTO audit_log(created_at,actor,event_type,entity_type,entity_id,details)
+        VALUES($time,$actor,$event,'ARTICLE_MASTER_DATA',$id,$details);
+        """;
+    q.Parameters.AddWithValue("$time", DateTimeOffset.Now.ToString("O"));
+    q.Parameters.AddWithValue("$actor", actor ?? "SYSTEM");
+    q.Parameters.AddWithValue("$event", eventType);
+    q.Parameters.AddWithValue("$id", entityId ?? "");
+    q.Parameters.AddWithValue("$details", details ?? "");
+    await q.ExecuteNonQueryAsync(ct);
 }
 
 internal static string DecodeCsvText(byte[] bytes)
@@ -518,8 +548,8 @@ private static async Task<decimal?> ExistingCategoryVatAsync(SqliteConnection c,
             await UpsertProductAsync(c, (SqliteTransaction)tx, categoryId, row.Name, row.Sku, row.Barcode, row.Price, row.Vat, row.Pfand, row.Unit, row.Active, row.Stock, row.MinStock, row.PurchasePrice, ct, categoryImHaus);
         }
 
+        await InsertAuditAsync(c, (SqliteTransaction)tx, actor, "ARTICLE_IMPORT_DATABASE", Path.GetFileName(sourceDatabasePath), $"rows={rows.Count}", ct);
         await tx.CommitAsync(ct);
-        await _audit.WriteAsync(actor, "ARTICLE_IMPORT_DATABASE", "ARTICLE_MASTER_DATA", Path.GetFileName(sourceDatabasePath), $"rows={rows.Count}", ct);
         return rows.Count;
     });
 }public async Task<ReportDocument> BuildXReportAsync(CancellationToken ct = default)
@@ -1979,7 +2009,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         long price,
         decimal vat,
         long pfand,
-        string unit,
+        string? unit,
         bool active,
         decimal? stock,
         decimal? minStock,
@@ -2031,9 +2061,19 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         {
             await using var read = c.CreateCommand();
             read.Transaction = tx;
-            read.CommandText = "SELECT COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)) FROM products WHERE id=$id;";
+            read.CommandText = "SELECT COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)),COALESCE(min_stock_milli,CAST(ROUND(COALESCE(min_stock_quantity,0)*1000.0) AS INTEGER)),COALESCE(unit,'') FROM products WHERE id=$id;";
             read.Parameters.AddWithValue("$id", current);
-            oldStock = QuantityStorage.FromMilli(Convert.ToInt64(await read.ExecuteScalarAsync(ct)));
+            await using var old = await read.ExecuteReaderAsync(ct);
+            await old.ReadAsync(ct);
+            oldStock = QuantityStorage.FromMilli(old.GetInt64(0));
+            var oldMinStock = QuantityStorage.FromMilli(old.GetInt64(1));
+            var oldUnit = old.GetString(2);
+            unit ??= oldUnit;
+            // A new unit re-reads the counted numbers (12 Stück must not
+            // become 12 kg): the row has to bring both counts in the new unit.
+            if (StockUnitRules.NeedsRecount(oldUnit, unit, oldStock.Value, oldMinStock) &&
+                ((oldStock != 0m && stock is null) || (oldMinStock != 0m && minStock is null)))
+                throw new StockUnitChangeException(StockUnitRules.RecountMessage(oldUnit, unit, oldStock.Value, oldMinStock));
         }
 
         await using var q = c.CreateCommand();
@@ -2090,8 +2130,7 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
         return scope is "KIOSK" or "IMBISS" ? scope : "ALL";
     }
 
-    private static string Csv(string? value) =>
-        "\"" + (value ?? "").Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
+    private static string Csv(string? value) => CsvCells.Text(value);
 
     private static List<string> ParseCsvLine(string line)
     {
@@ -2116,7 +2155,8 @@ public async Task<string> CreateArticleLabelsPdfAsync(CancellationToken ct = def
             else sb.Append(ch);
         }
         result.Add(sb.ToString());
-        return result;
+        // An article exported by TOR as '=... comes back as =...
+        return result.Select(CsvCells.Unguard).ToList();
     }
 
     // German report amounts must not depend on the Windows account culture.

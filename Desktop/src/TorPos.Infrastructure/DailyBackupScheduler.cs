@@ -59,12 +59,24 @@ public sealed class DailyBackupScheduler : IAsyncDisposable
             {
                 var directory = values.TryGetValue("backup.directory", out var configured) ? configured : "";
                 var path = await _backup.CreateBackupAsync(directory, ct);
-                path = await new BackupEncryptionService(_settings).EncryptIfEnabledAsync(path, ct);
+                var warning = "";
+                try
+                {
+                    path = await new BackupEncryptionService(_settings).EncryptIfEnabledAsync(path, ct);
+                }
+                catch (BackupNotEncryptedException notEncrypted)
+                {
+                    // A backup exists, so today's backup is done (no retry every
+                    // five minutes piling up plain copies) - but the warning stays
+                    // visible in Einstellungen and Diagnose until encryption works.
+                    path = notEncrypted.PlainPath;
+                    warning = $"{_now():O} · {notEncrypted.Message}";
+                }
                 var completed = _now();
                 await _settings.SaveManyAsync(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["backup.daily.last_success"] = completed.ToString("O"),
-                    ["backup.daily.last_error"] = "",
+                    ["backup.daily.last_error"] = warning,
                     ["backup.daily.last_path"] = path
                 }, ct);
                 _retryNotBefore = null;

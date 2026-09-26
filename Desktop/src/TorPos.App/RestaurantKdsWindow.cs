@@ -24,6 +24,16 @@ public sealed class RestaurantKdsWindow : Window
         Spacing = 10
     };
 
+    // Failed kitchen printouts (five attempts) wait here until the printer
+    // works again; the kitchen sends them once more from the KDS.
+    private readonly Button _requeue = new()
+    {
+        Content = "DRUCK WIEDERHOLEN",
+        MinHeight = 42,
+        MinWidth = 170,
+        IsVisible = false
+    };
+
     private readonly TextBlock _status = new()
     {
         TextWrapping = TextWrapping.Wrap,
@@ -70,11 +80,17 @@ public sealed class RestaurantKdsWindow : Window
         };
         refresh.Click += async (_, _) =>
             await ReloadAsync();
+        _requeue.Click += async (_, _) =>
+        {
+            // The dispatcher picks the jobs up within five seconds.
+            await _kitchen.RequeueFailedAsync(SelectedStation());
+            await ReloadAsync();
+        };
 
         var header = new Grid
         {
             ColumnDefinitions =
-                new ColumnDefinitions("*,Auto,Auto"),
+                new ColumnDefinitions("*,Auto,Auto,Auto"),
             Children =
             {
                 new StackPanel
@@ -105,6 +121,12 @@ public sealed class RestaurantKdsWindow : Window
                 {
                     [Grid.ColumnProperty] = 2,
                     Child = refresh
+                },
+                new Border
+                {
+                    [Grid.ColumnProperty] = 3,
+                    Margin = new Thickness(8,0,0,0),
+                    Child = _requeue
                 }
             }
         };
@@ -143,22 +165,30 @@ public sealed class RestaurantKdsWindow : Window
             await ReloadAsync();
     }
 
-    private async Task ReloadAsync()
+    private string SelectedStation()
     {
         var selected =
             Convert.ToString(_station.SelectedItem) ?? "ALLE";
-        var station =
+        return
             string.Equals(
                 selected,
                 "ALLE",
                 StringComparison.OrdinalIgnoreCase)
                 ? ""
                 : selected;
+    }
+
+    private async Task ReloadAsync()
+    {
+        var station = SelectedStation();
 
         var cancellations = await _kitchen.CancellationAlertsAsync(
             station);
         var items = await _kitchen.BoardAsync(
             station);
+        var failed = await _kitchen.FailedCountAsync(
+            station);
+        _requeue.IsVisible = failed > 0;
 
         _board.Children.Clear();
 
@@ -169,11 +199,14 @@ public sealed class RestaurantKdsWindow : Window
             _board.Children.Add(CreateCard(item));
 
         _status.Text =
-            cancellations.Count == 0 && items.Count == 0
+            (failed > 0
+                ? $"{failed} Küchenbon(s) nicht gedruckt · Drucker prüfen, dann DRUCK WIEDERHOLEN · "
+                : "") +
+            (cancellations.Count == 0 && items.Count == 0
                 ? "Keine offenen Küchenpositionen."
                 : $"{items.Count} offene Küchenposition(en) · " +
                   $"{cancellations.Count} Storno-Hinweis(e) · " +
-                  DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss");
+                  DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"));
     }
 
     private Control CreateCancellationCard(
@@ -188,7 +221,7 @@ public sealed class RestaurantKdsWindow : Window
 
         acknowledge.Click += async (_, _) =>
         {
-            await _kitchen.MarkHandedOverAsync(
+            await _kitchen.AcknowledgeCancellationAsync(
                 item.JobId);
             await ReloadAsync();
         };
@@ -228,7 +261,10 @@ public sealed class RestaurantKdsWindow : Window
                                     $"Kellner: {item.Waiter} · " +
                                     $"Station: {KitchenStations.DisplayName(item.Station)} · " +
                                     item.CreatedAt.LocalDateTime.ToString(
-                                        "dd.MM.yyyy HH:mm:ss"),
+                                        "dd.MM.yyyy HH:mm:ss") +
+                                    (item.PrintFailed
+                                        ? $"\nSTORNO-BON NICHT GEDRUCKT: {item.LastError}"
+                                        : ""),
                                 Opacity = 0.8,
                                 TextWrapping = TextWrapping.Wrap
                             }

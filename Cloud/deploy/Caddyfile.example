@@ -5,7 +5,8 @@
 # set the same names in /etc/tor-pos-cloud.env (TOR_CLOUD_PUBLIC_URL,
 # TOR_CLOUD_RECEIPT_URL).
 #
-#   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#   sudo bash deploy/apply-caddyfile.sh deploy/Caddyfile.example
+#   (caddy validate first; the running file stays when validation or reload fails)
 #
 # Two security domains (R145, docs/DIGITALER-KASSENBON.md):
 #   api.<domain>  till <-> Cloud, customer portal, updates - authentication required

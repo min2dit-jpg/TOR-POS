@@ -1651,7 +1651,7 @@ public async Task<IReadOnlyList<Product>> GetActiveProductsAsync(CancellationTok
         return all.FirstOrDefault(x => x.Id == id);
     });
 }public Task<long> SaveAsync(Product p, CancellationToken ct = default) => SaveWithStockAsync(p,null,0,"SYSTEM",ct);
-public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal expected, string actor, CancellationToken ct = default, IReadOnlyList<ProductVariant>? variants = null, IReadOnlyList<ProductComboItem>? comboItems = null)
+public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal expected, string actor, CancellationToken ct = default, IReadOnlyList<ProductVariant>? variants = null, IReadOnlyList<ProductComboItem>? comboItems = null, bool unitChangeRecounted = false)
 {
     return await IoQueue.RunAsync(async () =>
     {
@@ -1663,6 +1663,21 @@ public async Task<long> SaveWithStockAsync(Product p, decimal? count, decimal ex
             check.CommandText="SELECT COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)) FROM products WHERE id=$id";check.Parameters.AddWithValue("$id",p.Id);
             var old=check.ExecuteScalar();
             if(old is null || Convert.ToInt64(old)!=QuantityStorage.ToMilli(expected)) throw new InvalidOperationException("Bestand wurde inzwischen geändert. Bitte Artikel neu laden.");
+        }
+        if(p.Id != 0) {
+            // A unit change re-reads the counted stock and Mindestbestand in the
+            // new unit (12 Stück must not become 12 kg): refused unless the
+            // editor confirmed both values were counted again, stock included.
+            using var unitCheck=c.CreateCommand();unitCheck.Transaction=tx;
+            unitCheck.CommandText="SELECT unit,COALESCE(stock_milli,CAST(ROUND(COALESCE(stock_quantity,0)*1000.0) AS INTEGER)),COALESCE(min_stock_milli,CAST(ROUND(COALESCE(min_stock_quantity,0)*1000.0) AS INTEGER)) FROM products WHERE id=$id";unitCheck.Parameters.AddWithValue("$id",p.Id);
+            using var unitRow=unitCheck.ExecuteReader();
+            if(unitRow.Read()) {
+                var oldUnit=unitRow.IsDBNull(0)?"":unitRow.GetString(0);
+                var oldStock=QuantityStorage.FromMilli(unitRow.GetInt64(1));
+                var oldMin=QuantityStorage.FromMilli(unitRow.GetInt64(2));
+                if(StockUnitRules.NeedsRecount(oldUnit,p.Unit,oldStock,oldMin) && (!unitChangeRecounted || (oldStock!=0m && count is null)))
+                    throw new StockUnitChangeException(StockUnitRules.RecountMessage(oldUnit,p.Unit,oldStock,oldMin));
+            }
         }
         decimal inheritedVat;
         bool inheritedImHaus;

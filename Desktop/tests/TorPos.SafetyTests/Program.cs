@@ -592,6 +592,11 @@ await V1V2ReportTests.Run(root, Assert);
 await O6UiErrorGuardTests.Run(Assert);
 await F3F4FiscalGateTests.Run(Assert);
 await F6TseFinishJournalTests.Run(root, Assert);
+PrinterBeforeCashTests.Run(Assert);
+await CsvAndBackupHardeningTests.Run(root, Assert);
+ZReportSingleRunTests.Run(Assert);
+await StockUnitChangeTests.Run(root, Assert);
+await ImportAuditAtomicTests.Run(root, Assert);
 await G3UpdateHelperTests.Run(Assert);
 await ReviewFollowUpTests.Run(root, Assert);
 await EinzelhandelGastroFollowUpTests.Run(root, Assert);
@@ -719,7 +724,20 @@ const int CloudAlignmentChecks = 7;
 // one more: the Cloud heartbeat reports an open TSE outage.
 // Einzelhandel/Gastro follow-ups add 13 checks: O-8, O-9, O-10, O-13, O-14, O-17 (2), Z bounds (2) and PDF text.
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
-const int ExpectedSafetyChecks = 1423;
+// F-6 for aborts adds 2 checks: an abort signed before a crash keeps its signature without a
+// second finish call; an abort retried before its journal names the transaction.
+// F-6 for BON STORNO / TEILRETOURE adds 4 checks: signature kept after a crash, a started
+// transaction finished at start-up, a reversal booked before signing documented as outage, normal path clean.
+// Printer question before the payment page adds 1 check.
+// CSV formula guard (3) and backup-not-encrypted warning (2) add 5 checks.
+// One Z run for both Z buttons adds 1 check.
+// A unit change needs a recount of stock and Mindestbestand: 5 checks.
+// Article imports commit their audit rows with the articles: 2 checks.
+// Restaurant: failed Storno printout stays on the KDS (1), no overlapping table reservations (1),
+// no party larger than the table's seats (1).
+// Restaurant local API: atomic typed pairing (1), KDS refused on order data (1).
+// Reservation SEATED -> COMPLETED (1).
+const int ExpectedSafetyChecks = 1449;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {

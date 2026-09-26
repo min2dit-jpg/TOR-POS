@@ -127,6 +127,13 @@ public sealed class RestaurantReservationsWindow : Window
         };
         arrived.Click += async (_, _) => await SetSelectedStatusAsync("SEATED");
 
+        var completed = new Button
+        {
+            Content = "ABGESCHLOSSEN",
+            MinHeight = 42
+        };
+        completed.Click += async (_, _) => await SetSelectedStatusAsync("COMPLETED");
+
         var cancel = new Button
         {
             Content = "STORNO",
@@ -174,7 +181,7 @@ public sealed class RestaurantReservationsWindow : Window
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { arrived, cancel, noShow, refresh }
+            Children = { arrived, completed, cancel, noShow, refresh }
         };
 
         var right = new StackPanel
@@ -256,7 +263,7 @@ public sealed class RestaurantReservationsWindow : Window
 
             var tableId = (_table.SelectedItem as RestaurantTable)?.Id;
 
-            await _reservations.CreateAsync(
+            Task Create(bool extendTable) => _reservations.CreateAsync(
                 new DateTimeOffset(local),
                 120,
                 guests,
@@ -264,7 +271,22 @@ public sealed class RestaurantReservationsWindow : Window
                 _phone.Text ?? "",
                 _note.Text ?? "",
                 tableId,
-                _user.Username);
+                _user.Username,
+                extendTable: extendTable);
+
+            try
+            {
+                await Create(extendTable: false);
+            }
+            catch (RestaurantTableCapacityException capacity)
+            {
+                if (!await ConfirmExtendTableAsync(capacity))
+                {
+                    _status.Text = capacity.Message;
+                    return;
+                }
+                await Create(extendTable: true);
+            }
 
             _name.Text = "";
             _phone.Text = "";
@@ -276,6 +298,34 @@ public sealed class RestaurantReservationsWindow : Window
         {
             _status.Text = ex.Message;
         }
+    }
+
+    private async Task<bool> ConfirmExtendTableAsync(RestaurantTableCapacityException capacity)
+    {
+        var dialog = new Window
+        {
+            Title = "TISCH ERWEITERN?",
+            Width = 600,
+            Height = 300,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var yes = new Button { Content = $"TISCH ERWEITERN (+{capacity.GuestCount - capacity.Seats} PLÄTZE)", MinWidth = 260, MinHeight = 48 };
+        var no = new Button { Content = "ABBRECHEN", MinWidth = 150, MinHeight = 48 };
+        yes.Click += (_, _) => dialog.Close(true);
+        no.Click += (_, _) => dialog.Close(false);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(22),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = "TISCH ERWEITERN?", FontSize = 24, FontWeight = FontWeight.Bold },
+                new TextBlock { Text = capacity.Message, TextWrapping = TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { yes, no } }
+            }
+        };
+        return await dialog.ShowDialog<bool>(this);
     }
 
     private async Task SetSelectedStatusAsync(string status)

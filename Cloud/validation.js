@@ -57,6 +57,12 @@ function normalizeEvent(raw){
        ((p.cash_portion_cents??0)+(p.card_portion_cents??0)!==p.total_cents))
       fail('Bar-/Kartenanteil stimmt nicht mit Gesamt überein');
     if(p.total_cents<0&&p.payment_method!=='CASH')fail('Eine Pfand-Auszahlung ist nur bar möglich');
+    // The split must match the payment method, or the reports (split) and the
+    // receipt list (method) tell two stories about one Bon. The till sends
+    // EffectiveCash/CardPortionCents: CASH is all cash, CARD all card; only
+    // MIXED carries both. Reversals keep the original Bon's method and split.
+    if(p.payment_method==='CASH'&&(p.card_portion_cents??0)!==0)fail('Barzahlung darf keinen Kartenanteil haben');
+    if(p.payment_method==='CARD'&&(p.cash_portion_cents??0)!==0)fail('Kartenzahlung darf keinen Baranteil haben');
     text(p.operator_name,'operator_name',200,true);
     if(!Array.isArray(p.items)||p.items.length<1||p.items.length>5000)fail('1 bis 5000 Bonpositionen erforderlich');
     const positions=new Set();let sum=0;

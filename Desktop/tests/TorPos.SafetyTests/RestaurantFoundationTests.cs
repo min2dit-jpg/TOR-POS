@@ -639,6 +639,54 @@ internal static class RestaurantFoundationTests
                 deviceOverwriteRejected,
                 "G-2 pairing cannot overwrite or silently reactivate an existing Restaurant device identity");
 
+            // Pairing checks the terminal type before it uses the code and
+            // registers the terminal in the same transaction: a refused type
+            // (unknown, or another type already fixed for this id) consumes
+            // nothing, and the same code then pairs the device correctly.
+            var typedPairing = new RestaurantTerminalRegistry(db, plusEntitlements);
+            await typedPairing.RegisterOrHeartbeatAsync("DEVICE-KDS-1", "Küche", "KDS", "test", "test");
+            var typeCode = await pairing.CreatePairingCodeAsync("ADMIN", TimeSpan.FromMinutes(5));
+            async Task<bool> PairRefused(string deviceId, string type)
+            {
+                try { await pairing.PairAsync(typeCode.Id, typeCode.Code, deviceId, "Typ Test", default, type); return false; }
+                catch (ArgumentException) { return true; }
+                catch (InvalidOperationException) { return true; }
+            }
+            var unknownTypeRefused = await PairRefused("DEVICE-TYPE-1", "DRUCKER");
+            var fixedTypeRefused = await PairRefused("DEVICE-KDS-1", "HANDHELD");
+            long orphanDevices;
+            await using (var orphanRead = db.OpenConnection())
+            {
+                await using var q = orphanRead.CreateCommand();
+                q.CommandText = "SELECT COUNT(*) FROM restaurant_handheld_devices WHERE device_id IN ('DEVICE-TYPE-1','DEVICE-KDS-1');";
+                orphanDevices = Convert.ToInt64(await q.ExecuteScalarAsync());
+            }
+            var typedPaired = await pairing.PairAsync(typeCode.Id, typeCode.Code, "DEVICE-TYPE-1", "Handheld Typ", default, "HANDHELD");
+            await typedPairing.RequireTypeAsync(typedPaired.DeviceId, new[] { "HANDHELD" });
+            assert(
+                unknownTypeRefused && fixedTypeRefused && orphanDevices == 0,
+                "Restaurant pairing: an unknown terminal type or a type that differs from the one already fixed for the id is refused before the code is used - no orphaned device, and the same code then pairs the device registered as HANDHELD in one step");
+
+            // Table, order and catalog endpoints are for order-taking devices:
+            // a paired KDS is refused although its token is valid.
+            var apiHost = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/RestaurantLocalApiHost.cs"));
+            var guarded = new[] { "\"/api/v1/tables\",", "\"/api/v1/catalog\",", "\"/api/v1/tables/open\",", "\"/api/v1/sessions/{sessionId}/items\",", "\"/api/v1/items\",", "\"/api/v1/items/cancel\"," }
+                .All(route =>
+                {
+                    var start = apiHost.IndexOf(route, StringComparison.Ordinal);
+                    var next = start < 0 ? -1 : apiHost.IndexOf(".RequireRateLimiting(", start, StringComparison.Ordinal);
+                    var body = start < 0 || next < 0 ? "" : apiHost[start..next];
+                    var guard = body.IndexOf("await RequireHandheldTerminalAsync(", StringComparison.Ordinal);
+                    var work = body.IndexOf("await _handheld.", StringComparison.Ordinal);
+                    return guard > 0 && work > guard;
+                });
+            var pairBody = apiHost[apiHost.IndexOf("\"/api/v1/pair\",", StringComparison.Ordinal)..];
+            assert(
+                guarded &&
+                apiHost.Contains("OrderTerminalTypes = { \"KASSE\", \"HANDHELD\" }", StringComparison.Ordinal) &&
+                pairBody.IndexOf("NormalizeTerminalType(", StringComparison.Ordinal) < pairBody.IndexOf("_pairing.PairAsync(", StringComparison.Ordinal),
+                "Restaurant local API: tables, catalog, table open, session items, add and cancel item check the terminal type (KASSE/HANDHELD) before any data - a KDS token is refused; pairing validates the type first");
+
             var operatorAuth =
                 new AuthenticationService(db);
             await operatorAuth.InitializeAsync();
@@ -1083,6 +1131,77 @@ internal static class RestaurantFoundationTests
                 seatedReservation.Version == 2 &&
                 staleReservationRejected,
                 "Restaurant reservation status advances version and rejects stale writes");
+
+            // A seated party is finished: SEATED -> COMPLETED, and it no
+            // longer holds the table; a finished reservation stays final.
+            var completedReservation = await reservations.SetStatusAsync(
+                seatedReservation.Id,
+                seatedReservation.Version,
+                "COMPLETED",
+                "ADMIN");
+            var seatedCancelRefused = false;
+            var reseated = await reservations.CreateAsync(
+                reservationAt.AddHours(0.5), 60, 2, "Nach Abschluss", "", "", tableId, "ADMIN");
+            var reseatedSeated = await reservations.SetStatusAsync(reseated.Id, reseated.Version, "SEATED", "ADMIN");
+            try { await reservations.SetStatusAsync(reseatedSeated.Id, reseatedSeated.Version, "CANCELLED", "ADMIN"); }
+            catch (InvalidOperationException) { seatedCancelRefused = true; }
+            var completedAgainRefused = false;
+            try { await reservations.SetStatusAsync(completedReservation.Id, completedReservation.Version, "SEATED", "ADMIN"); }
+            catch (InvalidOperationException) { completedAgainRefused = true; }
+            await reservations.SetStatusAsync(reseatedSeated.Id, reseatedSeated.Version, "COMPLETED", "ADMIN");
+            assert(
+                completedReservation.Status == "COMPLETED" && completedReservation.Version == 3 &&
+                reseated.TableId == tableId && seatedCancelRefused && completedAgainRefused,
+                "Restaurant reservation: a seated party is closed with ABGESCHLOSSEN (SEATED -> COMPLETED) and frees the table; a seated one cannot be cancelled and a completed one stays final");
+
+            // One table, one party at a time: an overlapping reservation for
+            // the same table is refused on create and on table assignment.
+            async Task<bool> Refused(Func<Task> action)
+            {
+                try { await action(); return false; }
+                catch (InvalidOperationException ex) when (ex.Message.StartsWith("Tisch ist in diesem Zeitraum bereits reserviert", StringComparison.Ordinal)) { return true; }
+            }
+            await reservations.CreateAsync(
+                reservationAt, 120, 3, "Belegt", "", "", tableId, "ADMIN");
+            var overlapCreate = await Refused(() => reservations.CreateAsync(
+                reservationAt.AddHours(1), 60, 2, "Überschneidung", "", "", tableId, "ADMIN"));
+            var adjacent = await reservations.CreateAsync(
+                reservationAt.AddHours(2), 90, 2, "Direkt danach", "", "", tableId, "ADMIN");
+            var unassigned = await reservations.CreateAsync(
+                reservationAt.AddHours(3), 60, 2, "Ohne Tisch", "", "", null, "ADMIN");
+            var overlapAssign = await Refused(() => reservations.AssignTableAsync(
+                unassigned.Id, unassigned.Version, tableId, "ADMIN"));
+            await reservations.SetStatusAsync(adjacent.Id, adjacent.Version, "CANCELLED", "ADMIN");
+            var assignedAfterCancel = await reservations.AssignTableAsync(
+                unassigned.Id, unassigned.Version, tableId, "ADMIN");
+            // Tisch 1 has 4 seats: a party of 8 is a question, not a silent
+            // booking - refused unless the staff extends the table, which the
+            // note records; without a table it books as before.
+            async Task<bool> TooMany(Func<Task> action)
+            {
+                try { await action(); return false; }
+                catch (RestaurantTableCapacityException ex) when (ex.Seats == 4 && ex.GuestCount == 8) { return true; }
+            }
+            var bigCreate = await TooMany(() => reservations.CreateAsync(
+                reservationAt.AddDays(1), 120, 8, "Große Runde", "", "", tableId, "ADMIN"));
+            var bigParty = await reservations.CreateAsync(
+                reservationAt.AddDays(1), 120, 8, "Große Runde", "", "Geburtstag", null, "ADMIN");
+            var bigAssign = await TooMany(() => reservations.AssignTableAsync(
+                bigParty.Id, bigParty.Version, tableId, "ADMIN"));
+            var extended = await reservations.AssignTableAsync(
+                bigParty.Id, bigParty.Version, tableId, "ADMIN", extendTable: true);
+            var extendedCreate = await reservations.CreateAsync(
+                reservationAt.AddDays(2), 120, 6, "Sechs Gäste", "", "", tableId, "ADMIN", extendTable: true);
+            assert(
+                bigCreate && bigAssign && bigParty.TableId is null &&
+                extended.TableId == tableId && extended.Note == "Tisch erweitert: +4 Plätze · Geburtstag" &&
+                extendedCreate.Note == "Tisch erweitert: +2 Plätze",
+                "Restaurant reservation: a party larger than the table's seats needs the staff to extend the table (recorded in the note) on create and on assignment; without a table it books as before");
+
+            assert(
+                overlapCreate && adjacent.TableId == tableId && overlapAssign &&
+                assignedAfterCancel.TableId == tableId,
+                "Restaurant reservation: an overlapping BOOKED/SEATED reservation keeps the table - a second one is refused on create and on table assignment; back-to-back and cancelled reservations do not block");
 
             var session = await repo.OpenTableAsync(
                 tableId,
@@ -1881,6 +2000,37 @@ internal static class RestaurantFoundationTests
                 (await idempotentKitchen.PendingAsync())
                     .Count(x => x.Id == idempotentKitchenJob) == 1,
                 "Restaurant kitchen retry with the same job id creates exactly one durable printer/KDS job");
+
+            // A Storno whose printout failed five times stayed off the KDS: the
+            // item is already gone from the board, so the kitchen kept cooking.
+            const string failedCancelJob =
+                "33333333333333333333333333333333";
+            await idempotentKitchen.EnqueueCancellationIdempotentAsync(
+                idempotentSessionAfterAdd,
+                firstIdempotentAdd.Item,
+                "Idempotenz Tisch",
+                "KELLNER-1",
+                failedCancelJob,
+                KitchenStations.Grill);
+            var parked = false;
+            for (var attempt = 0; attempt < 5; attempt++)
+                parked = await idempotentKitchen.MarkFailedAttemptAsync(failedCancelJob, "Drucker offline");
+            var failedAlert = (await idempotentKitchen.CancellationAlertsAsync(KitchenStations.Grill))
+                .SingleOrDefault(x => x.JobId == failedCancelJob);
+            var failedCount = await idempotentKitchen.FailedCountAsync(KitchenStations.Grill);
+            var requeued = await idempotentKitchen.RequeueFailedAsync(KitchenStations.Grill);
+            var retried = (await idempotentKitchen.PendingAsync())
+                .SingleOrDefault(x => x.Id == failedCancelJob);
+            for (var attempt = 0; attempt < 5; attempt++)
+                await idempotentKitchen.MarkFailedAttemptAsync(failedCancelJob, "Drucker offline");
+            await idempotentKitchen.AcknowledgeCancellationAsync(failedCancelJob);
+            assert(
+                parked && failedAlert is { PrintFailed: true, LastError: "Drucker offline" } &&
+                failedCount == 1 && requeued == 1 &&
+                retried is { State: "PENDING", Attempts: 0 } &&
+                (await idempotentKitchen.CancellationAlertsAsync()).All(x => x.JobId != failedCancelJob) &&
+                await idempotentKitchen.FailedCountAsync() == 0,
+                "Restaurant kitchen: a Storno whose printout failed five times stays on the KDS marked as not printed until the kitchen confirms it, and DRUCK WIEDERHOLEN puts failed jobs back in the queue");
 
             var commandJournal =
                 new RestaurantCommandJournal(db);
@@ -2849,5 +2999,19 @@ internal static class RestaurantFoundationTests
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=$name;";
         q.Parameters.AddWithValue("$name", name);
         return Convert.ToInt32(q.ExecuteScalar()) == 1;
+    }
+
+    private static string FindRepoFile(string relativePath)
+    {
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, relativePath);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+        throw new FileNotFoundException(relativePath);
     }
 }

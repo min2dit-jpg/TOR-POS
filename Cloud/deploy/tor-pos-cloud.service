@@ -1,11 +1,8 @@
-# R125: systemd unit for a Linux server.
+# R125: systemd unit for a Linux server. Installed by deploy/install-cloud.sh,
+# which also creates the user, the folders listed in ReadWritePaths (systemd
+# refuses to start when one is missing) and /etc/tor-pos-cloud.env (chmod 600).
+# See docs/CLOUD-PRODUKTION.md.
 #
-#   sudo useradd --system --home /opt/tor-pos-cloud --shell /usr/sbin/nologin torcloud
-#   sudo cp -r Cloud /opt/tor-pos-cloud && sudo chown -R torcloud: /opt/tor-pos-cloud
-#   sudo cp deploy/tor-pos-cloud.env.example /etc/tor-pos-cloud.env   # then fill in every secret
-#   sudo chmod 600 /etc/tor-pos-cloud.env
-#   sudo cp deploy/tor-pos-cloud.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now tor-pos-cloud
 #   journalctl -u tor-pos-cloud -f
 #
 # The server only listens on 127.0.0.1. TLS is terminated by the reverse proxy
