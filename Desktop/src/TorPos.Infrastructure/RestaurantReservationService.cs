@@ -70,7 +70,7 @@ public sealed class RestaurantReservationService
 
             if (tableId is long table)
             {
-                await EnsureActiveTableAsync(c, tx, table, ct);
+                await EnsureActiveTableAsync(c, tx, table, guestCount, ct);
                 await EnsureTableFreeAsync(c, tx, table, reservationAt, durationMinutes, excludeId: null, ct);
             }
 
@@ -168,8 +168,8 @@ public sealed class RestaurantReservationService
 
             if (tableId is long table)
             {
-                await EnsureActiveTableAsync(c, tx, table, ct);
                 var current = await ReadAsync(c, tx, reservationId, ct);
+                await EnsureActiveTableAsync(c, tx, table, current.GuestCount, ct);
                 await EnsureTableFreeAsync(c, tx, table, current.ReservationAt, current.DurationMinutes, reservationId, ct);
             }
 
@@ -264,19 +264,28 @@ public sealed class RestaurantReservationService
         SqliteConnection c,
         SqliteTransaction tx,
         long tableId,
+        int guestCount,
         CancellationToken ct)
     {
         await using var q = c.CreateCommand();
         q.Transaction = tx;
         q.CommandText = """
-            SELECT COUNT(*)
+            SELECT display_name,seats
             FROM restaurant_tables
             WHERE id=$id AND is_active=1;
             """;
         q.Parameters.AddWithValue("$id", tableId);
-        if (Convert.ToInt32(await q.ExecuteScalarAsync(ct)) != 1)
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct))
             throw new InvalidOperationException(
                 "Reservierungstisch ist nicht vorhanden oder deaktiviert.");
+        // A reservation holds one table; larger parties are booked without a
+        // table and seated at joined tables (Tische zusammenlegen) on arrival.
+        var seats = r.GetInt32(1);
+        if (guestCount > seats)
+            throw new InvalidOperationException(
+                $"{r.GetString(0)} hat {seats} Plätze, die Reservierung {guestCount} Gäste. " +
+                "Größeren Tisch wählen oder ohne Tisch reservieren und beim Eintreffen Tische zusammenlegen.");
     }
 
     // One table, one party at a time: a BOOKED or SEATED reservation whose

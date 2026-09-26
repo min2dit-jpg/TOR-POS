@@ -1102,6 +1102,23 @@ internal static class RestaurantFoundationTests
             await reservations.SetStatusAsync(adjacent.Id, adjacent.Version, "CANCELLED", "ADMIN");
             var assignedAfterCancel = await reservations.AssignTableAsync(
                 unassigned.Id, unassigned.Version, tableId, "ADMIN");
+            // Tisch 1 has 4 seats: a party of 8 is refused on create and on
+            // assignment, and can still be booked without a table.
+            async Task<bool> TooMany(Func<Task> action)
+            {
+                try { await action(); return false; }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("hat 4 Plätze, die Reservierung 8 Gäste", StringComparison.Ordinal)) { return true; }
+            }
+            var bigCreate = await TooMany(() => reservations.CreateAsync(
+                reservationAt.AddDays(1), 120, 8, "Große Runde", "", "", tableId, "ADMIN"));
+            var bigParty = await reservations.CreateAsync(
+                reservationAt.AddDays(1), 120, 8, "Große Runde", "", "", null, "ADMIN");
+            var bigAssign = await TooMany(() => reservations.AssignTableAsync(
+                bigParty.Id, bigParty.Version, tableId, "ADMIN"));
+            assert(
+                bigCreate && bigAssign && bigParty.TableId is null,
+                "Restaurant reservation: a party larger than the table's seats is refused on create and on table assignment, and can be booked without a table");
+
             assert(
                 overlapCreate && adjacent.TableId == tableId && overlapAssign &&
                 assignedAfterCancel.TableId == tableId,
