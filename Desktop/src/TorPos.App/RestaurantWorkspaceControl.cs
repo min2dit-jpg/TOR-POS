@@ -17,6 +17,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
     private readonly IProductCatalog _catalog;
     private readonly ISettingsRepository _settings;
     private readonly ControlledPosActionService _controlledActions;
+    private readonly RestaurantWaiterSettlementService _waiterSettlement;
     private readonly AuthenticatedUser _user;
 
     private readonly WrapPanel _tablePanel = new()
@@ -216,6 +217,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
         IProductCatalog catalog,
         ISettingsRepository settings,
         ControlledPosActionService controlledActions,
+        RestaurantWaiterSettlementService waiterSettlement,
         AuthenticatedUser user,
         IReceiptPrinterService receiptPrinter)
     {
@@ -226,6 +228,7 @@ public sealed class RestaurantWorkspaceControl : UserControl
         _catalog = catalog;
         _settings = settings;
         _controlledActions = controlledActions;
+        _waiterSettlement = waiterSettlement;
         _user = user;
         _receiptPrinter = receiptPrinter;
 
@@ -323,7 +326,23 @@ public sealed class RestaurantWorkspaceControl : UserControl
             _product.ItemsSource = _catalog.Products.Where(p => p.IsActive).OrderBy(p => p.Name).ToArray();
             await ReloadAsync();
         };
-        var navigation = new StackPanel { Spacing = 8, Children = { theke, master, refresh, _areas } };
+        var waiterSettlement = new Button
+        {
+            Content = "KELLNERABRECHNUNG",
+            MinHeight = 44,
+            IsVisible = _user.Can(UserPermissions.ZReport)
+        };
+        waiterSettlement.Click += async (_, _) =>
+        {
+            await new RestaurantWaiterSettlementWindow(
+                    _waiterSettlement)
+                .ShowDialog(RequireOwner());
+        };
+        var navigation = new StackPanel
+        {
+            Spacing = 8,
+            Children = { theke, master, waiterSettlement, refresh, _areas }
+        };
         DockPanel.SetDock(navigation, Dock.Top);
         left.Children.Add(navigation);
         left.Children.Add(new ScrollViewer
