@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -52,6 +53,7 @@ var dataDir = Path.Combine(Path.GetTempPath(), "tor-ui-snapshot-" + Guid.NewGuid
 Directory.CreateDirectory(dataDir);
 Directory.CreateDirectory(output);
 AppPaths.DataDirectoryOverride = dataDir;
+Environment.SetEnvironmentVariable("TOR_POS_PRODUCT_EDITION", ProductBuild.FixedEdition ?? "IMBISS");
 
 AppBuilder.Configure<TorPos.App.App>()
     .UseSkia()
@@ -147,20 +149,37 @@ async Task RunAsync()
     UiLanguage.Set(language);
     await InstallationEdition.EnforceAsync(settings, snapshotEdition);
     await new ImbissStarterCatalogService(db).EnsureAsync(snapshotEdition);
+    if(snapshotEdition=="RESTAURANT")
+    {
+        var group=await repo.SaveGroupAsync(new(0,"Speisekarte"));
+        var food=await repo.SaveCategoryAsync(new(0,group,"Snapshot Speisen",7m));
+        var drinks=await repo.SaveCategoryAsync(new(0,group,"Snapshot Getränke",19m));
+        await repo.SaveAsync(new Product { CategoryId=food,Name="Burger",BasePriceCents=1200,VatRate=7m });
+        await repo.SaveAsync(new Product { CategoryId=food,Name="Pommes",BasePriceCents=400,VatRate=7m });
+        await repo.SaveAsync(new Product { CategoryId=drinks,Name="Cola",BasePriceCents=350,VatRate=19m });
+    }
     await catalog.ReloadAsync();
     await tseOutages.OpenAsync("UI-Snapshot: TSE nicht erreichbar", "snapshot");
 
     var admin = new AuthenticatedUser(1, "admin", "ADMIN", IsAdmin: true, MustChangePassword: false);
 
+    var kitchen = new RestaurantKitchenOutbox(db);
+    var printJournal = new PrintJobJournal(Path.Combine(dataDir, "PrintJobs"));
+    await using var kitchenRouter = new RestaurantKitchenPrinterRouter(printJournal);
+    await using var kitchenDispatcher = new RestaurantKitchenDispatcher(kitchen, settings, kitchenRouter, printJournal);
     foreach (var (width, height) in sizes)
     {
+        var windowFactory = new NoWindows(() => new RestaurantWorkspaceControl(
+            restaurantRepository, restaurantFiscal, kitchen, kitchenDispatcher, catalog, settings,
+            new ControlledPosActionService(db), new RestaurantWaiterSettlementService(db),
+            admin, receiptPrinter));
         var window = new MainWindow(
             catalog, repo, sales, parkedReceipts, dailyClosingGuard, cashMovements, audit,
             compliance, dsfinvkExport, datevAscii, datevKassenarchiv, new ProductImageStore(), perf, settings, backup,
             tseProvider, receiptPrinter, digitalReceipts, cardRefundLocks, commercialLicense,
             auth, management, restaurantRepository, restaurantFiscal, restaurantEntitlements, admin, checkoutJournal, checkoutApplication,
             new ControlledPosActionService(db), new PromotionCampaignService(db),
-            fiscalSigning, orderFiscalSigning, tseFailSafe, new NoWindows());
+            fiscalSigning, orderFiscalSigning, tseFailSafe, windowFactory);
 
         // The constructor maximizes; a headless window has no screen to fill,
         // so the size stands in for the till's usable desktop area.
@@ -176,6 +195,118 @@ async Task RunAsync()
             await Task.Delay(50);
         }
 
+        if (snapshotEdition == "RESTAURANT")
+        {
+            var workspace = windowFactory.Workspace;
+            if (workspace is null)
+                throw new InvalidOperationException(
+                    "Restaurant startup did not create the embedded workspace.");
+
+            var host = window.FindControl<Control>("RestaurantWorkspaceHost");
+            if (host is null || !host.IsVisible)
+                throw new InvalidOperationException(
+                    "Restaurant startup did not show the embedded Tischplan.");
+
+            CheckNamedActions(
+                window,
+                new[]
+                {
+                    "RestaurantCounterButton",
+                    "RestaurantSendOrder",
+                    "InterimBill",
+                    "RestaurantMove",
+                    "RestaurantSplit",
+                    "TablePayAll"
+                },
+                failures);
+
+            window.CaptureRenderedFrame()!.Save(
+                Path.Combine(output, $"restaurant-main-{width}x{height}.png"),
+                new PngBitmapEncoderOptions());
+
+            var tableButton = workspace
+                .GetVisualDescendants()
+                .OfType<Button>()
+                .First(b => b.Tag is RestaurantTable);
+            var table = (RestaurantTable)tableButton.Tag!;
+            tableButton.RaiseEvent(
+                new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(250);
+            Dispatcher.UIThread.RunJobs();
+
+            var opened =
+                await restaurantRepository.GetLiveSessionForTableAsync(table.Id);
+            if (opened is null)
+                throw new InvalidOperationException(
+                    "Table tap did not open an order.");
+
+            window.CaptureRenderedFrame()!.Save(
+                Path.Combine(output, $"restaurant-order-{width}x{height}.png"),
+                new PngBitmapEncoderOptions());
+
+            // DEV5: the order screen of an open table keeps every action and
+            // the header (TISCHPLAN, THEKE, ABMELDEN) inside the window.
+            CheckNamedActions(
+                window,
+                new[]
+                {
+                    "RestaurantTablesButton",
+                    "RestaurantCounterButton",
+                    "LogoutButton",
+                    "RestaurantSendOrder",
+                    "InterimBill",
+                    "RestaurantMove",
+                    "RestaurantSplit",
+                    "TablePayAll"
+                },
+                failures);
+            CheckLabelsFit(
+                window,
+                new[] { "RestaurantSendOrder", "InterimBill", "RestaurantMove", "RestaurantSplit", "TablePayAll" },
+                failures);
+
+            var sameButton = workspace
+                .GetVisualDescendants()
+                .OfType<Button>()
+                .First(b => b.Tag is RestaurantTable t && t.Id == table.Id);
+            sameButton.RaiseEvent(
+                new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+
+            if ((await restaurantRepository.GetLiveSessionForTableAsync(table.Id))?.Id != opened.Id)
+                throw new InvalidOperationException(
+                    "Second table tap replaced an open order.");
+
+            var currentOpen =
+                await restaurantRepository.GetLiveSessionForTableAsync(table.Id)
+                ?? throw new InvalidOperationException(
+                    "Opened table disappeared before cleanup.");
+            await restaurantRepository.CloseEmptySessionAsync(
+                currentOpen.Id,
+                currentOpen.Version,
+                admin.Username,
+                "snapshot");
+
+            window.FindControl<Button>("RestaurantCounterButton")!
+                .RaiseEvent(
+                    new Avalonia.Interactivity.RoutedEventArgs(
+                        Button.ClickEvent));
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+
+            if (host.IsVisible)
+                throw new InvalidOperationException(
+                    "THEKE did not switch the embedded Restaurant workspace back to direct sale.");
+
+            Console.WriteLine(
+                "RESTAURANT EMBEDDED STARTUP/TABLE/THEKE CHECK PASSED");
+        }
+        else if (windowFactory.Workspace is not null)
+        {
+            throw new InvalidOperationException(
+                "Restaurant UI leaked into another edition.");
+        }
         if (check) CheckLayout(window, width, height, failures);
 
         var frame = window.CaptureRenderedFrame()
@@ -213,6 +344,52 @@ async Task RunAsync()
 
         window.Close();
     }
+
+    if(snapshotEdition=="RESTAURANT")
+    {
+        var tableSettings=new RestaurantTableSettingsWindow(restaurantRepository);
+        tableSettings.Width=1366;tableSettings.Height=700;tableSettings.Show();
+        await Task.Delay(200);Dispatcher.UIThread.RunJobs();
+        CheckNamedActions(tableSettings,new[]{"EditorSave","EditorClose"},failures);
+        tableSettings.CaptureRenderedFrame()!.Save(Path.Combine(output,"restaurant-table-settings-1366x768.png"),new PngBitmapEncoderOptions());
+        tableSettings.Close();
+        var recipeProduct=catalog.Products.First();
+        var recipeEditor=new RestaurantRecipeWindow(restaurantRepository.Recipes,recipeProduct);
+        var recipeSave=recipeEditor.GetLogicalDescendants().OfType<Button>().Single(b=>b.Name=="EditorSave");
+        if(recipeSave.IsEnabled) throw new InvalidOperationException("Recipe save enabled before load.");
+        recipeEditor.Show();await Task.Delay(150);Dispatcher.UIThread.RunJobs();
+        if(!recipeSave.IsEnabled) throw new InvalidOperationException("Loaded recipe cannot be saved.");
+        recipeEditor.Close();
+        using(var c=db.OpenConnection())using(var q=c.CreateCommand())
+        {q.CommandText="ALTER TABLE restaurant_recipes RENAME TO recipe_load_failure_fixture;";await q.ExecuteNonQueryAsync();}
+        try
+        {
+            var failedEditor=new RestaurantRecipeWindow(restaurantRepository.Recipes,recipeProduct);
+            failedEditor.Show();await Task.Delay(150);Dispatcher.UIThread.RunJobs();
+            if(failedEditor.GetVisualDescendants().OfType<Button>().Single(b=>b.Name=="EditorSave").IsEnabled)
+                throw new InvalidOperationException("Failed recipe load permits destructive save.");
+            failedEditor.Close();
+        }
+        finally
+        {
+            using var c=db.OpenConnection();using var q=c.CreateCommand();
+            q.CommandText="ALTER TABLE recipe_load_failure_fixture RENAME TO restaurant_recipes;";await q.ExecuteNonQueryAsync();
+        }
+        Console.WriteLine("RECIPE LOAD/SAVE GUARD PASSED");
+    }
+
+    var setup=new FirstRunSetupWindow(settings,receiptPrinter,tseProvider,paymentTerminal,snapshotEdition);
+    setup.Show();await Task.Delay(200);Dispatcher.UIThread.RunJobs();
+    setup.GetVisualDescendants().OfType<TextBox>().Single(x=>x.Name=="CompanyTaxNo").Text="053/200/06866";
+    setup.GetVisualDescendants().OfType<TextBox>().Single(x=>x.Name=="CompanyVatId").Text="DE123456789";
+    await (Task)typeof(FirstRunSetupWindow).GetMethod("SaveAsync",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(setup,new object[]{false})!;
+    var savedCompany=await new SettingsRepository(db).LoadAllAsync();
+    if(savedCompany["company.tax_no"]!="053/200/06866" || savedCompany["company.vat_id"]!="DE123456789" ||
+        savedCompany[InstallationEdition.ProfileKey(snapshotEdition,"company.tax_no")]!="053/200/06866" ||
+        savedCompany[InstallationEdition.ProfileKey(snapshotEdition,"company.vat_id")]!="DE123456789")
+        throw new InvalidOperationException("First-run company tax persistence failed.");
+    setup.Close();
+    Console.WriteLine("FIRST-RUN COMPANY TAX PERSISTENCE PASSED");
 
     // R161: brand-critical startup and login screens are part of the visual
     // regression set so the old TOR placeholder/magnifier cannot return.
@@ -388,12 +565,44 @@ static (int, int) ParseSize(string text)
 }
 
 // The snapshot never opens secondary windows; any attempt is a bug in the run.
-sealed class NoWindows : IAppWindowFactory
+// DEV5: a button can sit inside the window and still cut its own label
+// ("BESTELL", "ZWISCHE" at 1024x640). The label is measured with the
+// button's font and compared to the room inside the button.
+static void CheckLabelsFit(Window window, string[] names, List<string> failures)
+{
+    foreach (var name in names)
+    {
+        var button = window.GetVisualDescendants().OfType<Button>().SingleOrDefault(b => b.Name == name);
+        if (button?.Content is not string label) { failures.Add($"{window.Title}: {name} has no text label"); continue; }
+        var probe = new TextBlock { Text = label, FontSize = button.FontSize, FontWeight = button.FontWeight, FontFamily = button.FontFamily };
+        probe.Measure(Size.Infinity);
+        var room = button.Bounds.Width - button.Padding.Left - button.Padding.Right - button.BorderThickness.Left - button.BorderThickness.Right;
+        if (probe.DesiredSize.Width > room + 1)
+            failures.Add($"{window.Title}: {name} cuts its label \"{label}\" ({probe.DesiredSize.Width:0}px text in {room:0}px)");
+    }
+}
+
+static void CheckNamedActions(Window window, string[] names, List<string> failures)
+{
+    foreach(var name in names)
+    {
+        var action=window.GetVisualDescendants().OfType<Control>().SingleOrDefault(c=>c.Name==name);
+        var point=action?.TranslatePoint(new Point(),window);
+        if(action is null || !action.IsVisible || point is null || point.Value.X<0 || point.Value.Y<0 ||
+            point.Value.X+action.Bounds.Width>window.ClientSize.Width+1 || point.Value.Y+action.Bounds.Height>window.ClientSize.Height+1)
+            failures.Add($"{window.Title}: {name} is outside the window");
+    }
+}
+
+sealed class NoWindows(Func<RestaurantWorkspaceControl> createRestaurantWorkspace) : IAppWindowFactory
 {
     public MainWindow CreateMainWindow(AuthenticatedUser user) => throw new NotSupportedException();
     public SettingsWindow CreateSettingsWindow(AuthenticatedUser user, string initialPage = "Allgemein") => throw new NotSupportedException();
+    public RestaurantWorkspaceControl? Workspace { get; private set; }
     public RestaurantTablePlanWindow CreateRestaurantTablePlanWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
+    public RestaurantWorkspaceControl CreateRestaurantWorkspaceControl(
+        AuthenticatedUser user) => Workspace = createRestaurantWorkspace();
     public RestaurantKdsWindow CreateRestaurantKdsWindow(
         AuthenticatedUser user) => throw new NotSupportedException();
     public RestaurantHandheldSetupWindow CreateRestaurantHandheldSetupWindow(

@@ -17,6 +17,7 @@ public sealed class RestaurantFiscalOrderService
 {
     private readonly SqliteDatabase _db;
     private readonly TseVorgangService _vorgaenge;
+    private readonly SemaphoreSlim _reconcileGate = new(1, 1);
 
     public RestaurantFiscalOrderService(
         SqliteDatabase db,
@@ -42,6 +43,11 @@ public sealed class RestaurantFiscalOrderService
             training: false,
             startedAt,
             actor,
+            ct);
+
+        await _vorgaenge.TagReferenceAsync(
+            id,
+            $"RESTAURANT:{sessionId}",
             ct);
 
         return new RestaurantFiscalVorgang(id, startedAt);
@@ -150,6 +156,7 @@ public sealed class RestaurantFiscalOrderService
             new[] { line },
             result,
             ct,
+            consumedVorgangId: vorgang.Id,
             securedItemId: item.Id);
     }
 
@@ -170,17 +177,10 @@ public sealed class RestaurantFiscalOrderService
         }
 
         var original = ToCartLine(cancelledItem);
-        var reversal = new CartLine
+        var reversal = new CartLine(original)
         {
-            ProductId = original.ProductId,
-            ProductName = original.ProductName,
-            VariantName = original.VariantName,
             Quantity = -original.Quantity,
-            Unit = original.Unit,
-            UnitPriceCents = original.UnitPriceCents,
-            ListUnitPriceCents = original.ListUnitPriceCents,
-            VatRate = original.VatRate,
-            PfandCents = original.PfandCents
+            PersistedLineTotalCents = -original.LineTotalCents
         };
 
         var result = await _vorgaenge.FinishAsync(
@@ -197,7 +197,8 @@ public sealed class RestaurantFiscalOrderService
             actor,
             new[] { reversal },
             result,
-            ct);
+            ct,
+            consumedVorgangId: vorgang.Id);
     }
 
     public async Task SecureMergeAsync(
@@ -213,17 +214,10 @@ public sealed class RestaurantFiscalOrderService
             throw new InvalidOperationException("Keine offenen Positionen zum Zusammenlegen.");
 
         var positive = movedItems.Select(ToCartLine).ToArray();
-        var negative = positive.Select(line => new CartLine
+        var negative = positive.Select(line => new CartLine(line)
         {
-            ProductId = line.ProductId,
-            ProductName = line.ProductName,
-            VariantName = line.VariantName,
             Quantity = -line.Quantity,
-            Unit = line.Unit,
-            UnitPriceCents = line.UnitPriceCents,
-            ListUnitPriceCents = line.ListUnitPriceCents,
-            VatRate = line.VatRate,
-            PfandCents = line.PfandCents
+            PersistedLineTotalCents = -line.LineTotalCents
         }).ToArray();
 
         var sourceResult = await _vorgaenge.FinishAsync(
@@ -245,6 +239,8 @@ public sealed class RestaurantFiscalOrderService
         await InsertMergeRecordsAsync(
             sourceSessionId,
             targetSessionId,
+            sourceVorgang.Id,
+            targetVorgang.Id,
             sourceVorgang.StartedAt,
             targetVorgang.StartedAt,
             actor,
@@ -254,6 +250,310 @@ public sealed class RestaurantFiscalOrderService
             targetResult,
             ct);
     }
+
+    public async Task<IReadOnlyList<string>> ListUnsecuredSessionIdsAsync(
+        CancellationToken ct = default)
+    {
+        var candidates = new List<string>();
+        await using (var c = _db.OpenReadConnection())
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT id
+                FROM restaurant_sessions
+                WHERE state IN ('OPEN','CHECK_REQUESTED','CANCELLED','CLOSED')
+                ORDER BY updated_at,id;
+                """;
+
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                candidates.Add(r.GetString(0));
+        }
+
+        var result = new List<string>();
+        foreach (var sessionId in candidates)
+        {
+            if (!await IsCurrentStateSecuredAsync(sessionId, ct))
+                result.Add(sessionId);
+        }
+
+        return result;
+    }
+
+    public async Task<bool> ReconcileSessionAsync(
+        string sessionId,
+        string actor,
+        CancellationToken ct = default)
+    {
+        sessionId = (sessionId ?? "").Trim();
+        actor = (actor ?? "").Trim();
+        if (sessionId.Length == 0)
+            throw new ArgumentException("Tischvorgang fehlt.", nameof(sessionId));
+
+        await _reconcileGate.WaitAsync(ct);
+        try
+        {
+            if (await IsCurrentStateSecuredAsync(sessionId, ct))
+                return true;
+
+            var delta = await BuildReconciliationDeltaAsync(sessionId, ct);
+            if (delta.Count == 0)
+            {
+                await MarkPendingSessionItemsSecuredAsync(sessionId, ct);
+                return await IsCurrentStateSecuredAsync(sessionId, ct);
+            }
+
+            var recovery = await FindRecoveryVorgangAsync(sessionId, ct);
+            RestaurantFiscalVorgang vorgang;
+            SaleTseResult result;
+
+            if (recovery is not null)
+            {
+                vorgang = new RestaurantFiscalVorgang(
+                    recovery.Id,
+                    recovery.StartedAt);
+
+                result =
+                    await _vorgaenge.GetJournaledFinishAsync(
+                        recovery.Id,
+                        ct)
+                    ?? (
+                        recovery.FinishAttempted ||
+                        recovery.State == TseVorgangService.Finished
+                            ? SaleTseResult.Outage(
+                                "Restaurant-Änderung wurde möglicherweise bereits an der TSE beendet, " +
+                                "aber das F-6-Finish-Journal fehlt. Keine zweite TSE-Transaktion erzeugt.")
+                            : await _vorgaenge.FinishAsync(
+                                recovery.Id,
+                                FiscalProcessData.BestellungProcessType,
+                                FiscalProcessData.BestellungText(delta),
+                                actor,
+                                $"RESTAURANT:{sessionId}",
+                                ct));
+            }
+            else
+            {
+                vorgang = await BeginChangeAsync(
+                    sessionId,
+                    actor,
+                    ct);
+
+                result = await _vorgaenge.FinishAsync(
+                    vorgang.Id,
+                    FiscalProcessData.BestellungProcessType,
+                    FiscalProcessData.BestellungText(delta),
+                    actor,
+                    $"RESTAURANT:{sessionId}",
+                    ct);
+            }
+
+            await InsertRecordAsync(
+                sessionId,
+                vorgang.StartedAt,
+                actor,
+                delta,
+                result,
+                ct,
+                consumedVorgangId: vorgang.Id,
+                securePendingSessionItems: true);
+
+            return await IsCurrentStateSecuredAsync(sessionId, ct);
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<CartLine>> BuildReconciliationDeltaAsync(
+        string sessionId,
+        CancellationToken ct)
+    {
+        var current =
+            new Dictionary<string, (CartLine Line, long QuantityMilli, long AmountCents)>(
+                StringComparer.Ordinal);
+        var secured =
+            new Dictionary<string, (CartLine Line, long QuantityMilli, long AmountCents)>(
+                StringComparer.Ordinal);
+
+        await using var c = _db.OpenReadConnection();
+
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT product_id,product_name,variant_name,unit_price_cents,
+                       list_unit_price_cents,vat_rate,pfand_cents,unit,
+                       im_haus_applicable,vat_allocations_json,menu_components_json,
+                       SUM(quantity_milli),
+                       SUM(CASE WHEN line_total_cents>=0
+                           THEN line_total_cents-paid_cents
+                           ELSE CAST(ROUND((quantity_milli*unit_price_cents)/1000.0) AS INTEGER)
+                       END)
+                FROM restaurant_session_items
+                WHERE session_id=$session
+                  AND state IN ('ACTIVE','PAID')
+                GROUP BY product_id,product_name,variant_name,unit_price_cents,
+                         list_unit_price_cents,vat_rate,pfand_cents,unit,
+                         im_haus_applicable,vat_allocations_json,menu_components_json
+                HAVING SUM(quantity_milli)<>0;
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                var line = ReadReconciliationLine(r);
+                current[RestaurantLineSnapshot.IdentityKey(line)] =
+                    (line, r.GetInt64(11), r.GetInt64(12));
+            }
+        }
+
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = """
+                SELECT i.product_id,i.product_name,i.variant_name,i.unit_price_cents,
+                       i.list_unit_price_cents,i.vat_rate,i.pfand_cents,i.unit,
+                       i.im_haus_applicable,i.vat_allocations_json,i.menu_components_json,
+                       SUM(i.quantity_milli),
+                       SUM(CASE WHEN i.line_total_cents>=0
+                           THEN i.line_total_cents
+                           ELSE CAST(ROUND((i.quantity_milli*i.unit_price_cents)/1000.0) AS INTEGER)
+                       END)
+                FROM restaurant_bestellung_items i
+                JOIN restaurant_bestellungen b ON b.id=i.bestellung_id
+                WHERE b.session_id=$session
+                GROUP BY i.product_id,i.product_name,i.variant_name,i.unit_price_cents,
+                         i.list_unit_price_cents,i.vat_rate,i.pfand_cents,i.unit,
+                         i.im_haus_applicable,i.vat_allocations_json,i.menu_components_json
+                HAVING SUM(i.quantity_milli)<>0;
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+            await using var r = await q.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+            {
+                var line = ReadReconciliationLine(r);
+                secured[RestaurantLineSnapshot.IdentityKey(line)] =
+                    (line, r.GetInt64(11), r.GetInt64(12));
+            }
+        }
+
+        var keys = current.Keys
+            .Concat(secured.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal);
+
+        var result = new List<CartLine>();
+        foreach (var key in keys)
+        {
+            var cq = current.TryGetValue(key, out var cv) ? cv.QuantityMilli : 0L;
+            var sq = secured.TryGetValue(key, out var sv) ? sv.QuantityMilli : 0L;
+            var ca = current.TryGetValue(key, out cv) ? cv.AmountCents : 0L;
+            var sa = secured.TryGetValue(key, out sv) ? sv.AmountCents : 0L;
+            var dq = cq - sq;
+            var da = ca - sa;
+
+            if (dq == 0 && da == 0)
+                continue;
+            if (dq == 0)
+                throw new InvalidOperationException(
+                    "Restaurant-Fiskalabgleich hat einen Geldbetrag ohne Mengenänderung. Manuelle Prüfung erforderlich.");
+
+            var template = current.TryGetValue(key, out cv) ? cv.Line : sv.Line;
+            result.Add(new CartLine(template)
+            {
+                Quantity = QuantityStorage.FromMilli(dq),
+                PersistedLineTotalCents = da
+            });
+        }
+
+        return result;
+    }
+
+    private static CartLine ReadReconciliationLine(Microsoft.Data.Sqlite.SqliteDataReader r) =>
+        new()
+        {
+            ProductId = r.GetInt64(0),
+            ProductName = r.GetString(1),
+            VariantName = r.GetString(2),
+            Quantity = 0m,
+            UnitPriceCents = r.GetInt64(3),
+            ListUnitPriceCents = r.GetInt64(4),
+            VatRate = Convert.ToDecimal(r.GetDouble(5)),
+            PfandCents = r.GetInt64(6),
+            Unit = r.GetString(7),
+            ImHausApplicable = r.GetInt64(8) != 0,
+            VatAllocations = VatAllocationStorage.Deserialize(r.GetString(9)),
+            MenuComponents = MenuComponentStorage.Deserialize(r.GetString(10))
+        };
+
+    private async Task<RestaurantFiscalRecoveryVorgang?> FindRecoveryVorgangAsync(
+        string sessionId,
+        CancellationToken ct)
+    {
+        await using var c = _db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT v.id,v.started_at,v.state,
+                   CASE WHEN v.finish_attempted_at<>'' THEN 1 ELSE 0 END,
+                   CASE WHEN v.finish_result_json<>'' THEN 1 ELSE 0 END
+            FROM tse_vorgaenge v
+            WHERE v.reference=$reference
+              AND v.state IN ('OPEN','FINISHED')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM restaurant_bestellungen b
+                  WHERE b.session_id=$session
+                    AND (
+                        (v.transaction_number<>'' AND
+                         b.transaction_number=v.transaction_number)
+                        OR b.started_at=v.started_at
+                    ))
+            ORDER BY v.updated_at DESC,v.started_at DESC
+            LIMIT 1;
+            """;
+        q.Parameters.AddWithValue(
+            "$reference",
+            $"RESTAURANT:{sessionId}");
+        q.Parameters.AddWithValue(
+            "$session",
+            sessionId);
+
+        await using var r = await q.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct))
+            return null;
+
+        return new RestaurantFiscalRecoveryVorgang(
+            r.GetString(0),
+            DateTimeOffset.Parse(r.GetString(1)),
+            r.GetString(2),
+            r.GetInt64(3) == 1,
+            r.GetInt64(4) == 1);
+    }
+
+    private Task MarkPendingSessionItemsSecuredAsync(
+        string sessionId,
+        CancellationToken ct) =>
+        IoQueue.RunAsync(async () =>
+        {
+            await using var c = _db.OpenConnection();
+            await using var q = c.CreateCommand();
+            q.CommandText = """
+                UPDATE restaurant_session_items
+                SET fiscal_state='SECURED',
+                    version=version+1
+                WHERE session_id=$session
+                  AND state IN ('ACTIVE','PAID')
+                  AND fiscal_state='PENDING';
+                """;
+            q.Parameters.AddWithValue("$session", sessionId);
+            await q.ExecuteNonQueryAsync(ct);
+        });
+
+    private sealed record RestaurantFiscalRecoveryVorgang(
+        string Id,
+        DateTimeOffset StartedAt,
+        string State,
+        bool FinishAttempted,
+        bool HasJournal);
 
     public async Task<bool> IsCurrentStateSecuredAsync(
         string sessionId,
@@ -281,68 +581,9 @@ public sealed class RestaurantFiscalOrderService
                 }
             }
 
-            var open = new Dictionary<string,long>(StringComparer.Ordinal);
-            await using (var q = c.CreateCommand())
-            {
-                q.CommandText = """
-                    SELECT product_id,product_name,unit_price_cents,vat_rate,pfand_cents,
-                           SUM(quantity_milli)
-                    FROM restaurant_session_items
-                    WHERE session_id=$session AND state IN ('ACTIVE','PAID')
-                    GROUP BY product_id,product_name,unit_price_cents,vat_rate,pfand_cents
-                    HAVING SUM(quantity_milli)<>0;
-                    """;
-                q.Parameters.AddWithValue("$session", sessionId);
-                await using var r = await q.ExecuteReaderAsync(ct);
-                while (await r.ReadAsync(ct))
-                {
-                    open[Key(
-                        r.GetInt64(0),
-                        r.GetString(1),
-                        r.GetInt64(2),
-                        Convert.ToDecimal(r.GetDouble(3)),
-                        r.GetInt64(4))] = r.GetInt64(5);
-                }
-            }
-
-            var secured = new Dictionary<string,long>(StringComparer.Ordinal);
-            await using (var q = c.CreateCommand())
-            {
-                q.CommandText = """
-                    SELECT i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents,
-                           SUM(i.quantity_milli)
-                    FROM restaurant_bestellung_items i
-                    JOIN restaurant_bestellungen b ON b.id=i.bestellung_id
-                    WHERE b.session_id=$session
-                    GROUP BY i.product_id,i.product_name,i.unit_price_cents,i.vat_rate,i.pfand_cents
-                    HAVING SUM(i.quantity_milli)<>0;
-                    """;
-                q.Parameters.AddWithValue("$session", sessionId);
-                await using var r = await q.ExecuteReaderAsync(ct);
-                while (await r.ReadAsync(ct))
-                {
-                    secured[Key(
-                        r.GetInt64(0),
-                        r.GetString(1),
-                        r.GetInt64(2),
-                        Convert.ToDecimal(r.GetDouble(3)),
-                        r.GetInt64(4))] = r.GetInt64(5);
-                }
-            }
-
-            if (open.Count != secured.Count)
-                return false;
-
-            foreach (var pair in open)
-            {
-                if (!secured.TryGetValue(pair.Key, out var quantity) ||
-                    quantity != pair.Value)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return (await BuildReconciliationDeltaAsync(
+                    sessionId,
+                    ct)).Count == 0;
         });
     }
 
@@ -380,7 +621,9 @@ public sealed class RestaurantFiscalOrderService
         IReadOnlyList<CartLine> lines,
         SaleTseResult result,
         CancellationToken ct,
-        long? securedItemId = null)
+        string consumedVorgangId,
+        long? securedItemId = null,
+        bool securePendingSessionItems = false)
     {
         await IoQueue.RunAsync(async () =>
         {
@@ -443,17 +686,30 @@ public sealed class RestaurantFiscalOrderService
                 item.Transaction = tx;
                 item.CommandText = """
                     INSERT INTO restaurant_bestellung_items(
-                        bestellung_id,product_id,product_name,quantity_milli,
-                        unit_price_cents,vat_rate,pfand_cents)
-                    VALUES($bestellung,$product,$name,$quantity,$price,$vat,$pfand);
+                        bestellung_id,product_id,product_name,variant_name,quantity_milli,
+                        unit_price_cents,vat_rate,pfand_cents,
+                        unit,list_unit_price_cents,im_haus_applicable,
+                        vat_allocations_json,menu_components_json,line_total_cents)
+                    VALUES(
+                        $bestellung,$product,$name,$variant,$quantity,
+                        $price,$vat,$pfand,
+                        $unit,$listPrice,$imHaus,
+                        $vatAllocations,$menuComponents,$lineTotal);
                     """;
                 item.Parameters.AddWithValue("$bestellung", id);
                 item.Parameters.AddWithValue("$product", line.ProductId);
                 item.Parameters.AddWithValue("$name", line.ProductName);
+                item.Parameters.AddWithValue("$variant", line.VariantName);
                 item.Parameters.AddWithValue("$quantity", QuantityStorage.ToMilli(line.Quantity));
                 item.Parameters.AddWithValue("$price", line.UnitPriceCents);
                 item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                 item.Parameters.AddWithValue("$pfand", line.PfandCents);
+                item.Parameters.AddWithValue("$unit", line.Unit);
+                item.Parameters.AddWithValue("$listPrice", line.EffectiveListUnitPriceCents);
+                item.Parameters.AddWithValue("$imHaus", line.ImHausApplicable ? 1 : 0);
+                item.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+                item.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+                item.Parameters.AddWithValue("$lineTotal", line.LineTotalCents);
                 await item.ExecuteNonQueryAsync(ct);
             }
 
@@ -480,6 +736,29 @@ public sealed class RestaurantFiscalOrderService
                 }
             }
 
+            if (securePendingSessionItems)
+            {
+                await using var securePending = c.CreateCommand();
+                securePending.Transaction = tx;
+                securePending.CommandText = """
+                    UPDATE restaurant_session_items
+                    SET fiscal_state='SECURED',
+                        version=version+1
+                    WHERE session_id=$session
+                      AND state IN ('ACTIVE','PAID')
+                      AND fiscal_state='PENDING';
+                    """;
+                securePending.Parameters.AddWithValue("$session", sessionId);
+                await securePending.ExecuteNonQueryAsync(ct);
+            }
+
+            await ConsumeRestaurantVorgangAsync(
+                c,
+                tx,
+                consumedVorgangId,
+                sessionId,
+                ct);
+
             await tx.CommitAsync(ct);
         });
     }
@@ -487,6 +766,8 @@ public sealed class RestaurantFiscalOrderService
     private async Task InsertMergeRecordsAsync(
         string sourceSessionId,
         string targetSessionId,
+        string sourceVorgangId,
+        string targetVorgangId,
         DateTimeOffset sourceStartedAt,
         DateTimeOffset targetStartedAt,
         string actor,
@@ -561,53 +842,87 @@ public sealed class RestaurantFiscalOrderService
                     item.Transaction = tx;
                     item.CommandText = """
                         INSERT INTO restaurant_bestellung_items(
-                            bestellung_id,product_id,product_name,quantity_milli,
-                            unit_price_cents,vat_rate,pfand_cents)
-                        VALUES($bestellung,$product,$name,$quantity,$price,$vat,$pfand);
+                            bestellung_id,product_id,product_name,variant_name,quantity_milli,
+                            unit_price_cents,vat_rate,pfand_cents,
+                            unit,list_unit_price_cents,im_haus_applicable,
+                            vat_allocations_json,menu_components_json,line_total_cents)
+                        VALUES(
+                            $bestellung,$product,$name,$variant,$quantity,
+                            $price,$vat,$pfand,
+                            $unit,$listPrice,$imHaus,
+                            $vatAllocations,$menuComponents,$lineTotal);
                         """;
                     item.Parameters.AddWithValue("$bestellung", id);
                     item.Parameters.AddWithValue("$product", line.ProductId);
                     item.Parameters.AddWithValue("$name", line.ProductName);
+                    item.Parameters.AddWithValue("$variant", line.VariantName);
                     item.Parameters.AddWithValue("$quantity", QuantityStorage.ToMilli(line.Quantity));
                     item.Parameters.AddWithValue("$price", line.UnitPriceCents);
                     item.Parameters.AddWithValue("$vat", (double)line.VatRate);
                     item.Parameters.AddWithValue("$pfand", line.PfandCents);
+                    item.Parameters.AddWithValue("$unit", line.Unit);
+                    item.Parameters.AddWithValue("$listPrice", line.EffectiveListUnitPriceCents);
+                    item.Parameters.AddWithValue("$imHaus", line.ImHausApplicable ? 1 : 0);
+                    item.Parameters.AddWithValue("$vatAllocations", VatAllocationStorage.Serialize(line));
+                    item.Parameters.AddWithValue("$menuComponents", MenuComponentStorage.Serialize(line));
+                    item.Parameters.AddWithValue("$lineTotal", line.LineTotalCents);
                     await item.ExecuteNonQueryAsync(ct);
                 }
             }
 
             await InsertOne(sourceSessionId, sourceStartedAt, sourceLines, sourceResult);
             await InsertOne(targetSessionId, targetStartedAt, targetLines, targetResult);
+
+            await ConsumeRestaurantVorgangAsync(
+                c,
+                tx,
+                sourceVorgangId,
+                sourceSessionId,
+                ct);
+            await ConsumeRestaurantVorgangAsync(
+                c,
+                tx,
+                targetVorgangId,
+                targetSessionId,
+                ct);
+
             await tx.CommitAsync(ct);
         });
     }
 
-    private static CartLine ToCartLine(RestaurantSessionItem item) =>
-        new()
-        {
-            ProductId = item.ProductId,
-            ProductName = item.ProductName,
-            VariantName = item.VariantName,
-            Quantity = item.Quantity,
-            Unit = "Stück",
-            UnitPriceCents = item.UnitPriceCents,
-            ListUnitPriceCents = item.UnitPriceCents,
-            VatRate = item.VatRate,
-            PfandCents = item.PfandCents
-        };
+    private static async Task ConsumeRestaurantVorgangAsync(
+        SqliteConnection c,
+        SqliteTransaction tx,
+        string vorgangId,
+        string sessionId,
+        CancellationToken ct)
+    {
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        q.CommandText = """
+            UPDATE tse_vorgaenge
+            SET finish_result_json='',
+                reference=$reference,
+                updated_at=$now
+            WHERE id=$id;
+            """;
+        q.Parameters.AddWithValue("$id", vorgangId);
+        q.Parameters.AddWithValue(
+            "$reference",
+            $"RESTAURANT-COMMITTED:{sessionId}");
+        q.Parameters.AddWithValue(
+            "$now",
+            DateTimeOffset.Now.ToString("O"));
 
-    private static string Key(
-        long productId,
-        string name,
-        long unitPriceCents,
-        decimal vatRate,
-        long pfandCents) =>
-        string.Join(
-            "|",
-            productId,
-            name,
-            unitPriceCents,
-            vatRate.ToString(
-                System.Globalization.CultureInfo.InvariantCulture),
-            pfandCents);
+        if (await q.ExecuteNonQueryAsync(ct) != 1)
+        {
+            throw new InvalidOperationException(
+                "Restaurant-TSE-Vorgang konnte nicht atomar als verarbeitet markiert werden.");
+        }
+    }
+
+    private static CartLine ToCartLine(RestaurantSessionItem item) =>
+        RestaurantLineSnapshot.ToCartLine(item);
+
+
 }

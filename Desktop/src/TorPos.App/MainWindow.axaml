@@ -419,6 +419,7 @@
             <Button x:Name="SettingsButton" Classes="headernav" Content="EINSTELLUNGEN" Click="OnSettingsHubClick"/>
             <Button x:Name="CashMenuButton" Classes="headernav" Content="KASSE" Click="OnCashHubClick"/>
             <Button x:Name="RestaurantTablesButton" Classes="headernav" Content="TISCHPLAN" Click="OnRestaurantTablesClick" IsVisible="False"/>
+            <Button x:Name="RestaurantCounterButton" Classes="headernav" Content="THEKE" Click="OnRestaurantCounterClick" IsVisible="False"/>
             <Button x:Name="RestaurantKdsButton" Classes="headernav" Content="KDS" Click="OnRestaurantKdsClick" IsVisible="False"/>
             <Button x:Name="RestaurantHandheldButton" Classes="headernav" Content="HANDHELD" Click="OnRestaurantHandheldClick" IsVisible="False"/>
             <Button x:Name="RestaurantReservationsButton" Classes="headernav" Content="RESERVIERUNGEN" Click="OnRestaurantReservationsClick" IsVisible="False"/>
@@ -890,6 +891,17 @@
           </Grid>
         </Border>
       </Grid>
+    </Border>
+
+    <Border x:Name="RestaurantWorkspaceHost"
+            Grid.Row="1" Grid.RowSpan="2" Grid.ColumnSpan="2"
+            IsVisible="False"
+            Background="#0D1420"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+      <ContentControl x:Name="RestaurantWorkspaceContent"
+                      HorizontalContentAlignment="Stretch"
+                      VerticalContentAlignment="Stretch"/>
     </Border>
 
     <!-- R145: card-based hub for the four main menus. It overlays quick actions

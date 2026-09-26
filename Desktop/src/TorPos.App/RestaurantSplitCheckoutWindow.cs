@@ -97,6 +97,26 @@ public sealed class RestaurantSplitCheckoutWindow : Window
             RefreshPreview();
         };
 
+        // R-4 (variant B): split by persons with WHOLE positions. The plan only
+        // fills the quantities above; payment goes through the same item split.
+        var persons = new NumericUpDown
+        {
+            Minimum = 2,
+            Maximum = RestaurantSplitPlanner.MaxPersons,
+            Value = 2,
+            Increment = 1,
+            FormatString = "0",
+            Width = 110,
+            MinHeight = 42
+        };
+        var nextPerson = new Button
+        {
+            Content = "NÄCHSTE PERSON AUSWÄHLEN",
+            MinHeight = 42,
+            MinWidth = 230
+        };
+        nextPerson.Click += (_, _) => SelectNextPerson((int)(persons.Value ?? 2m));
+
         var cancel = new Button
         {
             Content = "ABBRECHEN",
@@ -171,6 +191,21 @@ public sealed class RestaurantSplitCheckoutWindow : Window
                             {
                                 Orientation = Orientation.Horizontal,
                                 Spacing = 8,
+                                Children =
+                                {
+                                    new TextBlock
+                                    {
+                                        Text = "Verbleibende Personen:",
+                                        VerticalAlignment = VerticalAlignment.Center
+                                    },
+                                    persons,
+                                    nextPerson
+                                }
+                            },
+                            new StackPanel
+                            {
+                                Orientation = Orientation.Horizontal,
+                                Spacing = 8,
                                 HorizontalAlignment = HorizontalAlignment.Right,
                                 Children = { cancel, _checkout }
                             }
@@ -190,7 +225,10 @@ public sealed class RestaurantSplitCheckoutWindow : Window
             Minimum = 0m,
             Maximum = item.Quantity,
             Value = 0m,
-            Increment = item.QuantityMilli % 1000 == 0 ? 1m : 0.001m,
+            Increment = string.Equals(item.Unit, "Stück", StringComparison.OrdinalIgnoreCase) ? 1m : 0.001m,
+            // R-9.1: whole-piece positions show and accept whole pieces only;
+            // the calculator refuses fractions of them anyway.
+            FormatString = string.Equals(item.Unit, "Stück", StringComparison.OrdinalIgnoreCase) ? "0" : "0.###",
             Width = 110,
             MinHeight = 42
         };
@@ -259,6 +297,39 @@ public sealed class RestaurantSplitCheckoutWindow : Window
                 }
             }
         };
+    }
+
+    /// <summary>
+    /// R-4: selects the share of the first of the remaining persons. After that
+    /// person has paid, the window is opened again with one person fewer and the
+    /// rest is distributed anew, so the shares stay as even as whole positions allow.
+    /// </summary>
+    private void SelectNextPerson(int persons)
+    {
+        try
+        {
+            var plan = RestaurantSplitPlanner.DistributeWholeItems(_items, persons);
+            foreach (var input in _quantities.Values)
+                input.Value = 0m;
+            foreach (var selection in plan[0])
+                _quantities[selection.SessionItemId].Value = selection.QuantityMilli / 1000m;
+
+            RefreshPreview();
+
+            var shares = plan
+                .Select((share, index) => share.Length == 0
+                    ? 0L
+                    : RestaurantSplitCalculator.ByItems(_items, share).TotalCents)
+                .Select((cents, index) => $"P{index + 1}: {Formatting.Money(cents)}");
+            _status.Text =
+                $"Aufteilung auf {persons} Personen nach ganzen Positionen · " +
+                string.Join(" · ", shares) +
+                ". Nach dem Kassieren Teilrechnung erneut öffnen und mit einer Person weniger fortfahren.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = ex.Message;
+        }
     }
 
     private RestaurantSplitSelection[] CurrentSelections()

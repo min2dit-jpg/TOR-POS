@@ -116,6 +116,8 @@ public partial class MainWindow:Window
     private TorUpdateManifest? _availableUpdate;
     private long _quickItemSequence = -9_100_000;
     private RestaurantCheckoutDraft? _restaurantCheckoutDraft;
+    private RestaurantWorkspaceControl? _restaurantWorkspace;
+    private bool _restaurantWorkspaceInitialized;
     private OrderCustomerDisplayWindow? _orderDisplayWindow;
     private string _orderDisplaySignature = "";
     // R104: genuine customer-facing display (e.g. HP L7010t) - distinct
@@ -248,6 +250,12 @@ public partial class MainWindow:Window
                 "RESTAURANT",
                 StringComparison.Ordinal);
 
+        RestaurantCounterButton.IsVisible =
+            RestaurantTablesButton.IsVisible;
+
+        CashMenuButton.IsVisible =
+            !RestaurantTablesButton.IsVisible;
+
         RestaurantKdsButton.IsVisible =
             RestaurantTablesButton.IsVisible &&
             _restaurantEntitlements.IsEnabled(
@@ -334,21 +342,6 @@ public partial class MainWindow:Window
                 await TryRestoreOpenCartAsync();
 
             _cartRecoveryReady = true;
-            // R136: a TSE Vorgang left open by a crash whose cart did not come
-            // back is ended as aborted. A training login leaves them for the
-            // next regular one, which may still restore its cart.
-            // R138: but one whose sale was already booked is no abort - it is
-            // ended first with the data of that sale.
-            if (!_currentUser.IsTraining)
-            {
-                var keep = _tseVorgang.VorgangId;
-                var actor = _currentUser.Username;
-                QueueTseVorgangWork(async v =>
-                {
-                    await _fiscalSigning.FinishCommittedVorgaengeAsync(actor);
-                    await v.AbortOrphansAsync(keep, actor);
-                });
-            }
             // R126: the button states were last computed while recovery was
             // still pending (CartLocked), and nothing recomputed them once it
             // finished - C, EXTRA and SCHNELLARTIKEL stayed disabled after every
@@ -393,6 +386,25 @@ public partial class MainWindow:Window
             _tseCertificateTimer.Start();
             StartTseWatch();
             FocusScannerCaptureSoon();
+
+            // Restaurant-specific reconciliation must run before the generic
+            // orphan cleanup. A tagged OPEN Restaurant Vorgang may be the exact
+            // TSE transaction needed to repair a DB-committed merge/storno.
+            await ShowRestaurantTableWorkspaceAsync();
+
+            // R136/R138 generic cleanup follows Restaurant recovery. A Vorgang
+            // that is still OPEN now has no recoverable Restaurant state and can
+            // safely become AVBelegabbruch.
+            if (!_currentUser.IsTraining)
+            {
+                var keep = _tseVorgang.VorgangId;
+                var actor = _currentUser.Username;
+                QueueTseVorgangWork(async v =>
+                {
+                    await _fiscalSigning.FinishCommittedVorgaengeAsync(actor);
+                    await v.AbortOrphansAsync(keep, actor);
+                });
+            }
         };
 
         UiErrorGuard.ErrorCaught += OnUiErrorCaught;
@@ -488,31 +500,188 @@ public partial class MainWindow:Window
         }
     }
 
-    private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e)
+    private async void OnRestaurantTablesClick(object? sender, RoutedEventArgs e) =>
+        await ShowRestaurantTableWorkspaceAsync();
+
+    private void OnRestaurantCounterClick(object? sender, RoutedEventArgs e) =>
+        ShowRestaurantCounterWorkspace();
+
+    private bool IsRestaurantEdition() =>
+        string.Equals(
+            ProductBuild.FixedEdition,
+            "RESTAURANT",
+            StringComparison.Ordinal);
+
+    private bool CanSwitchRestaurantWorkspace(string target)
     {
-        if (!string.Equals(
-                ProductBuild.FixedEdition,
-                "RESTAURANT",
-                StringComparison.Ordinal))
+        if (!IsRestaurantEdition())
+            return false;
+
+        if (CartLocked ||
+            _engine.Cart.Count > 0 ||
+            _restaurantCheckoutDraft is not null ||
+            (_restaurantWorkspace?.IsBusy ?? false))
         {
-            return;
+            StatusLine =
+                $"{target}: Zuerst den aktuellen Vorgang abschließen oder leeren.";
+            return false;
         }
 
-        if (_engine.Cart.Count > 0 || _restaurantCheckoutDraft is not null)
+        return true;
+    }
+
+    private RestaurantWorkspaceControl EnsureRestaurantWorkspace()
+    {
+        if (_restaurantWorkspace is not null)
+            return _restaurantWorkspace;
+
+        var workspace =
+            _windowFactory.CreateRestaurantWorkspaceControl(_currentUser);
+
+        workspace.OpenMasterDataAsync =
+            () => ShowRestaurantMasterDataAsync(this);
+        workspace.CounterRequestedAsync =
+            HandleRestaurantCounterRequestedAsync;
+        workspace.CheckoutRequestedAsync =
+            HandleRestaurantCheckoutAsync;
+
+        _restaurantWorkspace = workspace;
+        RestaurantWorkspaceContent.Content = workspace;
+        return workspace;
+    }
+
+    private async Task ShowRestaurantTableWorkspaceAsync()
+    {
+        if (!CanSwitchRestaurantWorkspace("TISCHPLAN"))
+            return;
+
+        var workspace = EnsureRestaurantWorkspace();
+
+        try
         {
-            StatusLine = "TISCHPLAN: Zuerst den aktuellen Kassenbon abschließen oder leeren.";
+            if (!_restaurantWorkspaceInitialized)
+            {
+                await workspace.InitializeAsync();
+                _restaurantWorkspaceInitialized = true;
+            }
+            else
+            {
+                await workspace.RefreshAsync();
+            }
+
+            MenuHubOverlay.IsVisible = false;
+            RestaurantWorkspaceHost.IsEnabled = true;
+            RestaurantWorkspaceHost.IsVisible = true;
+            StatusLine = "TISCHPLAN · Tisch auswählen";
+        }
+        catch (Exception ex)
+        {
+            CrashLog.WriteException("Restaurant workspace startup", ex);
+            StatusLine = "TISCHPLAN konnte nicht geöffnet werden: " + ex.Message;
+        }
+    }
+
+    private Task HandleRestaurantCounterRequestedAsync()
+    {
+        ShowRestaurantCounterWorkspace();
+        return Task.CompletedTask;
+    }
+
+    private void ShowRestaurantCounterWorkspace()
+    {
+        if (!CanSwitchRestaurantWorkspace("THEKE"))
+            return;
+
+        MenuHubOverlay.IsVisible = false;
+        RestaurantWorkspaceHost.IsVisible = false;
+        RestaurantWorkspaceHost.IsEnabled = true;
+        ShowCategoryOverview();
+        StatusLine = "THEKE · Direktverkauf ohne Tisch";
+        FocusScannerCaptureSoon();
+    }
+
+    private async Task HandleRestaurantCheckoutAsync(
+        RestaurantCheckoutDraft draft)
+    {
+        if (!IsRestaurantEdition())
+            return;
+
+        if (CartLocked || _restaurantCheckoutDraft is not null)
+        {
+            StatusLine =
+                "BEZAHLEN: Ein anderer Vorgang ist noch geschützt oder offen.";
             return;
         }
-
-        var window = _windowFactory.CreateRestaurantTablePlanWindow(_currentUser);
-        var draft = await window.ShowDialog<RestaurantCheckoutDraft?>(this);
-        if (draft is null)
-            return;
 
         _restaurantCheckoutDraft = draft;
         _operationId = draft.OperationId;
-        _imHaus = true;
-        await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
+        _imHaus = draft.ImHaus;
+        RestaurantWorkspaceHost.IsEnabled = false;
+
+        try
+        {
+            await OpenPaymentWindowAsync(invokedByQuickCheckout: false);
+        }
+        finally
+        {
+            var sameDraft =
+                string.Equals(
+                    _restaurantCheckoutDraft?.OperationId,
+                    draft.OperationId,
+                    StringComparison.Ordinal);
+
+            if (sameDraft &&
+                _pendingCheckout is null &&
+                !_recoveryFault)
+            {
+                var releaseDraft = true;
+                try
+                {
+                    if (await _restaurant.HasPreparedPaymentReservationAsync(
+                            draft.OperationId))
+                    {
+                        await _restaurant.CancelPaymentReservationAsync(
+                            draft.OperationId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    releaseDraft = false;
+                    CrashLog.WriteException(
+                        "Restaurant payment reservation release",
+                        ex);
+                    StatusLine =
+                        "RESTAURANT ZAHLUNG: Tisch bleibt gesperrt · " +
+                        ex.Message;
+                }
+
+                if (releaseDraft)
+                {
+                    _restaurantCheckoutDraft = null;
+                    _operationId = Guid.NewGuid().ToString("N");
+                }
+            }
+
+            if (_restaurantWorkspace is not null)
+            {
+                try
+                {
+                    await _restaurantWorkspace.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException(
+                        "Restaurant workspace refresh after payment",
+                        ex);
+                }
+            }
+
+            RestaurantWorkspaceHost.IsVisible = true;
+            RestaurantWorkspaceHost.IsEnabled =
+                _pendingCheckout is null &&
+                !_recoveryFault &&
+                _restaurantCheckoutDraft is null;
+        }
     }
 
     private string CurrentBusinessMode()
@@ -908,12 +1077,136 @@ public partial class MainWindow:Window
         }
     }
 
+    private async Task<bool> ReleaseRestaurantPaymentReservationIfSafeAsync(
+        string operationId,
+        string reason)
+    {
+        if (!IsRestaurantEdition() || string.IsNullOrWhiteSpace(operationId))
+            return true;
+
+        var checkout = await _checkoutJournal.GetAsync(operationId);
+
+        // No checkout journal means no durable evidence that an external
+        // payment was submitted. NOT_CHARGED is likewise explicitly safe.
+        // Any other state may have an external effect and must stay locked for
+        // the existing ZAHLUNG PRÜFEN reconciliation flow.
+        if (checkout is not null)
+        {
+            var safePrepared =
+                string.Equals(
+                    checkout.State,
+                    "PREPARED",
+                    StringComparison.Ordinal) &&
+                !checkout.TerminalRequestSubmitted;
+
+            var alreadyNotCharged =
+                string.Equals(
+                    checkout.State,
+                    "NOT_CHARGED",
+                    StringComparison.Ordinal);
+
+            if (!safePrepared && !alreadyNotCharged)
+            {
+                _pendingCheckout = checkout;
+                return false;
+            }
+
+            if (safePrepared)
+            {
+                await _checkoutJournal.TransitionTerminalAsync(
+                    operationId,
+                    "PREPARED",
+                    "NOT_CHARGED",
+                    reason,
+                    PaymentTerminalOutcome.NotSent,
+                    requestSubmitted: false,
+                    terminalCode: "RESTAURANT_PREPARE_ABORTED",
+                    terminalMessage:
+                        "Restaurant checkout preparation failed before terminal submission.");
+            }
+        }
+
+        if (await _restaurant.HasPreparedPaymentReservationAsync(operationId))
+        {
+            await _restaurant.CancelPaymentReservationAsync(operationId);
+            await _audit.WriteAsync(
+                _currentUser.Username,
+                "RESTAURANT_PAYMENT_RESERVATION_RECOVERED",
+                "CHECKOUT",
+                operationId,
+                $"{reason}; journal_state={(checkout?.State ?? "MISSING")}");
+        }
+
+        return true;
+    }
+
+    private async Task RecoverOrphanedRestaurantPaymentReservationsAsync()
+    {
+        if (!IsRestaurantEdition())
+            return;
+
+        foreach (var operationId in
+                 await _restaurant.ListPreparedPaymentReservationOperationIdsAsync())
+        {
+            var checkout = await _checkoutJournal.GetAsync(operationId);
+            var safePrepared =
+                checkout is not null &&
+                string.Equals(
+                    checkout.State,
+                    "PREPARED",
+                    StringComparison.Ordinal) &&
+                !checkout.TerminalRequestSubmitted;
+            var alreadyNotCharged =
+                checkout is not null &&
+                string.Equals(
+                    checkout.State,
+                    "NOT_CHARGED",
+                    StringComparison.Ordinal);
+
+            if (checkout is not null && !safePrepared && !alreadyNotCharged)
+                continue;
+
+            try
+            {
+                if (safePrepared)
+                {
+                    await _checkoutJournal.TransitionTerminalAsync(
+                        operationId,
+                        "PREPARED",
+                        "NOT_CHARGED",
+                        "Startup recovered Restaurant payment before terminal submission",
+                        PaymentTerminalOutcome.NotSent,
+                        requestSubmitted: false,
+                        terminalCode: "RESTAURANT_STARTUP_ABORTED",
+                        terminalMessage:
+                            "Recovered orphan Restaurant payment before terminal submission.");
+                }
+
+                await _restaurant.CancelPaymentReservationAsync(operationId);
+                await _audit.WriteAsync(
+                    _currentUser.Username,
+                    "RESTAURANT_PAYMENT_RESERVATION_STARTUP_RECOVERED",
+                    "CHECKOUT",
+                    operationId,
+                    $"startup; journal_state={(checkout?.State ?? "MISSING")}");
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException(
+                    "Restaurant orphan payment reservation recovery",
+                    ex);
+            }
+        }
+    }
+
     private async Task TryRestoreOpenCartAsync()
     {
         if (_currentUser.IsTraining) return;
         var path=OpenCartRecoveryPath();
         try
         {
+            await RecoverOrphanedRestaurantPaymentReservationsAsync();
+
             var pending=await _checkoutJournal.GetOpenAsync();
             _pendingCheckout=pending.FirstOrDefault();
             if (_pendingCheckout is not null)
@@ -2923,6 +3216,60 @@ public partial class MainWindow:Window
         return await _dailyClosingGuard.CheckAsync();
     }
 
+    private async Task<bool> ReconcileRestaurantFiscalBeforeClosingAsync()
+    {
+        if (!IsRestaurantEdition())
+            return true;
+
+        var preparedPayments =
+            await _restaurant.ListPreparedPaymentReservationOperationIdsAsync();
+        if (preparedPayments.Count > 0)
+        {
+            const string paymentMessage =
+                "Offene Restaurant-Zahlung zuerst über ZAHLUNG PRÜFEN klären.";
+            StatusLine = "Z-BERICHT GESPERRT · " + paymentMessage;
+            await new ZReportInfoWindow(
+                "Z-BERICHT GESPERRT",
+                paymentMessage,
+                false).ShowDialog<bool>(this);
+            return false;
+        }
+
+        foreach (var sessionId in
+                 await _restaurantFiscal.ListUnsecuredSessionIdsAsync())
+        {
+            try
+            {
+                await _restaurantFiscal.ReconcileSessionAsync(
+                    sessionId,
+                    _currentUser.Username);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException(
+                    "Restaurant fiscal reconciliation before Z " + sessionId,
+                    ex);
+            }
+        }
+
+        var remaining =
+            await _restaurantFiscal.ListUnsecuredSessionIdsAsync();
+        if (remaining.Count == 0)
+            return true;
+
+        var message =
+            $"{remaining.Count} Restaurant-Tischvorgang/-vorgänge sind fiskalisch noch nicht nachgesichert. " +
+            "Z-Abschluss bleibt gesperrt; FISKAL NACHSICHERN ausführen und Ursache prüfen.";
+
+        StatusLine =
+            "Z-BERICHT GESPERRT · Restaurant-Fiskalprüfung erforderlich";
+        await new ZReportInfoWindow(
+            "Z-BERICHT GESPERRT",
+            message,
+            false).ShowDialog<bool>(this);
+        return false;
+    }
+
     private async void OnZReportClick(object? sender, RoutedEventArgs e)
     {
         if (!RequirePermission(UserPermissions.ZReport, "Z-BERICHT") ||
@@ -2937,6 +3284,9 @@ public partial class MainWindow:Window
             StatusLine = "Z-BERICHT: Aktuellen Vorgang zuerst kassieren, parken oder mit C leeren.";
             return;
         }
+
+        if (!await ReconcileRestaurantFiscalBeforeClosingAsync())
+            return;
 
         await _tseVorgangWork;
         if (Vorgaenge is { } openVorgaenge)
@@ -3242,7 +3592,7 @@ public partial class MainWindow:Window
                 method,
                 _currentUser.Username,
                 null,
-                true,
+                restaurant.ImHaus,
                 cashPortionCents,
                 "",
                 null,
@@ -3473,9 +3823,40 @@ public partial class MainWindow:Window
                 await _restaurant.PreparePaymentReservationAsync(restaurantDraft);
             }
 
-            var prepared =
-                await _checkoutApplication.PrepareProductionAsync(
-                    snapshot);
+            TorPos.Application.CheckoutApplicationResult prepared;
+            try
+            {
+                prepared =
+                    await _checkoutApplication.PrepareProductionAsync(
+                        snapshot);
+            }
+            catch (Exception)
+            {
+                if (restaurantDraft is not null)
+                {
+                    try
+                    {
+                        var released =
+                            await ReleaseRestaurantPaymentReservationIfSafeAsync(
+                                restaurantDraft.OperationId,
+                                "PrepareProductionAsync failed");
+
+                        if (released)
+                        {
+                            _restaurantCheckoutDraft = null;
+                            _operationId = Guid.NewGuid().ToString("N");
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        CrashLog.WriteException(
+                            "Restaurant payment reservation cleanup after prepare failure",
+                            cleanupEx);
+                    }
+                }
+
+                throw;
+            }
 
             if(prepared.Timings.FiscalPreflightMs is double fiscalMs)
                 _perf.RecordElapsed("checkout.fiscal_preflight",fiscalMs);
@@ -4682,7 +5063,10 @@ public partial class MainWindow:Window
         if (!RequirePermission(UserPermissions.ManageProducts, "STAMMDATEN"))
             return;
 
-        await new ProductEditorWindow(_repo,_catalog,_images,_management,_promotions,_currentUser,"").ShowDialog<bool>(this);
+        if (ProductBuild.FixedEdition == "RESTAURANT")
+            await ShowRestaurantMasterDataAsync(this);
+        else
+            await new ProductEditorWindow(_repo,_catalog,_images,_management,_promotions,_currentUser,"").ShowDialog<bool>(this);
         await _catalog.ReloadAsync();
         BuildCategories();
         await RefreshStockWarningAsync();

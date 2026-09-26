@@ -6,7 +6,9 @@ name: TOR-POS Windows kontrol
 
 on:
   push:
-    branches: [main]
+    # Keep the Restaurant DEV branch independently testable when unrelated main changes
+    # temporarily prevent GitHub from producing a pull-request merge ref.
+    branches: [main, feature/restaurant-third-exe]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -135,6 +137,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=RESTAURANT -- ci-results/ui-restaurant 1366x768 --check 2>&1 |
             Tee-Object -FilePath ci-results/ui-restaurant.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # DEV5: the small till size too - Tischplan, order screen, THEKE and
+          # ABMELDEN must stay inside 1024x640 (German only: Restaurant UI).
+          dotnet run --project tools/TorPos.UiSnapshot -c Release -p:TorProductEdition=RESTAURANT -- ci-results/ui-restaurant-small 1024x640 --check 2>&1 |
+            Tee-Object -FilePath ci-results/ui-restaurant-small.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # SafetyTests is an executable, not an xUnit/MSTest test project.
@@ -289,7 +296,7 @@ jobs:
       - name: TOR Restaurant Setup EXE sakla (gelistirme)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: TOR-Restaurant-Setup-DEV-${{ github.sha }}
+          name: TOR-Restaurant-Setup-DEV6-${{ github.sha }}
           path: Desktop/installer-output/TOR-Restaurant-Setup.exe
           if-no-files-found: error
           retention-days: 14

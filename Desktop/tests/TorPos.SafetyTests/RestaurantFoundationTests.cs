@@ -449,12 +449,27 @@ internal static class RestaurantFoundationTests
                     TableExists(c, "restaurant_device_commands") &&
                     TableExists(c, "restaurant_operator_sessions") &&
                     TableExists(c, "restaurant_self_order_tables") &&
-                    TableExists(c, "restaurant_self_order_sessions"),
+                    TableExists(c, "restaurant_self_order_sessions") &&
+                    TableExists(c, "restaurant_session_service_mode"),
                     "Restaurant-only tables including Bestellung, kitchen, reservations, terminal, device-command and Self Order records are created for the Restaurant product");
 
                 assert(
                     ColumnExists(c, "restaurant_session_items", "fiscal_state"),
                     "K-4 Restaurant schema tracks PENDING versus SECURED fiscal item state");
+
+                await using (var indexCheck = c.CreateCommand())
+                {
+                    indexCheck.CommandText = """
+                        SELECT COUNT(*)
+                        FROM sqlite_master
+                        WHERE type='index'
+                          AND name='ix_restaurant_kitchen_jobs_item_action';
+                        """;
+                    assert(
+                        Convert.ToInt32(
+                            await indexCheck.ExecuteScalarAsync()) == 1,
+                        "R-8 Restaurant schema indexes kitchen lookup by session item/action so KDS stays responsive under load");
+                }
 
                 var immutableBestellung = false;
                 try
@@ -2114,6 +2129,58 @@ internal static class RestaurantFoundationTests
                 "K-4 aborted PENDING Restaurant item can be compensated without leaving the table permanently inconsistent");
 
             var splitItems = await repo.ListActiveItemsAsync(session.Id);
+
+            var duplicateSplitRejected = false;
+            try
+            {
+                RestaurantSplitCalculator.ByItems(
+                    splitItems,
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            splitItems.Single().Id,
+                            1000),
+                        new RestaurantSplitSelection(
+                            splitItems.Single().Id,
+                            1000)
+                    });
+            }
+            catch (InvalidOperationException ex)
+            {
+                duplicateSplitRejected =
+                    ex.Message.Contains(
+                        "mehrfach ausgewählt",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                duplicateSplitRejected,
+                "Restaurant split rejects the same table position twice with an operator-readable message");
+
+            var fractionalPieceRejected = false;
+            try
+            {
+                RestaurantSplitCalculator.ByItems(
+                    splitItems,
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            splitItems.Single().Id,
+                            500)
+                    });
+            }
+            catch (InvalidOperationException ex)
+            {
+                fractionalPieceRejected =
+                    ex.Message.Contains(
+                        "ganzen Stückzahlen",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                fractionalPieceRejected,
+                "Restaurant split rejects fractional quantities for whole-piece items so cent rounding cannot leak");
+
             var splitQuote = RestaurantSplitCalculator.ByItems(
                 splitItems,
                 new[]
@@ -2145,6 +2212,77 @@ internal static class RestaurantFoundationTests
                 partialCheckoutDraft.Selections.Single().QuantityMilli == 1000 &&
                 !string.IsNullOrWhiteSpace(partialCheckoutDraft.OperationId),
                 "Restaurant item split produces a real partial checkout draft without mutating the open table");
+
+            var fractionalMoneyLine =
+                new RestaurantSessionItem(
+                    99001,
+                    "R9-2",
+                    "R9-2-LINE",
+                    99001,
+                    "Gewichtstest",
+                    "",
+                    999,
+                    999,
+                    7m,
+                    0,
+                    RestaurantSessionItemState.Active,
+                    "TEST",
+                    DateTimeOffset.UtcNow,
+                    1)
+                {
+                    PersistedLineTotalCents = 998,
+                    PaidCents = 0,
+                    Unit = "kg"
+                };
+
+            var firstThird =
+                RestaurantSplitCalculator.ByItems(
+                    new[] { fractionalMoneyLine },
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            fractionalMoneyLine.Id,
+                            333)
+                    });
+            var afterFirst =
+                fractionalMoneyLine with
+                {
+                    QuantityMilli = 666,
+                    PaidCents = firstThird.TotalCents
+                };
+            var secondThird =
+                RestaurantSplitCalculator.ByItems(
+                    new[] { afterFirst },
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            afterFirst.Id,
+                            333)
+                    });
+            var afterSecond =
+                afterFirst with
+                {
+                    QuantityMilli = 333,
+                    PaidCents =
+                        firstThird.TotalCents +
+                        secondThird.TotalCents
+                };
+            var finalThird =
+                RestaurantSplitCalculator.ByItems(
+                    new[] { afterSecond },
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            afterSecond.Id,
+                            afterSecond.QuantityMilli)
+                    });
+
+            assert(
+                firstThird.TotalCents +
+                secondThird.TotalCents +
+                finalThird.TotalCents == 998 &&
+                finalThird.TotalCents == 332,
+                "Restaurant partial payments allocate from persisted remaining cents and the final slice absorbs the rounding remainder");
 
             var equalShares = RestaurantSplitCalculator.EqualShares(1000, 3);
             assert(
@@ -2194,12 +2332,66 @@ internal static class RestaurantFoundationTests
                 "KASSE-1");
 
             var mergedItems = await repo.ListActiveItemsAsync(merged.Id);
+            var unpaidMergedSource = await repo.GetSessionAsync(moved.Id);
             assert(
                 merged.GuestCount == moved.GuestCount + targetSession.GuestCount &&
                 mergedItems.Count == 1 &&
                 mergedItems.Single().LineTotalCents == 2580 &&
-                await repo.GetLiveSessionForTableAsync(secondTableId) is null,
-                "Tische zusammenlegen moves open positions and releases the source table");
+                await repo.GetLiveSessionForTableAsync(secondTableId) is null &&
+                unpaidMergedSource?.State == RestaurantTableSessionState.Cancelled,
+                "Tische zusammenlegen moves open positions, releases the source table and keeps an unpaid source CANCELLED");
+
+            var paidMergeSourceTableId = await repo.SaveTableAsync(
+                areaId,
+                "T04PAID-S",
+                "Tisch 4 bezahlt Quelle",
+                seats: 2,
+                sortOrder: 40);
+            var paidMergeTargetTableId = await repo.SaveTableAsync(
+                areaId,
+                "T04PAID-T",
+                "Tisch 4 bezahlt Ziel",
+                seats: 2,
+                sortOrder: 41);
+            var paidMergeSource = await repo.OpenTableAsync(
+                paidMergeSourceTableId,
+                "KELLNER-4",
+                guestCount: 1,
+                deviceId: "KASSE-1");
+            var paidMergeItem = await repo.AddItemAsync(
+                paidMergeSource.Id,
+                paidMergeSource.Version,
+                product,
+                2m,
+                "KELLNER-4",
+                "KASSE-1");
+            var paidMergeSourceCurrent = await repo.GetSessionAsync(
+                paidMergeSource.Id)
+                ?? throw new InvalidOperationException(
+                    "Paid merge source missing.");
+            var paidMergeTarget = await repo.OpenTableAsync(
+                paidMergeTargetTableId,
+                "KELLNER-4",
+                guestCount: 1,
+                deviceId: "KASSE-1");
+
+            await InsertPartialPaymentFixtureAsync(
+                db, paidMergeSource.Id, paidMergeItem.Id,
+                quantityMilli: 1000, amountCents: 1290);
+
+            await repo.MergeSessionsAsync(
+                paidMergeSource.Id,
+                paidMergeSourceCurrent.Version,
+                paidMergeTarget.Id,
+                paidMergeTarget.Version,
+                "ADMIN",
+                "KASSE-1");
+
+            var paidMergedSource = await repo.GetSessionAsync(
+                paidMergeSource.Id);
+            assert(
+                paidMergedSource?.State == RestaurantTableSessionState.Closed,
+                "Tische zusammenlegen closes a source with already PAID positions instead of reporting it as CANCELLED");
 
             await InsertRestaurantBestellungAsync(
                 db,
@@ -2222,29 +2414,9 @@ internal static class RestaurantFoundationTests
                 await fiscalState.IsCurrentStateSecuredAsync(targetSession.Id),
                 "Balanced merge deltas reconcile both source and target Restaurant orders");
 
-            await using (var c = db.OpenConnection())
-            {
-                using var partial = c.CreateCommand();
-                partial.CommandText = """
-                    UPDATE restaurant_session_items
-                    SET quantity_milli=1000,version=version+1
-                    WHERE session_id=$session AND state='ACTIVE';
-
-                    INSERT INTO restaurant_session_items(
-                        session_id,line_token,product_id,product_name,variant_name,
-                        quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
-                        added_by,added_at,version)
-                    VALUES($session,$token,$product,$name,'',1000,$price,$vat,0,'PAID','TEST',$now,1);
-                    """;
-                partial.Parameters.AddWithValue("$session", targetSession.Id);
-                partial.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
-                partial.Parameters.AddWithValue("$product", product.Id);
-                partial.Parameters.AddWithValue("$name", product.Name);
-                partial.Parameters.AddWithValue("$price", product.BasePriceCents);
-                partial.Parameters.AddWithValue("$vat", (double)product.VatRate);
-                partial.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
-                partial.ExecuteNonQuery();
-            }
+            await InsertPartialPaymentFixtureAsync(
+                db, targetSession.Id, mergedItems.Single().Id,
+                quantityMilli: 1000, amountCents: 1290);
 
             assert(
                 await fiscalState.IsCurrentStateSecuredAsync(targetSession.Id),
@@ -2252,6 +2424,11 @@ internal static class RestaurantFoundationTests
 
             var payableItems = await repo.ListActiveItemsAsync(merged.Id);
             var payable = payableItems.Single();
+            assert(
+                payable.QuantityMilli == 1000 &&
+                payable.PaidCents == 1290 &&
+                payable.LineTotalCents == 1290,
+                "Partial payment fixture leaves exactly one unpaid item worth 1290 cents");
             var paymentDraft = await repo.BuildCheckoutDraftAsync(
                 merged.Id,
                 merged.Version,
@@ -2262,6 +2439,117 @@ internal static class RestaurantFoundationTests
                         payable.QuantityMilli)
                 });
 
+            var serviceModeArea =
+                await repo.SaveAreaAsync(
+                    "Service Mode",
+                    90);
+            var serviceModeTable =
+                await repo.SaveTableAsync(
+                    serviceModeArea,
+                    "SM-1",
+                    "Abholung",
+                    2,
+                    1);
+            var serviceModeSession =
+                await repo.OpenTableAsync(
+                    serviceModeTable,
+                    "SERVICE-TEST",
+                    1,
+                    deviceId: "TEST");
+
+            assert(
+                await repo.GetServiceModeAsync(
+                    serviceModeSession.Id) ==
+                    RestaurantServiceModes.InHouse,
+                "R-5.3 Restaurant sessions default to IN_HOUSE until the operator selects takeaway or pickup");
+
+            serviceModeSession =
+                await repo.UpdateServiceModeAsync(
+                    serviceModeSession.Id,
+                    serviceModeSession.Version,
+                    RestaurantServiceModes.Pickup,
+                    "SERVICE-TEST",
+                    "TEST");
+
+            var serviceProduct = new Product
+            {
+                Id = 98501,
+                Name = "Abholung Speise",
+                BasePriceCents = 700,
+                VatRate = 7m,
+                Unit = "Stück",
+                ImHausApplicable = true,
+                IsActive = true
+            };
+            var serviceLine =
+                await repo.AddItemAsync(
+                    serviceModeSession.Id,
+                    serviceModeSession.Version,
+                    serviceProduct,
+                    1m,
+                    "SERVICE-TEST",
+                    "TEST");
+            var serviceCurrent =
+                await repo.GetSessionAsync(
+                    serviceModeSession.Id)
+                ?? throw new InvalidOperationException(
+                    "Service mode session missing.");
+            var serviceDraft =
+                await repo.BuildCheckoutDraftAsync(
+                    serviceCurrent.Id,
+                    serviceCurrent.Version,
+                    new[]
+                    {
+                        new RestaurantSplitSelection(
+                            serviceLine.Id,
+                            serviceLine.QuantityMilli)
+                    });
+
+            assert(
+                serviceDraft.ServiceMode ==
+                    RestaurantServiceModes.Pickup &&
+                !serviceDraft.ImHaus,
+                "R-5.3 pickup service mode survives into the immutable Restaurant checkout draft and sale ImHaus flag");
+
+            var serviceModeMutationRejected = false;
+            try
+            {
+                await repo.UpdateServiceModeAsync(
+                    serviceCurrent.Id,
+                    serviceCurrent.Version,
+                    RestaurantServiceModes.Takeaway,
+                    "SERVICE-TEST",
+                    "TEST");
+            }
+            catch (InvalidOperationException ex)
+            {
+                serviceModeMutationRejected =
+                    ex.Message.Contains(
+                        "offenen Positionen",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
+            assert(
+                serviceModeMutationRejected,
+                "R-5.3 service mode cannot change after open positions exist so fiscal VAT snapshots cannot be rewritten silently");
+
+            await using (var exactCents = db.OpenReadConnection())
+            await using (var exactQuery = exactCents.CreateCommand())
+            {
+                exactQuery.CommandText =
+                    "SELECT line_total_cents,paid_cents FROM restaurant_session_items WHERE id=$id;";
+                exactQuery.Parameters.AddWithValue("$id", payable.Id);
+                await using var exactReader = await exactQuery.ExecuteReaderAsync();
+                if (!await exactReader.ReadAsync())
+                    throw new InvalidOperationException(
+                        "Restaurant exact-cent item row missing.");
+
+                assert(
+                    exactReader.GetInt64(0) >= 0 &&
+                    exactReader.GetInt64(1) >= 0,
+                    "Restaurant schema persists exact line total and paid cents for crash-safe partial payments");
+            }
+
             var lockedVersion = await repo.PreparePaymentReservationAsync(
                 paymentDraft);
 
@@ -2270,8 +2558,10 @@ internal static class RestaurantFoundationTests
                 lockedSession is not null &&
                 lockedSession.State == RestaurantTableSessionState.CheckRequested &&
                 lockedSession.Version == lockedVersion &&
-                await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
-                "Prepared Restaurant payment durably locks the table before external payment");
+                await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId) &&
+                (await repo.ListPreparedPaymentReservationOperationIdsAsync())
+                    .Contains(paymentDraft.OperationId, StringComparer.Ordinal),
+                "Prepared Restaurant payment durably locks the table and is discoverable for crash recovery");
 
             var writeWhilePaymentRejected = false;
             try
@@ -2299,8 +2589,10 @@ internal static class RestaurantFoundationTests
             assert(
                 reopenedAfterCancel is not null &&
                 reopenedAfterCancel.State == RestaurantTableSessionState.Open &&
-                !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId),
-                "No-charge cancellation reopens the Restaurant table and clears the payment lock");
+                !await repo.HasPreparedPaymentReservationAsync(paymentDraft.OperationId) &&
+                !(await repo.ListPreparedPaymentReservationOperationIdsAsync())
+                    .Contains(paymentDraft.OperationId, StringComparer.Ordinal),
+                "No-charge cancellation reopens the Restaurant table and removes it from startup recovery");
 
             var laneJournal = new PrintJobJournal(
                 Path.Combine(root, "restaurant-printer-lanes"));
@@ -2662,6 +2954,7 @@ internal static class RestaurantFoundationTests
                     !TableExists(c, "restaurant_sessions") &&
                     !TableExists(c, "restaurant_bestellungen") &&
                     !TableExists(c, "restaurant_kitchen_jobs") &&
+                    !TableExists(c, "restaurant_session_service_mode") &&
                     !TableExists(c, "restaurant_handheld_devices") &&
                     !TableExists(c, "restaurant_reservations") &&
                     !TableExists(c, "restaurant_terminals") &&
@@ -2747,6 +3040,52 @@ internal static class RestaurantFoundationTests
             string productVersion)
         {
         }
+    }
+
+    private static async Task InsertPartialPaymentFixtureAsync(
+        SqliteDatabase db,
+        string sessionId,
+        long itemId,
+        long quantityMilli,
+        long amountCents)
+    {
+        await using var c = db.OpenConnection();
+        await using var tx = c.BeginTransaction();
+        await using var q = c.CreateCommand();
+        q.Transaction = tx;
+        // Match the persisted partial-payment shape: the active row retains
+        // its original total and accumulates paid cents; the paid slice carries
+        // its own exact amount and the same immutable product snapshot.
+        q.CommandText = """
+            UPDATE restaurant_session_items
+            SET quantity_milli=quantity_milli-$quantity,
+                paid_cents=paid_cents+$amount,version=version+1
+            WHERE id=$item AND session_id=$session AND state='ACTIVE'
+              AND quantity_milli>$quantity;
+
+            INSERT INTO restaurant_session_items(
+                session_id,line_token,product_id,product_name,variant_name,
+                quantity_milli,unit_price_cents,vat_rate,pfand_cents,state,
+                added_by,added_at,version,fiscal_state,line_total_cents,paid_cents,
+                unit,list_unit_price_cents,im_haus_applicable,
+                vat_allocations_json,menu_components_json,order_options)
+            SELECT session_id,$token,product_id,product_name,variant_name,
+                $quantity,unit_price_cents,vat_rate,pfand_cents,'PAID',
+                added_by,$now,1,'SECURED',$amount,0,
+                unit,list_unit_price_cents,im_haus_applicable,
+                vat_allocations_json,menu_components_json,order_options
+            FROM restaurant_session_items
+            WHERE id=$item AND session_id=$session AND state='ACTIVE';
+            """;
+        q.Parameters.AddWithValue("$item", itemId);
+        q.Parameters.AddWithValue("$session", sessionId);
+        q.Parameters.AddWithValue("$quantity", quantityMilli);
+        q.Parameters.AddWithValue("$amount", amountCents);
+        q.Parameters.AddWithValue("$token", Guid.NewGuid().ToString("N"));
+        q.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+        if (await q.ExecuteNonQueryAsync() != 2)
+            throw new InvalidOperationException("Partial-payment fixture requires one active source item.");
+        await tx.CommitAsync();
     }
 
     private static async Task InsertRestaurantBestellungAsync(
