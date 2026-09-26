@@ -1,0 +1,11 @@
+{
+  "_comment": "The cash.movement payload exactly as TOR POS queues a real Einlage (TorCloudOutbox.EnqueueCashMovement). Desktop CloudContractTests and Cloud tests both use this file. Change both sides together.",
+  "payload": {
+    "movement_id": 12,
+    "movement_type": "DEPOSIT",
+    "amount_cents": 5000,
+    "business_case": "Geldtransit",
+    "reason": "Wechselgeld",
+    "actor": "chef"
+  }
+}

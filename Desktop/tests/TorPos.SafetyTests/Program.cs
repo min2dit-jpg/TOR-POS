@@ -623,6 +623,7 @@ FiscalPropertyTests.Run(Assert);
 await RetailGastroFollowUpTests.Run(root, Assert);
 ProviderResponsePropertyTests.Run(Assert);
 InvoiceRequestContractTests.Run(Assert);
+await CloudContractTests.Run(root, Assert);
 // German fiscal prep, counted separately from ExpectedSafetyChecks so parallel
 // branches that raise that baseline merge without conflict:
 // 33 checks lock the append-only TSE-Wechsel journal and its notification
@@ -636,6 +637,10 @@ InvoiceRequestContractTests.Run(Assert);
 // Provider answers (2 seeded: card terminal outcomes, fiskaltrust signatures)
 // and the E-Rechnung request boundary (3).
 const int GermanFiscalPrepChecks = 62;
+// TOR Cloud alignment, counted on its own for the same reason: z.closed and
+// cash.movement pinned to Cloud/tests/fixtures and queued in the booking's
+// own transaction (6 checks).
+const int CloudAlignmentChecks = 6;
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -716,10 +721,10 @@ const int GermanFiscalPrepChecks = 62;
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
 const int ExpectedSafetyChecks = 1423;
 
-if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks)
+if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {
     throw new Exception(
-        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks + GermanFiscalPrepChecks}, actual {checks}. " +
+        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks}, actual {checks}. " +
         "Update the reviewed baseline intentionally before accepting a changed test count.");
 }
 

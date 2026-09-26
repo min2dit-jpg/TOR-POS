@@ -251,7 +251,9 @@ public async Task<CashMovement> AddAsync(CashMovementRequest request, string act
             CashMovementKind.CashCount => "CASH_COUNT",
             _ => throw new InvalidOperationException("Unbekannte Kassenbewegung.")};
         await using var c = _db.OpenConnection();
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct);
         await using var q = c.CreateCommand();
+        q.Transaction = tx;
         q.CommandText = """
             INSERT INTO cash_movements(
               created_at,movement_type,amount_cents,reason,actor,fiscal_mode,business_case)
@@ -266,8 +268,12 @@ public async Task<CashMovement> AddAsync(CashMovementRequest request, string act
         q.Parameters.AddWithValue("$reason", request.Reason.Trim());
         q.Parameters.AddWithValue("$actor", actor);
         var id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
+        var movement = new CashMovement(id, now, request.Kind, request.AmountCents, request.Reason.Trim(), actor, fiscalMode, request.BusinessCase);
+        // Cloud: a real Einlage/Entnahme is queued in the same transaction.
+        TorCloudOutbox.EnqueueCashMovement(c, tx, movement);
+        await tx.CommitAsync(ct);
         await _audit.WriteAsync(actor, "CASH_MOVEMENT", "CASH_MOVEMENT", id.ToString(), $"{type}; case={request.BusinessCase}; mode={fiscalMode}; amount_cents={request.AmountCents}; reason={request.Reason.Trim()}", ct);
-        return new CashMovement(id, now, request.Kind, request.AmountCents, request.Reason.Trim(), actor, fiscalMode, request.BusinessCase);
+        return movement;
     });
 }
 
@@ -461,7 +467,10 @@ private static async Task<CashMovement> InsertAsync(
     q.Parameters.AddWithValue("$mode", mode);
     q.Parameters.AddWithValue("$case", businessCase?.ToString() ?? "");
     var id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
-    return new CashMovement(id, now, kind, cents, reason, actor, mode, businessCase);
+    var movement = new CashMovement(id, now, kind, cents, reason, actor, mode, businessCase);
+    // Cloud: a Kassendifferenz booked at a Kassensturz is a cash flow too.
+    TorCloudOutbox.EnqueueCashMovement(c, tx, movement);
+    return movement;
 }
 
 // R92: same bug family as R88/R90/R91, found on the same sweep - counted

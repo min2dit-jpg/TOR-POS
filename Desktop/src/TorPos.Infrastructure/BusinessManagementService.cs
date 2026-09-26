@@ -614,6 +614,14 @@ private static async Task<decimal?> ExistingCategoryVatAsync(SqliteConnection c,
             id = Convert.ToInt64(await q.ExecuteScalarAsync(ct));
         }
 
+        // Cloud: the closing reaches TOR Cloud in this same transaction.
+        TorCloudOutbox.EnqueueZClosed(c, (SqliteTransaction)tx, new TorCloudZClosing(
+            zNumber, now, period.From, period.ReceiptCount, period.GrossCents, period.CashCents, period.CardCents,
+            period.ListGrossCents, period.PromotionDiscountCents, period.ManualDiscountCents,
+            period.StornoCents, period.ReturnCents,
+            period.Taxes.Select(x => new TorCloudZVat(x.Rate, x.NetCents, x.TaxCents, x.GrossCents)).ToList(),
+            fiscalStatus ?? "", actor ?? ""));
+
         // R132: from here on the new period is recorded under the running
         // software version.
         await using (var version = c.CreateCommand())

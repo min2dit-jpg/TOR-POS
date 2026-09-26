@@ -544,3 +544,41 @@ test('R179 portal labels mixed payment as Gemischt',()=>{
  const app=readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
  assert.match(app,/method==='MIXED'\?'Gemischt'/);
 });
+
+test('Kasse: Z-Bericht and Einlage/Entnahme from the till reach the portal with their full content',async()=>{
+ const z=JSON.parse(readFileSync(path.join(__dirname,'fixtures','z-closed-kasse.json'),'utf8')).payload;
+ const cash=JSON.parse(readFileSync(path.join(__dirname,'fixtures','cash-movement-kasse.json'),'utf8')).payload;
+ const withdrawal={...cash,movement_id:13,movement_type:'WITHDRAWAL',amount_cents:2000,business_case:'Privatentnahme',reason:'Privat'};
+ const payout={...z,z_number:'8',gross_cents:-300,sale_count:1,vat:[{rate:19,net_cents:-252,tax_cents:-48,gross_cents:-300}]};
+ const r=await sync([
+  {event_id:'z-7',type:'z.closed',occurred_at:'2026-09-26T22:05:00+02:00',payload:z},
+  {event_id:'z-8',type:'z.closed',occurred_at:'2026-09-27T22:05:00+02:00',payload:payout},
+  {event_id:'cash-12',type:'cash.movement',occurred_at:'2026-09-26T09:00:00+02:00',payload:cash},
+  {event_id:'cash-13',type:'cash.movement',occurred_at:'2026-09-26T15:00:00+02:00',payload:withdrawal}]);
+ assert.equal(r.status,200);assert.equal(r.body.accepted,4);
+ const p=await request('/api/portal/data',undefined,{Cookie:cookie});
+ const row=p.body.zReports.find(x=>x.z_number==='7');
+ assert.ok(row);
+ assert.equal(row.cash_cents,80000);assert.equal(row.card_cents,43450);
+ assert.equal(row.storno_cents,1800);assert.equal(row.return_cents,1200);assert.equal(row.discount_cents,3550);
+ assert.equal(row.period_from,'2026-09-25T20:10:00.000Z');assert.equal(row.fiscal_status,'PRODUCTION_ALLOWED');
+ assert.deepEqual(row.vat.map(v=>v.gross_cents),[53500,69950]);assert.equal(row.vat_json,undefined);
+ assert.equal(p.body.zReports.find(x=>x.z_number==='8').gross_cents,-300);
+ const moves=p.body.cashMovements.filter(m=>m.reason==='Wechselgeld'||m.reason==='Privat');
+ assert.deepEqual(moves.map(m=>[m.movement_type,m.business_case,m.amount_cents]).sort(),[['DEPOSIT','Geldtransit',5000],['WITHDRAWAL','Privatentnahme',2000]]);
+ assert.equal((await request('/api/portal/data',undefined,{Cookie:otherCookie})).body.zReports.some(x=>x.z_number==='7'),false);
+});
+
+test('Kasse: Z-Bericht and cash movement contents are validated',()=>{
+ const z=JSON.parse(readFileSync(path.join(__dirname,'fixtures','z-closed-kasse.json'),'utf8')).payload;
+ const cash=JSON.parse(readFileSync(path.join(__dirname,'fixtures','cash-movement-kasse.json'),'utf8')).payload;
+ const ev=(type,payload)=>({event_id:'x',type,occurred_at:'2026-09-26T22:05:00+02:00',payload});
+ assert.doesNotThrow(()=>normalizeEvent(ev('z.closed',z)));
+ assert.doesNotThrow(()=>normalizeEvent(ev('z.closed',{z_number:'1',gross_cents:100,sale_count:1})),'an older till sends only number, gross and count');
+ assert.throws(()=>normalizeEvent(ev('z.closed',{...z,vat:[{rate:19,net_cents:1.5,tax_cents:0,gross_cents:0}]})),/vat/);
+ assert.throws(()=>normalizeEvent(ev('z.closed',{...z,period_from:'gestern'})),/period_from/);
+ assert.throws(()=>normalizeEvent(ev('z.closed',{...z,cash_cents:'80000'})),/cash_cents/);
+ assert.throws(()=>normalizeEvent(ev('cash.movement',{...cash,business_case:'Schwarzgeld'})),/business_case/);
+ assert.throws(()=>normalizeEvent(ev('cash.movement',{...cash,amount_cents:-5})),/amount_cents/);
+ assert.doesNotThrow(()=>normalizeEvent(ev('cash.movement',{movement_type:'WITHDRAWAL',amount_cents:100})),'an older till sends no business case');
+});
