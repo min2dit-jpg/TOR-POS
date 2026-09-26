@@ -32,6 +32,24 @@ public sealed record TorCloudSaleLine(
     string PromotionStartDate,
     string PromotionEndDate,
     MenuComponentSnapshot[] MenuComponents);
+/// <summary>Cloud: one Kassenabschluss (Z-Bericht) as TOR Cloud stores it.</summary>
+public sealed record TorCloudZVat(decimal Rate, long NetCents, long TaxCents, long GrossCents);
+public sealed record TorCloudZClosing(
+    long ZNumber,
+    DateTimeOffset ClosedAt,
+    DateTimeOffset PeriodFrom,
+    int ReceiptCount,
+    long GrossCents,
+    long CashCents,
+    long CardCents,
+    long ListGrossCents,
+    long PromotionDiscountCents,
+    long ManualDiscountCents,
+    long StornoCents,
+    long ReturnCents,
+    IReadOnlyList<TorCloudZVat> Vat,
+    string FiscalStatus,
+    string OperatorName);
 public interface ICloudSecretProtector { string Protect(string value); string Unprotect(string value); }
 public sealed class WindowsCloudSecretProtector : ICloudSecretProtector
 {
@@ -149,6 +167,48 @@ public sealed class TorCloudOutbox
             stock_consumption=consumption.Select(x=>new {product_key=x.Key.ToString(System.Globalization.CultureInfo.InvariantCulture),quantity=x.Value}).ToArray()
         },eventId,at));
     }
+    /// <summary>
+    /// Cloud: the Z-Bericht reaches TOR Cloud in the SAME transaction as the
+    /// local closing, like sales (R179), so the portal's Z archive and its
+    /// turnover can never disagree with the till. The event id is the Z number:
+    /// a retried closing is the same event.
+    /// </summary>
+    public static void EnqueueZClosed(SqliteConnection c,SqliteTransaction tx,TorCloudZClosing z)
+    {
+        var config=Configuration(c,tx);if(config is null)return;
+        Insert(c,tx,config,Event("z.closed",new {
+            z_number=z.ZNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            gross_cents=z.GrossCents,sale_count=z.ReceiptCount,
+            period_from=z.PeriodFrom.ToUniversalTime().ToString("O"),period_to=z.ClosedAt.ToUniversalTime().ToString("O"),
+            cash_cents=z.CashCents,card_cents=z.CardCents,
+            list_gross_cents=z.ListGrossCents,promotion_discount_cents=z.PromotionDiscountCents,manual_discount_cents=z.ManualDiscountCents,
+            storno_cents=z.StornoCents,return_cents=z.ReturnCents,
+            vat=z.Vat.Select(v=>new {rate=v.Rate,net_cents=v.NetCents,tax_cents=v.TaxCents,gross_cents=v.GrossCents}).ToArray(),
+            fiscal_status=z.FiscalStatus.Length>40?z.FiscalStatus[..40]:z.FiscalStatus,
+            operator_name=z.OperatorName.Length>200?z.OperatorName[..200]:z.OperatorName
+        },"z-"+z.ZNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),z.ClosedAt));
+    }
+
+    /// <summary>
+    /// Cloud: a real (production) Einlage or Entnahme, in the same transaction as
+    /// the local booking. Test entries and the Kassensturz count itself are not
+    /// cash flows and are not sent.
+    /// </summary>
+    public static void EnqueueCashMovement(SqliteConnection c,SqliteTransaction tx,CashMovement movement)
+    {
+        if(movement.FiscalMode!=CashMovement.ProductionMode)return;
+        if(movement.Kind is not (CashMovementKind.Einlage or CashMovementKind.Entnahme))return;
+        var config=Configuration(c,tx);if(config is null)return;
+        Insert(c,tx,config,Event("cash.movement",new {
+            movement_id=movement.Id,
+            movement_type=movement.Kind==CashMovementKind.Einlage?"DEPOSIT":"WITHDRAWAL",
+            amount_cents=movement.AmountCents,
+            business_case=movement.BusinessCase?.ToString()??"",
+            reason=movement.Reason.Length>500?movement.Reason[..500]:movement.Reason,
+            actor=movement.Actor.Length>200?movement.Actor[..200]:movement.Actor
+        },"cash-"+movement.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),movement.CreatedAt));
+    }
+
     public Task<TorCloudConfiguration?> GetConfigurationAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();return Task.FromResult(Configuration(c));
     });
@@ -176,9 +236,36 @@ public sealed class TorCloudOutbox
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx);
         if(config is null||!config.Enabled)return Task.CompletedTask;
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="SELECT COUNT(*) FROM cloud_outbox WHERE event_type='heartbeat';";
-        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",new {software_version=TorRelease.UserAgentVersion,tse_status=HeartbeatTseStatus(c,tx),printer_status="NICHT GEPRÜFT"}));
+        if(Convert.ToInt64(q.ExecuteScalar())==0)Insert(c,tx,config,Event("heartbeat",HeartbeatPayload(c,tx)));
         tx.Commit();return Task.CompletedTask;
     });
+
+    /// <summary>
+    /// Cloud: what the portal's Gerätestatus needs to see a till's real state -
+    /// the product edition it runs, test or production mode, events still
+    /// waiting or refused by TOR Cloud, and when the TSE certificate expires.
+    /// Nothing here touches the TSE or the printer.
+    /// </summary>
+    internal static object HeartbeatPayload(SqliteConnection c,SqliteTransaction tx)
+    {
+        string Setting(string key){using var s=c.CreateCommand();s.Transaction=tx;s.CommandText="SELECT value FROM app_settings WHERE key=$k;";s.Parameters.AddWithValue("$k",key);return ((s.ExecuteScalar() as string)??"").Trim();}
+        long Count(string sql){using var s=c.CreateCommand();s.Transaction=tx;s.CommandText=sql;try{return Convert.ToInt64(s.ExecuteScalar());}catch(SqliteException){return 0;}}
+        var edition=(AppPaths.ProductEdition??Setting("installation.edition")).ToUpperInvariant();
+        if(edition.Length==0)edition=Setting("business.mode").ToUpperInvariant();
+        if(edition is not ("KIOSK" or "IMBISS" or "RESTAURANT"))edition="";
+        var expiry=Setting("tse.expiry_date");
+        if(!DateOnly.TryParseExact(expiry,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out _))expiry="";
+        return new {
+            software_version=TorRelease.UserAgentVersion,
+            tse_status=HeartbeatTseStatus(c,tx),
+            printer_status="NICHT GEPRÜFT",
+            edition,
+            fiscal_mode=FiscalRelease.ProductionAllowed?"PRODUKTIV":"TESTBETRIEB",
+            outbox_pending=Count("SELECT COUNT(*) FROM cloud_outbox WHERE event_type<>'heartbeat';"),
+            outbox_rejected=Count("SELECT COUNT(*) FROM cloud_outbox_rejected;"),
+            tse_certificate_until=expiry
+        };
+    }
     public Task EnqueueStockAsync()=>IoQueue.RunAsync(()=>{
         using var c=_db.OpenConnection();using var tx=c.BeginTransaction();var config=Configuration(c,tx)??throw new InvalidOperationException("Cloud zuerst speichern.");
         using var q=c.CreateCommand();q.Transaction=tx;q.CommandText="""

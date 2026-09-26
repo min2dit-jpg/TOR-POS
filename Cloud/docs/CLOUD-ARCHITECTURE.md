@@ -37,19 +37,21 @@ Details: `DIGITALER-KASSENBON.md`.
 
 Jede Portalabfrage ist an `business_id` gebunden. Jede Gerätesynchronisierung ist an genau eine `register_id` gebunden.
 
-## Events v0.1
-- `heartbeat`
-- `sale.completed`
-- `cash.movement`
-- `z.closed`
+## Events (Stand 26.09.2026 – alle werden von der Kasse gesendet)
+- `heartbeat` – Status, Edition, Betriebsart, Sync-Rückstand, TSE-Zertifikat
+- `sale.completed` – Verkauf, Storno, Retoure (Vorzeichen über `transaction_type`)
+- `cash.movement` – echte Einlage/Entnahme und Kassendifferenz, mit DSFinV-K-Geschäftsvorfall
+- `z.closed` – Kassenabschluss mit Zeitraum, Zahlarten, Storno/Retoure und USt-Gruppen
 - `stock.snapshot`
+
+Kasse und Cloud teilen die Vertragsdateien in `tests/fixtures/`; Desktop- und Cloud-Tests prüfen dieselben Dateien.
 
 Alle Events haben eine eindeutige `event_id`. Der Server akzeptiert ein bereits empfangenes Ereignis nur als `duplicate`, erzeugt aber keinen zweiten Datensatz.
 
 ## Portal Phase 1 – Read only
 - Dashboard
 - Verkauf/Bons
-- Berichte
+- Berichte (Zeitraum, CSV, Z-Archiv, Einlagen/Entnahmen)
 - Bestand
 - Filialen & Kassen
 - Gerätestatus

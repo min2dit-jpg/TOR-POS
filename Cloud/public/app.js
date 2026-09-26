@@ -206,7 +206,15 @@ if ($('logoutBtn')) {
       $('cashShare').textContent=total?`${Math.round((Number(totals.cash_cents)||0)/total*100)} %`:'0 %';
       $('cardShare').textContent=total?`${Math.round((Number(totals.card_cents)||0)/total*100)} %`:'0 %';
       $('reportSaleCount').textContent=String(totals.sale_count||0);
-      $('zRows').innerHTML=zReports.map(z=>`<tr><td>${esc(z.z_number)}</td><td>${dateTime(z.occurred_at)}</td><td>${esc(z.branch_name)}</td><td>${esc(z.register_name)}</td><td>${esc(z.sale_count)}</td><td><b>${eur(z.gross_cents)}</b></td></tr>`).join('') || '<tr><td colspan="6"><span class="muted">Noch kein Z-Bericht in die Cloud synchronisiert.</span></td></tr>';
+      $('zRows').innerHTML=zReports.map(z=>{
+        const period=z.period_from?`${dateTime(z.period_from)} – ${dateTime(z.period_to||z.occurred_at)}`:dateTime(z.occurred_at);
+        const vat=(z.vat||[]).map(v=>`${qtyText(v.rate)} %: ${eur(v.tax_cents)}`).join('<br>')||'–';
+        const statusLabel={AUTO_STAMMDATEN:'automatisch · Stammdaten',AUTO_SOFTWAREUPDATE:'automatisch · Software-Update'};
+        const test=z.fiscal_status&&z.fiscal_status!=='PRODUCTION_ALLOWED'?` <span class="badge">${esc(statusLabel[z.fiscal_status]||z.fiscal_status)}</span>`:'';
+        return `<tr><td>${esc(z.z_number)}${test}</td><td>${period}</td><td>${esc(z.branch_name)}</td><td>${esc(z.register_name)}</td><td>${esc(z.sale_count)}</td><td>${eur(z.cash_cents||0)}</td><td>${eur(z.card_cents||0)}</td><td>${eur((z.storno_cents||0)+(z.return_cents||0))}</td><td class="small">${vat}</td><td><b>${eur(z.gross_cents)}</b></td></tr>`;
+      }).join('') || '<tr><td colspan="10"><span class="muted">Noch kein Z-Bericht in die Cloud synchronisiert.</span></td></tr>';
+      const caseLabel={Geldtransit:'Geldtransit',Privateinlage:'Privateinlage',Privatentnahme:'Privatentnahme',Lohnzahlung:'Lohnzahlung',Einzahlung:'Sonstige Einzahlung',Auszahlung:'Sonstige Auszahlung',DifferenzSollIst:'Kassendifferenz'};
+      $('cashMovementRows').innerHTML=(data.cashMovements||[]).map(m=>{const deposit=m.movement_type==='DEPOSIT';return `<tr><td>${dateTime(m.occurred_at)}</td><td>${esc(m.branch_name)}</td><td>${esc(m.register_name)}</td><td>${deposit?'Einlage':'Entnahme'}</td><td>${esc(caseLabel[m.business_case]||m.business_case||'–')}</td><td>${esc(m.reason)}</td><td>${esc(m.actor)}</td><td><b>${deposit?'':'−'}${eur(m.amount_cents)}</b></td></tr>`;}).join('') || '<tr><td colspan="8"><span class="muted">Noch keine Einlage oder Entnahme synchronisiert.</span></td></tr>';
 
       $('productRows').innerHTML=stock.map(s=>`<tr><td>${esc(s.sku||s.product_key)}</td><td>${esc(s.barcode||'–')}</td><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.group_name||'')} ${s.category_name?'› '+esc(s.category_name):''}</div></td><td>${esc(s.category_name||'–')}</td><td>${eur(s.price_cents||0)}</td><td>${eur(s.purchase_price_cents||0)}</td><td>${esc(s.quantity)} ${esc(s.unit||'')}</td><td>${esc(s.min_stock_quantity||0)}</td><td>${esc(s.register_name)}</td><td>${dateTime(s.updated_at)}</td></tr>`).join('') || '<tr><td colspan="10">Noch keine Artikel synchronisiert.</td></tr>';
       $('inventoryRows').innerHTML=stock.map(s=>{const min=Number(s.min_stock_quantity)||0;const low=min>0&&Number(s.quantity)<=min;const value=Math.round((Number(s.quantity)||0)*(Number(s.purchase_price_cents)||0));return `<tr><td>${esc(s.sku||s.product_key)}</td><td>${esc(s.barcode||'–')}</td><td><b>${esc(s.name)}</b></td><td>${esc(s.category_name||'–')}</td><td>${esc(s.branch_name)}</td><td>${esc(s.register_name)}</td><td class="${low?'low':''}"><b>${esc(s.quantity)} ${esc(s.unit||'')}</b></td><td>${esc(min)}</td><td>${eur(value)}</td><td><span class="badge ${low?'badge-warn':''}">${low?'Niedrig':'OK'}</span></td></tr>`;}).join('') || '<tr><td colspan="10">Noch keine Bestandsdaten.</td></tr>';
@@ -216,7 +224,7 @@ if ($('logoutBtn')) {
 
       $('branchCards').innerHTML=branches.map(b=>`<div class="panel"><div class="flex-between"><div><div class="eyebrow">Filiale</div><h3>${esc(b.name)}</h3><div class="muted">${esc(b.city||'')}</div></div><span class="badge">${esc(b.register_count)} Kasse(n)</span></div></div>`).join('') || '<div class="panel muted">Keine Filiale vorhanden.</div>';
 
-      $('deviceCards').innerHTML=registers.map(r=>{const online=onlineFrom(r.last_seen_at); return `<div class="panel"><div class="flex-between"><div><div class="eyebrow">${esc(r.branch_name)}</div><h3>${esc(r.name)}</h3><div class="muted small">${esc(r.device_code)} · ${esc(r.edition)}</div></div><span class="status"><i class="dot" style="background:${online?'var(--green)':'#71879a'}"></i>${online?'Online':'Offline'}</span></div><div class="status-grid">${statusLine('Software',r.software_version)}${statusLine('TSE',r.tse_status,['BEREIT','OK'])}${statusLine('Drucker',r.printer_status,['BEREIT','OK'])}${statusLine('Letzte Meldung',dateTime(r.last_seen_at))}</div></div>`;}).join('') || '<div class="panel muted">Keine Geräte vorhanden.</div>';
+      $('deviceCards').innerHTML=registers.map(r=>{const online=onlineFrom(r.last_seen_at); return `<div class="panel"><div class="flex-between"><div><div class="eyebrow">${esc(r.branch_name)}</div><h3>${esc(r.name)}</h3><div class="muted small">${esc(r.device_code)} · ${esc(editionLabel(r.edition))}</div></div><span class="status"><i class="dot" style="background:${online?'var(--green)':'#71879a'}"></i>${online?'Online':'Offline'}</span></div><div class="status-grid">${statusLine('Software',r.software_version)}${statusLine('TSE',r.tse_status,['BEREIT','OK','AKTIV'])}${statusLine('Drucker',r.printer_status,['BEREIT','OK'])}${statusLine('Letzte Meldung',dateTime(r.last_seen_at))}${deviceNotes(r)}</div></div>`;}).join('') || '<div class="panel muted">Keine Geräte vorhanden.</div>';
 
       $('supportIdentity').innerHTML=`<div class="support-code"><small>Kundennummer</small><b>${esc(me.business.customer_number)}</b></div>`;
       const health=await api('/api/health');
@@ -238,3 +246,55 @@ if ($('logoutBtn')) {
   setInterval(()=>{if(!document.hidden)refresh();},30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 }
+
+// Portal Berichte: turnover for a chosen period (net of Storno/Retoure).
+(function(){
+  const form=document.getElementById('turnoverForm');
+  if(!form)return;
+  const $=id=>document.getElementById(id);
+  const escText=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const euro=c=>(Number(c||0)/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+  const berlinToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin'}).format(new Date());
+  const today=berlinToday();
+  $('turnoverFrom').value=today.slice(0,8)+'01';
+  $('turnoverTo').value=today;
+  const query=()=>`from=${encodeURIComponent($('turnoverFrom').value)}&to=${encodeURIComponent($('turnoverTo').value)}`;
+  const syncCsv=()=>{$('turnoverCsv').href='/api/reports/turnover.csv?'+query();};
+  $('turnoverFrom').addEventListener('change',syncCsv);$('turnoverTo').addEventListener('change',syncCsv);syncCsv();
+  const rateLabel=r=>isNaN(Number(r))?escText(r):`USt ${String(r).replace('.',',')} %`;
+  const row=(r,rates,tag)=>`<tr><${tag}>${escText(r.day)}</${tag}><${tag}>${r.sale_count}</${tag}><${tag}>${euro(r.storno_cents+r.return_cents)}</${tag}><${tag}>${euro(r.cash_cents)}</${tag}><${tag}>${euro(r.card_cents)}</${tag}>${rates.map(x=>`<${tag}>${euro(r.vat[x]||0)}</${tag}>`).join('')}<${tag}><b>${euro(r.gross_cents)}</b></${tag}></tr>`;
+  async function load(){
+    $('turnoverStatus').textContent='Wird geladen …';
+    try{
+      const r=await fetch('/api/reports/turnover?'+query(),{credentials:'same-origin'});
+      const body=await r.json();
+      if(!r.ok||!body.ok)throw new Error(body.error||('HTTP '+r.status));
+      const rep=body.report;
+      $('turnoverHead').innerHTML=`<tr><th>Tag</th><th>Verkäufe</th><th>Storno / Retoure</th><th>Bar</th><th>Karte</th>${rep.rates.map(x=>`<th>${rateLabel(x)} brutto</th>`).join('')}<th>Umsatz brutto</th></tr>`;
+      $('turnoverRows').innerHTML=rep.rows.map(x=>row(x,rep.rates,'td')).join('')||`<tr><td colspan="${6+rep.rates.length}" class="muted">Im Zeitraum wurden keine Verkäufe synchronisiert.</td></tr>`;
+      $('turnoverTotal').innerHTML=rep.rows.length?row(rep.totals,rep.rates,'th'):'';
+      $('turnoverStatus').textContent=`${rep.from} bis ${rep.to}`;
+    }catch(err){$('turnoverStatus').textContent='Bericht nicht geladen: '+err.message;}
+  }
+  form.addEventListener('submit',e=>{e.preventDefault();syncCsv();load();});
+  window.addEventListener('hashchange',()=>{if(location.hash==='#reports')load();});
+  if(location.hash==='#reports')load();
+})();
+
+// Kasse: facts a till reports in its heartbeat, shown only when there is something to see.
+function deviceNotes(r){
+  const esc2=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const line=(label,value,warn)=>`<div class="flex-between small" style="gap:8px"><span class="muted">${label}</span><b style="color:${warn?'#ffb4a8':'inherit'}">${esc2(value)}</b></div>`;
+  const out=[];
+  if(r.fiscal_mode)out.push(line('Betriebsart',r.fiscal_mode==='PRODUKTIV'?'Produktiv':'Testbetrieb',r.fiscal_mode!=='PRODUKTIV'));
+  if(r.reported_edition&&r.edition&&r.reported_edition!==r.edition)out.push(line('Produkt',`Kasse meldet ${editionLabel(r.reported_edition)}, eingerichtet als ${editionLabel(r.edition)}`,true));
+  if(Number(r.outbox_pending)>0)out.push(line('Wartende Daten',String(r.outbox_pending),Number(r.outbox_pending)>100));
+  if(Number(r.outbox_rejected)>0)out.push(line('Von der Cloud abgelehnt',`${r.outbox_rejected} – TOR Service prüfen`,true));
+  if(r.tse_certificate_until){
+    const days=Math.floor((Date.parse(r.tse_certificate_until+'T00:00:00Z')-Date.now())/86400000);
+    out.push(line('TSE-Zertifikat bis',`${r.tse_certificate_until.split('-').reverse().join('.')}${days<0?' – abgelaufen':days<=90?` – noch ${days} Tage`:''}`,days<=90));
+  }
+  return out.join('');
+}
+
+function editionLabel(code){return ({KIOSK:'TOR Einzelhandel',IMBISS:'TOR Gastronomie',RESTAURANT:'TOR Restaurant'})[code]||code||'';}

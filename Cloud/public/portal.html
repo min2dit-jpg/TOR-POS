@@ -64,9 +64,20 @@
     </section>
 
     <section class="portal-view" data-page="reports" hidden>
-      <div class="view-head"><div><div class="eyebrow">Berichte</div><h2>Auswertung</h2></div><span class="badge">Heute</span></div>
+      <div class="view-head"><div><div class="eyebrow">Berichte</div><h2>Auswertung</h2></div><span class="badge">Heute · Zeitraum</span></div>
       <section class="kpis report-kpis"><div class="kpi"><small>Ø Bon</small><strong id="avgReceipt">–</strong></div><div class="kpi"><small>Bar-Anteil</small><strong id="cashShare">–</strong></div><div class="kpi"><small>Karten-Anteil</small><strong id="cardShare">–</strong></div><div class="kpi"><small>Verkäufe</small><strong id="reportSaleCount">–</strong></div></section>
-      <div class="panel"><h3>Z-Bericht Archiv</h3><div class="tablewrap"><table class="table"><thead><tr><th>Z-Nr.</th><th>Datum / Zeit</th><th>Filiale</th><th>Kasse</th><th>Verkäufe</th><th>Brutto</th></tr></thead><tbody id="zRows"></tbody></table></div></div>
+      <div class="panel" style="margin-bottom:15px"><h3>Umsatz im Zeitraum</h3>
+        <form id="turnoverForm" class="flex-between" style="gap:10px;flex-wrap:wrap;justify-content:flex-start">
+          <label>Von <input type="date" id="turnoverFrom" required></label>
+          <label>Bis <input type="date" id="turnoverTo" required></label>
+          <button type="submit" class="btn">Anzeigen</button>
+          <a id="turnoverCsv" class="btn btn-ghost" href="#" download>CSV herunterladen</a>
+          <span id="turnoverStatus" class="muted small" role="status"></span>
+        </form>
+        <p class="muted small">Storno und Retoure sind abgezogen. USt-Anteile je Bon nach Positionen; Rabatte mindern die Bemessungsgrundlage. Maßgeblich für Steuer und Kasse bleiben Z-Bericht und DSFinV-K der Kasse.</p>
+        <div class="tablewrap"><table class="table"><thead id="turnoverHead"></thead><tbody id="turnoverRows"></tbody><tfoot id="turnoverTotal"></tfoot></table></div></div>
+      <div class="panel"><h3>Z-Bericht Archiv</h3><div class="tablewrap"><table class="table"><thead><tr><th>Z-Nr.</th><th>Zeitraum</th><th>Filiale</th><th>Kasse</th><th>Verkäufe</th><th>Bar</th><th>Karte</th><th>Storno / Retoure</th><th>USt</th><th>Brutto</th></tr></thead><tbody id="zRows"></tbody></table></div></div>
+      <div class="panel" style="margin-top:15px"><h3>Einlagen und Entnahmen</h3><div class="tablewrap"><table class="table"><thead><tr><th>Datum / Zeit</th><th>Filiale</th><th>Kasse</th><th>Art</th><th>Geschäftsvorfall</th><th>Grund</th><th>Bediener</th><th>Betrag</th></tr></thead><tbody id="cashMovementRows"></tbody></table></div></div>
     </section>
 
     <section class="portal-view" data-page="products" hidden>

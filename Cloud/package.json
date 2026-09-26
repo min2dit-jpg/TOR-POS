@@ -1,6 +1,6 @@
 {
   "name": "tor-pos-cloud",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "private": true,
   "description": "TOR POS Cloud (R125): POS sync, customer portal with TOTP 2FA, provisioning CLI, backups, update relay, Google OAuth relay and the public digital receipt (R145)",
   "engines": {

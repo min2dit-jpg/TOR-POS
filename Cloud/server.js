@@ -17,7 +17,7 @@ const {normalizeManagedMailPayload,smtpConfigFromEnv,isManagedMailConfigured,sen
 const {validateReceipt,renderReceiptPage,renderNotFoundPage,renderHomePage,renderReceiptPdf,ASSETS:RECEIPT_ASSETS}=require('./receipts');
 // R127: the version string was typed twice (startup log and /api/health) and
 // both still said R62 many revisions later. One constant now.
-const CLOUD_VERSION='0.13.0-R145';
+const CLOUD_VERSION='0.14.0';
 const DEMO=process.env.TOR_CLOUD_DEMO==='true';
 const REQUIRE_OWNER_2FA = String(process.env.TOR_CLOUD_REQUIRE_OWNER_2FA ?? (!DEMO ? 'true' : 'false')).toLowerCase()==='true';
 
@@ -552,6 +552,12 @@ ensureColumn('cloud_sales','transaction_type',"TEXT NOT NULL DEFAULT 'SALE'");
 ensureColumn('cloud_sales','original_receipt_number','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('cloud_sales','cash_portion_cents','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('cloud_sales','card_portion_cents','INTEGER NOT NULL DEFAULT 0');
+// Kasse: the full Z-Bericht and the DSFinV-K business case of cash movements.
+for(const [name,definition] of [['period_from',"TEXT NOT NULL DEFAULT ''"],['period_to',"TEXT NOT NULL DEFAULT ''"],['cash_cents','INTEGER NOT NULL DEFAULT 0'],['card_cents','INTEGER NOT NULL DEFAULT 0'],['storno_cents','INTEGER NOT NULL DEFAULT 0'],['return_cents','INTEGER NOT NULL DEFAULT 0'],['discount_cents','INTEGER NOT NULL DEFAULT 0'],['vat_json',"TEXT NOT NULL DEFAULT '[]'"],['fiscal_status',"TEXT NOT NULL DEFAULT ''"],['operator_name',"TEXT NOT NULL DEFAULT ''"]])
+  ensureColumn('z_reports',name,definition);
+ensureColumn('cash_movements','business_case',"TEXT NOT NULL DEFAULT ''");
+for(const [name,definition] of [['reported_edition',"TEXT NOT NULL DEFAULT ''"],['fiscal_mode',"TEXT NOT NULL DEFAULT ''"],['outbox_pending','INTEGER NOT NULL DEFAULT 0'],['outbox_rejected','INTEGER NOT NULL DEFAULT 0'],['tse_certificate_until',"TEXT NOT NULL DEFAULT ''"]])
+  ensureColumn('registers',name,definition);
 ensureColumn('users','totp_enabled','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users','totp_secret',"TEXT NOT NULL DEFAULT ''");
 ensureColumn('users','totp_pending_secret',"TEXT NOT NULL DEFAULT ''");
@@ -696,7 +702,7 @@ function dashboardSummary(businessId) {
   `).all(businessId);
 
   const registers = db.prepare(`
-    SELECT r.device_code,r.name,r.edition,r.last_seen_at,r.software_version,r.tse_status,r.printer_status,br.name branch_name
+    SELECT r.device_code,r.name,r.edition,r.last_seen_at,r.software_version,r.tse_status,r.printer_status,r.reported_edition,r.fiscal_mode,r.outbox_pending,r.outbox_rejected,r.tse_certificate_until,br.name branch_name
     FROM registers r JOIN branches br ON br.id=r.branch_id
     WHERE br.business_id=? ORDER BY br.name,r.name
   `).all(businessId);
@@ -718,6 +724,71 @@ function dashboardSummary(businessId) {
   return { today, totals, recentSales, registers, hourly, lowStock };
 }
 
+// Portal Berichte: turnover per Berlin calendar day for a chosen period.
+// Storno/Retoure are stored with a negative sign (sale.completed projection),
+// so every sum is already net. The VAT split of a sale is its total spread over
+// its lines' rates, the last rate taking the rounding rest - the same rule as
+// the till's VatSummaryCalculator, so a discount lowers the VAT base.
+const REPORT_MAX_DAYS=366;
+function reportDay(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const d=new Date(value+'T00:00:00Z');
+  return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value?value:null;
+}
+function saleVatSplit(total,items){
+  const groups=new Map();
+  for(const i of items){const rate=Number(i.vat_rate);groups.set(rate,(groups.get(rate)||0)+Number(i.line_total_cents||0));}
+  const rates=[...groups.keys()].sort((a,b)=>a-b);
+  const base=rates.reduce((sum,r)=>sum+groups.get(r),0);
+  if(!rates.length)return [['ohne Positionen',total]];
+  let assigned=0;
+  return rates.map((r,i)=>{
+    const gross=i===rates.length-1?total-assigned:(base===0?0:Math.round(groups.get(r)*total/base));
+    assigned+=gross;return [String(r),gross];
+  });
+}
+function turnoverReport(businessId, from, to){
+  const fromDay=reportDay(from),toDay=reportDay(to);
+  if(!fromDay||!toDay)throw Object.assign(new Error('Zeitraum: Datum im Format JJJJ-MM-TT angeben.'),{statusCode:400});
+  if(toDay<fromDay)throw Object.assign(new Error('Das Enddatum liegt vor dem Startdatum.'),{statusCode:400});
+  const span=(Date.parse(toDay)-Date.parse(fromDay))/86400000+1;
+  if(span>REPORT_MAX_DAYS)throw Object.assign(new Error(`Höchstens ${REPORT_MAX_DAYS} Tage pro Bericht.`),{statusCode:400});
+  const sales=db.prepare(`
+    SELECT s.id,s.occurred_at,s.transaction_type,s.payment_method,s.total_cents,s.cash_portion_cents,s.card_portion_cents
+    FROM cloud_sales s JOIN registers r ON r.id=s.register_id JOIN branches br ON br.id=r.branch_id
+    WHERE br.business_id=? AND s.occurred_at>=? AND s.occurred_at<?
+    ORDER BY s.occurred_at
+  `).all(businessId,dayWindow(fromDay)[0],dayWindow(toDay)[1]).filter(x=>{const d=berlinParts(x.occurred_at).day;return d>=fromDay&&d<=toDay;});
+  const itemStmt=db.prepare('SELECT vat_rate,line_total_cents FROM cloud_sale_items WHERE sale_id=?');
+  const days=new Map();const vatRates=new Set();
+  const empty=day=>({day,sale_count:0,storno_count:0,return_count:0,storno_cents:0,return_cents:0,cash_cents:0,card_cents:0,gross_cents:0,vat:{}});
+  for(const s of sales){
+    const day=berlinParts(s.occurred_at).day;
+    if(!days.has(day))days.set(day,empty(day));
+    const row=days.get(day);
+    const total=Number(s.total_cents||0);
+    const split=Number(s.cash_portion_cents)!==0||Number(s.card_portion_cents)!==0;
+    row.cash_cents+=split?Number(s.cash_portion_cents):(s.payment_method==='CASH'?total:0);
+    row.card_cents+=split?Number(s.card_portion_cents):(s.payment_method==='CARD'?total:0);
+    row.gross_cents+=total;
+    if(s.transaction_type==='SALE')row.sale_count++;
+    else if(s.transaction_type==='STORNO'){row.storno_count++;row.storno_cents+=total;}
+    else if(s.transaction_type==='RETURN'){row.return_count++;row.return_cents+=total;}
+    for(const [rate,gross] of saleVatSplit(total,itemStmt.all(s.id))){vatRates.add(rate);row.vat[rate]=(row.vat[rate]||0)+gross;}
+  }
+  const rows=[...days.values()].sort((a,b)=>a.day<b.day?-1:1);
+  const totals=rows.reduce((t,r)=>{for(const k of ['sale_count','storno_count','return_count','storno_cents','return_cents','cash_cents','card_cents','gross_cents'])t[k]+=r[k];for(const [rate,v] of Object.entries(r.vat))t.vat[rate]=(t.vat[rate]||0)+v;return t;},empty('Summe'));
+  const rates=[...vatRates].sort((a,b)=>(Number(a)||1e9)-(Number(b)||1e9));
+  return {from:fromDay,to:toDay,rates,rows,totals};
+}
+function turnoverCsv(report){
+  const money=c=>(c<0?'-':'')+Math.floor(Math.abs(c)/100)+','+String(Math.abs(c)%100).padStart(2,'0');
+  const cell=v=>{const t=String(v);return /[;"\r\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
+  const head=['Tag','Verkäufe','Stornos','Retouren','Storno EUR','Retoure EUR','Bar EUR','Karte EUR',...report.rates.map(r=>isNaN(Number(r))?'Brutto '+r:`Brutto ${String(r).replace('.',',')} % EUR`),'Umsatz brutto EUR'];
+  const line=r=>[r.day,r.sale_count,r.storno_count,r.return_count,money(r.storno_cents),money(r.return_cents),money(r.cash_cents),money(r.card_cents),...report.rates.map(x=>money(r.vat[x]||0)),money(r.gross_cents)].map(cell).join(';');
+  return '\ufeff'+[head.map(cell).join(';'),...report.rows.map(line),line(report.totals)].join('\r\n')+'\r\n';
+}
+
 function portalData(businessId, offset=0) {
   const summary = dashboardSummary(businessId);
   const sales = db.prepare(`
@@ -733,9 +804,14 @@ function portalData(businessId, offset=0) {
     WHERE br.business_id=? ORDER BY st.name COLLATE NOCASE
   `).all(businessId);
   const zReports = db.prepare(`
-    SELECT z.z_number,z.occurred_at,z.gross_cents,z.sale_count,r.name register_name,br.name branch_name
+    SELECT z.z_number,z.occurred_at,z.gross_cents,z.sale_count,z.period_from,z.period_to,z.cash_cents,z.card_cents,z.storno_cents,z.return_cents,z.discount_cents,z.vat_json,z.fiscal_status,z.operator_name,r.name register_name,br.name branch_name
     FROM z_reports z JOIN registers r ON r.id=z.register_id JOIN branches br ON br.id=r.branch_id
     WHERE br.business_id=? ORDER BY z.occurred_at DESC LIMIT 250
+  `).all(businessId).map(z=>({...z,vat:(()=>{try{return JSON.parse(z.vat_json||'[]');}catch{return [];}})(),vat_json:undefined}));
+  const cashMovements = db.prepare(`
+    SELECT m.occurred_at,m.movement_type,m.amount_cents,m.business_case,m.reason,m.actor,r.name register_name,br.name branch_name
+    FROM cash_movements m JOIN registers r ON r.id=m.register_id JOIN branches br ON br.id=r.branch_id
+    WHERE br.business_id=? ORDER BY m.occurred_at DESC LIMIT 100
   `).all(businessId);
   const users = db.prepare(`
     SELECT email,display_name,role,is_active,created_at FROM users WHERE business_id=? ORDER BY display_name COLLATE NOCASE
@@ -751,7 +827,7 @@ function portalData(businessId, offset=0) {
     WHERE br.business_id=? GROUP BY br.id,br.name,br.city ORDER BY br.name COLLATE NOCASE
   `).all(businessId);
   const saleTotal=db.prepare('SELECT COUNT(*) n FROM cloud_sales s JOIN registers r ON r.id=s.register_id JOIN branches b ON b.id=r.branch_id WHERE b.business_id=?').get(businessId).n;
-  return {...summary, sales, stock, zReports, users, operators, branches, saleTotal, offset};
+  return {...summary, sales, stock, zReports, cashMovements, users, operators, branches, saleTotal, offset};
 }
 
 function receiptDetail(businessId, saleId) {
@@ -785,8 +861,9 @@ function ingestEvent(registerId, event) {
 
   const p = event.payload;
   if (event.type === 'heartbeat') {
-    db.prepare('UPDATE registers SET last_seen_at=?,software_version=?,tse_status=?,printer_status=? WHERE id=?')
-      .run(receivedAt, String(p.software_version || ''), String(p.tse_status || 'UNBEKANNT'), String(p.printer_status || 'UNBEKANNT'), registerId);
+    db.prepare('UPDATE registers SET last_seen_at=?,software_version=?,tse_status=?,printer_status=?,reported_edition=?,fiscal_mode=?,outbox_pending=?,outbox_rejected=?,tse_certificate_until=? WHERE id=?')
+      .run(receivedAt, String(p.software_version || ''), String(p.tse_status || 'UNBEKANNT'), String(p.printer_status || 'UNBEKANNT'),
+        String(p.edition || ''), String(p.fiscal_mode || ''), Number(p.outbox_pending || 0), Number(p.outbox_rejected || 0), String(p.tse_certificate_until || ''), registerId);
   } else if (event.type === 'sale.completed') {
     const rawItems = Array.isArray(p.items) ? p.items : [];
     const transactionType=String(p.transaction_type||'SALE').toUpperCase();
@@ -826,11 +903,17 @@ function ingestEvent(registerId, event) {
     }
     db.prepare('UPDATE registers SET last_seen_at=? WHERE id=?').run(receivedAt, registerId);
   } else if (event.type === 'cash.movement') {
-    db.prepare('INSERT INTO cash_movements(register_id,event_id,occurred_at,movement_type,amount_cents,reason,actor) VALUES(?,?,?,?,?,?,?)')
-      .run(registerId, projectionId, event.occurredAt, String(p.movement_type || 'UNKNOWN'), Number(p.amount_cents || 0), String(p.reason || ''), String(p.actor || ''));
+    db.prepare('INSERT INTO cash_movements(register_id,event_id,occurred_at,movement_type,amount_cents,reason,actor,business_case) VALUES(?,?,?,?,?,?,?,?)')
+      .run(registerId, projectionId, event.occurredAt, String(p.movement_type || 'UNKNOWN'), Number(p.amount_cents || 0), String(p.reason || ''), String(p.actor || ''), String(p.business_case || ''));
   } else if (event.type === 'z.closed') {
-    db.prepare('INSERT INTO z_reports(register_id,event_id,z_number,occurred_at,gross_cents,sale_count) VALUES(?,?,?,?,?,?)')
-      .run(registerId, projectionId, String(p.z_number || ''), event.occurredAt, Number(p.gross_cents || 0), Number(p.sale_count || 0));
+    const iso=v=>v?new Date(v).toISOString():'';
+    db.prepare(`INSERT INTO z_reports(register_id,event_id,z_number,occurred_at,gross_cents,sale_count,period_from,period_to,cash_cents,card_cents,storno_cents,return_cents,discount_cents,vat_json,fiscal_status,operator_name)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(registerId, projectionId, String(p.z_number || ''), event.occurredAt, Number(p.gross_cents || 0), Number(p.sale_count || 0),
+        iso(p.period_from), iso(p.period_to), Number(p.cash_cents || 0), Number(p.card_cents || 0), Number(p.storno_cents || 0), Number(p.return_cents || 0),
+        Number(p.promotion_discount_cents || 0) + Number(p.manual_discount_cents || 0),
+        JSON.stringify(Array.isArray(p.vat) ? p.vat.map(v => ({rate:Number(v.rate), net_cents:Number(v.net_cents), tax_cents:Number(v.tax_cents), gross_cents:Number(v.gross_cents)})) : []),
+        String(p.fiscal_status || ''), String(p.operator_name || ''));
   } else if (event.type === 'stock.snapshot') {
     const items = p.items;
     const last=db.prepare('SELECT occurred_at FROM stock_sync_state WHERE register_id=?').get(registerId);
@@ -1422,6 +1505,19 @@ async function handler(req, res) {
     if (req.method === 'GET' && pathname === '/api/portal/data') {
       const user = requireUser(req, res); if (!user) return;
       return json(res, 200, {ok:true, ...portalData(user.business_id,Math.max(0,Math.min(10000000,parseInt(url.searchParams.get('offset')||'0',10)||0)))});
+    }
+
+    if (req.method === 'GET' && (pathname === '/api/reports/turnover' || pathname === '/api/reports/turnover.csv')) {
+      const user = requireUser(req, res); if (!user) return;
+      let report;
+      try { report = turnoverReport(user.business_id, url.searchParams.get('from'), url.searchParams.get('to')); }
+      catch (e) { if (e.statusCode === 400) return json(res, 400, {ok:false, error:e.message}); throw e; }
+      if (pathname.endsWith('.csv')) {
+        const body = Buffer.from(turnoverCsv(report), 'utf8');
+        res.writeHead(200, {'Content-Type':'text/csv; charset=utf-8','Content-Length':body.length,'Content-Disposition':`attachment; filename="TOR-Umsatz-${report.from}-${report.to}.csv"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
+        return res.end(body);
+      }
+      return json(res, 200, {ok:true, report});
     }
 
     if (req.method === 'GET' && /^\/api\/receipts\/\d+$/.test(pathname)) {
