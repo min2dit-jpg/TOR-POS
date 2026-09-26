@@ -39,6 +39,7 @@ public static class RestaurantDev5MergeTests
 
         CheckoutWiring(assert);
         ContextSwitchWiring(assert);
+        InstallerIdentity(assert);
     }
 
     private static readonly string[] RestaurantDev5Names =
@@ -467,6 +468,34 @@ public static class RestaurantDev5MergeTests
             saleReceipts > 0 && saleReceipts == saleReceiptsAfterPolicy &&
             !restaurantPrintsReceipt,
             "DEV5 checkout: a Restaurant payment commits through the shared checkout, whose only sale receipts come after the receipt policy - no normal receipt without a TSE result or documented outage, and no Restaurant window prints its own sale receipt");
+    }
+
+    // The Restaurant installer can only ever install the Restaurant build:
+    // fixed edition, its own EXE, publish folder, data folder, mutex and AppId.
+    private static void InstallerIdentity(Action<bool, string> assert)
+    {
+        string Define(string iss, string name) =>
+            System.Text.RegularExpressions.Regex.Match(iss, $@"#define\s+{name}\s+""([^""]*)""").Groups[1].Value;
+        var restaurant = File.ReadAllText(FindRepoFile("Desktop/TOR-Restaurant-Setup.iss"));
+        var others = new[] { "Desktop/TOR-Einzelhandel-Setup.iss", "Desktop/TOR-Gastro-Setup.iss", "Desktop/TOR-POS-Pro-Setup.iss" }
+            .Select(f => File.ReadAllText(FindRepoFile(f))).ToArray();
+        var csproj = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/TorPos.App.csproj"));
+        var build = File.ReadAllText(FindRepoFile("Desktop/src/TorPos.App/ProductBuild.cs")).Replace("\r\n", "\n");
+        var split = File.ReadAllText(FindRepoFile("Desktop/BUILD-SPLIT-EDITIONS.ps1"));
+
+        assert(
+            Define(restaurant, "MyProductEdition") == "RESTAURANT" &&
+            Define(restaurant, "MyAppExeName") == "TOR-Restaurant.exe" &&
+            Define(restaurant, "MyPublishDir") == "publish\\split\\TOR-Restaurant" &&
+            Define(restaurant, "MyDataDirName") == "TOR-Restaurant" &&
+            Define(restaurant, "MyAppMutex") == "TOR-Restaurant-Running" &&
+            Define(restaurant, "MyOutputBaseFilename") == "TOR-Restaurant-Setup" &&
+            others.All(o => Define(o, "MyAppId") != Define(restaurant, "MyAppId") && Define(o, "MyDataDirName") != "TOR-Restaurant") &&
+            csproj.Contains("<AssemblyName Condition=\"'$(TorProductEdition)' == 'RESTAURANT'\">TOR-Restaurant</AssemblyName>", StringComparison.Ordinal) &&
+            csproj.Contains("'$(TorProductEdition)' == 'RESTAURANT'\">$(DefineConstants);TOR_RESTAURANT_PRODUCT", StringComparison.Ordinal) &&
+            build.Contains("#elif TOR_RESTAURANT_PRODUCT\n    public const string? FixedEdition = \"RESTAURANT\";", StringComparison.Ordinal) &&
+            split.Contains("Publish-Edition -Edition \"RESTAURANT\" -Folder \"TOR-Restaurant\" -ExpectedExe \"TOR-Restaurant.exe\"", StringComparison.Ordinal),
+            "DEV5 installer: the Restaurant setup packs only the RESTAURANT build (fixed edition, TOR-Restaurant.exe, its own publish/data folder, mutex and AppId) and cannot fall back to Einzelhandel/Gastro");
     }
 
     private static void ContextSwitchWiring(Action<bool, string> assert)
