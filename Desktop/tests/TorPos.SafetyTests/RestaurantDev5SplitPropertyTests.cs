@@ -80,6 +80,39 @@ public static class RestaurantDev5SplitPropertyTests
             refusedTwice && refusedOver && refusedHalf && rest == 700,
             "DEV5 split: after one of three Stück is paid, selecting the line twice, more than the two open pieces or half a piece is refused, and the rest costs exactly the open 7,00 EUR");
 
+        // Paying a line in slices, one after the other, charges its total to
+        // the cent: each slice is a share of what is still open, so rounding
+        // never adds up (1,5 l at 0,33 EUR = 0,50 EUR paid as 3 × 0,5 l is
+        // 17 + 17 + 16, not 17 + 17 + 17).
+        long[] PaySlices(RestaurantSessionItem line, long sliceMilli)
+        {
+            var paid = new List<long>();
+            while (line.QuantityMilli > 0)
+            {
+                var slice = Math.Min(sliceMilli, line.QuantityMilli);
+                var amount = RestaurantSplitCalculator.ByItems(new[] { line }, new[] { new RestaurantSplitSelection(line.Id, slice) }).TotalCents;
+                paid.Add(amount);
+                line = line with { QuantityMilli = line.QuantityMilli - slice, PaidCents = line.PaidCents + amount };
+            }
+            return paid.ToArray();
+        }
+        var litreSlices = PaySlices(Line(2, 1500, 33, "l", 0), 500);
+        var pieces = PaySlices(Line(3, 3000, 33, "Stück", 0) with { PersistedLineTotalCents = 100 }, 1000);
+        var slicesExact = true;
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var r = new Random(seed);
+            var quantity = r.Next(2, 40) * 250L;
+            var line = Line(10 + seed, quantity, r.Next(1, 999), "l", 0);
+            var slices = PaySlices(line, r.Next(1, 8) * 250L);
+            if (slices.Sum() != line.PersistedLineTotalCents || slices.Any(x => x < 0))
+                slicesExact = false;
+        }
+        assert(
+            litreSlices.SequenceEqual(new long[] { 17, 17, 16 }) &&
+            pieces.SequenceEqual(new long[] { 33, 34, 33 }) && slicesExact,
+            "DEV5 split: a line paid in slices one after the other costs its total to the cent - 1,5 l at 0,33 EUR as 3 × 0,5 l is 17 + 17 + 16 = 0,50 EUR, and 200 seeded lines never charge a cent more or less");
+
         return Task.CompletedTask;
     }
 

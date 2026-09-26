@@ -791,7 +791,8 @@ const int ExpectedSafetyChecks = 1423;
 // refusal, check before bootstrap; payment concurrency/repetition/partial
 // payments and the Kellnerabrechnung (8); snapshot and kitchen resend (4);
 // split properties (2); THEKE/TISCHPLAN switch guards (3); installer identity.
-const int RestaurantDev5Checks = 103;
+// A line paid in slices one after the other costs its total to the cent: 1.
+const int RestaurantDev5Checks = 104;
 
 const int TotalSafetyChecks =
     ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
