@@ -769,10 +769,15 @@ const int CloudAlignmentChecks = 7;
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
 const int ExpectedSafetyChecks = 1423;
 // Restaurant DEV4/DEV5 (feature/restaurant-third-exe), counted on its own like
-// the blocks above so this branch and main stop colliding on one number:
-// not yet reviewed - taken from the first merged Windows CI run (its
-// SAFETY BASELINE MISMATCH line), never estimated.
-const int RestaurantDev5Checks = 0;
+// the blocks above so this branch and main stop colliding on one number.
+// Taken from the merged Windows CI run 36250977527 ("expected 1492, actual
+// 1574"), not estimated, and reviewed against its parts: 59 DEV4 checks
+// (third installer, recipes/options, interim bill, split planner, waiter
+// settlement, service mode, exact cents, KDS index, fiscal retry, UI/language
+// lists) plus 23 DEV5 merge checks (schema 42 = C-4 and Restaurant 43-48,
+// history name verification, DEV4 refusal, main-42 upgrades, idempotent
+// restart, reservation lifecycle and checkout/receipt wiring).
+const int RestaurantDev5Checks = 82;
 
 const int TotalSafetyChecks =
     ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
