@@ -1375,6 +1375,45 @@ public sealed partial class RestaurantRepository
             var target = await ReadLiveSessionForUpdateAsync(
                 c, tx, targetSessionId, expectedTargetVersion, ct);
 
+            var sourceMode = RestaurantServiceModes.InHouse;
+            var targetMode = RestaurantServiceModes.InHouse;
+            await using (var modes = c.CreateCommand())
+            {
+                modes.Transaction = tx;
+                modes.CommandText = """
+                    SELECT session_id,service_mode
+                    FROM restaurant_session_service_mode
+                    WHERE session_id IN ($source,$target);
+                    """;
+                modes.Parameters.AddWithValue("$source", sourceSessionId);
+                modes.Parameters.AddWithValue("$target", targetSessionId);
+                await using var r = await modes.ExecuteReaderAsync(ct);
+                while (await r.ReadAsync(ct))
+                {
+                    var mode = RestaurantServiceModes.Normalize(r.GetString(1));
+                    if (string.Equals(r.GetString(0), sourceSessionId, StringComparison.Ordinal))
+                        sourceMode = mode;
+                    else if (string.Equals(r.GetString(0), targetSessionId, StringComparison.Ordinal))
+                        targetMode = mode;
+                }
+            }
+
+            if (!string.Equals(sourceMode, targetMode, StringComparison.Ordinal))
+            {
+                await using var sourceItems = c.CreateCommand();
+                sourceItems.Transaction = tx;
+                sourceItems.CommandText = """
+                    SELECT COUNT(*)
+                    FROM restaurant_session_items
+                    WHERE session_id=$source
+                      AND state='ACTIVE';
+                    """;
+                sourceItems.Parameters.AddWithValue("$source", sourceSessionId);
+                if (Convert.ToInt32(await sourceItems.ExecuteScalarAsync(ct)) > 0)
+                    throw new InvalidOperationException(
+                        "Tische mit unterschiedlichem Servicemodus können mit offenen Positionen nicht zusammengelegt werden.");
+            }
+
             await using (var moveItems = c.CreateCommand())
             {
                 moveItems.Transaction = tx;
