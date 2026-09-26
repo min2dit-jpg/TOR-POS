@@ -136,9 +136,16 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
 
     private sealed record ClosingRow(long ZNumber, DateTimeOffset CreatedAt, string FromUtc, string ToUtc, DsfinvkMasterData? Master);
 
+    /// <summary>
+    /// V-3: the plan is read on its own read-only connection, outside the
+    /// single-writer IoQueue - the till keeps taking payments while a long
+    /// export runs. SQLite WAL gives the reader one consistent snapshot for
+    /// the whole plan (explicit BEGIN ... ROLLBACK); closed Z periods do not
+    /// change, and anything booked meanwhile falls after the last closing.
+    /// </summary>
     private async Task<ExportPlan> BuildPlanAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
-        return await IoQueue.RunAsync(async () =>
+        return await Task.Run(async () =>
         {
             var issues = new List<DsfinvkPreflightIssue>();
             var csv = OfficialTables.ToDictionary(t => t.Name, _ => new List<string>());
@@ -148,218 +155,232 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                 issues.Add(new("RANGE", "Enddatum liegt vor dem Startdatum."));
             issues.AddRange(DsfinvkPreflightChecks.Range(from, to, DateTimeOffset.Now));
 
-            await using var c = _db.OpenConnection();
-
-            // R132: the master data as they are now - used for closings from
-            // before R132, which did not store their own.
-            var master = await DsfinvkMasterDataStore.CurrentAsync(c, ct);
-
-            var closings = await LoadClosingsAsync(c, ct);
-            var inRange = closings.Where(z => z.CreatedAt >= from && z.CreatedAt <= to).ToList();
-            if (inRange.Count == 0)
-                issues.Add(new("NO_CLOSING", "Im gewählten Zeitraum gibt es keinen Kassenabschluss (Z-Bericht). Exportiert werden nur abgeschlossene Zeiträume."));
-            else
-                issues.AddRange(DsfinvkPreflightChecks.ClosingContinuity(
-                    closings.Select(z => z.ZNumber).ToList(),
-                    inRange.Max(z => z.ZNumber)));
-
-            var withoutSnapshot = inRange.Where(z => z.Master is null).ToList();
-            if (withoutSnapshot.Count > 0)
-                CheckMasterData(master, issues, "");
-            foreach (var closing in inRange.Where(z => z.Master is not null))
-                CheckMasterData(closing.Master!, issues, $"Z_NR {closing.ZNumber}: ");
-
-            var products = await LoadProductsAsync(c, ct);
-            var tseMasterData = await TseMasterDataRepository.LoadAllAsync(c, ct);
-            var tseWithoutMasterData = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            var tseWithUnknownAlgorithm = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            var salesWithoutImHaus = 0;
-            var withoutStart = 0;
-            var tseSerialsInOrder = new List<string>();
-            void NoteTse(string transactionNumber, string serial)
+            await using var c = _db.OpenReadConnection();
+            await using (var begin = c.CreateCommand())
             {
-                CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
-                if (!string.IsNullOrWhiteSpace(serial) && !tseSerialsInOrder.Contains(serial, StringComparer.OrdinalIgnoreCase))
-                    tseSerialsInOrder.Add(serial);
-            }
-            var outages = await LoadOutagesAsync(c, ct);
-            var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
-            foreach (var pair in await RestaurantBestellungExportLoader.LoadSaleAllocationGroupsAsync(c, ct))
-                allocationBySale[pair.Key] = pair.Value;
-            var allocationByTraining = await TrainingReceiptRepository.LoadAllocationGroupsAsync(c, ct);
-            var sales = new SaleRepository(_db);
-
-            var movementsWithoutCase = 0;
-            var movementsWithoutTse = 0;
-            var anyOrder = false;
-            var anyCancelledOrder = false;
-            var anyWithoutTse = new List<long>();
-
-            foreach (var closing in inRange)
-            {
-                var saleList = new List<Sale>();
-                foreach (var id in await IdsAsync(c,
-                    "SELECT id FROM sales WHERE created_at_utc > $from AND created_at_utc <= $to ORDER BY receipt_number;",
-                    closing, ct))
-                {
-                    var sale = await sales.GetByIdAsync(id, ct)
-                        ?? throw new InvalidOperationException($"Verkauf {id} konnte nicht gelesen werden.");
-                    saleList.Add(sale);
-                    if (sale.ImHaus is null)
-                        salesWithoutImHaus++;
-                    if (sale.StartedAt is null)
-                        withoutStart++;
-                    NoteTse(sale.TseTransactionNumber, sale.TseSerialNumber);
-                    if (!sale.TseOutage && sale.TseTransactionNumber.Length == 0)
-                        anyWithoutTse.Add(sale.ReceiptNumber);
-                }
-
-                var movements = await LoadCashMovementsAsync(c, closing, ct);
-                movementsWithoutCase += movements.Count(m => m.BusinessCase is null);
-                movementsWithoutTse += movements.Count(m => m.Tse is null);
-                foreach (var movement in movements)
-                    if (movement.Tse is { Outage: false } signedMovement)
-                        NoteTse(signedMovement.TransactionNumber, signedMovement.SerialNumber);
-
-                var trainings = await TrainingReceiptRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
-                foreach (var training in trainings)
-                {
-                    if (training.Receipt.StartedAt is null)
-                        withoutStart++;
-                    CheckVat(training.Receipt.Lines, $"Trainingsvorgang {training.Receipt.ReceiptNumber}", issues);
-                    if (training.Tse is { Outage: false } signedTraining)
-                        NoteTse(signedTraining.TransactionNumber, signedTraining.SerialNumber);
-                }
-
-                var aborted = await TseVorgangService.LoadAbortedInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
-                foreach (var vorgang in aborted)
-                {
-                    CheckVat(vorgang.Lines, $"Abgebrochener Vorgang {vorgang.Number}", issues);
-                    if (vorgang.Tse is { Outage: false } signedAbort)
-                        NoteTse(signedAbort.TransactionNumber, signedAbort.SerialNumber);
-                }
-
-                var orderRecords = await OrderBestellungRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
-                orderRecords.AddRange(
-                    await RestaurantBestellungExportLoader.LoadInPeriodAsync(
-                        c,
-                        closing.FromUtc,
-                        closing.ToUtc,
-                        ct));
-                foreach (var record in orderRecords)
-                {
-                    CheckVat(record.Lines, $"Bestellung P{record.ParkNumber:000000} ({record.Sequence})", issues);
-                    if (record.Tse is { Outage: false } signedRecord)
-                        NoteTse(signedRecord.TransactionNumber, signedRecord.SerialNumber);
-                }
-
-                var orders = await LoadOrdersAsync(c, closing, ct);
-                anyOrder |= orders.Count > 0;
-                anyCancelledOrder |= orders.Any(o => o.Cancelled);
-                foreach (var loaded in orders)
-                {
-                    if (loaded.Order.VorgangStartedAt is null)
-                        withoutStart++;
-                    NoteTse(loaded.Order.TseTransactionNumber, loaded.Order.TseSerialNumber);
-                }
-
-                foreach (var sale in saleList)
-                    CheckVat(sale.Lines, $"Beleg {sale.ReceiptNumber}", issues);
-                foreach (var order in orders)
-                    CheckVat(order.Order.Lines, $"Bestellung {order.Order.DisplayNumber}", issues);
-
-                var input = new DsfinvkClosingInput
-                {
-                    Closing = new DsfinvkClosing(closing.ZNumber, closing.CreatedAt),
-                    Master = closing.Master ?? master,
-                    Sales = saleList,
-                    CashMovements = movements,
-                    Trainings = trainings,
-                    Aborted = aborted,
-                    OrderRecords = orderRecords,
-                    Orders = orders.Select(o => o.Order).ToList(),
-                    OriginalOf = originalId => FindOriginal(c, closings, originalId),
-                    OutageReasonAt = at => OutageReasonAt(outages, at),
-                    AllocationGroupBySaleId = allocationBySale,
-                    AllocationGroupByTrainingId = allocationByTraining,
-                    ProductOf = productId => products.TryGetValue(productId, out var p) ? p : null,
-                    TseMasterDataOf = serial => tseMasterData.TryGetValue(serial, out var tse) ? tse : null,
-                };
-
-                if (issues.Any(x => x.Blocking))
-                    continue;
-
-                try
-                {
-                    var rows = DsfinvkClosingBuilder.Build(input);
-                    foreach (var table in OfficialTables)
-                        csv[table.Name].AddRange(rows.For(table.Name).Select(row => DsfinvkCsv.Row(table, row)));
-                    summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count + aborted.Count + orderRecords.Count));
-                }
-                catch (InvalidOperationException ex)
-                {
-                    issues.Add(new("DATA", $"Z_NR {closing.ZNumber}: {ex.Message}"));
-                }
+                begin.CommandText = "BEGIN;";
+                await begin.ExecuteNonQueryAsync(ct);
             }
 
-            var lastClosing = closings.Count == 0 ? null : closings[^1];
-            var openFrom = lastClosing?.ToUtc ?? "";
-            var open = await ScalarLongAsync(c,
-                "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME') AND fiscal_mode <> 'TEST_ONLY') + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from) + (SELECT COUNT(*) FROM order_bestellungen WHERE created_at_utc > $from);",
-                openFrom, ct);
-            open += await RestaurantBestellungExportLoader.CountAfterAsync(
-                c,
-                openFrom,
-                ct);
-            if (open > 0)
-                issues.Add(new("OPEN_PERIOD", open == 1
-                    ? "1 Vorgang nach dem letzten Kassenabschluss gehört noch zu keinem Z-Bericht und ist nicht enthalten."
-                    : $"{open} Vorgänge nach dem letzten Kassenabschluss gehören noch zu keinem Z-Bericht und sind nicht enthalten.", Blocking: false));
-
-            // Several TSE in one period are legitimate (TSE-Wechsel); each
-            // transition should be documented in the TSE change journal.
-            var documentedTseChanges = (await TseChangeJournal.LoadAllAsync(c, ct))
-                .Where(x => x.Outcome == TseChangeOutcome.Succeeded)
-                .Select(x => (x.Previous.SerialNumber, x.Next.SerialNumber))
-                .ToList();
-            issues.AddRange(DsfinvkPreflightChecks.TsePeriods(tseSerialsInOrder, documentedTseChanges));
-
-            // What TOR does not record yet. Stated, not hidden.
-            if (!FiscalRelease.ProductionAllowed)
-                issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
-            if (withoutSnapshot.Count > 0)
-                issues.Add(new("STAMMDATEN", (withoutSnapshot.Count == 1 ? "1 Kassenabschluss stammt" : $"{withoutSnapshot.Count} Kassenabschlüsse stammen") + $" aus der Zeit vor R132 ohne eigene Stammdaten; dafür werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
-            if (withoutStart > 0)
-                issues.Add(new("BON_START", (withoutStart == 1 ? "1 Vorgang stammt" : $"{withoutStart} Vorgänge stammen") + " aus der Zeit vor R136, als Vorgangsbeginn und TSE-Startzeit nicht gespeichert wurden; BON_START und TSE_TA_START bleiben dort leer.", Blocking: false));
-            if (salesWithoutImHaus > 0)
-                issues.Add(new("INHAUS", (salesWithoutImHaus == 1 ? "1 Verkauf stammt" : $"{salesWithoutImHaus} Verkäufe stammen") + " aus der Zeit vor R133, als Im Haus/Außer Haus nicht gespeichert wurde; INHAUS bleibt dort leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
-            if (tseWithoutMasterData.Count > 0)
-                issues.Add(new("TSE_STAMMDATEN", $"Für TSE {string.Join(", ", tseWithoutMasterData)} liegen Zertifikat, öffentlicher Schlüssel, Signaturalgorithmus und Zeitformat nicht vor. Bitte einen TSE-Export (TAR) erstellen - TOR übernimmt die Daten daraus.", Blocking: false));
-            if (tseWithUnknownAlgorithm.Count > 0)
-                issues.Add(new("TSE_ALGORITHMUS", $"Der Signaturalgorithmus von TSE {string.Join(", ", tseWithUnknownAlgorithm)} ist keinem Namen aus DSFinV-K Anhang E zugeordnet; TSE_SIG_ALGO bleibt leer.", Blocking: false));
-            if (movementsWithoutCase > 0)
-                issues.Add(new("KASSENBEWEGUNG", $"{movementsWithoutCase} Einlage(n)/Entnahme(n) aus der Zeit vor R134 ohne Geschäftsvorfall-Art; sie erscheinen als allgemeine Einzahlung/Auszahlung.", Blocking: false));
-            if (movementsWithoutTse > 0)
-                issues.Add(new("KASSENBEWEGUNG_TSE", $"{movementsWithoutTse} Einlage(n)/Entnahme(n) ohne gespeichertes TSE-Ergebnis (vor R134 wurden sie nicht abgesichert).", Blocking: false));
-            if (anyOrder)
-                issues.Add(new("BESTELLUNG", "Bestellungen aus der Zeit vor R137 werden mit ihrem zuletzt gespeicherten Positionsstand exportiert; ihre Änderungen nach der TSE-Signierung sind nicht einzeln nachvollziehbar.", Blocking: false));
-            if (anyCancelledOrder)
-                issues.Add(new("BESTELLSTORNO", "Stornierte Bestellungen aus der Zeit vor R137 sind nicht als eigene TSE-gesicherte Gegenbuchung erfasst (DSFinV-K 4.2.3).", Blocking: false));
-            if (anyWithoutTse.Count > 0)
-                issues.Add(new("OHNE_TSE", $"{anyWithoutTse.Count} Belege ohne gespeichertes TSE-Ergebnis (z. B. Beleg {anyWithoutTse[0]}).", Blocking: false));
-
-            var ready = issues.All(x => !x.Blocking);
-            if (!ready)
+            try
             {
-                csv = OfficialTables.ToDictionary(t => t.Name, _ => new List<string>());
-                summaries.Clear();
-            }
+                // R132: the master data as they are now - used for closings from
+                // before R132, which did not store their own.
+                var master = await DsfinvkMasterDataStore.CurrentAsync(c, ct);
 
-            return new ExportPlan(
-                new DsfinvkPreflightReport(Ready: ready, Version: DsfinvkClosingBuilder.TaxonomyVersion, Issues: issues),
-                master,
-                summaries,
-                csv);
+                var closings = await LoadClosingsAsync(c, ct);
+                var inRange = closings.Where(z => z.CreatedAt >= from && z.CreatedAt <= to).ToList();
+                if (inRange.Count == 0)
+                    issues.Add(new("NO_CLOSING", "Im gewählten Zeitraum gibt es keinen Kassenabschluss (Z-Bericht). Exportiert werden nur abgeschlossene Zeiträume."));
+                else
+                    issues.AddRange(DsfinvkPreflightChecks.ClosingContinuity(
+                        closings.Select(z => z.ZNumber).ToList(),
+                        inRange.Max(z => z.ZNumber)));
+
+                var withoutSnapshot = inRange.Where(z => z.Master is null).ToList();
+                if (withoutSnapshot.Count > 0)
+                    CheckMasterData(master, issues, "");
+                foreach (var closing in inRange.Where(z => z.Master is not null))
+                    CheckMasterData(closing.Master!, issues, $"Z_NR {closing.ZNumber}: ");
+
+                var products = await LoadProductsAsync(c, ct);
+                var tseMasterData = await TseMasterDataRepository.LoadAllAsync(c, ct);
+                var tseWithoutMasterData = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+                var tseWithUnknownAlgorithm = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+                var salesWithoutImHaus = 0;
+                var withoutStart = 0;
+                var tseSerialsInOrder = new List<string>();
+                void NoteTse(string transactionNumber, string serial)
+                {
+                    CheckTse(transactionNumber, serial, tseMasterData, tseWithoutMasterData, tseWithUnknownAlgorithm);
+                    if (!string.IsNullOrWhiteSpace(serial) && !tseSerialsInOrder.Contains(serial, StringComparer.OrdinalIgnoreCase))
+                        tseSerialsInOrder.Add(serial);
+                }
+                var outages = await LoadOutagesAsync(c, ct);
+                var allocationBySale = await LoadAllocationGroupsAsync(c, ct);
+                foreach (var pair in await RestaurantBestellungExportLoader.LoadSaleAllocationGroupsAsync(c, ct))
+                    allocationBySale[pair.Key] = pair.Value;
+                var allocationByTraining = await TrainingReceiptRepository.LoadAllocationGroupsAsync(c, ct);
+
+                var movementsWithoutCase = 0;
+                var movementsWithoutTse = 0;
+                var anyOrder = false;
+                var anyCancelledOrder = false;
+                var anyWithoutTse = new List<long>();
+
+                foreach (var closing in inRange)
+                {
+                    var saleList = new List<Sale>();
+                    foreach (var id in await IdsAsync(c,
+                        "SELECT id FROM sales WHERE created_at_utc > $from AND created_at_utc <= $to ORDER BY receipt_number;",
+                        closing, ct))
+                    {
+                        var sale = await SaleRepository.LoadSaleAsync(c, id, ct)
+                            ?? throw new InvalidOperationException($"Verkauf {id} konnte nicht gelesen werden.");
+                        saleList.Add(sale);
+                        if (sale.ImHaus is null)
+                            salesWithoutImHaus++;
+                        if (sale.StartedAt is null)
+                            withoutStart++;
+                        NoteTse(sale.TseTransactionNumber, sale.TseSerialNumber);
+                        if (!sale.TseOutage && sale.TseTransactionNumber.Length == 0)
+                            anyWithoutTse.Add(sale.ReceiptNumber);
+                    }
+
+                    var movements = await LoadCashMovementsAsync(c, closing, ct);
+                    movementsWithoutCase += movements.Count(m => m.BusinessCase is null);
+                    movementsWithoutTse += movements.Count(m => m.Tse is null);
+                    foreach (var movement in movements)
+                        if (movement.Tse is { Outage: false } signedMovement)
+                            NoteTse(signedMovement.TransactionNumber, signedMovement.SerialNumber);
+
+                    var trainings = await TrainingReceiptRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                    foreach (var training in trainings)
+                    {
+                        if (training.Receipt.StartedAt is null)
+                            withoutStart++;
+                        CheckVat(training.Receipt.Lines, $"Trainingsvorgang {training.Receipt.ReceiptNumber}", issues);
+                        if (training.Tse is { Outage: false } signedTraining)
+                            NoteTse(signedTraining.TransactionNumber, signedTraining.SerialNumber);
+                    }
+
+                    var aborted = await TseVorgangService.LoadAbortedInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                    foreach (var vorgang in aborted)
+                    {
+                        CheckVat(vorgang.Lines, $"Abgebrochener Vorgang {vorgang.Number}", issues);
+                        if (vorgang.Tse is { Outage: false } signedAbort)
+                            NoteTse(signedAbort.TransactionNumber, signedAbort.SerialNumber);
+                    }
+
+                    var orderRecords = await OrderBestellungRepository.LoadInPeriodAsync(c, closing.FromUtc, closing.ToUtc, ct);
+                    orderRecords.AddRange(
+                        await RestaurantBestellungExportLoader.LoadInPeriodAsync(
+                            c,
+                            closing.FromUtc,
+                            closing.ToUtc,
+                            ct));
+                    foreach (var record in orderRecords)
+                    {
+                        CheckVat(record.Lines, $"Bestellung P{record.ParkNumber:000000} ({record.Sequence})", issues);
+                        if (record.Tse is { Outage: false } signedRecord)
+                            NoteTse(signedRecord.TransactionNumber, signedRecord.SerialNumber);
+                    }
+
+                    var orders = await LoadOrdersAsync(c, closing, ct);
+                    anyOrder |= orders.Count > 0;
+                    anyCancelledOrder |= orders.Any(o => o.Cancelled);
+                    foreach (var loaded in orders)
+                    {
+                        if (loaded.Order.VorgangStartedAt is null)
+                            withoutStart++;
+                        NoteTse(loaded.Order.TseTransactionNumber, loaded.Order.TseSerialNumber);
+                    }
+
+                    foreach (var sale in saleList)
+                        CheckVat(sale.Lines, $"Beleg {sale.ReceiptNumber}", issues);
+                    foreach (var order in orders)
+                        CheckVat(order.Order.Lines, $"Bestellung {order.Order.DisplayNumber}", issues);
+
+                    var input = new DsfinvkClosingInput
+                    {
+                        Closing = new DsfinvkClosing(closing.ZNumber, closing.CreatedAt),
+                        Master = closing.Master ?? master,
+                        Sales = saleList,
+                        CashMovements = movements,
+                        Trainings = trainings,
+                        Aborted = aborted,
+                        OrderRecords = orderRecords,
+                        Orders = orders.Select(o => o.Order).ToList(),
+                        OriginalOf = originalId => FindOriginal(c, closings, originalId),
+                        OutageReasonAt = at => OutageReasonAt(outages, at),
+                        AllocationGroupBySaleId = allocationBySale,
+                        AllocationGroupByTrainingId = allocationByTraining,
+                        ProductOf = productId => products.TryGetValue(productId, out var p) ? p : null,
+                        TseMasterDataOf = serial => tseMasterData.TryGetValue(serial, out var tse) ? tse : null,
+                    };
+
+                    if (issues.Any(x => x.Blocking))
+                        continue;
+
+                    try
+                    {
+                        var rows = DsfinvkClosingBuilder.Build(input);
+                        foreach (var table in OfficialTables)
+                            csv[table.Name].AddRange(rows.For(table.Name).Select(row => DsfinvkCsv.Row(table, row)));
+                        summaries.Add(new ClosingSummary(closing.ZNumber, closing.CreatedAt, saleList.Count + movements.Count + orders.Count + trainings.Count + aborted.Count + orderRecords.Count));
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        issues.Add(new("DATA", $"Z_NR {closing.ZNumber}: {ex.Message}"));
+                    }
+                }
+
+                var lastClosing = closings.Count == 0 ? null : closings[^1];
+                var openFrom = lastClosing?.ToUtc ?? "";
+                var open = await ScalarLongAsync(c,
+                    "SELECT (SELECT COUNT(*) FROM sales WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM cash_movements WHERE created_at_utc > $from AND movement_type IN ('EINLAGE','ENTNAHME') AND fiscal_mode <> 'TEST_ONLY') + (SELECT COUNT(*) FROM training_receipts WHERE created_at_utc > $from) + (SELECT COUNT(*) FROM aborted_vorgaenge WHERE ended_at_utc > $from) + (SELECT COUNT(*) FROM order_bestellungen WHERE created_at_utc > $from);",
+                    openFrom, ct);
+                open += await RestaurantBestellungExportLoader.CountAfterAsync(
+                    c,
+                    openFrom,
+                    ct);
+                if (open > 0)
+                    issues.Add(new("OPEN_PERIOD", open == 1
+                        ? "1 Vorgang nach dem letzten Kassenabschluss gehört noch zu keinem Z-Bericht und ist nicht enthalten."
+                        : $"{open} Vorgänge nach dem letzten Kassenabschluss gehören noch zu keinem Z-Bericht und sind nicht enthalten.", Blocking: false));
+
+                // Several TSE in one period are legitimate (TSE-Wechsel); each
+                // transition should be documented in the TSE change journal.
+                var documentedTseChanges = (await TseChangeJournal.LoadAllAsync(c, ct))
+                    .Where(x => x.Outcome == TseChangeOutcome.Succeeded)
+                    .Select(x => (x.Previous.SerialNumber, x.Next.SerialNumber))
+                    .ToList();
+                issues.AddRange(DsfinvkPreflightChecks.TsePeriods(tseSerialsInOrder, documentedTseChanges));
+
+                // What TOR does not record yet. Stated, not hidden.
+                if (!FiscalRelease.ProductionAllowed)
+                    issues.Add(new("TEST_DATA", "TOR ist fiskalisch nicht freigegeben - der Export ist ein Prüf-/Testdatensatz.", Blocking: false));
+                if (withoutSnapshot.Count > 0)
+                    issues.Add(new("STAMMDATEN", (withoutSnapshot.Count == 1 ? "1 Kassenabschluss stammt" : $"{withoutSnapshot.Count} Kassenabschlüsse stammen") + $" aus der Zeit vor R132 ohne eigene Stammdaten; dafür werden die aktuellen Einstellungen verwendet (z. B. Z_NR {withoutSnapshot[0].ZNumber}).", Blocking: false));
+                if (withoutStart > 0)
+                    issues.Add(new("BON_START", (withoutStart == 1 ? "1 Vorgang stammt" : $"{withoutStart} Vorgänge stammen") + " aus der Zeit vor R136, als Vorgangsbeginn und TSE-Startzeit nicht gespeichert wurden; BON_START und TSE_TA_START bleiben dort leer.", Blocking: false));
+                if (salesWithoutImHaus > 0)
+                    issues.Add(new("INHAUS", (salesWithoutImHaus == 1 ? "1 Verkauf stammt" : $"{salesWithoutImHaus} Verkäufe stammen") + " aus der Zeit vor R133, als Im Haus/Außer Haus nicht gespeichert wurde; INHAUS bleibt dort leer (die Steuersätze sind korrekt erfasst).", Blocking: false));
+                if (tseWithoutMasterData.Count > 0)
+                    issues.Add(new("TSE_STAMMDATEN", $"Für TSE {string.Join(", ", tseWithoutMasterData)} liegen Zertifikat, öffentlicher Schlüssel, Signaturalgorithmus und Zeitformat nicht vor. Bitte einen TSE-Export (TAR) erstellen - TOR übernimmt die Daten daraus.", Blocking: false));
+                if (tseWithUnknownAlgorithm.Count > 0)
+                    issues.Add(new("TSE_ALGORITHMUS", $"Der Signaturalgorithmus von TSE {string.Join(", ", tseWithUnknownAlgorithm)} ist keinem Namen aus DSFinV-K Anhang E zugeordnet; TSE_SIG_ALGO bleibt leer.", Blocking: false));
+                if (movementsWithoutCase > 0)
+                    issues.Add(new("KASSENBEWEGUNG", $"{movementsWithoutCase} Einlage(n)/Entnahme(n) aus der Zeit vor R134 ohne Geschäftsvorfall-Art; sie erscheinen als allgemeine Einzahlung/Auszahlung.", Blocking: false));
+                if (movementsWithoutTse > 0)
+                    issues.Add(new("KASSENBEWEGUNG_TSE", $"{movementsWithoutTse} Einlage(n)/Entnahme(n) ohne gespeichertes TSE-Ergebnis (vor R134 wurden sie nicht abgesichert).", Blocking: false));
+                if (anyOrder)
+                    issues.Add(new("BESTELLUNG", "Bestellungen aus der Zeit vor R137 werden mit ihrem zuletzt gespeicherten Positionsstand exportiert; ihre Änderungen nach der TSE-Signierung sind nicht einzeln nachvollziehbar.", Blocking: false));
+                if (anyCancelledOrder)
+                    issues.Add(new("BESTELLSTORNO", "Stornierte Bestellungen aus der Zeit vor R137 sind nicht als eigene TSE-gesicherte Gegenbuchung erfasst (DSFinV-K 4.2.3).", Blocking: false));
+                if (anyWithoutTse.Count > 0)
+                    issues.Add(new("OHNE_TSE", $"{anyWithoutTse.Count} Belege ohne gespeichertes TSE-Ergebnis (z. B. Beleg {anyWithoutTse[0]}).", Blocking: false));
+
+                var ready = issues.All(x => !x.Blocking);
+                if (!ready)
+                {
+                    csv = OfficialTables.ToDictionary(t => t.Name, _ => new List<string>());
+                    summaries.Clear();
+                }
+
+                return new ExportPlan(
+                    new DsfinvkPreflightReport(Ready: ready, Version: DsfinvkClosingBuilder.TaxonomyVersion, Issues: issues),
+                    master,
+                    summaries,
+                    csv);
+            }
+            finally
+            {
+                // Read-only snapshot: nothing to commit.
+                await using var end = c.CreateCommand();
+                end.CommandText = "ROLLBACK;";
+                await end.ExecuteNonQueryAsync(CancellationToken.None);
+            }
         });
     }
 

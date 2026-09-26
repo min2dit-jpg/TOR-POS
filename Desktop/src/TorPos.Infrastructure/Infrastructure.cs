@@ -2397,7 +2397,7 @@ public async Task RecordDailyClosingAsync(string operatorName, CancellationToken
             await q.ExecuteScalarAsync(ct)) == 1;
     }
 
-    private static async Task<Sale?> LoadSaleAsync(
+    internal static async Task<Sale?> LoadSaleAsync(
         SqliteConnection c,
         long saleId,
         CancellationToken ct)

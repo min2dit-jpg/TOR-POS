@@ -602,6 +602,7 @@ await TrialLicenseReviewTests.Run(Assert);
 await BarTestBonPreparationTests.Run(Assert);
 await GermanFiscalPrepTests.Run(root, Assert);
 FiscalPropertyTests.Run(Assert);
+await RetailGastroFollowUpTests.Run(root, Assert);
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -681,7 +682,8 @@ FiscalPropertyTests.Run(Assert);
 // readiness, the digital receipt/QR layer, the AI boundary and the DSFinV-K
 // preflight/ZIP packaging; 7 seeded property checks fuzz receipt links,
 // DSFinV-K ranges, cent allocation, CSV and TSE export input.
-const int ExpectedSafetyChecks = 1440;
+// Einzelhandel/Gastro follow-up: V-3 export off the write queue, O-3 probe cache.
+const int ExpectedSafetyChecks = 1444;
 
 if (checks != ExpectedSafetyChecks)
 {
