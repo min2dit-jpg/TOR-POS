@@ -62,10 +62,31 @@ public sealed record RestaurantSessionItem(
 {
     public decimal Quantity => QuantityMilli / 1000m;
 
+    // R-9.2: immutable original gross cents plus the cents already removed
+    // from the still-active logical line. Paid slices are normalised back to
+    // PaidCents=0. Legacy/in-memory rows fall back to quantity × unit price.
+    public long? PersistedLineTotalCents { get; init; }
+    public long PaidCents { get; init; }
+
+    // R-3: immutable commercial/fiscal snapshot. Never re-read variant/menu
+    // details from today's Artikelstamm when paying, reversing or reconciling.
+    public string Unit { get; init; } = "Stück";
+    public long ListUnitPriceCents { get; init; }
+    public bool ImHausApplicable { get; init; } = true;
+    public MenuVatAllocation[] VatAllocations { get; init; } =
+        Array.Empty<MenuVatAllocation>();
+    public MenuComponentSnapshot[] MenuComponents { get; init; } =
+        Array.Empty<MenuComponentSnapshot>();
+
+    public long EffectiveListUnitPriceCents =>
+        ListUnitPriceCents > 0 ? ListUnitPriceCents : UnitPriceCents;
+
     public long LineTotalCents =>
-        (long)Math.Round(
-            Quantity * UnitPriceCents,
-            MidpointRounding.AwayFromZero);
+        PersistedLineTotalCents is long persisted
+            ? Math.Max(0L, persisted - PaidCents)
+            : (long)Math.Round(
+                Quantity * UnitPriceCents,
+                MidpointRounding.AwayFromZero);
 }
 
 
@@ -100,6 +121,18 @@ public static class RestaurantSplitCalculator
         IReadOnlyList<RestaurantSplitSelection> selections)
     {
         var source = openItems.ToDictionary(x => x.Id);
+
+        var duplicateSelection =
+            selections
+                .GroupBy(x => x.SessionItemId)
+                .FirstOrDefault(x => x.Count() > 1);
+
+        if (duplicateSelection is not null)
+        {
+            throw new InvalidOperationException(
+                "Position mehrfach ausgewählt. Jede Tischposition darf nur einmal in einer Teilrechnung vorkommen.");
+        }
+
         var lines = new List<RestaurantSplitLine>();
 
         foreach (var selection in selections)
@@ -109,6 +142,16 @@ public static class RestaurantSplitCalculator
 
             if (selection.QuantityMilli <= 0 || selection.QuantityMilli > item.QuantityMilli)
                 throw new InvalidOperationException("Ungültige Teilmenge für Splitrechnung.");
+
+            if (string.Equals(
+                    item.Unit,
+                    "Stück",
+                    StringComparison.OrdinalIgnoreCase) &&
+                selection.QuantityMilli % 1000 != 0)
+            {
+                throw new InvalidOperationException(
+                    "Diese Position kann nur in ganzen Stückzahlen geteilt werden.");
+            }
 
             var amount = AllocateCents(
                 item.LineTotalCents,
@@ -161,12 +204,35 @@ public static class RestaurantSplitCalculator
 }
 
 
+public static class RestaurantServiceModes
+{
+    public const string InHouse = "IN_HOUSE";
+    public const string Takeaway = "TAKEAWAY";
+    public const string Pickup = "PICKUP";
+
+    public static string Normalize(string? value) =>
+        (value ?? "").Trim().ToUpperInvariant() switch
+        {
+            Takeaway => Takeaway,
+            Pickup => Pickup,
+            _ => InHouse
+        };
+
+    public static bool IsImHaus(string? value) =>
+        string.Equals(
+            Normalize(value),
+            InHouse,
+            StringComparison.Ordinal);
+}
+
 public sealed record RestaurantCheckoutDraft(
     string SessionId,
     long SessionVersion,
     string OperationId,
     CartLine[] Lines,
-    RestaurantSplitSelection[] Selections)
+    RestaurantSplitSelection[] Selections,
+    string ServiceMode = RestaurantServiceModes.InHouse)
 {
     public long TotalCents => Lines.Sum(x => x.LineTotalCents);
+    public bool ImHaus => RestaurantServiceModes.IsImHaus(ServiceMode);
 }

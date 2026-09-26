@@ -38,7 +38,58 @@ async Task RejectMessage(Func<Task> action,string mustContain,string title)
     }
     throw new Exception("FAIL: "+title);
 }
+if (args.Contains("--restaurant-third"))
+{
+    await RestaurantThirdExeTests.Run(Assert);
+    await RestaurantRecipeTests.Run(Assert);
+    await RestaurantInterimBillTests.Run(Assert);
+    await RestaurantSplitPlannerTests.Run(Assert);
+    await RestaurantDev5SplitPropertyTests.Run(Assert);
+    var restaurantTargetedRoot =
+        Path.Combine(
+            Path.GetTempPath(),
+            "tor-restaurant-targeted-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(restaurantTargetedRoot);
+    try
+    {
+        await RestaurantWaiterSettlementTests.Run(
+            restaurantTargetedRoot,
+            Assert);
+        await RestaurantDev5MergeTests.Run(
+            restaurantTargetedRoot,
+            Assert);
+        await RestaurantDev5PaymentTests.Run(
+            restaurantTargetedRoot,
+            Assert);
+        await RestaurantDev5SnapshotKitchenTests.Run(
+            restaurantTargetedRoot,
+            Assert);
+    }
+    finally
+    {
+        try
+        {
+            Directory.Delete(
+                restaurantTargetedRoot,
+                recursive: true);
+        }
+        catch
+        {
+        }
+    }
+    await MultiLanguageTests.Run(Assert);
+    await AdTvTests.Run(Assert);
+    // Existing display fixtures use Windows paths. The complete Windows CI
+    // suite below always executes them; a Linux targeted run cannot validate those paths.
+    if (OperatingSystem.IsWindows()) await CustomerDisplayAdsTests.Run(Assert);
+    else Console.WriteLine("Windows-path customer-display fixtures require Windows CI.");
+    Console.WriteLine($"RESTAURANT TARGETED CHECKS PASSED: {checks}");
+    return;
+}
+
 var root=Path.Combine(Path.GetTempPath(),"tor-safety-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+var previousDataDirectoryOverride = AppPaths.DataDirectoryOverride;
+AppPaths.DataDirectoryOverride = Path.Combine(root, "appdata");
 var db=await SafetyDatabase.CreateCurrentAsync(
     Path.Combine(root,"test.db"));
 
@@ -612,7 +663,18 @@ await MultiLanguageTests.Run(Assert);
 await TseLifecycleReleaseGateTests.Run(Assert);
 await EditionSplitFoundationTests.Run(Assert);
 await RestaurantFoundationTests.Run(Assert);
+await RestaurantThirdExeTests.Run(Assert);
+await RestaurantRecipeTests.Run(Assert);
+await RestaurantInterimBillTests.Run(Assert);
+await RestaurantSplitPlannerTests.Run(Assert);
+await RestaurantDev5SplitPropertyTests.Run(Assert);
+await RestaurantWaiterSettlementTests.Run(root, Assert);
 await RestaurantFiscalRetryTests.Run(root, Assert);
+await RestaurantDev5MergeTests.Run(root, Assert);
+await RestaurantDev5PaymentTests.Run(root, Assert);
+await RestaurantDev5SnapshotKitchenTests.Run(root, Assert);
+await RestaurantDev6RecoveryTests.Run(root, Assert);
+await RestaurantDev6ServiceModeMergeTests.Run(root, Assert);
 await CustomerDisplayAdsTests.Run(Assert);
 await AdTvTests.Run(Assert);
 await KassenSichV2026ReviewTests.Run(Assert);
@@ -720,15 +782,33 @@ const int CloudAlignmentChecks = 7;
 // Einzelhandel/Gastro follow-ups add 13 checks: O-8, O-9, O-10, O-13, O-14, O-17 (2), Z bounds (2) and PDF text.
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
 const int ExpectedSafetyChecks = 1423;
+// Restaurant DEV4/DEV5 (feature/restaurant-third-exe), counted on its own like
+// the blocks above so this branch and main stop colliding on one number.
+// Taken from the merged Windows CI run 36250977527 ("expected 1492, actual
+// 1574"), not estimated, and reviewed against its parts: 59 DEV4 checks
+// (third installer, recipes/options, interim bill, split planner, waiter
+// settlement, service mode, exact cents, KDS index, fiscal retry, UI/language
+// lists) plus 23 DEV5 merge checks (schema 42 = C-4 and Restaurant 43-48,
+// history name verification, DEV4 refusal, main-42 upgrades, idempotent
+// restart, reservation lifecycle and checkout/receipt wiring).
+// DEV6 night hardening adds 21: migration source guard, byte-identical DEV4
+// refusal, check before bootstrap; payment concurrency/repetition/partial
+// payments and the Kellnerabrechnung (8); snapshot and kitchen resend (4);
+// split properties (2); THEKE/TISCHPLAN switch guards (3); installer identity.
+const int RestaurantDev5Checks = 108;
 
-if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
+const int TotalSafetyChecks =
+    ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks + RestaurantDev5Checks;
+
+if (checks != TotalSafetyChecks)
 {
     throw new Exception(
-        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks}, actual {checks}. " +
+        $"SAFETY BASELINE MISMATCH: expected {TotalSafetyChecks}, actual {checks}. " +
         "Update the reviewed baseline intentionally before accepting a changed test count.");
 }
 
 Console.WriteLine($"ALL {checks} CHECKS PASSED");
+AppPaths.DataDirectoryOverride = previousDataDirectoryOverride;
 SqliteConnection.ClearAllPools();Directory.Delete(root,true);
 
 sealed class FakeSumUpHandler : System.Net.Http.HttpMessageHandler

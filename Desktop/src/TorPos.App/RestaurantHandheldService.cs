@@ -754,19 +754,33 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                         0,
                         auditBeforeTotal - item.LineTotalCents);
 
-                await AppendRestaurantStornoAuditAsync(
-                    actionId,
-                    "AUTHORIZED",
-                    operatorUser.Username,
-                    request.DeviceId,
-                    request.SessionId,
-                    item,
-                    reason,
-                    auditBeforeTotal,
-                    auditAfterTotal,
-                    $"command_id={request.CommandId}; recovered={claim.State == RestaurantCommandClaimState.Recovered}",
-                    ct);
-                auditAuthorized = true;
+                if (claim.State == RestaurantCommandClaimState.Recovered &&
+                    await _controlledActions.HasEntryAsync(
+                        actionId,
+                        "AUTHORIZED",
+                        ct))
+                {
+                    // Same crash window as APPLIED below: the immutable audit
+                    // phase can already exist while the command journal still
+                    // needs recovery. Never retry the unique phase itself.
+                    auditAuthorized = true;
+                }
+                else
+                {
+                    await AppendRestaurantStornoAuditAsync(
+                        actionId,
+                        "AUTHORIZED",
+                        operatorUser.Username,
+                        request.DeviceId,
+                        request.SessionId,
+                        item,
+                        reason,
+                        auditBeforeTotal,
+                        auditAfterTotal,
+                        $"command_id={request.CommandId}; recovered={claim.State == RestaurantCommandClaimState.Recovered}",
+                        ct);
+                    auditAuthorized = true;
+                }
 
                 vorgang = await _fiscal.BeginChangeAsync(
                     request.SessionId,
@@ -803,19 +817,34 @@ public sealed class RestaurantHandheldService : IRestaurantHandheldService
                     auditAfterTotal + cancelled.LineTotalCents;
             }
 
-            await AppendRestaurantStornoAuditAsync(
-                actionId,
-                "APPLIED",
-                operatorUser.Username,
-                request.DeviceId,
-                request.SessionId,
-                cancelled,
-                reason,
-                auditBeforeTotal,
-                auditAfterTotal,
-                $"command_id={request.CommandId}; recovered={claim.State == RestaurantCommandClaimState.Recovered}",
-                ct);
-            auditApplied = true;
+            if (claim.State == RestaurantCommandClaimState.Recovered &&
+                await _controlledActions.HasEntryAsync(
+                    actionId,
+                    "APPLIED",
+                    ct))
+            {
+                // The cancellation and its APPLIED audit may both have committed
+                // before the handheld command journal could be marked COMPLETED.
+                // Replaying that same phase would violate UNIQUE(action_id,phase)
+                // forever, so recovery resumes after the durable audit row.
+                auditApplied = true;
+            }
+            else
+            {
+                await AppendRestaurantStornoAuditAsync(
+                    actionId,
+                    "APPLIED",
+                    operatorUser.Username,
+                    request.DeviceId,
+                    request.SessionId,
+                    cancelled,
+                    reason,
+                    auditBeforeTotal,
+                    auditAfterTotal,
+                    $"command_id={request.CommandId}; recovered={claim.State == RestaurantCommandClaimState.Recovered}",
+                    ct);
+                auditApplied = true;
+            }
 
             var session = await _restaurant.GetSessionAsync(
                 request.SessionId,

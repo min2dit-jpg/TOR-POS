@@ -50,7 +50,8 @@ public static class R126ReviewTests
             "R126 the company name is hidden rather than shown as a few letters and an ellipsis");
 
         // ---------- the snapshot sandbox ----------
-        var real = AppPaths.DataDirectory;
+        var previousOverride = AppPaths.DataDirectoryOverride;
+        var callerDataDirectory = AppPaths.DataDirectory;
         var sandbox = Path.Combine(Path.GetTempPath(), "tor-r126-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -63,13 +64,14 @@ public static class R126ReviewTests
         }
         finally
         {
-            AppPaths.DataDirectoryOverride = null;
+            AppPaths.DataDirectoryOverride = previousOverride;
             try { Directory.Delete(sandbox, recursive: true); } catch { /* best effort */ }
         }
 
         assert(
-            AppPaths.DataDirectory == real &&
-            real.EndsWith("TOR-POS-Pro", StringComparison.OrdinalIgnoreCase),
-            "R126 without the override the till uses exactly the folder it always used");
+            AppPaths.DataDirectoryOverride == previousOverride &&
+            AppPaths.DataDirectory == callerDataDirectory &&
+            (previousOverride is not null || callerDataDirectory.EndsWith("TOR-POS-Pro", StringComparison.OrdinalIgnoreCase)),
+            "R126 snapshot sandbox restores exactly the caller data-directory context");
     }
 }

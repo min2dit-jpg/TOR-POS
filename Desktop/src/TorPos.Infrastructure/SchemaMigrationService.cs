@@ -10,7 +10,7 @@ namespace TorPos.Infrastructure;
 /// </summary>
 public sealed class SchemaMigrationService
 {
-    public const int TargetSchemaVersion = 42;
+    public const int TargetSchemaVersion = 48;
 
     private readonly SqliteDatabase _db;
     private readonly DatabaseBackupService _backup;
@@ -30,7 +30,27 @@ public sealed class SchemaMigrationService
         CancellationToken ct = default)
         => IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(ct));
 
+    /// <summary>
+    /// Tests only: builds the schema an older release left behind (e.g. main
+    /// at 42) with the very same migration code, so an upgrade can be tested
+    /// from a real history instead of a hand-written one.
+    /// </summary>
+    internal Task<SchemaMigrationResult> InitializeDatabaseUpToAsync(
+        int stopAfterVersion,
+        CancellationToken ct = default)
+    {
+        if (stopAfterVersion < 1 || stopAfterVersion > TargetSchemaVersion)
+            throw new ArgumentOutOfRangeException(nameof(stopAfterVersion));
+
+        return IoQueue.RunAsync(() => InitializeDatabaseCoreAsync(stopAfterVersion, ct));
+    }
+
+    private Task<SchemaMigrationResult> InitializeDatabaseCoreAsync(
+        CancellationToken ct)
+        => InitializeDatabaseCoreAsync(TargetSchemaVersion, ct);
+
     private async Task<SchemaMigrationResult> InitializeDatabaseCoreAsync(
+        int target,
         CancellationToken ct)
     {
         var existedBefore =
@@ -49,11 +69,17 @@ public sealed class SchemaMigrationService
                 "Ein Downgrade wird aus Sicherheitsgründen verweigert.");
         }
 
+        // A version number only means something together with its migration
+        // name. Checked read-only before the backup, the legacy bootstrap or any
+        // migration may touch the file, so a refused database stays unchanged.
+        if (existedBefore)
+            VerifyMigrationHistory(await ReadHistoryWithoutCreatingAsync(ct));
+
         string? backupPath = null;
 
         // Existing unversioned/older customer DB: backup BEFORE legacy bootstrap
         // or any versioned migration is allowed to touch its schema.
-        if (existedBefore && before < TargetSchemaVersion)
+        if (existedBefore && before < target)
         {
             backupPath = await _backup.CreateMigrationBackupAsync(
                 _migrationBackupDirectory,
@@ -81,6 +107,9 @@ public sealed class SchemaMigrationService
             if (migration.Version <= current)
                 continue;
 
+            if (migration.Version > target)
+                break;
+
             if (migration.Version != current + 1)
             {
                 throw new InvalidOperationException(
@@ -99,11 +128,11 @@ public sealed class SchemaMigrationService
 
         var finalStatus = await GetStatusAsync(ct);
 
-        if (finalStatus.CurrentVersion != TargetSchemaVersion)
+        if (finalStatus.CurrentVersion != target)
         {
             throw new InvalidOperationException(
                 $"Schema-Migration unvollständig. Ist={finalStatus.CurrentVersion}, " +
-                $"Soll={TargetSchemaVersion}.");
+                $"Soll={target}.");
         }
 
         return new SchemaMigrationResult(
@@ -201,6 +230,104 @@ public sealed class SchemaMigrationService
         return Convert.ToInt32(
             await q.ExecuteScalarAsync(ct));
     }
+
+    /// <summary>
+    /// Migration history as (version, name) pairs, read without creating
+    /// anything. Empty when the database has no history table yet.
+    /// </summary>
+    private async Task<IReadOnlyList<(int Version, string Name)>> ReadHistoryWithoutCreatingAsync(
+        CancellationToken ct)
+    {
+        var cs = new SqliteConnectionStringBuilder
+        {
+            DataSource = _db.DatabasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString();
+
+        await using var c = new SqliteConnection(cs);
+        await c.OpenAsync(ct);
+
+        var rows = new List<(int Version, string Name)>();
+        if (!await TableExistsAsync(c, "schema_migrations", ct))
+            return rows;
+
+        await using var q = c.CreateCommand();
+        q.CommandText = "SELECT version, name FROM schema_migrations ORDER BY version;";
+        await using var r = await q.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+            rows.Add((r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1)));
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Restaurant DEV4 test builds recorded their Restaurant migrations as
+    /// 42-47, the numbers main uses for C-4 and DEV5's Restaurant 43-48. Such a
+    /// database is missing C-4 and would pass a pure version check after only
+    /// migration 48 ran, so it is refused instead of converted.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<int, string> Dev4RestaurantHistory =
+        new Dictionary<int, string>
+        {
+            [42] = "RESTAURANT_RECIPES_AND_OPTIONS",
+            [43] = "RESTAURANT_ORDER_OPTION_SNAPSHOT",
+            [44] = "RESTAURANT_EXACT_PARTIAL_PAYMENT_CENTS",
+            [45] = "RESTAURANT_IMMUTABLE_LINE_SNAPSHOTS",
+            [46] = "RESTAURANT_KDS_ITEM_LOOKUP_INDEX",
+            [47] = "RESTAURANT_SERVICE_MODE"
+        };
+
+    public const string Dev4DatabaseRefusedMessage =
+        "Diese Restaurant-DEV4-Testdatenbank kann nicht sicher übernommen werden. " +
+        "Bitte für DEV5 eine neue Testdatenbank anlegen.";
+
+    /// <summary>
+    /// Fail-closed: every recorded migration must carry the name this build
+    /// defines for its version. A different name means another build gave the
+    /// number a different meaning, and skipping by number would leave the
+    /// schema silently wrong.
+    /// </summary>
+    internal static void VerifyMigrationHistory(
+        IEnumerable<(int Version, string Name)> history)
+    {
+        var rows = history.ToList();
+
+        var dev4 = rows.FirstOrDefault(x =>
+            Dev4RestaurantHistory.TryGetValue(x.Version, out var dev4Name) &&
+            string.Equals(x.Name, dev4Name, StringComparison.Ordinal) &&
+            !string.Equals(ExpectedName(x.Version), dev4Name, StringComparison.Ordinal));
+        if (dev4.Name is not null)
+        {
+            throw new InvalidOperationException(
+                Dev4DatabaseRefusedMessage +
+                $" (Migration {dev4.Version} ist als \"{dev4.Name}\" eingetragen, " +
+                $"erwartet wird \"{ExpectedName(dev4.Version)}\".)");
+        }
+
+        foreach (var (version, name) in rows)
+        {
+            var expected = ExpectedName(version);
+            if (expected is null)
+                continue; // newer than this build: refused by the downgrade check
+
+            if (!string.Equals(name, expected, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Schema-Historie passt nicht zu dieser TOR POS-Version: " +
+                    $"Migration {version} ist in der Datenbank als \"{name}\" eingetragen, " +
+                    $"erwartet wird \"{expected}\". Die Datenbank wird nicht verändert; " +
+                    "bitte den Support kontaktieren.");
+            }
+        }
+    }
+
+    private static string? ExpectedName(int version) =>
+        OrderedMigrations.FirstOrDefault(x => x.Version == version)?.Name;
+
+    /// <summary>Versions 1..Target, contiguous, each name used once.</summary>
+    internal static IReadOnlyList<(int Version, string Name)> DefinedMigrations =>
+        OrderedMigrations.Select(x => (x.Version, x.Name)).ToArray();
 
     private async Task EnsureMetadataTablesAsync(
         CancellationToken ct)
@@ -2353,7 +2480,144 @@ public sealed class SchemaMigrationService
                           reason TEXT NOT NULL DEFAULT '');
                         """;
                     await q.ExecuteNonQueryAsync(ct);
-                })
+                }),
+
+            // Restaurant DEV5: the DEV4 branch numbered these 42-47 while main used
+            // 42 for C-4. They follow main's 42 so every version has one meaning;
+            // DEV4 test databases are refused (see Dev4RestaurantHistory).
+            new(43, "RESTAURANT_RECIPES_AND_OPTIONS", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+                await using var q = c.CreateCommand();
+                q.Transaction = tx;
+                q.CommandText = """
+                    CREATE TABLE restaurant_ingredients(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        unit TEXT NOT NULL CHECK(unit IN ('g','ml','Stück')),
+                        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+                    CREATE TABLE restaurant_recipes(
+                        product_id INTEGER NOT NULL REFERENCES products(id),
+                        ingredient_id INTEGER NOT NULL REFERENCES restaurant_ingredients(id),
+                        quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+                        PRIMARY KEY(product_id,ingredient_id));
+                    CREATE TABLE restaurant_order_options(
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)));
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(44, "RESTAURANT_ORDER_OPTION_SNAPSHOT", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+                await using var q=c.CreateCommand();q.Transaction=tx;
+                q.CommandText="ALTER TABLE restaurant_session_items ADD COLUMN order_options TEXT NOT NULL DEFAULT '';";
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(45, "RESTAURANT_EXACT_PARTIAL_PAYMENT_CENTS", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN line_total_cents INTEGER NOT NULL DEFAULT -1
+                      CHECK(line_total_cents>=-1);
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN paid_cents INTEGER NOT NULL DEFAULT 0
+                      CHECK(paid_cents>=0);
+
+                    UPDATE restaurant_session_items
+                    SET line_total_cents=
+                        CAST(ROUND((quantity_milli * unit_price_cents) / 1000.0) AS INTEGER),
+                        paid_cents=0
+                    WHERE line_total_cents<0;
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(46, "RESTAURANT_IMMUTABLE_LINE_SNAPSHOTS", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN unit TEXT NOT NULL DEFAULT 'Stück';
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN list_unit_price_cents INTEGER NOT NULL DEFAULT 0;
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN im_haus_applicable INTEGER NOT NULL DEFAULT 1
+                      CHECK(im_haus_applicable IN (0,1));
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN vat_allocations_json TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_session_items
+                      ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN variant_name TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN unit TEXT NOT NULL DEFAULT 'Stück';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN list_unit_price_cents INTEGER NOT NULL DEFAULT 0;
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN im_haus_applicable INTEGER NOT NULL DEFAULT 1
+                      CHECK(im_haus_applicable IN (0,1));
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN vat_allocations_json TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN menu_components_json TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE restaurant_bestellung_items
+                      ADD COLUMN line_total_cents INTEGER NOT NULL DEFAULT -1;
+
+                    UPDATE restaurant_session_items
+                    SET list_unit_price_cents=unit_price_cents
+                    WHERE list_unit_price_cents<=0;
+
+                    UPDATE restaurant_bestellung_items
+                    SET list_unit_price_cents=unit_price_cents,
+                        line_total_cents=
+                            CAST(ROUND((quantity_milli * unit_price_cents) / 1000.0) AS INTEGER)
+                    WHERE list_unit_price_cents<=0 OR line_total_cents<0;
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(47, "RESTAURANT_KDS_ITEM_LOOKUP_INDEX", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    CREATE INDEX IF NOT EXISTS ix_restaurant_kitchen_jobs_item_action
+                      ON restaurant_kitchen_jobs(session_item_id,action,created_at);
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            }),
+            new(48, "RESTAURANT_SERVICE_MODE", static async (c, tx, ct) =>
+            {
+                if (!string.Equals(Environment.GetEnvironmentVariable("TOR_POS_PRODUCT_EDITION"),
+                    "RESTAURANT", StringComparison.OrdinalIgnoreCase)) return;
+
+                await using var q=c.CreateCommand();
+                q.Transaction=tx;
+                q.CommandText="""
+                    CREATE TABLE IF NOT EXISTS restaurant_session_service_mode(
+                      session_id TEXT PRIMARY KEY REFERENCES restaurant_sessions(id),
+                      service_mode TEXT NOT NULL DEFAULT 'IN_HOUSE'
+                        CHECK(service_mode IN ('IN_HOUSE','TAKEAWAY','PICKUP')),
+                      updated_at TEXT NOT NULL,
+                      updated_by TEXT NOT NULL DEFAULT '');
+                    """;
+                await q.ExecuteNonQueryAsync(ct);
+            })
         };
 
     private sealed record DatabaseMigration(

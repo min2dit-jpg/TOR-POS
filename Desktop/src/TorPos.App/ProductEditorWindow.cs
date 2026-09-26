@@ -20,6 +20,8 @@ public sealed class ProductEditorWindow : Window
     private readonly PromotionCampaignService _promotions;
     private readonly AuthenticatedUser _user;
     private readonly string _initialBarcode;
+    private readonly RestaurantRecipeRepository? _restaurantRecipes;
+    private readonly string _initialPage;
 
     private readonly TabControl _tabs = new();
 
@@ -138,7 +140,9 @@ public sealed class ProductEditorWindow : Window
         BusinessManagementService management,
         PromotionCampaignService promotions,
         AuthenticatedUser user,
-        string initialBarcode)
+        string initialBarcode,
+        RestaurantRecipeRepository? restaurantRecipes = null,
+        string initialPage = "")
     {
         _repo = repo;
         _catalog = catalog;
@@ -147,6 +151,8 @@ public sealed class ProductEditorWindow : Window
         _promotions = promotions;
         _user = user;
         _initialBarcode = initialBarcode;
+        _restaurantRecipes = restaurantRecipes;
+        _initialPage = initialPage;
 
         Title = "TOR POS – Stammdaten";
         Width = 1180;
@@ -336,7 +342,7 @@ public sealed class ProductEditorWindow : Window
                 });
         }
 
-        _tabs.SelectedIndex = 0;
+        _tabs.SelectedIndex = _initialPage == "ARTIKEL" ? 2 : _initialPage == "WARENGRUPPE" ? 1 : 0;
 
         Grid.SetRow(_tabs, 1);
         root.Children.Add(_tabs);
@@ -661,6 +667,16 @@ public sealed class ProductEditorWindow : Window
             Child = _imagePreview
         });
 
+        if (_restaurantRecipes is not null)
+        {
+            var recipe = LargeButton("ZUTATEN / REZEPTUR", 220);
+            recipe.Click += async (_, _) =>
+            {
+                if (_selectedArticle is null) { _imageText.Text = "Bitte Artikel zuerst speichern, danach Rezeptur zuordnen."; return; }
+                await new RestaurantRecipeWindow(_restaurantRecipes, _selectedArticle).ShowDialog(this);
+            };
+            editor.Children.Add(recipe);
+        }
         editor.Children.Add(VariantEditorSection());
         if (InstallationEdition.ReadLocked() == "IMBISS")
             editor.Children.Add(ComboEditorSection());

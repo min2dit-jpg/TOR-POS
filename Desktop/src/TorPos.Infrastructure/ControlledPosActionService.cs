@@ -157,6 +157,31 @@ public sealed class ControlledPosActionService
         });
     }
 
+    public async Task<bool> HasEntryAsync(
+        string actionId,
+        string phase,
+        CancellationToken ct = default)
+    {
+        actionId = (actionId ?? "").Trim();
+        phase = (phase ?? "").Trim();
+        if (actionId.Length == 0)
+            throw new ArgumentException("Action-ID fehlt.", nameof(actionId));
+        if (phase.Length == 0)
+            throw new ArgumentException("Audit-Phase fehlt.", nameof(phase));
+
+        await using var c = _db.OpenReadConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT COUNT(*)
+            FROM pos_action_log
+            WHERE action_id=$actionId
+              AND phase=$phase;
+            """;
+        q.Parameters.AddWithValue("$actionId", actionId);
+        q.Parameters.AddWithValue("$phase", phase);
+        return Convert.ToInt64(await q.ExecuteScalarAsync(ct)) == 1;
+    }
+
     // Deliberately NOT routed through IoQueue: this is a plain read-only scan
     // (no transaction, no write) on its own connection, safe alongside
     // concurrent checkout writes under WAL. pos_action_log only grows, so
