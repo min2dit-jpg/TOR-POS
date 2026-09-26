@@ -88,6 +88,8 @@ if (args.Contains("--restaurant-third"))
 }
 
 var root=Path.Combine(Path.GetTempPath(),"tor-safety-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+var previousDataDirectoryOverride = AppPaths.DataDirectoryOverride;
+AppPaths.DataDirectoryOverride = Path.Combine(root, "appdata");
 var db=await SafetyDatabase.CreateCurrentAsync(
     Path.Combine(root,"test.db"));
 
@@ -804,6 +806,7 @@ if (checks != TotalSafetyChecks)
 }
 
 Console.WriteLine($"ALL {checks} CHECKS PASSED");
+AppPaths.DataDirectoryOverride = previousDataDirectoryOverride;
 SqliteConnection.ClearAllPools();Directory.Delete(root,true);
 
 sealed class FakeSumUpHandler : System.Net.Http.HttpMessageHandler

@@ -37,7 +37,7 @@ test('C-1 Caddy lets a full TOR Mail request through and keeps 2 MB elsewhere',(
 // two limits, touches nothing else, and a second run is a no-op.
 test('C-1 server patch rewrites only the api request_body and is idempotent',()=>{
  const {patch}=require('../deploy/c1-caddy-patch');
- const old=caddy.replace(/\t# C-1:[\s\S]*?request_body @notTorMail \{\n\t\tmax_size 2MB\n\t\}/,'\trequest_body {\n\t\tmax_size 2MB\n\t}');
+ const old=caddy.replace(/\t# C-1:[\s\S]*?request_body @notTorMail \{\r?\n\t\tmax_size 2MB\r?\n\t\}/,'\trequest_body {\n\t\tmax_size 2MB\n\t}');
  assert.ok(!old.includes('@torMail'),'fixture is the pre-C-1 file');
  const first=patch(old);assert.equal(first.status,'CHANGED');
  const limits=requestBodies(first.text.slice(first.text.indexOf('api.torpos.de {'),first.text.indexOf('\nbon.torpos.de {')));

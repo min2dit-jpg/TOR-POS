@@ -53,6 +53,7 @@ public static class R181ReviewTests
 
         var editionDir = Path.Combine(root, "r181-edition");
         Directory.CreateDirectory(editionDir);
+        var previousOverride = AppPaths.DataDirectoryOverride;
         AppPaths.DataDirectoryOverride = editionDir;
         try
         {
@@ -118,7 +119,7 @@ public static class R181ReviewTests
         }
         finally
         {
-            AppPaths.DataDirectoryOverride = null;
+            AppPaths.DataDirectoryOverride = previousOverride;
         }
     }
 
