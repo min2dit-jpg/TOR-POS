@@ -215,7 +215,7 @@ public sealed class DsfinvkExportService : IDsfinvkExportService
                         "SELECT id FROM sales WHERE created_at_utc > $from AND created_at_utc <= $to ORDER BY receipt_number;",
                         closing, ct))
                     {
-                        var sale = await SaleRepository.LoadSaleAsync(c, id, ct)
+                        var sale = await SaleRepository.LoadSaleOnConnectionAsync(c, id, ct)
                             ?? throw new InvalidOperationException($"Verkauf {id} konnte nicht gelesen werden.");
                         saleList.Add(sale);
                         if (sale.ImHaus is null)

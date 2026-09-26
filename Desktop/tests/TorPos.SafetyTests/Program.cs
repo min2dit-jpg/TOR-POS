@@ -603,6 +603,17 @@ await BarTestBonPreparationTests.Run(Assert);
 await GermanFiscalPrepTests.Run(root, Assert);
 FiscalPropertyTests.Run(Assert);
 await RetailGastroFollowUpTests.Run(root, Assert);
+// German fiscal prep, counted separately from ExpectedSafetyChecks so parallel
+// branches that raise that baseline merge without conflict:
+// 33 checks lock the append-only TSE-Wechsel journal and its notification
+// states, the closed ELSTER/2028 legislation gates, provider readiness, the
+// digital receipt/QR layer, the AI boundary and the DSFinV-K preflight/ZIP
+// packaging; 7 seeded property checks fuzz receipt links, DSFinV-K ranges,
+// cent allocation, CSV and TSE export input. Einzelhandel/Gastro follow-up (17):
+// V-3 export off the write queue, O-3 probe cache, receipt policy in the
+// checkout, TSE-Wechselprotokoll window, 3 load checks, 2 seeded EAN/scale
+// checks, G-4 licence/trial hardening (4) and the O-15 split-data warning.
+const int GermanFiscalPrepChecks = 57;
 
 // R155: 13 reviewed checks cover DATEV Kassenbuch Standard-ASCII
 // structure/encoding, cash-only semantics, Z reconciliation, cash movements,
@@ -677,22 +688,12 @@ await RetailGastroFollowUpTests.Run(root, Assert);
 // Self Order III contributes 6 reviewed inbox/idempotency/immutability/race checks on top of Self Order II.
 // Restaurant-only schema isolation, pairing/token hashing and revocation,
 // guest/note concurrency, kitchen NOTE routing and fiscal reconciliation.
-// German fiscal prep: 33 checks lock the append-only TSE-Wechsel journal and
-// its notification states, the closed ELSTER/2028 legislation gates, provider
-// readiness, the digital receipt/QR layer, the AI boundary and the DSFinV-K
-// preflight/ZIP packaging; 7 seeded property checks fuzz receipt links,
-// DSFinV-K ranges, cent allocation, CSV and TSE export input.
-// Einzelhandel/Gastro follow-up: V-3 export off the write queue, O-3 probe cache,
-// receipt policy in the checkout (no normal receipt for an unfinished Vorgang)
-// and the TSE-Wechselprotokoll window; 3 load checks (payment journal race,
-// replay storm under SQLite lock + export, slow TSE) and 2 seeded EAN/scale checks;
-// G-4 licence tombstones/clock/trial cache (4) and O-15 split-data warning (1).
-const int ExpectedSafetyChecks = 1457;
+const int ExpectedSafetyChecks = 1400;
 
-if (checks != ExpectedSafetyChecks)
+if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks)
 {
     throw new Exception(
-        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks}, actual {checks}. " +
+        $"SAFETY BASELINE MISMATCH: expected {ExpectedSafetyChecks + GermanFiscalPrepChecks}, actual {checks}. " +
         "Update the reviewed baseline intentionally before accepting a changed test count.");
 }
 
