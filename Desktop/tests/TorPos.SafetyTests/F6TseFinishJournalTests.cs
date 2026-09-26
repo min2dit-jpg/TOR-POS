@@ -78,6 +78,77 @@ public static class F6TseFinishJournalTests
             earlyRecorded.TseOutage &&
             auditText.Contains($"TSE-Transaktion {early!.TransactionNumber} wurde vor einem Programmabbruch möglicherweise bereits abgeschlossen", StringComparison.Ordinal),
             "F-6 if the program stopped before the TSE answer was journaled, the outage record names the transaction that may already be signed, so it can be found in the TSE export");
+
+        // Abort (AVBelegabbruch/AVTraining): the TSE finished the abort, then
+        // the program stopped before the aborted record was written - here the
+        // local write fails right after the TSE answer. On restart the orphan
+        // abort must use the journaled signature, not ask the TSE again.
+        provider.RefuseFinish = false;
+        await vorgaenge.StartAsync("f6-abort", false, DateTimeOffset.Now.AddMinutes(-1), "kasse1");
+        var abortLine = new[] { new CartLine { ProductId = 1, ProductName = "Artikel", Quantity = 1, UnitPriceCents = 250, VatRate = 19m } };
+        await ExecAsync(db, "CREATE TRIGGER f6_crash BEFORE INSERT ON aborted_vorgang_items BEGIN SELECT RAISE(ABORT,'simulated crash'); END;");
+        var abortCrashed = false;
+        try { await vorgaenge.AbortAsync("f6-abort", abortLine, 0, "kasse1", "kasse1"); }
+        catch (Exception) { abortCrashed = true; }
+        await ExecAsync(db, "DROP TRIGGER f6_crash;");
+        var abortJournal = await vorgaenge.GetJournaledFinishAsync("f6-abort");
+        var finishesAfterAbort = provider.Finishes;
+
+        provider.RefuseFinish = true; // a second finish of the same transaction is refused by a real TSE
+        var orphans = await vorgaenge.AbortOrphansAsync(null, "SYSTEM");
+        var (abortRecords, abortSignature, abortOutage, abortState, abortJournalLeft) = await AbortStateAsync(db, "f6-abort");
+
+        assert(
+            abortCrashed && abortJournal is { Signed: true } && orphans >= 1 &&
+            provider.Finishes == finishesAfterAbort &&
+            abortRecords == 1 && abortSignature == abortJournal.Signature && !abortOutage &&
+            abortState == "ABORTED" && !abortJournalLeft,
+            "F-6 an abort whose TSE answer arrived before a crash is recovered with that signature - no second finish call, no outage, exactly one aborted record, journal cleared");
+
+        // Crash before even the abort's journal was written: the TSE refuses the
+        // second finish and the aborted record names the transaction.
+        provider.RefuseFinish = false;
+        await vorgaenge.StartAsync("f6-abort-early", false, DateTimeOffset.Now.AddMinutes(-1), "kasse1");
+        var abortEarly = (await vorgaenge.GetAsync("f6-abort-early"))!;
+        await ExecAsync(db, $"UPDATE tse_vorgaenge SET finish_attempted_at='{DateTimeOffset.Now:O}' WHERE id='f6-abort-early';");
+        provider.RefuseFinish = true;
+        await vorgaenge.AbortOrphansAsync(null, "SYSTEM");
+        string earlyReason;
+        await using (var c = db.OpenConnection())
+        await using (var q = c.CreateCommand())
+        {
+            q.CommandText = "SELECT outage_reason FROM aborted_vorgaenge WHERE vorgang_id='f6-abort-early' AND outage=1;";
+            earlyReason = Convert.ToString(await q.ExecuteScalarAsync()) ?? "";
+        }
+
+        assert(
+            earlyReason.Contains($"TSE-Transaktion {abortEarly.TransactionNumber} wurde vor einem Programmabbruch möglicherweise bereits abgeschlossen", StringComparison.Ordinal),
+            "F-6 an abort retried after a crash before its journal names the transaction that may already be signed in the aborted record");
+    }
+
+    private static async Task ExecAsync(SqliteDatabase db, string sql)
+    {
+        await using var c = db.OpenConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = sql;
+        await q.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<(long Records, string Signature, bool Outage, string State, bool JournalLeft)> AbortStateAsync(SqliteDatabase db, string vorgangId)
+    {
+        await using var c = db.OpenConnection();
+        await using var q = c.CreateCommand();
+        q.CommandText = """
+            SELECT (SELECT COUNT(*) FROM aborted_vorgaenge WHERE vorgang_id=$id),
+                   COALESCE((SELECT signature FROM aborted_vorgaenge WHERE vorgang_id=$id),''),
+                   COALESCE((SELECT outage FROM aborted_vorgaenge WHERE vorgang_id=$id),1),
+                   (SELECT state FROM tse_vorgaenge WHERE id=$id),
+                   (SELECT finish_result_json<>'' FROM tse_vorgaenge WHERE id=$id);
+            """;
+        q.Parameters.AddWithValue("$id", vorgangId);
+        await using var r = await q.ExecuteReaderAsync();
+        await r.ReadAsync();
+        return (r.GetInt64(0), r.GetString(1), r.GetInt64(2) != 0, r.GetString(3), r.GetInt64(4) != 0);
     }
 
     private static async Task<long> InsertSaleAsync(SqliteDatabase db, long receipt, long cents)

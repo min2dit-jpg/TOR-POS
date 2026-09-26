@@ -719,7 +719,9 @@ const int CloudAlignmentChecks = 7;
 // one more: the Cloud heartbeat reports an open TSE outage.
 // Einzelhandel/Gastro follow-ups add 13 checks: O-8, O-9, O-10, O-13, O-14, O-17 (2), Z bounds (2) and PDF text.
 // O-19/O-4/O-16 add 6 checks: unknown terminal profile fail-closed, fiskaltrust timeout and ftState, identity time in UTC.
-const int ExpectedSafetyChecks = 1423;
+// F-6 for aborts adds 2 checks: an abort signed before a crash keeps its signature without a
+// second finish call; an abort retried before its journal names the transaction.
+const int ExpectedSafetyChecks = 1425;
 
 if (checks != ExpectedSafetyChecks + GermanFiscalPrepChecks + CloudAlignmentChecks)
 {

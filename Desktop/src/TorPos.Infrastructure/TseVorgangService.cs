@@ -219,8 +219,19 @@ public sealed class TseVorgangService
             return;
 
         SaleTseResult result;
-        if (TryTransaction(vorgang, out var transaction))
+        if (await GetJournaledFinishAsync(vorgangId, ct) is { } journaled)
         {
+            // F-6 for aborts: the TSE already finished this Vorgang before the
+            // program stopped; its answer is used, the TSE is not asked again.
+            result = journaled;
+        }
+        else if (TryTransaction(vorgang, out var transaction))
+        {
+            // F-6: note the attempt first, journal the answer before the
+            // AVBelegabbruch record is written (same order as FinishAsync).
+            var retryAfterCrash = vorgang.FinishAttemptedAt.Length > 0;
+            await MarkFinishAttemptAsync(vorgangId, ct);
+
             var (finish, _) = await _tse.FinishTransactionAsync(
                 new TseTransactionFinishRequest(vorgang.ClientId, transaction, System.Text.Encoding.UTF8.GetBytes(FiscalProcessData.AbortText(vorgang.Training)), FiscalProcessData.KassenbelegProcessType),
                 actor,
@@ -234,7 +245,14 @@ public sealed class TseVorgangService
                     finish.SignatureBase64,
                     finish.LogTime,
                     vorgang.StartLogTime)
-                : SaleTseResult.Outage(finish.Message);
+                : SaleTseResult.Outage(retryAfterCrash
+                    ? $"{finish.Message} · TSE-Transaktion {transaction} wurde vor einem Programmabbruch möglicherweise bereits abgeschlossen - Signatur im TSE-Export (TAR) prüfen."
+                    : finish.Message);
+
+            if (finish.Success)
+                await JournalFinishAsync(vorgangId, result, ct);
+            else if (retryAfterCrash)
+                await _tse.ReportUnavailableAsync(result.OutageMessage, actor, ct);
         }
         else
         {
@@ -311,7 +329,7 @@ public sealed class TseVorgangService
             await using (var state = c.CreateCommand())
             {
                 state.Transaction = tx;
-                state.CommandText = "UPDATE tse_vorgaenge SET state='ABORTED',reference=$ref,updated_at=$now WHERE id=$id;";
+                state.CommandText = "UPDATE tse_vorgaenge SET state='ABORTED',reference=$ref,finish_result_json='',updated_at=$now WHERE id=$id;";
                 state.Parameters.AddWithValue("$ref", "ABORT:" + id.ToString(CultureInfo.InvariantCulture));
                 state.Parameters.AddWithValue("$now", DateTimeOffset.Now.ToString("O"));
                 state.Parameters.AddWithValue("$id", vorgangId);
